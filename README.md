@@ -1,8 +1,45 @@
-# evlib: Event Camera Utilities in Rust
+# `evlib`: Event Camera Utilities in Rust
 
-A high-performance implementation of event camera utilities using Rust with Python bindings via PyO3.
+A high-performance (or some might say: _blazingly fast_) implementation of event
+camera utilities using Rust with Python bindings via PyO3.
 
-This library is based on the [event_utils](https://github.com/TimoStoff/event_utils) Python library but reimplemented in Rust for significantly better performance.
+This library is based on the
+[event_utils](https://github.com/TimoStoff/event_utils) Python library but
+reimplemented in Rust for significantly better performance.
+
+> [!Warning]
+>
+> This is a super experimental project and will have frequent breaking changes.
+> It is primary being developed as a learning project for understanding Event
+> Camera data processing and Event-Vision algorithms.
+
+<!-- mtoc-start -->
+
+* [Installation](#installation)
+  * [Development Setup](#development-setup)
+* [Features](#features)
+  * [Roadmap](#roadmap)
+    * [Phase 1: Core Infrastructure and OpenEB Integration](#phase-1-core-infrastructure-and-openeb-integration)
+    * [Phase 2: Advanced Event Representations and Transformations](#phase-2-advanced-event-representations-and-transformations)
+    * [Phase 3: Neural Network-based Reconstruction (E2VID)](#phase-3-neural-network-based-reconstruction-e2vid)
+    * [Phase 4: Video-to-Event Simulation (Vid2E)](#phase-4-video-to-event-simulation-vid2e)
+    * [Phase 5: Advanced Neural Network Implementations](#phase-5-advanced-neural-network-implementations)
+    * [Algorithm Implementation Status](#algorithm-implementation-status)
+* [🚀 Performance](#-performance)
+  * [Single-core Performance](#single-core-performance)
+  * [Multi-core vs Single-core Performance](#multi-core-vs-single-core-performance)
+  * [Why Rust is Faster](#why-rust-is-faster)
+* [⮑ Module Structure](#-module-structure)
+  * [Basic Usage](#basic-usage)
+  * [Loading Event Data](#loading-event-data)
+  * [Event Augmentation](#event-augmentation)
+  * [Event Transformations](#event-transformations)
+  * [Event Representations (Voxel Grid)](#event-representations-voxel-grid)
+  * [Event Visualisation](#event-visualisation)
+  * [Event-to-Video Reconstruction](#event-to-video-reconstruction)
+* [License](#license)
+
+<!-- mtoc-end -->
 
 ## Installation
 
@@ -24,7 +61,7 @@ pip install -e ".[dev]"
 uv pip install -e ".[dev]"
 ```
 
-Installing with visualization tools:
+Installing with visualisation tools:
 
 ```bash
 # Using pip
@@ -44,6 +81,32 @@ pip install -e ".[all]"
 uv pip install -e ".[all]"
 ```
 
+### Development Setup
+
+For detailed development setup instructions, see [BUILD.md](BUILD.md).
+
+Quick setup:
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/evlib.git
+cd evlib
+
+# Create virtual environment
+uv venv --python <python-version> # 3.12 recommended
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install pip
+
+# Install for development using uv (recommended)
+uv pip install -e ".[dev]"
+
+# Or using pip
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
+
 ## Features
 
 - Core event data structures and manipulation
@@ -58,12 +121,79 @@ uv pip install -e ".[all]"
   - Rotating events
 - Event representations
   - Voxel grid representation
-- Event visualization and display
+- Event visualisation and display
 - Event-to-video reconstruction
 
-## Performance
+### Roadmap
 
-Evlib is significantly faster than pure Python implementations, thanks to its Rust backend. The benchmark compares the Rust-backed evlib implementation against equivalent pure Python implementations of the same functions, in both single-core and multi-core scenarios.
+`evlib` aims to become a comprehensive toolkit for event camera data processing,
+combining high-performance Rust implementations with Python bindings for ease of
+use. The following roadmap outlines our planned development phases:
+
+#### Phase 1: Core Infrastructure and OpenEB Integration
+
+- Implement OpenEB-compatible data structures and formats
+- Add support for additional event camera hardware and file formats
+- Create compatibility layers with OpenEB's HAL (Hardware Abstraction Layer)
+- Develop streaming capabilities for real-time event camera processing
+- Implement core filtering and preprocessing algorithms from OpenEB
+
+#### Phase 2: Advanced Event Representations and Transformations
+
+- Extend voxel grid representations with additional methods and optimisations
+- Implement event-based optical flow estimation
+- Add depth estimation from event streams
+- Develop time surface representations
+- Create advanced event augmentation techniques
+
+#### Phase 3: Neural Network-based Reconstruction (E2VID)
+
+- Implement E2VID reconstruction algorithm (rpg_e2vid) with Rust backend
+- Add support for pretrained E2VID models
+- Optimize reconstruction for different event camera configurations
+- Implement recurrent neural network components for temporal consistency
+
+#### Phase 4: Video-to-Event Simulation (Vid2E)
+
+- Add video-to-events conversion capabilities (rpg_vid2e)
+- Implement ESIM simulation framework with Rust backend
+- Create frame interpolation tools for event generation
+- Develop dataset conversion utilities
+
+#### Phase 5: Advanced Neural Network Implementations
+
+- Implement HyperE2VID with Candle framework for improved reconstruction
+- Add RVT (Recurrent Vision Transformers) for object detection using Candle
+- Develop training pipelines for custom event-based models
+- Create benchmarking tools for algorithm evaluation
+
+#### Algorithm Implementation Status
+
+| Algorithm/Feature          | Description                                 | Status         |
+| -------------------------- | ------------------------------------------- | -------------- |
+| Core Event Data Structures | Basic event representation and manipulation | ✅ Implemented |
+| Event Augmentation         | Random/correlated event addition/removal    | ✅ Implemented |
+| Event Transformations      | Flipping, rotation, clipping                | ✅ Implemented |
+| Voxel Grid                 | Event-to-voxel grid conversion              | ✅ Implemented |
+| Visualisation              | Event-to-image conversion tools             | ✅ Implemented |
+| E2VID (Basic)              | Simple event-to-video reconstruction        | ✅ Implemented |
+| OpenEB Format Support      | Compatibility with OpenEB data formats      | ⏳ Planned     |
+| OpenEB HAL Integration     | Hardware abstraction for cameras            | ⏳ Planned     |
+| OpenEB Streaming           | Real-time event stream processing           | ⏳ Planned     |
+| E2VID (Advanced)           | Neural network reconstruction               | ⏳ Planned     |
+| Vid2E Simulation           | Video-to-event conversion                   | ⏳ Planned     |
+| ESIM Framework             | Event camera simulation                     | ⏳ Planned     |
+| HyperE2VID                 | Advanced reconstruction with hypernetworks  | ⏳ Planned     |
+| RVT Object Detection       | Event-based object detection                | ⏳ Planned     |
+| Optical Flow               | Event-based optical flow estimation         | ⏳ Planned     |
+| Depth Estimation           | Event-based depth estimation                | ⏳ Planned     |
+
+## 🚀 Performance
+
+Evlib is significantly faster than pure Python implementations, thanks to its
+Rust backend. The benchmark compares the Rust-backed evlib implementation
+against equivalent pure Python implementations of the same functions, in both
+single-core and multi-core scenarios.
 
 ### Single-core Performance
 
@@ -83,7 +213,9 @@ _Benchmark performed with 100,000 events on a single core_
 | add_random_events | 0.018615 s      | 0.360760 s        | 0.003421 s    | 5.44x               | 105.44x               |
 | flip_events_x     | 0.000023 s      | 0.303467 s        | 0.000283 s    | 0.08x               | 1072.67x              |
 
-_Benchmark performed with 100,000 events. Note that for these specific operations and data sizes, the multi-core Python implementation is slower due to process creation overhead._
+_Benchmark performed with 100,000 events. Note that for these specific
+operations and data sizes, the multi-core Python implementation is slower due to
+process creation overhead._
 
 ### Why Rust is Faster
 
@@ -91,14 +223,14 @@ The significant performance gains come from several factors:
 
 1. **Compiled vs Interpreted**: Rust is compiled to native machine code, while Python is interpreted
 2. **Memory Management**: Rust's ownership model allows for efficient memory use without garbage collection
-3. **Low-level Optimizations**: Rust can take advantage of SIMD (Single Instruction Multiple Data) vectorization
-4. **Static Typing**: Rust's type system enables compiler optimizations that aren't possible with Python's dynamic typing
+3. **Low-level Optimisations**: Rust can take advantage of SIMD (Single Instruction Multiple Data) vectorisation
+4. **Static Typing**: Rust's type system enables compiler optimisations that aren't possible with Python's dynamic typing
 5. **Zero-cost Abstractions**: Rust provides high-level abstractions without runtime overhead
-6. **Efficient Concurrency**: Rust's thread safety guarantees and lack of GIL allow for better parallelization
+6. **Efficient Concurrency**: Rust's thread safety guarantees and lack of GIL allow for better parallelisation
 
 Run `python examples/benchmark.py` to benchmark on your own system.
 
-## Module Structure
+## ⮑ Module Structure
 
 The library is organized into the following modules:
 
@@ -106,10 +238,8 @@ The library is organized into the following modules:
 - `evlib.augmentation`: Event augmentation utilities
 - `evlib.formats`: Data loading and saving
 - `evlib.representations`: Event representation algorithms (e.g., voxel grid)
-- `evlib.visualization`: Visualization tools
+- `evlib.visualization`: Visualisation tools
 - `evlib.processing`: Advanced event processing (including event-to-video reconstruction)
-
-## Usage Examples
 
 ### Basic Usage
 
@@ -240,7 +370,7 @@ voxel_grid = evlib.representations.events_to_voxel_grid_py(
 print(f"Voxel grid shape: {voxel_grid.shape}")  # (5, 100, 100)
 ```
 
-### Event Visualization
+### Event Visualisation
 
 ```python
 import numpy as np
@@ -268,7 +398,7 @@ event_image = evlib.visualization.draw_events_to_image_py(
 
 plt.figure(figsize=(10, 8))
 plt.imshow(event_image)
-plt.title("Event Visualization")
+plt.title("Event Visualisation")
 plt.axis('off')
 
 # Save figure (optional)
@@ -343,7 +473,7 @@ for i in range(num_frames):
     )
 
     reconstructed_frames.append(frame)
-    
+
     # Save each frame (optional)
     plt.figure(figsize=(10, 8))
     plt.imshow(frame, cmap="gray")
@@ -351,32 +481,6 @@ for i in range(num_frames):
     plt.axis("off")
     plt.savefig(f"examples/figures/reconstructed_frame_{i+1}.png", bbox_inches="tight")
     plt.close()
-```
-
-## Development Setup
-
-For detailed development setup instructions, see [BUILD.md](BUILD.md).
-
-Quick setup:
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/evlib.git
-cd evlib
-
-# Create virtual environment
-uv venv --python <python-version> # 3.12 recommended
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install pip
-
-# Install for development using uv (recommended)
-uv pip install -e ".[dev]"
-
-# Or using pip
-pip install -e ".[dev]"
-
-# Run tests
-pytest
 ```
 
 ## License
