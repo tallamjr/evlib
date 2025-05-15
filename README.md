@@ -15,16 +15,9 @@ reimplemented in Rust for significantly better performance.
 
 <!-- mtoc-start -->
 
-* [Installation](#installation)
+* [⬇ Installation](#-installation)
   * [Development Setup](#development-setup)
-* [Features](#features)
-  * [Roadmap](#roadmap)
-    * [Phase 1: Core Infrastructure and OpenEB Integration](#phase-1-core-infrastructure-and-openeb-integration)
-    * [Phase 2: Advanced Event Representations and Transformations](#phase-2-advanced-event-representations-and-transformations)
-    * [Phase 3: Neural Network-based Reconstruction (E2VID)](#phase-3-neural-network-based-reconstruction-e2vid)
-    * [Phase 4: Video-to-Event Simulation (Vid2E)](#phase-4-video-to-event-simulation-vid2e)
-    * [Phase 5: Advanced Neural Network Implementations](#phase-5-advanced-neural-network-implementations)
-    * [Algorithm Implementation Status](#algorithm-implementation-status)
+* [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
 * [🚀 Performance](#-performance)
   * [Single-core Performance](#single-core-performance)
   * [Multi-core vs Single-core Performance](#multi-core-vs-single-core-performance)
@@ -37,11 +30,11 @@ reimplemented in Rust for significantly better performance.
   * [Event Representations (Voxel Grid)](#event-representations-voxel-grid)
   * [Event Visualisation](#event-visualisation)
   * [Event-to-Video Reconstruction](#event-to-video-reconstruction)
-* [License](#license)
+* [⚖️ License](#-license)
 
 <!-- mtoc-end -->
 
-## Installation
+## ⬇ Installation
 
 ```bash
 # Using pip
@@ -107,7 +100,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## Features
+## 🗺️ Roadmap and Current Features
 
 - Core event data structures and manipulation
 - Event data loading and saving
@@ -124,50 +117,9 @@ pytest
 - Event visualisation and display
 - Event-to-video reconstruction
 
-### Roadmap
-
 `evlib` aims to become a comprehensive toolkit for event camera data processing,
 combining high-performance Rust implementations with Python bindings for ease of
-use. The following roadmap outlines our planned development phases:
-
-#### Phase 1: Core Infrastructure and OpenEB Integration
-
-- Implement OpenEB-compatible data structures and formats
-- Add support for additional event camera hardware and file formats
-- Create compatibility layers with OpenEB's HAL (Hardware Abstraction Layer)
-- Develop streaming capabilities for real-time event camera processing
-- Implement core filtering and preprocessing algorithms from OpenEB
-
-#### Phase 2: Advanced Event Representations and Transformations
-
-- Extend voxel grid representations with additional methods and optimisations
-- Implement event-based optical flow estimation
-- Add depth estimation from event streams
-- Develop time surface representations
-- Create advanced event augmentation techniques
-
-#### Phase 3: Neural Network-based Reconstruction (E2VID)
-
-- Implement E2VID reconstruction algorithm (rpg_e2vid) with Rust backend
-- Add support for pretrained E2VID models
-- Optimize reconstruction for different event camera configurations
-- Implement recurrent neural network components for temporal consistency
-
-#### Phase 4: Video-to-Event Simulation (Vid2E)
-
-- Add video-to-events conversion capabilities (rpg_vid2e)
-- Implement ESIM simulation framework with Rust backend
-- Create frame interpolation tools for event generation
-- Develop dataset conversion utilities
-
-#### Phase 5: Advanced Neural Network Implementations
-
-- Implement HyperE2VID with Candle framework for improved reconstruction
-- Add RVT (Recurrent Vision Transformers) for object detection using Candle
-- Develop training pipelines for custom event-based models
-- Create benchmarking tools for algorithm evaluation
-
-#### Algorithm Implementation Status
+use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issues/1)
 
 | Algorithm/Feature          | Description                                 | Status         |
 | -------------------------- | ------------------------------------------- | -------------- |
@@ -483,6 +435,6 @@ for i in range(num_frames):
     plt.close()
 ```
 
-## License
+## ⚖️ License
 
 MIT
