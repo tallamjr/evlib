@@ -7,25 +7,41 @@ This library is based on the [event_utils](https://github.com/TimoStoff/event_ut
 ## Installation
 
 ```bash
+# Using pip
 pip install evlib
+
+# Using uv (recommended)
+uv pip install evlib
 ```
 
 For development:
 
 ```bash
+# Using pip
 pip install -e ".[dev]"
+
+# Using uv (recommended)
+uv pip install -e ".[dev]"
 ```
 
 Installing with visualization tools:
 
 ```bash
+# Using pip
 pip install -e ".[plot]"
+
+# Using uv (recommended)
+uv pip install -e ".[plot]"
 ```
 
 For all dependencies including development, plotting, numpy, and Jupyter support:
 
 ```bash
+# Using pip
 pip install -e ".[all]"
+
+# Using uv (recommended)
+uv pip install -e ".[all]"
 ```
 
 ## Features
@@ -118,13 +134,13 @@ print(f"Block shape: {block.shape}")  # (4, 4)
 import evlib
 
 # Load events from file (automatically detects format)
-xs, ys, ts, ps = evlib.formats.load_events_py("/path/to/events.txt")
+xs, ys, ts, ps = evlib.formats.load_events_py("data/slider_depth/events.txt")
 
 # Save events to HDF5 format
-evlib.formats.save_events_to_hdf5_py(xs, ys, ts, ps, "/path/to/output.h5")
+evlib.formats.save_events_to_hdf5_py(xs, ys, ts, ps, "output.h5")
 
 # Save events to text format
-evlib.formats.save_events_to_text_py(xs, ys, ts, ps, "/path/to/output.txt")
+evlib.formats.save_events_to_text_py(xs, ys, ts, ps, "output.txt")
 ```
 
 ### Event Augmentation
@@ -150,7 +166,7 @@ to_add = 15
 xy_std = 2.0  # Standard deviation for x,y coordinates
 ts_std = 0.005  # Standard deviation for timestamps
 
-new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
+new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_correlated_events(
     xs, ys, ts, ps, to_add,
     xy_std=xy_std,
     ts_std=ts_std
@@ -173,19 +189,19 @@ ps = np.array([1, -1, 1, -1, 1, -1, 1], dtype=np.int64)
 sensor_resolution = (100, 100)  # (height, width)
 
 # Flip events along x-axis
-flipped_x_xs, flipped_x_ys, flipped_x_ts, flipped_x_ps = evlib.flip_events_x(
+flipped_x_xs, flipped_x_ys, flipped_x_ts, flipped_x_ps = evlib.augmentation.flip_events_x(
     xs, ys, ts, ps, sensor_resolution
 )
 
 # Flip events along y-axis
-flipped_y_xs, flipped_y_ys, flipped_y_ts, flipped_y_ps = evlib.flip_events_y(
+flipped_y_xs, flipped_y_ys, flipped_y_ts, flipped_y_ps = evlib.augmentation.flip_events_y(
     xs, ys, ts, ps, sensor_resolution
 )
 
 # Rotate events by 45 degrees
 theta_radians = np.pi / 4  # 45 degrees
 center_of_rotation = (50, 50)  # Center of rotation
-rotated_xs, rotated_ys, theta_returned, center_returned = evlib.rotate_events(
+rotated_xs, rotated_ys, theta_returned, center_returned = evlib.augmentation.rotate_events(
     xs, ys, ts, ps,
     sensor_resolution=sensor_resolution,
     theta_radians=theta_radians,
@@ -194,7 +210,7 @@ rotated_xs, rotated_ys, theta_returned, center_returned = evlib.rotate_events(
 
 # Clip events to bounds
 bounds = [30, 70, 30, 70]  # [min_y, max_y, min_x, max_x]
-clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.clip_events_to_bounds(
+clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.augmentation.clip_events_to_bounds(
     xs, ys, ts, ps, bounds
 )
 ```
@@ -205,7 +221,7 @@ clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.clip_events_to_bounds(
 import numpy as np
 import evlib
 
-# Create event data
+# Create event data (1D arrays)
 xs = np.array([10, 20, 30, 40, 50], dtype=np.int64)
 ys = np.array([15, 25, 35, 45, 55], dtype=np.int64)
 ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
@@ -213,13 +229,12 @@ ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
 # Convert events to voxel grid
 num_bins = 5
-height = 100
-width = 100
+resolution = (100, 100)  # (width, height)
+method = "count"  # Options: "count", "polarity", "time"
+
+# Pass parameters in correct order
 voxel_grid = evlib.representations.events_to_voxel_grid_py(
-    xs, ys, ts, ps,
-    num_bins=num_bins,
-    height=height,
-    width=width
+    xs, ys, ts, ps, num_bins, resolution, method
 )
 
 print(f"Voxel grid shape: {voxel_grid.shape}")  # (5, 100, 100)
@@ -231,6 +246,10 @@ print(f"Voxel grid shape: {voxel_grid.shape}")  # (5, 100, 100)
 import numpy as np
 import matplotlib.pyplot as plt
 import evlib
+import os
+
+# Create directory for saved figures
+os.makedirs("examples/figures", exist_ok=True)
 
 # Create event data
 xs = np.array([10, 20, 30, 40, 50], dtype=np.int64)
@@ -239,19 +258,21 @@ ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
 ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
 # Draw events to image
-height = 100
-width = 100
+resolution = (100, 100)  # (width, height)
+color_mode = "red-blue"  # Options: "red-blue", "grayscale"
+
+# Pass parameters in correct order
 event_image = evlib.visualization.draw_events_to_image_py(
-    xs, ys, ps,
-    height=height,
-    width=width,
-    mode="red-blue"  # Options: "red-blue", "grayscale"
+    xs, ys, ts, ps, resolution, color_mode
 )
 
 plt.figure(figsize=(10, 8))
 plt.imshow(event_image)
 plt.title("Event Visualization")
 plt.axis('off')
+
+# Save figure (optional)
+plt.savefig("examples/figures/event_visualization.png", bbox_inches="tight")
 plt.show()
 ```
 
@@ -261,13 +282,26 @@ plt.show()
 import numpy as np
 import matplotlib.pyplot as plt
 import evlib
+import os
+
+# Create directory for saved figures
+os.makedirs("examples/figures", exist_ok=True)
 
 # Load events
-xs, ys, ts, ps = evlib.formats.load_events_py("/path/to/events.txt")
+xs, ys, ts, ps = evlib.formats.load_events_py("data/slider_depth/events.txt")
+
+# Use subset of events for faster processing (optional)
+max_events = 10000
+xs = xs[:max_events]
+ys = ys[:max_events]
+ts = ts[:max_events]
+ps = ps[:max_events]
+
+# Determine sensor resolution from events
+height = int(max(ys)) + 1
+width = int(max(xs)) + 1
 
 # Reconstruct a single frame from events
-height = 180
-width = 240
 num_bins = 5  # Number of time bins for voxel grid
 reconstructed_frame = evlib.processing.events_to_video_py(
     xs, ys, ts, ps,
@@ -281,13 +315,16 @@ plt.figure(figsize=(10, 8))
 plt.imshow(reconstructed_frame, cmap='gray')
 plt.title("Reconstructed Frame from Events")
 plt.axis('off')
+
+# Save figure (optional)
+plt.savefig("examples/figures/reconstructed_frame.png", bbox_inches="tight")
 plt.show()
 
 # For multiple frames (reconstructing a sequence)
 # Define time windows and reconstruct frames for each
 reconstructed_frames = []
 t_min, t_max = ts.min(), ts.max()
-num_frames = 10
+num_frames = 5
 time_step = (t_max - t_min) / num_frames
 
 for i in range(num_frames):
@@ -306,6 +343,14 @@ for i in range(num_frames):
     )
 
     reconstructed_frames.append(frame)
+    
+    # Save each frame (optional)
+    plt.figure(figsize=(10, 8))
+    plt.imshow(frame, cmap="gray")
+    plt.title(f"Reconstructed Frame {i+1}")
+    plt.axis("off")
+    plt.savefig(f"examples/figures/reconstructed_frame_{i+1}.png", bbox_inches="tight")
+    plt.close()
 ```
 
 ## Development Setup
@@ -320,10 +365,14 @@ git clone https://github.com/yourusername/evlib.git
 cd evlib
 
 # Create virtual environment
-python -m venv .venv
+uv venv --python <python-version> # 3.12 recommended
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install pip
 
-# Install for development
+# Install for development using uv (recommended)
+uv pip install -e ".[dev]"
+
+# Or using pip
 pip install -e ".[dev]"
 
 # Run tests
@@ -333,4 +382,3 @@ pytest
 ## License
 
 MIT
-

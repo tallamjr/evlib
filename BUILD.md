@@ -5,8 +5,8 @@ This document provides instructions for building and developing the `evlib` pack
 ## Prerequisites
 
 - Rust (latest stable version)
-- Python 3.8 or later
-- Poetry or pip with venv
+- Python 3.10 or later
+- uv (recommended) or pip with venv
 
 ## Development Setup
 
@@ -20,17 +20,32 @@ cd evlib
 2. Set up a virtual environment:
 
 ```bash
-python -m venv .venv
+uv venv --python <python-version> # 3.12 recommended
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install pip
 ```
 
 3. Install the package in development mode:
+
+Using uv (recommended):
+
+```bash
+uv pip install -e ".[dev]"
+```
+
+Or using pip:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-This will install the package in development mode along with development dependencies like pytest.
+This will install the package in development mode along with development
+dependencies like pytest.
+
+Note: Using uv will automatically create/update a `uv.lock` file which locks all
+dependency versions for reproducible installs. The uv.lock file should be
+committed to version control to ensure consistent environments across all
+development machines.
 
 ## Building with Maturin
 
@@ -44,7 +59,8 @@ For rapid development and testing:
 maturin develop
 ```
 
-This builds the Rust extension module and installs it in your current virtual environment.
+This builds the Rust extension module and installs it in your current virtual
+environment.
 
 For a release build:
 
@@ -82,6 +98,39 @@ To run a specific test:
 pytest tests/test_evlib.py::test_name
 ```
 
+## Using uv for Development Workflows
+
+[uv](https://github.com/astral-sh/uv) provides several advantages for Python development:
+
+1. **Faster Package Installation**: uv is significantly faster than pip for
+   installing packages.
+
+2. **Reproducible Environments**: The uv.lock file ensures that all developers
+   use the exact same package versions.
+
+3. **Common Commands**:
+
+   ```bash
+   # Install all dependencies
+   uv pip install -e ".[all]"
+
+   # Update a specific package
+   uv pip install --upgrade package-name
+
+   # Add a new development dependency
+   uv pip install new-package
+   ```
+
+4. **Managing Virtual Environments**:
+
+   ```bash
+   # Create a new virtual environment
+   uv venv
+
+   # Activate the virtual environment
+   source .venv/bin/activate
+   ```
+
 ## Packaging
 
 To build a wheel package for distribution:
@@ -90,7 +139,8 @@ To build a wheel package for distribution:
 maturin build --release
 ```
 
-This will create a wheel in the `target/wheels/` directory that can be installed with pip.
+This will create a wheel in the `target/wheels/` directory that can be installed
+with pip or uv.
 
 For a universal2 wheel on macOS:
 
@@ -112,3 +162,10 @@ First build the wheels and then use twine to upload:
 maturin build --release
 twine upload target/wheels/*
 ```
+
+You can also install the built wheels locally using uv:
+
+```bash
+uv pip install target/wheels/*.whl
+```
+
