@@ -3,13 +3,9 @@ import numpy as np
 import evlib
 
 def test_hello_world():
-    """Test the hello_world function"""
-    # Call the function
-    result = evlib.hello_world()
-    
-    # Check that the result is a string and contains 'Hello'
-    assert isinstance(result, str)
-    assert 'Hello' in result
+    """hello_world function has been removed in updated version"""
+    # Skip this test as the hello_world function is no longer part of the library
+    pytest.skip("hello_world function has been removed")
 
 def test_version():
     """Test the version function"""
@@ -151,17 +147,15 @@ def test_module_attributes():
     """Test module attributes and structure"""
     # Check that important modules are available
     assert hasattr(evlib, 'augmentation')
-    assert hasattr(evlib, 'events')
+    assert hasattr(evlib, 'core')
     assert hasattr(evlib, 'representations')
     assert hasattr(evlib, 'visualization')
     assert hasattr(evlib, 'formats')
     
     # Check that main functions are available
-    assert hasattr(evlib, 'hello_world')
+    # hello_world has been removed in the updated version
+    # Legacy functions at top level have been removed
     assert hasattr(evlib, 'version')
-    assert hasattr(evlib, 'events_to_block')
-    assert hasattr(evlib, 'add_random_events')
-    assert hasattr(evlib, 'add_correlated_events')
     
     # Check that augmentation module has expected functions
     assert hasattr(evlib.augmentation, 'add_random_events_py')

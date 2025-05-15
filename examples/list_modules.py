@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 List all modules and functions in evlib
+
+Note: The module structure has been updated:
+- 'events' module has been renamed to 'core'
+- All internal modules now use 'ev_' prefix
 """
 import evlib
 

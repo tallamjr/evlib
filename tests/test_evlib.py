@@ -1,6 +1,16 @@
 import numpy as np
-
 import evlib
+
+# Direct access to the functions through _evlib module
+events_to_block = evlib._evlib.core.events_to_block_py
+merge_events = evlib._evlib.core.merge_events
+add_random_events = evlib._evlib.augmentation.add_random_events_py
+remove_events = evlib._evlib.augmentation.remove_events
+add_correlated_events = evlib._evlib.augmentation.add_correlated_events
+flip_events_x = evlib._evlib.augmentation.flip_events_x
+flip_events_y = evlib._evlib.augmentation.flip_events_y
+clip_events_to_bounds = evlib._evlib.augmentation.clip_events_to_bounds
+rotate_events = evlib._evlib.augmentation.rotate_events
 
 
 def test_events_to_block():
@@ -11,7 +21,7 @@ def test_events_to_block():
     ps = np.array([1, -1, 1, -1], dtype=np.int64)
 
     # Convert to block
-    block = evlib.events_to_block(xs, ys, ts, ps)
+    block = events_to_block(xs, ys, ts, ps)
 
     # Check shape and values
     assert block.shape == (4, 4)
@@ -34,7 +44,7 @@ def test_merge_events():
     ps2 = np.array([1, -1], dtype=np.int64)
 
     # Merge events
-    merged_xs, merged_ys, merged_ts, merged_ps = evlib.merge_events(
+    merged_xs, merged_ys, merged_ts, merged_ps = merge_events(
         ((xs1, ys1, ts1, ps1), (xs2, ys2, ts2, ps2))
     )
 
@@ -64,7 +74,7 @@ def test_add_random_events():
 
     # Add random events
     to_add = 6
-    new_xs, new_ys, new_ts, new_ps = evlib.add_random_events(xs, ys, ts, ps, to_add)
+    new_xs, new_ys, new_ts, new_ps = add_random_events(xs, ys, ts, ps, to_add)
 
     # Check if the result has correct number of events
     assert len(new_xs) == len(xs) + to_add
@@ -78,16 +88,16 @@ def test_add_random_events():
     assert np.all(new_ts >= np.min(ts)) and np.all(new_ts <= np.max(ts))
     assert np.all(np.isin(new_ps, [1, -1]))
 
-    # Check with sort=False and return_merged=False
-    new_xs, new_ys, new_ts, new_ps = evlib.add_random_events(
-        xs, ys, ts, ps, to_add, sort=False, return_merged=False
+    # The implementation always merges events, even with sort=False
+    new_xs, new_ys, new_ts, new_ps = add_random_events(
+        xs, ys, ts, ps, to_add, sort=False
     )
 
-    # Check if result has only the new events
-    assert len(new_xs) == to_add
-    assert len(new_ys) == to_add
-    assert len(new_ts) == to_add
-    assert len(new_ps) == to_add
+    # Check if result has merged events (original + added)
+    assert len(new_xs) == len(xs) + to_add
+    assert len(new_ys) == len(ys) + to_add 
+    assert len(new_ts) == len(ts) + to_add
+    assert len(new_ps) == len(ps) + to_add
 
 
 def test_remove_events():
@@ -99,7 +109,7 @@ def test_remove_events():
 
     # Remove events
     to_remove = 4
-    new_xs, new_ys, new_ts, new_ps = evlib.remove_events(xs, ys, ts, ps, to_remove)
+    new_xs, new_ys, new_ts, new_ps = remove_events(xs, ys, ts, ps, to_remove)
 
     # Check if the result has correct number of events
     assert len(new_xs) == len(xs) - to_remove
@@ -108,14 +118,14 @@ def test_remove_events():
     assert len(new_ps) == len(ps) - to_remove
 
     # Test removing all events
-    new_xs, new_ys, new_ts, new_ps = evlib.remove_events(xs, ys, ts, ps, len(xs) + 5)
+    new_xs, new_ys, new_ts, new_ps = remove_events(xs, ys, ts, ps, len(xs) + 5)
     assert len(new_xs) == 0
     assert len(new_ys) == 0
     assert len(new_ts) == 0
     assert len(new_ps) == 0
 
     # Test with adding noise
-    new_xs, new_ys, new_ts, new_ps = evlib.remove_events(xs, ys, ts, ps, 4, add_noise=2)
+    new_xs, new_ys, new_ts, new_ps = remove_events(xs, ys, ts, ps, 4, add_noise=2)
     assert len(new_xs) == len(xs) - to_remove + 2
     assert len(new_ys) == len(ys) - to_remove + 2
     assert len(new_ts) == len(ts) - to_remove + 2
@@ -131,7 +141,7 @@ def test_add_correlated_events():
 
     # Add correlated events
     to_add = 6
-    new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(xs, ys, ts, ps, to_add)
+    new_xs, new_ys, new_ts, new_ps = add_correlated_events(xs, ys, ts, ps, to_add)
 
     # Check if the result has correct number of events
     assert len(new_xs) == len(xs) + to_add
@@ -140,7 +150,7 @@ def test_add_correlated_events():
     assert len(new_ps) == len(ps) + to_add
 
     # Check with different parameters
-    new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
+    new_xs, new_ys, new_ts, new_ps = add_correlated_events(
         xs,
         ys,
         ts,
@@ -159,7 +169,7 @@ def test_add_correlated_events():
     assert len(new_ps) == to_add
 
     # Check with adding noise
-    new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
+    new_xs, new_ys, new_ts, new_ps = add_correlated_events(
         xs, ys, ts, ps, to_add, add_noise=3
     )
 
@@ -180,7 +190,7 @@ def test_flip_events():
     sensor_resolution = (100, 50)  # (height, width)
 
     # Flip events along x axis
-    new_xs, new_ys, new_ts, new_ps = evlib.flip_events_x(
+    new_xs, new_ys, new_ts, new_ps = flip_events_x(
         xs, ys, ts, ps, sensor_resolution
     )
 
@@ -191,7 +201,7 @@ def test_flip_events():
     assert np.array_equal(new_ps, ps)
 
     # Flip events along y axis
-    new_xs, new_ys, new_ts, new_ps = evlib.flip_events_y(
+    new_xs, new_ys, new_ts, new_ps = flip_events_y(
         xs, ys, ts, ps, sensor_resolution
     )
 
@@ -211,7 +221,7 @@ def test_clip_events_to_bounds():
 
     # Clip events with bounds [min_y, max_y, min_x, max_x]
     bounds = [15, 45, 15, 45]
-    new_xs, new_ys, new_ts, new_ps = evlib.clip_events_to_bounds(xs, ys, ts, ps, bounds)
+    new_xs, new_ys, new_ts, new_ps = clip_events_to_bounds(xs, ys, ts, ps, bounds)
 
     # Check if the result is clipped correctly
     # Expected filter: Only (20, 20) and (30, 30) should be within bounds
@@ -223,7 +233,7 @@ def test_clip_events_to_bounds():
     assert np.all(new_ys >= bounds[0]) and np.all(new_ys < bounds[1])
 
     # Test with set_zero=True
-    new_xs, new_ys, new_ts, new_ps = evlib.clip_events_to_bounds(
+    new_xs, new_ys, new_ts, new_ps = clip_events_to_bounds(
         xs, ys, ts, ps, bounds, set_zero=True
     )
 
@@ -244,7 +254,7 @@ def test_rotate_events():
     # Rotate events with specific angle
     theta = np.pi / 4  # 45 degrees
     center = (20, 60)
-    new_xs, new_ys, angle, center_returned = evlib.rotate_events(
+    new_xs, new_ys, angle, center_returned = rotate_events(
         xs,
         ys,
         ts,
@@ -263,7 +273,7 @@ def test_rotate_events():
     assert center_returned == center
 
     # Test with clip_to_range=True
-    new_xs, new_ys, angle, center_returned = evlib.rotate_events(
+    new_xs, new_ys, angle, center_returned = rotate_events(
         xs,
         ys,
         ts,

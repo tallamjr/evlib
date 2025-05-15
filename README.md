@@ -10,15 +10,28 @@ This library is based on the [event_utils](https://github.com/TimoStoff/event_ut
 pip install evlib
 ```
 
-Or for development:
+For development:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
+Installing with visualization tools:
+
+```bash
+pip install -e ".[plot]"
+```
+
+For all dependencies including development, plotting, numpy, and Jupyter support:
+
+```bash
+pip install -e ".[all]"
+```
+
 ## Features
 
-- Event data structure manipulation
+- Core event data structures and manipulation
+- Event data loading and saving
 - Event augmentation
   - Random event addition
   - Correlated event addition
@@ -27,6 +40,58 @@ pip install -e ".[dev]"
   - Flipping events along x and y axes
   - Clipping events to bounds
   - Rotating events
+- Event representations
+  - Voxel grid representation
+- Event visualization and display
+- Event-to-video reconstruction
+
+## Performance
+
+Evlib is significantly faster than pure Python implementations, thanks to its Rust backend. The benchmark compares the Rust-backed evlib implementation against equivalent pure Python implementations of the same functions, in both single-core and multi-core scenarios.
+
+### Single-core Performance
+
+| Operation         | Python Time (s) | Rust Time (s) | Speedup |
+| ----------------- | --------------- | ------------- | ------- |
+| events_to_block   | 0.040431        | 0.000860      | 47.03x  |
+| add_random_events | 0.018615        | 0.003421      | 5.44x   |
+| flip_events_x     | 0.000023        | 0.000283      | 0.08x   |
+
+_Benchmark performed with 100,000 events on a single core_
+
+### Multi-core vs Single-core Performance
+
+| Operation         | Python (1 core) | Python (10 cores) | Rust (1 core) | Rust vs Py (1 core) | Rust vs Py (10 cores) |
+| ----------------- | --------------- | ----------------- | ------------- | ------------------- | --------------------- |
+| events_to_block   | 0.040431 s      | 0.315156 s        | 0.000860 s    | 47.03x              | 366.58x               |
+| add_random_events | 0.018615 s      | 0.360760 s        | 0.003421 s    | 5.44x               | 105.44x               |
+| flip_events_x     | 0.000023 s      | 0.303467 s        | 0.000283 s    | 0.08x               | 1072.67x              |
+
+_Benchmark performed with 100,000 events. Note that for these specific operations and data sizes, the multi-core Python implementation is slower due to process creation overhead._
+
+### Why Rust is Faster
+
+The significant performance gains come from several factors:
+
+1. **Compiled vs Interpreted**: Rust is compiled to native machine code, while Python is interpreted
+2. **Memory Management**: Rust's ownership model allows for efficient memory use without garbage collection
+3. **Low-level Optimizations**: Rust can take advantage of SIMD (Single Instruction Multiple Data) vectorization
+4. **Static Typing**: Rust's type system enables compiler optimizations that aren't possible with Python's dynamic typing
+5. **Zero-cost Abstractions**: Rust provides high-level abstractions without runtime overhead
+6. **Efficient Concurrency**: Rust's thread safety guarantees and lack of GIL allow for better parallelization
+
+Run `python examples/benchmark.py` to benchmark on your own system.
+
+## Module Structure
+
+The library is organized into the following modules:
+
+- `evlib.core`: Core event data structures and functions
+- `evlib.augmentation`: Event augmentation utilities
+- `evlib.formats`: Data loading and saving
+- `evlib.representations`: Event representation algorithms (e.g., voxel grid)
+- `evlib.visualization`: Visualization tools
+- `evlib.processing`: Advanced event processing (including event-to-video reconstruction)
 
 ## Usage Examples
 
@@ -43,8 +108,23 @@ ts = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float64)
 ps = np.array([1, -1, 1, -1], dtype=np.int64)
 
 # Convert to block representation
-block = evlib.events_to_block(xs, ys, ts, ps)
+block = evlib.core.events_to_block_py(xs, ys, ts, ps)
 print(f"Block shape: {block.shape}")  # (4, 4)
+```
+
+### Loading Event Data
+
+```python
+import evlib
+
+# Load events from file (automatically detects format)
+xs, ys, ts, ps = evlib.formats.load_events_py("/path/to/events.txt")
+
+# Save events to HDF5 format
+evlib.formats.save_events_to_hdf5_py(xs, ys, ts, ps, "/path/to/output.h5")
+
+# Save events to text format
+evlib.formats.save_events_to_text_py(xs, ys, ts, ps, "/path/to/output.txt")
 ```
 
 ### Event Augmentation
@@ -62,43 +142,8 @@ ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
 # Add random events
 to_add = 20
-new_xs, new_ys, new_ts, new_ps = evlib.add_random_events(xs, ys, ts, ps, to_add)
+new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_random_events_py(xs, ys, ts, ps, to_add)
 print(f"Original events: {len(xs)}, After adding random events: {len(new_xs)}")
-
-# Visualize original vs augmented events
-plt.figure(figsize=(12, 5))
-
-plt.subplot(1, 2, 1)
-plt.scatter(xs, ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Original Events')
-plt.xlabel('X')
-plt.ylabel('Y')
-plt.grid(True)
-
-plt.subplot(1, 2, 2)
-plt.scatter(new_xs, new_ys, c=new_ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('After Adding Random Events')
-plt.xlabel('X')
-plt.ylabel('Y')
-plt.grid(True)
-
-plt.tight_layout()
-# plt.savefig('random_events.png')
-# plt.show()
-```
-
-### Correlated Event Addition
-
-```python
-import numpy as np
-import evlib
-import matplotlib.pyplot as plt
-
-# Create sample event data
-xs = np.array([50, 60, 70, 80, 90], dtype=np.int64)
-ys = np.array([50, 60, 70, 80, 90], dtype=np.int64)
-ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
-ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
 # Add correlated events (events near existing ones)
 to_add = 15
@@ -106,31 +151,10 @@ xy_std = 2.0  # Standard deviation for x,y coordinates
 ts_std = 0.005  # Standard deviation for timestamps
 
 new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
-    xs, ys, ts, ps, to_add, 
-    xy_std=xy_std, 
+    xs, ys, ts, ps, to_add,
+    xy_std=xy_std,
     ts_std=ts_std
 )
-
-# Visualize original vs correlated events
-plt.figure(figsize=(12, 5))
-
-plt.subplot(1, 2, 1)
-plt.scatter(xs, ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Original Events')
-plt.xlabel('X')
-plt.ylabel('Y')
-plt.grid(True)
-
-plt.subplot(1, 2, 2)
-plt.scatter(new_xs, new_ys, c=new_ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('After Adding Correlated Events')
-plt.xlabel('X')
-plt.ylabel('Y')
-plt.grid(True)
-
-plt.tight_layout()
-# plt.savefig('correlated_events.png')
-# plt.show()
 ```
 
 ### Event Transformations
@@ -138,7 +162,6 @@ plt.tight_layout()
 ```python
 import numpy as np
 import evlib
-import matplotlib.pyplot as plt
 
 # Create sample event data
 xs = np.array([10, 20, 30, 40, 50, 60, 70], dtype=np.int64)
@@ -150,213 +173,164 @@ ps = np.array([1, -1, 1, -1, 1, -1, 1], dtype=np.int64)
 sensor_resolution = (100, 100)  # (height, width)
 
 # Flip events along x-axis
-flipped_x_xs, flipped_x_ys, _, _ = evlib.flip_events_x(xs, ys, ts, ps, sensor_resolution)
+flipped_x_xs, flipped_x_ys, flipped_x_ts, flipped_x_ps = evlib.flip_events_x(
+    xs, ys, ts, ps, sensor_resolution
+)
 
 # Flip events along y-axis
-flipped_y_xs, flipped_y_ys, _, _ = evlib.flip_events_y(xs, ys, ts, ps, sensor_resolution)
+flipped_y_xs, flipped_y_ys, flipped_y_ts, flipped_y_ps = evlib.flip_events_y(
+    xs, ys, ts, ps, sensor_resolution
+)
 
 # Rotate events by 45 degrees
 theta_radians = np.pi / 4  # 45 degrees
 center_of_rotation = (50, 50)  # Center of rotation
-rotated_xs, rotated_ys, _, _ = evlib.rotate_events(
-    xs, ys, sensor_resolution, theta_radians, center_of_rotation
+rotated_xs, rotated_ys, theta_returned, center_returned = evlib.rotate_events(
+    xs, ys, ts, ps,
+    sensor_resolution=sensor_resolution,
+    theta_radians=theta_radians,
+    center_of_rotation=center_of_rotation
 )
 
-# Visualize transformations
-plt.figure(figsize=(10, 8))
-
-plt.subplot(2, 2, 1)
-plt.scatter(xs, ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Original Events')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.subplot(2, 2, 2)
-plt.scatter(flipped_x_xs, flipped_x_ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Flipped X')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.subplot(2, 2, 3)
-plt.scatter(flipped_y_xs, flipped_y_ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Flipped Y')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.subplot(2, 2, 4)
-plt.scatter(rotated_xs, rotated_ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.title('Rotated 45°')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.tight_layout()
-# plt.savefig('transformations.png')
-# plt.show()
-```
-
-### Clip Events to Bounds
-
-```python
-import numpy as np
-import evlib
-import matplotlib.pyplot as plt
-
-# Create sample event data (with some events outside the desired bounds)
-xs = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90], dtype=np.int64)
-ys = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90], dtype=np.int64)
-ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], dtype=np.float64)
-ps = np.array([1, -1, 1, -1, 1, -1, 1, -1, 1], dtype=np.int64)
-
-# Define bounds [min_y, max_y, min_x, max_x]
-bounds = [30, 70, 30, 70]
-
 # Clip events to bounds
+bounds = [30, 70, 30, 70]  # [min_y, max_y, min_x, max_x]
 clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.clip_events_to_bounds(
     xs, ys, ts, ps, bounds
 )
-
-# Visualize clipping
-plt.figure(figsize=(12, 5))
-
-plt.subplot(1, 2, 1)
-plt.scatter(xs, ys, c=ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.axvline(x=bounds[2], color='r', linestyle='--')
-plt.axvline(x=bounds[3], color='r', linestyle='--')
-plt.axhline(y=bounds[0], color='r', linestyle='--')
-plt.axhline(y=bounds[1], color='r', linestyle='--')
-plt.title('Original Events')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.subplot(1, 2, 2)
-plt.scatter(clipped_xs, clipped_ys, c=clipped_ps, cmap='coolwarm', s=50, alpha=0.8)
-plt.axvline(x=bounds[2], color='r', linestyle='--')
-plt.axvline(x=bounds[3], color='r', linestyle='--')
-plt.axhline(y=bounds[0], color='r', linestyle='--')
-plt.axhline(y=bounds[1], color='r', linestyle='--')
-plt.title('Clipped Events')
-plt.xlim(0, 100)
-plt.ylim(0, 100)
-plt.grid(True)
-
-plt.tight_layout()
-# plt.savefig('clipped_events.png')
-# plt.show()
 ```
 
-### Generating Realistic DVS Event Data
+### Event Representations (Voxel Grid)
 
 ```python
 import numpy as np
 import evlib
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 
-# Function to generate a simple moving pattern that would trigger DVS events
-def generate_dvs_sample(width=128, height=128, num_frames=10):
-    """Generate a synthetic DVS event stream from moving bars."""
-    events = []
-    timestamps = np.linspace(0, 1, num_frames)
-    
-    # Create moving horizontal bar
-    for i, t in enumerate(timestamps):
-        y_pos = int(height * (i / num_frames))
-        
-        # Generate positive events at leading edge
-        for x in range(width):
-            if i > 0 and y_pos > 0:
-                events.append((x, y_pos, t, 1))  # Positive events (brightness increase)
-                events.append((x, y_pos-1, t, -1))  # Negative events (brightness decrease)
-    
-    # Convert to numpy arrays
-    xs = np.array([e[0] for e in events], dtype=np.int64)
-    ys = np.array([e[1] for e in events], dtype=np.int64)
-    ts = np.array([e[2] for e in events], dtype=np.float64)
-    ps = np.array([e[3] for e in events], dtype=np.int64)
-    
-    return xs, ys, ts, ps
+# Create event data
+xs = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+ys = np.array([15, 25, 35, 45, 55], dtype=np.int64)
+ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
+ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
-# Generate sample DVS events
-width, height = 128, 128
-xs, ys, ts, ps = generate_dvs_sample(width, height, 20)
-
-# Apply various transformations
-sensor_resolution = (height, width)
-
-# Add correlated noise events
-new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
-    xs, ys, ts, ps, 
-    to_add=len(xs)//4,  # Add 25% more events 
-    xy_std=1.0,         # Low spatial spread
-    ts_std=0.01         # Low temporal spread
+# Convert events to voxel grid
+num_bins = 5
+height = 100
+width = 100
+voxel_grid = evlib.representations.events_to_voxel_grid_py(
+    xs, ys, ts, ps,
+    num_bins=num_bins,
+    height=height,
+    width=width
 )
 
-# Flip along both axes (rotate 180 degrees)
-flipped_xs, flipped_ys, _, _ = evlib.flip_events_x(new_xs, new_ys, new_ts, new_ps, sensor_resolution)
-flipped_xs, flipped_ys, flipped_ts, flipped_ps = evlib.flip_events_y(
-    flipped_xs, flipped_ys, new_ts, new_ps, sensor_resolution
-)
-
-# Visualize events over time
-def plot_dvs_events(xs, ys, ts, ps, title):
-    """Create 3D visualization of DVS events over time."""
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    # Color by polarity
-    colors = np.array(['r' if p > 0 else 'b' for p in ps])
-    
-    # Plot 3D points
-    ax.scatter(xs, ys, ts, c=colors, s=5, alpha=0.5)
-    
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Time')
-    ax.set_title(title)
-    
-    plt.tight_layout()
-    # plt.savefig(f"{title.lower().replace(' ', '_')}.png")
-    # plt.show()
-
-# Plot original and transformed events
-plot_dvs_events(xs, ys, ts, ps, "Original DVS Events")
-plot_dvs_events(new_xs, new_ys, new_ts, new_ps, "DVS Events with Correlated Noise")
-plot_dvs_events(flipped_xs, flipped_ys, flipped_ts, flipped_ps, "180° Rotated DVS Events")
+print(f"Voxel grid shape: {voxel_grid.shape}")  # (5, 100, 100)
 ```
 
-## API Reference
+### Event Visualization
 
-### Event Manipulation
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import evlib
 
-- `events_to_block(xs, ys, ts, ps)`: Convert event components into a block representation
-- `merge_events(event_sets)`: Merge multiple sets of events
+# Create event data
+xs = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+ys = np.array([15, 25, 35, 45, 55], dtype=np.int64)
+ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
+ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
-### Event Augmentation
+# Draw events to image
+height = 100
+width = 100
+event_image = evlib.visualization.draw_events_to_image_py(
+    xs, ys, ps,
+    height=height,
+    width=width,
+    mode="red-blue"  # Options: "red-blue", "grayscale"
+)
 
-- `add_random_events(xs, ys, ts, ps, to_add, sensor_resolution=None, sort=True, return_merged=True)`: Add random events
-- `remove_events(xs, ys, ts, ps, to_remove, add_noise=0)`: Remove events by random selection
-- `add_correlated_events(xs, ys, ts, ps, to_add, sort=True, return_merged=True, xy_std=1.5, ts_std=0.001, add_noise=0)`: Add events in the vicinity of existing events
+plt.figure(figsize=(10, 8))
+plt.imshow(event_image)
+plt.title("Event Visualization")
+plt.axis('off')
+plt.show()
+```
 
-### Event Transformations
+### Event-to-Video Reconstruction
 
-- `flip_events_x(xs, ys, ts, ps, sensor_resolution=(180, 240))`: Flip events along x axis
-- `flip_events_y(xs, ys, ts, ps, sensor_resolution=(180, 240))`: Flip events along y axis
-- `clip_events_to_bounds(xs, ys, ts=None, ps=None, bounds=[180, 240], set_zero=False)`: Clip events to the given bounds
-- `rotate_events(xs, ys, sensor_resolution=(180, 240), theta_radians=None, center_of_rotation=None, clip_to_range=False)`: Rotate events by a given angle
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import evlib
 
-## Implementation Details
+# Load events
+xs, ys, ts, ps = evlib.formats.load_events_py("/path/to/events.txt")
 
-The library is implemented in Rust using PyO3 for Python bindings, organized into modules:
+# Reconstruct a single frame from events
+height = 180
+width = 240
+num_bins = 5  # Number of time bins for voxel grid
+reconstructed_frame = evlib.processing.events_to_video_py(
+    xs, ys, ts, ps,
+    height=height,
+    width=width,
+    num_bins=num_bins
+)
 
-- `events_core.rs`: Core event data structures and functions
-- `transforms.rs`: Event transformation functions
-- `lib.rs`: PyO3 module definition
+# Display the reconstructed frame
+plt.figure(figsize=(10, 8))
+plt.imshow(reconstructed_frame, cmap='gray')
+plt.title("Reconstructed Frame from Events")
+plt.axis('off')
+plt.show()
+
+# For multiple frames (reconstructing a sequence)
+# Define time windows and reconstruct frames for each
+reconstructed_frames = []
+t_min, t_max = ts.min(), ts.max()
+num_frames = 10
+time_step = (t_max - t_min) / num_frames
+
+for i in range(num_frames):
+    t_end = t_min + time_step * (i + 1)
+    mask = ts <= t_end
+    frame_xs = xs[mask]
+    frame_ys = ys[mask]
+    frame_ts = ts[mask]
+    frame_ps = ps[mask]
+
+    frame = evlib.processing.events_to_video_py(
+        frame_xs, frame_ys, frame_ts, frame_ps,
+        height=height,
+        width=width,
+        num_bins=num_bins
+    )
+
+    reconstructed_frames.append(frame)
+```
+
+## Development Setup
+
+For detailed development setup instructions, see [BUILD.md](BUILD.md).
+
+Quick setup:
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/evlib.git
+cd evlib
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install for development
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
 
 ## License
 
 MIT
+

@@ -2,19 +2,16 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
 // Core modules
-pub mod augmentation;
-// Contrast maximization module is disabled pending API updates in Rust code
-// pub mod contrast_maximization;
-pub mod data_formats;
-pub mod events_core;
-pub mod representations;
-pub mod visualization;
-
-// Legacy module for backward compatibility
-mod transforms;
+pub mod ev_augmentation;
+pub mod ev_core;
+pub mod ev_formats;
+pub mod ev_processing;
+pub mod ev_representations;
+pub mod ev_transforms;
+pub mod ev_visualization;
 
 // Re-export core types for easier usage
-pub use events_core::{Event, Events, DEVICE};
+pub use ev_core::{Event, Events, DEVICE};
 
 /// A Python module implemented in Rust for event camera processing
 ///
@@ -25,75 +22,80 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, py)?)?;
 
-    // Register events_core module and functions
-    let events_submodule = PyModule::new(py, "events")?;
-    events_submodule.add_function(wrap_pyfunction!(
-        events_core::python::events_to_block_py,
-        py
-    )?)?;
-    events_submodule.add_function(wrap_pyfunction!(events_core::python::merge_events, py)?)?;
-    m.add_submodule(events_submodule)?;
+    // Register ev_core module as "core" in Python
+    let core_submodule = PyModule::new(py, "core")?;
+    core_submodule.add_function(wrap_pyfunction!(ev_core::python::events_to_block_py, py)?)?;
+    core_submodule.add_function(wrap_pyfunction!(ev_core::python::merge_events, py)?)?;
+    m.add_submodule(core_submodule)?;
 
-    // Register augmentation module and functions
+    // Register ev_augmentation module as "augmentation" in Python
     let augmentation_submodule = PyModule::new(py, "augmentation")?;
 
     // Add random_events function
     augmentation_submodule.add_function(wrap_pyfunction!(
-        augmentation::python::add_random_events_py,
+        ev_augmentation::python::add_random_events_py,
         py
     )?)?;
 
-    // Add other augmentation functions from transforms
-    augmentation_submodule.add_function(wrap_pyfunction!(add_correlated_events, py)?)?;
-    augmentation_submodule.add_function(wrap_pyfunction!(remove_events_legacy, py)?)?;
-    augmentation_submodule.add_function(wrap_pyfunction!(flip_events_x, py)?)?;
-    augmentation_submodule.add_function(wrap_pyfunction!(flip_events_y, py)?)?;
-    augmentation_submodule.add_function(wrap_pyfunction!(clip_events_to_bounds, py)?)?;
-    augmentation_submodule.add_function(wrap_pyfunction!(rotate_events, py)?)?;
+    // Add transform functions
+    augmentation_submodule
+        .add_function(wrap_pyfunction!(ev_transforms::add_correlated_events, py)?)?;
+    augmentation_submodule.add_function(wrap_pyfunction!(ev_core::python::remove_events, py)?)?;
+    augmentation_submodule.add_function(wrap_pyfunction!(ev_transforms::flip_events_x, py)?)?;
+    augmentation_submodule.add_function(wrap_pyfunction!(ev_transforms::flip_events_y, py)?)?;
+    augmentation_submodule
+        .add_function(wrap_pyfunction!(ev_transforms::clip_events_to_bounds, py)?)?;
+    augmentation_submodule.add_function(wrap_pyfunction!(ev_transforms::rotate_events, py)?)?;
 
     m.add_submodule(augmentation_submodule)?;
 
-    // Register representations module and functions
+    // Register ev_representations module as "representations" in Python
     let representations_submodule = PyModule::new(py, "representations")?;
     representations_submodule.add_function(wrap_pyfunction!(
-        representations::python::events_to_voxel_grid_py,
+        ev_representations::python::events_to_voxel_grid_py,
         py
     )?)?;
     m.add_submodule(representations_submodule)?;
 
-    // Register data_formats module and functions
+    // Register ev_formats module as "formats" in Python
     let formats_submodule = PyModule::new(py, "formats")?;
-    formats_submodule.add_function(wrap_pyfunction!(data_formats::python::load_events_py, py)?)?;
+    formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, py)?)?;
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::save_events_to_hdf5_py,
+        py
+    )?)?;
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::save_events_to_text_py,
+        py
+    )?)?;
+
+    // Add the iterator classes
+    formats_submodule.add_class::<ev_formats::python::PyEventFileIterator>()?;
+    formats_submodule.add_class::<ev_formats::python::PyTimeWindowIter>()?;
+
     m.add_submodule(formats_submodule)?;
 
-    // Register visualization module and functions
+    // Register ev_visualization module as "visualization" in Python
     let viz_submodule = PyModule::new(py, "visualization")?;
     viz_submodule.add_function(wrap_pyfunction!(
-        visualization::python::draw_events_to_image_py,
+        ev_visualization::python::draw_events_to_image_py,
         py
     )?)?;
     m.add_submodule(viz_submodule)?;
 
-    // Register old functions directly at the root level for backwards compatibility
-    // Import from the original modules
-    use events_core::events_to_block;
-    use events_core::python::add_random_events as add_random_events_legacy;
-    use events_core::python::merge_events;
-    use events_core::python::remove_events as remove_events_legacy;
-    use transforms::{
-        add_correlated_events, clip_events_to_bounds, flip_events_x, flip_events_y, rotate_events,
-    };
+    // Register ev_processing module as "processing" in Python
+    let processing_submodule = PyModule::new(py, "processing")?;
+    processing_submodule.add_function(wrap_pyfunction!(
+        ev_processing::reconstruction::python::events_to_video_py,
+        py
+    )?)?;
+    processing_submodule.add_function(wrap_pyfunction!(
+        ev_processing::reconstruction::python::reconstruct_events_to_frames_py,
+        py
+    )?)?;
+    m.add_submodule(processing_submodule)?;
 
-    // Register legacy functions for backward compatibility
-    m.add_function(wrap_pyfunction!(events_to_block, py)?)?;
-    m.add_function(wrap_pyfunction!(merge_events, py)?)?;
-    m.add_function(wrap_pyfunction!(add_random_events_legacy, py)?)?;
-    m.add_function(wrap_pyfunction!(remove_events_legacy, py)?)?;
-    m.add_function(wrap_pyfunction!(add_correlated_events, py)?)?;
-    m.add_function(wrap_pyfunction!(flip_events_x, py)?)?;
-    m.add_function(wrap_pyfunction!(flip_events_y, py)?)?;
-    m.add_function(wrap_pyfunction!(clip_events_to_bounds, py)?)?;
-    m.add_function(wrap_pyfunction!(rotate_events, py)?)?;
+    // No legacy functionality - all functions are registered in their respective modules
 
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

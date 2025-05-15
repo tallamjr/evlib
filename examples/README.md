@@ -2,6 +2,15 @@
 
 This directory contains examples demonstrating how to use the `evlib` library for event camera data processing.
 
+## Module Structure
+
+The module structure has been updated:
+- `evlib.core` - Core functionality for event handling (formerly `evlib.events`)
+- `evlib.augmentation` - Event augmentation functions
+- `evlib.formats` - Data loading and saving
+- `evlib.representations` - Event representations (voxel grid, etc.)
+- `evlib.visualization` - Visualization utilities
+
 ## Examples
 
 ### Basic Usage

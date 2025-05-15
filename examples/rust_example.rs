@@ -1,13 +1,14 @@
 use evlib::{
-    augmentation,
-    // contrast_maximization is disabled pending API updates
-    // contrast_maximization::{
+    ev_augmentation as augmentation,
+    // ev_processing is disabled pending API updates
+    // ev_processing::{
     //     FlowParams, FlowWarp, ObjectiveFunction, VarianceObjective, WarpModel,
     //     grid_search_optimization,
     // },
-    data_formats,
-    events_core::{Event, Events, infer_resolution},
-    representations, visualization,
+    ev_formats as formats,
+    ev_core::{Event, Events, infer_resolution},
+    ev_representations as representations, 
+    ev_visualization as visualization,
 };
 use image::{ImageFormat, RgbImage};
 use std::error::Error;

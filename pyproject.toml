@@ -37,13 +37,13 @@ dev = [
     "pytest >= 7.0.0",
     "pytest-benchmark"
 ]
-plot = ["matplotlib >= 3.10.3", "opencv-python>=4.11.0.86"]
-numpy = ["numpy >= 2.2.5"]
-jupyter = ["jupyter >= 1.1.1"]
+plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0"]
+numpy = ["numpy >= 1.24.0"]
+jupyter = ["jupyter >= 1.0.0"]
 
 # All
 all = [
-  "evlib[plot,numpy,jupyter]",
+  "evlib[dev,plot,numpy,jupyter]",
 ]
 
 [tool.maturin]

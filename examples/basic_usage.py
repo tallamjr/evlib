@@ -13,9 +13,6 @@ import evlib
 def main():
     print("evlib basic usage example")
     
-    # Test basic functions
-    print(f"Hello function: {evlib.hello_world()}")
-    
     # Create example event data
     xs = np.array([10, 20, 30, 40], dtype=np.int64)
     ys = np.array([50, 60, 70, 80], dtype=np.int64)
@@ -25,13 +22,13 @@ def main():
     print(f"Event data shape: x={xs.shape}, y={ys.shape}, t={ts.shape}, p={ps.shape}")
     
     # Convert to block representation
-    block = evlib.events_to_block(xs, ys, ts, ps)
+    block = evlib.core.events_to_block_py(xs, ys, ts, ps)
     print(f"Block representation shape: {block.shape}")
     print("Block format (x,y,t,p):")
     print(block)
     
     # Add more events
-    added_xs, added_ys, added_ts, added_ps = evlib.add_random_events(
+    added_xs, added_ys, added_ts, added_ps = evlib.augmentation.add_random_events_py(
         xs, ys, ts, ps, to_add=3
     )
     

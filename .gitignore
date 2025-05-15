@@ -715,3 +715,6 @@ dkms.conf
 
 **/.claude/settings.local.json
 par-*
+
+tests/*.mp4
+tests/*.png
