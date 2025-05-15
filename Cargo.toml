@@ -1,6 +1,6 @@
 [package]
 name = "evlib"
-version = "0.1.8"
+version = "0.1.10"
 edition = "2021"
 description = "Python bindings for event camera utilities"
 

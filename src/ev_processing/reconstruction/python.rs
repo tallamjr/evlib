@@ -8,6 +8,7 @@ use super::e2vid::{E2Vid, E2VidConfig};
 
 /// Python wrapper to create video reconstructions from events using E2VID
 #[pyfunction]
+#[pyo3(name = "events_to_video")]
 pub fn events_to_video_py(
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
@@ -74,6 +75,7 @@ pub fn events_to_video_py(
 
 /// Python wrapper to reconstruct multiple frames from events
 #[pyfunction]
+#[pyo3(name = "reconstruct_events_to_frames")]
 pub fn reconstruct_events_to_frames_py(
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,

@@ -3,7 +3,7 @@ import pytest
 import evlib
 
 # Direct access to the function
-events_to_voxel_grid_py = evlib.representations.events_to_voxel_grid_py
+events_to_voxel_grid_py = evlib.representations.events_to_voxel_grid
 
 def test_events_to_voxel_grid_py():
     """Test creating a voxel grid from events"""

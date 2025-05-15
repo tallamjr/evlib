@@ -1,16 +1,17 @@
 import numpy as np
+
 import evlib
 
 # Direct access to the functions through _evlib module
-events_to_block = evlib._evlib.core.events_to_block_py
-merge_events = evlib._evlib.core.merge_events
-add_random_events = evlib._evlib.augmentation.add_random_events_py
-remove_events = evlib._evlib.augmentation.remove_events
-add_correlated_events = evlib._evlib.augmentation.add_correlated_events
-flip_events_x = evlib._evlib.augmentation.flip_events_x
-flip_events_y = evlib._evlib.augmentation.flip_events_y
-clip_events_to_bounds = evlib._evlib.augmentation.clip_events_to_bounds
-rotate_events = evlib._evlib.augmentation.rotate_events
+events_to_block = evlib.core.events_to_block
+merge_events = evlib.core.merge_events
+add_random_events = evlib.augmentation.add_random_events
+remove_events = evlib.augmentation.remove_events
+add_correlated_events = evlib.augmentation.add_correlated_events
+flip_events_x = evlib.augmentation.flip_events_x
+flip_events_y = evlib.augmentation.flip_events_y
+clip_events_to_bounds = evlib.augmentation.clip_events_to_bounds
+rotate_events = evlib.augmentation.rotate_events
 
 
 def test_events_to_block():
@@ -95,7 +96,7 @@ def test_add_random_events():
 
     # Check if result has merged events (original + added)
     assert len(new_xs) == len(xs) + to_add
-    assert len(new_ys) == len(ys) + to_add 
+    assert len(new_ys) == len(ys) + to_add
     assert len(new_ts) == len(ts) + to_add
     assert len(new_ps) == len(ps) + to_add
 
@@ -190,9 +191,7 @@ def test_flip_events():
     sensor_resolution = (100, 50)  # (height, width)
 
     # Flip events along x axis
-    new_xs, new_ys, new_ts, new_ps = flip_events_x(
-        xs, ys, ts, ps, sensor_resolution
-    )
+    new_xs, new_ys, new_ts, new_ps = flip_events_x(xs, ys, ts, ps, sensor_resolution)
 
     # Check if the result is flipped correctly
     assert np.array_equal(new_xs, sensor_resolution[1] - 1 - xs)
@@ -201,9 +200,7 @@ def test_flip_events():
     assert np.array_equal(new_ps, ps)
 
     # Flip events along y axis
-    new_xs, new_ys, new_ts, new_ps = flip_events_y(
-        xs, ys, ts, ps, sensor_resolution
-    )
+    new_xs, new_ys, new_ts, new_ps = flip_events_y(xs, ys, ts, ps, sensor_resolution)
 
     # Check if the result is flipped correctly
     assert np.array_equal(new_xs, xs)
@@ -299,4 +296,3 @@ if __name__ == "__main__":
     test_clip_events_to_bounds()
     test_rotate_events()
     print("All tests passed!")
-

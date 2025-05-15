@@ -24,7 +24,7 @@ test_path = os.path.dirname(os.path.realpath(__file__))
 def load_events(filepath):
     """Load events using evlib's formats module"""
     print(f"Loading events from {filepath} using evlib...")
-    xs, ys, ts, ps = evlib.formats.load_events_py(filepath)
+    xs, ys, ts, ps = evlib.formats.load_events(filepath)
     print(f"Loaded {len(xs)} events")
     return xs, ys, ts, ps
 
@@ -66,7 +66,7 @@ def test_single_frame_reconstruction():
         try:
             print(f"\nTrying with num_bins={num_bins}")
             start_time = time.time()
-            reconstructed_frame = evlib.processing.events_to_video_py(
+            reconstructed_frame = evlib.processing.events_to_video(
                 subset_xs,
                 subset_ys,
                 subset_ts,
@@ -131,7 +131,7 @@ def custom_multi_frame_reconstruction(
             continue
 
         # Process events using the working single-frame function
-        frame = evlib.processing.events_to_video_py(
+        frame = evlib.processing.events_to_video(
             frame_xs,
             frame_ys,
             frame_ts,

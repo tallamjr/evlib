@@ -386,6 +386,7 @@ pub mod python {
 
     /// Python binding for voxel grid conversion
     #[pyfunction]
+    #[pyo3(name = "events_to_voxel_grid")]
     pub fn events_to_voxel_grid_py<'py>(
         py: Python<'py>,
         xs: PyReadonlyArray1<i64>,
@@ -433,4 +434,3 @@ pub mod python {
         Ok(array.into_pyarray(py).to_object(py))
     }
 }
-

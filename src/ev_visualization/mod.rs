@@ -502,6 +502,7 @@ pub mod python {
 
     /// Convert events to an RGB image for visualization
     #[pyfunction]
+    #[pyo3(name = "draw_events_to_image")]
     pub fn draw_events_to_image_py<'py>(
         py: Python<'py>,
         xs: PyReadonlyArray1<i64>,
@@ -543,4 +544,3 @@ pub mod python {
         Ok(array.into_pyarray(py).to_object(py))
     }
 }
-

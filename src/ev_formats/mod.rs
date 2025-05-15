@@ -198,379 +198,443 @@ impl Iterator for EventFileIterator {
                 // Parse values
                 let t = match parts[0].parse::<f64>() {
                     Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Failed to parse timestamp: {}", e),
-                        )));
-                    }
+                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
                 };
 
                 let x = match parts[1].parse::<u16>() {
                     Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Failed to parse x-coordinate: {}", e),
-                        )));
-                    }
+                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
                 };
 
                 let y = match parts[2].parse::<u16>() {
                     Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Failed to parse y-coordinate: {}", e),
-                        )));
-                    }
+                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
                 };
 
-                let polarity = match parts[3].parse::<i8>() {
+                let p = match parts[3].parse::<i8>() {
                     Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Failed to parse polarity: {}", e),
-                        )));
-                    }
+                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
                 };
 
-                Some(Ok(Event { t, x, y, polarity }))
+                // Create and return event
+                Some(Ok(Event {
+                    t,
+                    x,
+                    y,
+                    polarity: p,
+                }))
             }
             Err(e) => Some(Err(e)),
         }
     }
 }
 
-/// Detect file format based on extension and load events accordingly
-pub fn load_events(path: &str) -> Result<Events, Box<dyn std::error::Error>> {
-    let path = Path::new(path);
-
-    match path.extension().and_then(|ext| ext.to_str()) {
-        Some("h5") | Some("hdf5") => Ok(load_events_from_hdf5(path.to_str().unwrap(), None)?),
-        Some("txt") | Some("csv") => Ok(load_events_from_text(path.to_str().unwrap())?),
-        Some("bin") | Some("dat") => Ok(mmap_events(path.to_str().unwrap())?),
-        _ => {
-            // Try to guess based on file content
-            let file = File::open(path)?;
-            let mut buffer = [0; 8];
-
-            // Read first few bytes to detect binary vs text
-            if let Ok(n) = std::io::Read::read(&mut file.try_clone()?, &mut buffer) {
-                if n >= 4 {
-                    // Check if it looks like an HDF5 signature (89 48 44 46 0d 0a 1a 0a)
-                    if buffer[0] == 0x89
-                        && buffer[1] == 0x48
-                        && buffer[2] == 0x44
-                        && buffer[3] == 0x46
-                    {
-                        return Ok(load_events_from_hdf5(path.to_str().unwrap(), None)?);
-                    }
-
-                    // Check if it looks like text (ASCII range)
-                    let is_text = buffer[..n].iter().all(|&b| {
-                        b.is_ascii() && !b.is_ascii_control()
-                            || b == b'\n'
-                            || b == b'\t'
-                            || b == b'\r'
-                    });
-
-                    if is_text {
-                        return Ok(load_events_from_text(path.to_str().unwrap())?);
-                    } else {
-                        return Ok(mmap_events(path.to_str().unwrap())?);
-                    }
-                }
-            }
-
-            Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Could not determine format of event file {}",
-                    path.display()
-                ),
-            )))
-        }
-    }
-}
-
-/// Struct for chunking a stream of events into time windows
+// Window-based event iterator that returns chunks of events based on time windows
 pub struct TimeWindowIter<'a> {
-    events: &'a [Event],
-    dt: f64, // time window length
-    curr_index: usize,
+    events: &'a Events,
+    window_duration: f64,
+    current_idx: usize,
+    start_time: f64,
+    end_time: f64,
 }
 
 impl<'a> TimeWindowIter<'a> {
-    /// Create a new time window iterator
-    pub fn new(events: &'a [Event], dt: f64) -> Self {
+    /// Create a new iterator that returns time-windowed chunks of events
+    ///
+    /// # Arguments
+    /// * `events` - Event array to iterate over
+    /// * `window_duration` - Duration of each time window in seconds
+    pub fn new(events: &'a Events, window_duration: f64) -> Self {
+        let start_time = if !events.is_empty() {
+            events[0].t
+        } else {
+            0.0
+        };
+
+        let end_time = start_time + window_duration;
+
         TimeWindowIter {
             events,
-            dt,
-            curr_index: 0,
+            window_duration,
+            current_idx: 0,
+            start_time,
+            end_time,
         }
     }
 }
 
 impl<'a> Iterator for TimeWindowIter<'a> {
-    type Item = &'a [Event];
+    type Item = Vec<Event>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.curr_index >= self.events.len() {
+        if self.current_idx >= self.events.len() {
             return None;
         }
 
-        let start_time = self.events[self.curr_index].t;
-        let end_time = start_time + self.dt;
+        let mut window = Vec::new();
+        let mut idx = self.current_idx;
 
-        // Find the range of events in this time window
-        let start_index = self.curr_index;
-
-        while self.curr_index < self.events.len() && self.events[self.curr_index].t < end_time {
-            self.curr_index += 1;
+        // Collect events within current time window
+        while idx < self.events.len() && self.events[idx].t < self.end_time {
+            window.push(self.events[idx]);
+            idx += 1;
         }
 
-        if start_index == self.curr_index {
-            // No events in this window
-            self.curr_index += 1; // Avoid infinite loop
-            return self.next();
+        // Update state for next iteration
+        self.current_idx = idx;
+        self.start_time = self.end_time;
+        self.end_time += self.window_duration;
+
+        // Only return Some if we found events in this window
+        if window.is_empty() {
+            self.next()
+        } else {
+            Some(window)
         }
-
-        // Return slice of events in this window
-        Some(&self.events[start_index..self.curr_index])
     }
 }
 
-/// Save events to an HDF5 file
-pub fn save_events_to_hdf5(
-    events: &Events,
-    path: &str,
-    dataset_name: Option<&str>,
-) -> hdf5::Result<()> {
-    let file = H5File::create(path)?;
-    let _dataset_name = dataset_name.unwrap_or("events");
-
-    // Prepare arrays
-    let n = events.len();
-    let mut ts = Vec::with_capacity(n);
-    let mut xs = Vec::with_capacity(n);
-    let mut ys = Vec::with_capacity(n);
-    let mut ps = Vec::with_capacity(n);
-
-    for ev in events {
-        ts.push(ev.t);
-        xs.push(ev.x);
-        ys.push(ev.y);
-        ps.push(ev.polarity);
-    }
-
-    // Create datasets
-    let t_dataset = file.new_dataset::<f64>().shape([n]).create("t")?;
-    let x_dataset = file.new_dataset::<u16>().shape([n]).create("x")?;
-    let y_dataset = file.new_dataset::<u16>().shape([n]).create("y")?;
-    let p_dataset = file.new_dataset::<i8>().shape([n]).create("p")?;
-
-    // Write data
-    t_dataset.write(&ts)?;
-    x_dataset.write(&xs)?;
-    y_dataset.write(&ys)?;
-    p_dataset.write(&ps)?;
-
-    Ok(())
-}
-
-/// Save events to a text file
-pub fn save_events_to_text(events: &Events, path: &str) -> IoResult<()> {
-    use std::io::Write;
-    let mut file = std::fs::File::create(path)?;
-
-    // Write header
-    writeln!(file, "# t x y p")?;
-
-    // Write events
-    for ev in events {
-        writeln!(file, "{} {} {} {}", ev.t, ev.x, ev.y, ev.polarity)?;
-    }
-
-    Ok(())
-}
-
-/// Python bindings for the data formats module
+/// Python bindings for the formats module
 #[cfg(feature = "python")]
 pub mod python {
     use super::*;
-    use crate::ev_core::from_numpy_arrays;
-    use numpy::IntoPyArray;
-    use pyo3::exceptions::PyIOError;
+    use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
     use pyo3::prelude::*;
-    use pyo3::types::PyTuple;
+    use pyo3::types::PyBytes;
+    use std::io::Write;
 
-    /// Load events from a file
+    /// Load events from a file (text, HDF5, or binary)
+    ///
+    /// Automatically detects the format based on file extension
     #[pyfunction]
-    pub fn load_events_py<'py>(py: Python<'py>, path: &str) -> PyResult<PyObject> {
-        let events = load_events(path).map_err(|e| PyErr::new::<PyIOError, _>(format!("{}", e)))?;
+    #[pyo3(name = "load_events")]
+    pub fn load_events_py<'py>(py: Python<'py>, path: &str) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
+        // Determine file format
+        let path_obj = Path::new(path);
+        let events = if let Some(ext) = path_obj.extension() {
+            match ext.to_str().unwrap_or("").to_lowercase().as_str() {
+                "h5" | "hdf5" => load_events_from_hdf5(path, None).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("HDF5 error: {}", e))
+                })?,
+                "bin" | "dat" => mmap_events(path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Binary file error: {}", e))
+                })?,
+                _ => load_events_from_text(path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Text file error: {}", e))
+                })?,
+            }
+        } else {
+            // Default to text file
+            load_events_from_text(path).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Text file error: {}", e))
+            })?
+        };
 
-        // Convert to numpy arrays
+        // Separate event fields into arrays
         let n = events.len();
+
+        let mut timestamps = Vec::with_capacity(n);
         let mut xs = Vec::with_capacity(n);
         let mut ys = Vec::with_capacity(n);
-        let mut ts = Vec::with_capacity(n);
-        let mut ps = Vec::with_capacity(n);
+        let mut polarities = Vec::with_capacity(n);
 
-        for ev in &events {
+        for ev in events {
+            timestamps.push(ev.t);
             xs.push(ev.x as i64);
             ys.push(ev.y as i64);
-            ts.push(ev.t);
-            ps.push(ev.polarity as i64);
+            polarities.push(ev.polarity as i64);
         }
 
-        // Create numpy arrays
-        let xs_array = numpy::ndarray::Array::from_vec(xs);
-        let ys_array = numpy::ndarray::Array::from_vec(ys);
-        let ts_array = numpy::ndarray::Array::from_vec(ts);
-        let ps_array = numpy::ndarray::Array::from_vec(ps);
+        // Convert to numpy arrays
+        let ts_array = PyArray1::from_vec(py, timestamps);
+        let xs_array = PyArray1::from_vec(py, xs);
+        let ys_array = PyArray1::from_vec(py, ys);
+        let ps_array = PyArray1::from_vec(py, polarities);
 
-        // Convert to Python objects
-        let xs_py = xs_array.into_pyarray(py).to_object(py);
-        let ys_py = ys_array.into_pyarray(py).to_object(py);
-        let ts_py = ts_array.into_pyarray(py).to_object(py);
-        let ps_py = ps_array.into_pyarray(py).to_object(py);
-
-        // Create result tuple
-        let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
-
-        Ok(result.into())
+        Ok((
+            xs_array.to_object(py),
+            ys_array.to_object(py),
+            ts_array.to_object(py),
+            ps_array.to_object(py),
+        ))
     }
 
     /// Save events to an HDF5 file
     #[pyfunction]
-    #[pyo3(signature = (xs, ys, ts, ps, path, dataset_name=None))]
-    pub fn save_events_to_hdf5_py<'py>(
-        _py: Python<'py>,
-        xs: numpy::PyReadonlyArray1<i64>,
-        ys: numpy::PyReadonlyArray1<i64>,
-        ts: numpy::PyReadonlyArray1<f64>,
-        ps: numpy::PyReadonlyArray1<i64>,
+    #[pyo3(name = "save_events_to_hdf5")]
+    pub fn save_events_to_hdf5_py(
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
         path: &str,
-        dataset_name: Option<&str>,
     ) -> PyResult<()> {
-        // Convert numpy arrays to our internal Events type
-        let events = from_numpy_arrays(xs, ys, ts, ps);
+        // Validate array lengths
+        let n = ts.len();
+        if xs.len() != n || ys.len() != n || ps.len() != n {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Arrays must have the same length",
+            ));
+        }
 
-        // Save to HDF5
-        save_events_to_hdf5(&events, path, dataset_name)
-            .map_err(|e| PyErr::new::<PyIOError, _>(format!("Failed to save HDF5 file: {}", e)))
+        // Create HDF5 file
+        let file = H5File::create(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create HDF5 file: {}", e))
+        })?;
+
+        // Create a group to store the data
+        let group = file.create_group("events").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create group: {}", e))
+        })?;
+
+        // Convert arrays to Rust vectors
+        let xs_vec: Vec<u16> = xs
+            .as_array()
+            .iter()
+            .map(|&x| x as u16)
+            .collect();
+        let ys_vec: Vec<u16> = ys
+            .as_array()
+            .iter()
+            .map(|&y| y as u16)
+            .collect();
+        let ts_vec: Vec<f64> = ts.as_slice().unwrap().to_vec();
+        let ps_vec: Vec<i8> = ps
+            .as_array()
+            .iter()
+            .map(|&p| p as i8)
+            .collect();
+
+        // Create datasets for each component
+        let xs_shape = [n];
+        let xs_dataset = group.new_dataset::<u16>().shape(xs_shape).create("xs").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create xs dataset: {}", e))
+        })?;
+        xs_dataset.write(&xs_vec).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write xs data: {}", e))
+        })?;
+
+        let ys_dataset = group.new_dataset::<u16>().shape(xs_shape).create("ys").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ys dataset: {}", e))
+        })?;
+        ys_dataset.write(&ys_vec).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ys data: {}", e))
+        })?;
+
+        let ts_dataset = group.new_dataset::<f64>().shape(xs_shape).create("ts").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ts dataset: {}", e))
+        })?;
+        ts_dataset.write(&ts_vec).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ts data: {}", e))
+        })?;
+
+        let ps_dataset = group.new_dataset::<i8>().shape(xs_shape).create("ps").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ps dataset: {}", e))
+        })?;
+        ps_dataset.write(&ps_vec).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ps data: {}", e))
+        })?;
+
+        Ok(())
     }
 
-    /// Save events to a text file
+    /// Save events to a text file, one event per line: "t x y p"
     #[pyfunction]
-    pub fn save_events_to_text_py<'py>(
-        _py: Python<'py>,
-        xs: numpy::PyReadonlyArray1<i64>,
-        ys: numpy::PyReadonlyArray1<i64>,
-        ts: numpy::PyReadonlyArray1<f64>,
-        ps: numpy::PyReadonlyArray1<i64>,
+    #[pyo3(name = "save_events_to_text")]
+    pub fn save_events_to_text_py(
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
         path: &str,
     ) -> PyResult<()> {
-        // Convert numpy arrays to our internal Events type
-        let events = from_numpy_arrays(xs, ys, ts, ps);
+        // Validate array lengths
+        let n = ts.len();
+        if xs.len() != n || ys.len() != n || ps.len() != n {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Arrays must have the same length",
+            ));
+        }
 
-        // Save to text file
-        save_events_to_text(&events, path)
-            .map_err(|e| PyErr::new::<PyIOError, _>(format!("Failed to save text file: {}", e)))
+        // Create output file
+        let mut file = std::fs::File::create(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create file: {}", e))
+        })?;
+
+        // Write header
+        file.write_all(b"# timestamp x y polarity\n").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write header: {}", e))
+        })?;
+
+        // Write events
+        for i in 0..n {
+            let line = format!(
+                "{:.12} {} {} {}\n",
+                ts.get(i).unwrap(),
+                xs.get(i).unwrap(),
+                ys.get(i).unwrap(),
+                ps.get(i).unwrap()
+            );
+            file.write_all(line.as_bytes()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write line: {}", e))
+            })?;
+        }
+
+        Ok(())
     }
 
-    /// Python class for EventFileIterator
-    #[pyclass(name = "EventFileIterator")]
+    // Python wrapper for EventFileIterator
+    #[pyclass]
     pub struct PyEventFileIterator {
-        inner: EventFileIterator,
+        path: String,
+        reader: Option<EventFileIterator>,
     }
 
     #[pymethods]
     impl PyEventFileIterator {
         #[new]
-        fn new(path: &str) -> PyResult<Self> {
-            let inner = EventFileIterator::new(path).map_err(|e| {
-                PyErr::new::<PyIOError, _>(format!("Failed to open event file: {}", e))
-            })?;
-            Ok(PyEventFileIterator { inner })
+        fn new(path: String) -> Self {
+            PyEventFileIterator {
+                path,
+                reader: None,
+            }
         }
 
         fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
             slf
         }
 
-        fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<(i64, i64, f64, i64)> {
-            match slf.inner.next() {
-                Some(Ok(event)) => Some((
-                    event.x as i64,
-                    event.y as i64,
-                    event.t,
-                    event.polarity as i64,
-                )),
-                Some(Err(_)) => None, // Skip errors
-                None => None,
+        fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<(f64, i64, i64, i64)>> {
+            // Initialize reader if needed
+            if self.reader.is_none() {
+                self.reader = Some(EventFileIterator::new(&self.path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to open file: {}", e))
+                })?);
+            }
+
+            // Read next event
+            if let Some(ref mut reader) = self.reader {
+                match reader.next() {
+                    Some(Ok(event)) => Ok(Some((
+                        event.t,
+                        event.x as i64,
+                        event.y as i64,
+                        event.polarity as i64,
+                    ))),
+                    Some(Err(e)) => Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                        "Error reading event: {}",
+                        e
+                    ))),
+                    None => Ok(None),
+                }
+            } else {
+                // This shouldn't happen, but just in case
+                Ok(None)
             }
         }
     }
 
-    /// Python class for TimeWindowIter
-    #[pyclass(name = "TimeWindowIter")]
+    // Python wrapper for TimeWindowIter
+    #[pyclass]
     pub struct PyTimeWindowIter {
-        events: Vec<Event>,
-        dt: f64,
-        inner: Option<TimeWindowIter<'static>>,
+        events_xs: Vec<i64>,
+        events_ys: Vec<i64>,
+        events_ts: Vec<f64>,
+        events_ps: Vec<i64>,
+        window_duration: f64,
+        current_idx: usize,
+        start_time: f64,
+        end_time: f64,
     }
 
     #[pymethods]
     impl PyTimeWindowIter {
         #[new]
         fn new(
-            xs: numpy::PyReadonlyArray1<i64>,
-            ys: numpy::PyReadonlyArray1<i64>,
-            ts: numpy::PyReadonlyArray1<f64>,
-            ps: numpy::PyReadonlyArray1<i64>,
-            dt: f64,
-        ) -> Self {
-            // Convert numpy arrays to our internal Events type
-            let events = from_numpy_arrays(xs, ys, ts, ps);
+            xs: PyReadonlyArray1<i64>,
+            ys: PyReadonlyArray1<i64>,
+            ts: PyReadonlyArray1<f64>,
+            ps: PyReadonlyArray1<i64>,
+            window_duration: f64,
+        ) -> PyResult<Self> {
+            // Convert to Rust vectors
+            let xs_vec = xs.as_slice().unwrap().to_vec();
+            let ys_vec = ys.as_slice().unwrap().to_vec();
+            let ts_vec = ts.as_slice().unwrap().to_vec();
+            let ps_vec = ps.as_slice().unwrap().to_vec();
 
-            // We'll recreate the iterator in __iter__ to avoid lifetime issues
-            PyTimeWindowIter {
-                events,
-                dt,
-                inner: None,
+            // Validate
+            let n = ts_vec.len();
+            if xs_vec.len() != n || ys_vec.len() != n || ps_vec.len() != n {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Arrays must have the same length",
+                ));
             }
+
+            let start_time = if !ts_vec.is_empty() { ts_vec[0] } else { 0.0 };
+            let end_time = start_time + window_duration;
+
+            Ok(PyTimeWindowIter {
+                events_xs: xs_vec,
+                events_ys: ys_vec,
+                events_ts: ts_vec,
+                events_ps: ps_vec,
+                window_duration,
+                current_idx: 0,
+                start_time,
+                end_time,
+            })
         }
 
-        fn __iter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
-            // Recreate the iterator each time __iter__ is called
-            let events_slice =
-                unsafe { std::slice::from_raw_parts(slf.events.as_ptr(), slf.events.len()) };
-            slf.inner = Some(TimeWindowIter::new(events_slice, slf.dt)); // Use the dt specified in new()
+        fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
             slf
         }
 
-        fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<Vec<(i64, i64, f64, i64)>> {
-            if let Some(iter) = &mut slf.inner {
-                if let Some(event_slice) = iter.next() {
-                    let mut result = Vec::with_capacity(event_slice.len());
-                    for event in event_slice {
-                        result.push((
-                            event.x as i64,
-                            event.y as i64,
-                            event.t,
-                            event.polarity as i64,
-                        ));
-                    }
-                    Some(result)
-                } else {
-                    None
-                }
-            } else {
-                None
+        fn __next__<'py>(
+            &mut self,
+            py: Python<'py>,
+        ) -> PyResult<Option<(PyObject, PyObject, PyObject, PyObject)>> {
+            if self.current_idx >= self.events_ts.len() {
+                return Ok(None);
             }
+
+            let mut xs_window = Vec::new();
+            let mut ys_window = Vec::new();
+            let mut ts_window = Vec::new();
+            let mut ps_window = Vec::new();
+            let mut idx = self.current_idx;
+
+            // Collect events within current time window
+            while idx < self.events_ts.len() && self.events_ts[idx] < self.end_time {
+                xs_window.push(self.events_xs[idx]);
+                ys_window.push(self.events_ys[idx]);
+                ts_window.push(self.events_ts[idx]);
+                ps_window.push(self.events_ps[idx]);
+                idx += 1;
+            }
+
+            // Update state for next iteration
+            self.current_idx = idx;
+            self.start_time = self.end_time;
+            self.end_time += self.window_duration;
+
+            // If no events in this window, move to the next one
+            if xs_window.is_empty() {
+                return self.__next__(py);
+            }
+
+            // Convert to numpy arrays
+            let xs_array = PyArray1::from_vec(py, xs_window);
+            let ys_array = PyArray1::from_vec(py, ys_window);
+            let ts_array = PyArray1::from_vec(py, ts_window);
+            let ps_array = PyArray1::from_vec(py, ps_window);
+
+            Ok(Some((
+                xs_array.to_object(py),
+                ys_array.to_object(py),
+                ts_array.to_object(py),
+                ps_array.to_object(py),
+            )))
         }
     }
 }

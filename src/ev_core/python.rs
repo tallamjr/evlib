@@ -9,6 +9,7 @@ use rand::prelude::*;
 
 /// Convert events to a block representation
 #[pyfunction]
+#[pyo3(name = "events_to_block")]
 pub fn events_to_block_py<'py>(
     py: Python<'py>,
     xs: PyReadonlyArray1<i64>,
@@ -35,6 +36,7 @@ pub fn events_to_block_py<'py>(
 
 /// Add random events drawn from a uniform distribution
 #[pyfunction]
+#[pyo3(name = "add_random_events")]
 #[pyo3(signature = (xs, ys, ts, ps, to_add, sensor_resolution=None, sort=true, return_merged=true))]
 pub fn add_random_events<'py>(
     py: Python<'py>,
@@ -204,6 +206,7 @@ pub fn add_random_events<'py>(
 
 /// Remove events by random selection
 #[pyfunction]
+#[pyo3(name = "remove_events")]
 #[pyo3(signature = (xs, ys, ts, ps, to_remove, add_noise=0))]
 pub fn remove_events<'py>(
     py: Python<'py>,
@@ -356,6 +359,7 @@ pub fn remove_events<'py>(
 }
 /// Merge multiple sets of events into a single chronologically sorted list
 #[pyfunction]
+#[pyo3(name = "merge_events")]
 pub fn merge_events<'py>(py: Python<'py>, event_sets: &PyTuple) -> PyResult<PyObject> {
     // Collect all event sets
     let mut all_sets: Vec<Events> = Vec::new();

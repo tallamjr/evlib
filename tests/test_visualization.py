@@ -3,7 +3,7 @@ import pytest
 import evlib
 
 # Direct access to the function
-draw_events_to_image_py = evlib.visualization.draw_events_to_image_py
+draw_events_to_image_py = evlib.visualization.draw_events_to_image
 
 def test_draw_events_to_image_py():
     """Test drawing events to an image"""

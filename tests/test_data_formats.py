@@ -5,7 +5,7 @@ import tempfile
 import evlib
 
 # Direct access to the function
-load_events_py = evlib.formats.load_events_py
+load_events_py = evlib.formats.load_events
 
 def create_temp_event_file(file_format, num_events=100):
     """Helper function to create a temporary event file for testing"""

@@ -204,6 +204,7 @@ pub mod python {
 
     /// Add random events
     #[pyfunction]
+    #[pyo3(name = "add_random_events")]
     #[pyo3(signature = (
         xs,
         ys,

@@ -158,7 +158,7 @@ def test_module_attributes():
     assert hasattr(evlib, 'version')
     
     # Check that augmentation module has expected functions
-    assert hasattr(evlib.augmentation, 'add_random_events_py')
+    assert hasattr(evlib.augmentation, 'add_random_events')
     
     # Check that representations module has expected functions
-    assert hasattr(evlib.representations, 'events_to_voxel_grid_py')
+    assert hasattr(evlib.representations, 'events_to_voxel_grid')
