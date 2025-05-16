@@ -15,15 +15,15 @@
 A high-performance (or some might say: _blazingly fast_) implementation of event
 camera utilities using Rust with Python bindings via PyO3.
 
-This library is based on the
-[event_utils](https://github.com/TimoStoff/event_utils) Python library but
+This library is insipred by numerous event camera libraries such
+[`event_utils`](https://github.com/TimoStoff/event_utils) Python library but
 reimplemented in Rust for significantly better performance.
 
 > [!Warning]
 >
-> This is a super experimental project and will have frequent breaking changes.
+> **This is a super experimental project and will have frequent breaking changes.
 > It is primary being developed as a learning project for understanding Event
-> Camera data processing and Event-Vision algorithms.
+> Camera data processing and Event-Vision algorithms.**
 
 <!-- mtoc-start -->
 
