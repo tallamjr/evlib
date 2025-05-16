@@ -6,8 +6,9 @@
 
 [![PyPI Version](https://img.shields.io/pypi/v/evlib.svg)](https://pypi.org/project/evlib/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/evlib.svg)](https://pypi.org/project/evlib/)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tallamjr/evlib/maturin.yml?branch=master)](https://github.com/tallamjr/evlib/actions)
-[![codecov](https://codecov.io/gh/tallamjr/evlib/branch/master/graph/badge.svg)](https://codecov.io/gh/tallamjr/evlib)
+[![Python](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml)
+[![Build](https://github.com/tallamjr/evlib/actions/workflows/build.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/build.yml)
+[![Codecov](https://codecov.io/gh/tallamjr/evlib/branch/master/graph/badge.svg)](https://codecov.io/gh/tallamjr/evlib)
 [![License](https://img.shields.io/github/license/tallamjr/evlib)](https://github.com/tallamjr/evlib/blob/master/LICENSE.md)
 
 </div>
