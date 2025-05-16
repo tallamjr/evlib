@@ -64,15 +64,15 @@ jobs:
 
       - name: Build evlib
         run: |
-          maturin develop --release
+          uv run maturin develop --release
 
       - name: Run pytest
         run: |
-          python -m pytest -v tests/
+          uv run pytest -v tests/
 
       - name: Generate coverage report
         run: |
-          python -m pytest --cov=evlib --cov-report=xml -v tests/
+          uv run pytest --cov=evlib --cov-report=xml -v tests/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

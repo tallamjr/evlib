@@ -42,13 +42,14 @@ jobs:
       # 3) Install uv & create .venv
       - name: Install uv & create venv
         run: |
-          pip install uv                           # install uv into system Python :contentReference[oaicite:7]{index=7}
-          uv venv                                   # create .venv, set VIRTUAL_ENV :contentReference[oaicite:8]{index=8}
+          pip install uv                           # install uv into system Python
+          uv venv                                   # create .venv, set VIRTUAL_ENV
+          source .venv/bin/activate
 
       # 4) Install maturin inside the venv
       - name: Install maturin
-        run: uv pip install maturin # uv pip => installs into .venv :contentReference[oaicite:9]{index=9}
+        run: uv pip install maturin # uv pip => installs into .venv
 
       # 5) Build & install the extension
       - name: Develop with maturin
-        run: uv run maturin develop --release # uv run => activates .venv, satisfies maturin develop :contentReference[oaicite:10]{index=10}
+        run: uv run maturin develop --release # uv run => activates .venv, satisfies maturin develop
