@@ -52,6 +52,7 @@ jobs:
   macos:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: macos-13
@@ -70,11 +71,17 @@ jobs:
           echo "HDF5_DIR=$(brew --prefix hdf5)" >> $GITHUB_ENV
           echo "Adding HDF5 to PKG_CONFIG_PATH"
           echo "PKG_CONFIG_PATH=$(brew --prefix hdf5)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+      # Install additional macOS aarch64 dependencies
+      - name: Additional setup for aarch64
+        if: matrix.platform.target == 'aarch64'
+        run: |
+          # Enable metal features explicitly
+          echo "RUSTFLAGS=-C link-arg=-undefined -C link-arg=dynamic_lookup" >> $GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1.39.0
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter ${{ matrix.platform.target == 'aarch64' && '--features metal' || '' }}
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
