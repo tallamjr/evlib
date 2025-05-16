@@ -114,7 +114,13 @@ jobs:
       # Install HDF5 on Windows
       - name: Install HDF5 (Windows)
         run: |
-          choco install hdf5
+          # Use vcpkg to install HDF5
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install hdf5:${{ matrix.platform.target == 'x64' && 'x64' || 'x86' }}-windows
+          .\vcpkg.exe integrate install
+          echo "HDF5_DIR=$env:VCPKG_INSTALLATION_ROOT/installed/${{ matrix.platform.target == 'x64' && 'x64' || 'x86' }}-windows" >> $env:GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1.39.0
         with:
@@ -145,6 +151,9 @@ jobs:
       - name: Install HDF5 (macOS)
         run: |
           brew install hdf5
+          echo "HDF5_DIR=$(brew --prefix hdf5)" >> $GITHUB_ENV
+          echo "Adding HDF5 to PKG_CONFIG_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix hdf5)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1.39.0
         with:
