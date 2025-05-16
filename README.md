@@ -96,6 +96,10 @@ uv pip install -e ".[dev]"
 # Or using pip
 pip install -e ".[dev]"
 
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
 # Run tests
 pytest
 ```
