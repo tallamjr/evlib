@@ -6,16 +6,16 @@ on:
       - main
       - master
     paths:
-      - '**.rs'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
+      - "**.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
   pull_request:
     paths:
-      - '**.rs'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
+      - "**.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
   workflow_dispatch:
 
 jobs:

@@ -34,8 +34,11 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
+    "maturin",
     "pytest >= 7.0.0",
     "pytest-benchmark",
+    "pytest-cov",
+    "codecov",
     "twine",
 ]
 plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0"]

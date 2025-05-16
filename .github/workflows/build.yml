@@ -1,0 +1,54 @@
+name: Maturin Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  develop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Set up Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # 2) Install HDF5 deps on host
+      - name: Install HDF5 & pkg-config
+        run: |
+          if [[ "${{ matrix.os }}" == ubuntu-22.04 ]]; then
+            sudo apt-get update
+            sudo apt-get install -y libhdf5-dev pkg-config
+          else
+            brew update
+            brew install cmake
+            brew install hdf5@1.10
+            brew install pkgconf
+            H5P=$(brew --prefix hdf5@1.10)
+            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+          fi
+
+      # 3) Install uv & create .venv
+      - name: Install uv & create venv
+        run: |
+          pip install uv                           # install uv into system Python :contentReference[oaicite:7]{index=7}
+          uv venv                                   # create .venv, set VIRTUAL_ENV :contentReference[oaicite:8]{index=8}
+
+      # 4) Install maturin inside the venv
+      - name: Install maturin
+        run: uv pip install maturin # uv pip => installs into .venv :contentReference[oaicite:9]{index=9}
+
+      # 5) Build & install the extension
+      - name: Develop with maturin
+        run: uv run maturin develop --release # uv run => activates .venv, satisfies maturin develop :contentReference[oaicite:10]{index=10}

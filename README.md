@@ -1,9 +1,16 @@
+<img align="left" src="./evlogo.png" alt="" width="70">
+
 # `evlib`: Event Camera Utilities in Rust
+
+<div style="text-align: center;" align="center">
 
 [![PyPI Version](https://img.shields.io/pypi/v/evlib.svg)](https://pypi.org/project/evlib/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/evlib.svg)](https://pypi.org/project/evlib/)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tallamjr/evlib/maturin.yml?branch=master)](https://github.com/tallamjr/evlib/actions)
+[![codecov](https://codecov.io/gh/tallamjr/evlib/branch/master/graph/badge.svg)](https://codecov.io/gh/tallamjr/evlib)
 [![License](https://img.shields.io/github/license/tallamjr/evlib)](https://github.com/tallamjr/evlib/blob/master/LICENSE.md)
+
+</div>
 
 A high-performance (or some might say: _blazingly fast_) implementation of event
 camera utilities using Rust with Python bindings via PyO3.

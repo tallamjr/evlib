@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Publish wheels to PyPI
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          username: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      # 2) Publish Rust crate(s) to crates.io
+      - name: Publish to crates.io
+        uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CRATES_IO_API_TOKEN }}

@@ -1,4 +1,4 @@
-name: Python Tests
+name: Python
 
 on:
   push:
@@ -6,16 +6,16 @@ on:
       - main
       - master
     paths:
-      - '**.py'
-      - '**.rs'
-      - 'pyproject.toml'
-      - 'pytest.ini'
+      - "**.py"
+      - "**.rs"
+      - "pyproject.toml"
+      - "pytest.ini"
   pull_request:
     paths:
-      - '**.py'
-      - '**.rs'
-      - 'pyproject.toml'
-      - 'pytest.ini'
+      - "**.py"
+      - "**.rs"
+      - "pyproject.toml"
+      - "pytest.ini"
   workflow_dispatch:
 
 jobs:
@@ -37,25 +37,32 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install HDF5 (macOS)
-        if: matrix.os == 'macos-latest'
+      # Install HDF5 deps on host
+      - name: Install HDF5 & pkg-config
         run: |
-          brew install hdf5
-          echo "HDF5_DIR=$(brew --prefix hdf5)" >> $GITHUB_ENV
-          echo "Adding HDF5 to PKG_CONFIG_PATH"
-          echo "PKG_CONFIG_PATH=$(brew --prefix hdf5)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            sudo apt-get update
+            sudo apt-get install -y libhdf5-dev pkg-config
+          else
+            brew update
+            brew install cmake
+            brew install hdf5@1.10
+            brew install pkgconf
+            H5P=$(brew --prefix hdf5@1.10)
+            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+          fi
 
-      - name: Install HDF5 (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      # Install uv & create .venv
+      - name: Install uv & create venv
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev
+          pip install uv                           # install uv into system Python :contentReference[oaicite:7]{index=7}
+          uv venv                                   # create .venv, set VIRTUAL_ENV :contentReference[oaicite:8]{index=8}
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install maturin
-          pip install -e ".[dev]"
+          uv pip install -e ".[dev]"
 
       - name: Build evlib
         run: |
@@ -64,3 +71,14 @@ jobs:
       - name: Run pytest
         run: |
           python -m pytest -v tests/
+
+      - name: Generate coverage report
+        run: |
+          python -m pytest --cov=evlib --cov-report=xml -v tests/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false
