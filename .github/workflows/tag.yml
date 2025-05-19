@@ -6,6 +6,9 @@ on:
     paths:
       - "Cargo.toml"
 
+permissions:
+  contents: write
+
 jobs:
   check-version-and-tag:
     runs-on: ubuntu-latest

@@ -61,6 +61,7 @@ jobs:
           pip install uv                                   # install uv into system Python
           uv venv --python "${{ matrix.python-version }}"  # create .venv, set VIRTUAL_ENV
           source .venv/bin/activate
+          uv pip install .[all]
 
       - name: Set PYO3_PYTHON for PyO3 compatibility
         run: |
