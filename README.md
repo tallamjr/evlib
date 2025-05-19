@@ -1,6 +1,15 @@
-<img align="left" src="./evlogo.png" alt="" width="70">
-
-# `evlib`: Event Camera Utilities in Rust
+<table align="center">
+  <tr>
+    <td>
+      <img src="./evlogo.png" width="70" alt="evlib logo" />
+    </td>
+    <td>
+      <h1 style="margin: 0;">
+        <code>evlib</code>: <em>the</em> Event Vision Library
+      </h1>
+    </td>
+  </tr>
+</table>
 
 <div style="text-align: center;" align="center">
 

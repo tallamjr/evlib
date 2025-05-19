@@ -7,14 +7,47 @@ on:
       - completed
     branches: [main, master]
 
-# Add explicit permissions
 permissions:
   contents: write
-  id-token: write # Needed for trusted publishing
+  id-token: write
 
 jobs:
-  publish:
-    # Only run if the Tag Version  workflow completed successfully
+  publish-crate:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug workflow context
+        run: |
+          echo "Tag triggered: ${{ github.ref }}"
+          echo "Tag name: ${{ github.ref_name }}"
+          git tag -l
+          if [[ -n "${{ secrets.CRATES_IO_API_TOKEN }}" ]]; then
+            echo "CRATES_IO_API_TOKEN is available"
+          else
+            echo "CRATES_IO_API_TOKEN is missing"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install HDF5 & pkg-config
+        run: |
+          # clear any cached lists so we don’t pull in an unsupported codename
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list" \
+                             -o Dir::Etc::sourceparts="-" \
+                             -o APT::Get::List-Cleanup="0"
+          sudo apt-get install -y libhdf5-dev pkg-config
+
+      - name: Publish to crates.io
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
+
+  build-linux-x86_64-wheels:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     strategy:
@@ -23,54 +56,197 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-      # Check all files for linting and formatting one last time
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch all history for tags
+          fetch-depth: 0
 
-      # Debug step to understand workflow context
       - name: Debug workflow context
         run: |
+          echo "Building wheel for Python ${{ matrix.python-version }} on Linux x86_64"
           echo "Tag triggered: ${{ github.ref }}"
           echo "Tag name: ${{ github.ref_name }}"
           git tag -l
-          echo "Checking secrets availability (won't print values):"
-          if [[ -n "${{ secrets.PYPI_API_TOKEN }}" ]]; then echo "PYPI_API_TOKEN is available"; else echo "PYPI_API_TOKEN is missing"; fi
-          if [[ -n "${{ secrets.CRATES_IO_API_TOKEN }}" ]]; then echo "CRATES_IO_API_TOKEN is available"; else echo "CRATES_IO_API_TOKEN is missing"; fi
 
-      # Install HDF5 deps on host (needed for building)
       - name: Install HDF5 & pkg-config
         run: |
-          sudo apt-get update
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list" \
+                             -o Dir::Etc::sourceparts="-" \
+                             -o APT::Get::List-Cleanup="0"
           sudo apt-get install -y libhdf5-dev pkg-config
 
-      # Install uv & create .venv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
       - name: Install uv & create venv
         run: |
           pip install uv
           uv venv
           source .venv/bin/activate
-          uv pip install pre-commit
-          pre-commit
-          pre-commit run --all-files
+          uv pip install maturin
 
-      # Install maturin inside the venv
-      - name: Install maturin
-        run: uv pip install maturin
+      - name: Install auditwheel
+        run: python -m pip install auditwheel
 
-      # Build the wheels
-      - name: Build wheels with maturin
-        run: uv run maturin build --release
+      - name: Build wheels for x86_64
+        run: |
+          source .venv/bin/activate
+          maturin build --release --target x86_64-unknown-linux-gnu -i python${{ matrix.python-version }}
+          for whl in target/wheels/*.whl; do
+            if [[ "$whl" != *manylinux* ]]; then
+              auditwheel repair "$whl" --plat manylinux2014_x86_64 -w target/wheels/
+              rm "$whl"
+            fi
+          done
 
-      # Publish wheels to PyPI
+      - name: Upload wheels as artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-x86_64-python${{ matrix.python-version }}
+          path: target/wheels/*.whl
+
+  build-linux-aarch64-wheels:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug workflow context
+        run: |
+          echo "Building wheel for Python ${{ matrix.python-version }} on Linux aarch64 (via Zig)"
+          echo "Tag triggered: ${{ github.ref }}"
+          echo "Tag name: ${{ github.ref_name }}"
+          git tag -l
+
+      - name: Install multi-arch HDF5 & pkg-config
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list" \
+                             -o Dir::Etc::sourceparts="-" \
+                             -o APT::Get::List-Cleanup="0"
+          sudo apt-get install -y libhdf5-dev pkg-config libhdf5-dev:arm64
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install uv & create venv (with Zig)
+        run: |
+          pip install uv
+          uv venv
+          source .venv/bin/activate
+          pip install "maturin[zig]"
+
+      - name: Build wheels for aarch64 with Zig
+        run: |
+          source .venv/bin/activate
+          maturin build \
+            --release \
+            --target aarch64-unknown-linux-gnu \
+            --zig \
+            -i python${{ matrix.python-version }}
+
+      - name: Upload wheels as artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-aarch64-python${{ matrix.python-version }}
+          path: target/wheels/*.whl
+
+  build-macos-wheels:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug workflow context
+        run: |
+          echo "Building wheel for Python ${{ matrix.python-version }} on macOS (Universal2)"
+          echo "Tag triggered: ${{ github.ref }}"
+          echo "Tag name: ${{ github.ref_name }}"
+          git tag -l
+
+      - name: Install HDF5 & pkg-config for macOS
+        run: |
+          brew update
+          brew install hdf5@1.10 pkg-config
+          H5P=$(brew --prefix hdf5@1.10)
+          echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+          echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install uv & create venv
+        run: |
+          pip install uv
+          uv venv
+          source .venv/bin/activate
+          uv pip install maturin
+
+      - name: Build universal2 wheels for macOS
+        run: |
+          source .venv/bin/activate
+          maturin build --release --universal2 -i python${{ matrix.python-version }}
+
+      - name: Upload wheels as artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-universal2-python${{ matrix.python-version }}
+          path: target/wheels/*.whl
+
+  publish-wheels:
+    needs:
+      [
+        build-linux-x86_64-wheels,
+        build-linux-aarch64-wheels,
+        build-macos-wheels,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: target/wheels
+          merge-multiple: true
+
+      - name: List wheels for debugging
+        run: find target/wheels -name "*.whl"
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          username: __token__
+          packages-dir: target/wheels
           password: ${{ secrets.PYPI_API_TOKEN }}
-
-      # Publish Rust crate(s) to crates.io
-      - name: Publish to crates.io
-        uses: katyo/publish-crates@v2
-        with:
-          registry-token: ${{ secrets.CRATES_IO_API_TOKEN }}

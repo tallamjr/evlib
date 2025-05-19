@@ -8,12 +8,14 @@ on:
     paths:
       - "**.py"
       - "**.rs"
+      - "**.ipynb"
       - "pyproject.toml"
       - "pytest.ini"
   pull_request:
     paths:
       - "**.py"
       - "**.rs"
+      - "**.ipynb"
       - "pyproject.toml"
       - "pytest.ini"
   workflow_dispatch:
@@ -61,14 +63,23 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install .[all]
+          uv pip install pytest-nbmake
 
       - name: Build evlib
         run: |
           uv run maturin develop --release
 
-      - name: Run pytest
+      - name: Run pytest on test directory
         run: |
           uv run pytest -v tests/
+
+      - name: Run pytest on examples Python files
+        run: |
+          uv run pytest -v examples/ --no-cov
+
+      - name: Test Jupyter notebooks
+        run: |
+          uv run pytest --nbmake examples/*.ipynb -v --no-cov
 
       - name: Generate coverage report
         run: |

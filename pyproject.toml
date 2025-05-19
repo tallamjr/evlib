@@ -38,6 +38,8 @@ dev = [
     "pytest >= 7.0.0",
     "pytest-benchmark",
     "pytest-cov",
+    "nbmake",
+    "pytest-xdist",
     "codecov",
     "twine",
 ]

@@ -1,46 +1,46 @@
 [package]
-name = "evlib"
-version = "0.1.22"
-edition = "2021"
-description = "Python bindings for event camera utilities"
+name            = "evlib"
+version         = "0.1.38"
+authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
+edition         = "2021"
+description     = "High-performance event-camera utilities with Python bindings via PyO3"
+readme          = "README.md"
+license         = "MIT"
+repository      = "https://github.com/tallamjr/evlib"
+homepage        = "https://github.com/tallamjr/evlib"
+documentation   = "https://docs.rs/evlib"
+keywords        = ["event-camera", "vision", "rust", "python", "pyo3"]
+categories      = ["science", "data-processing"]
 
 [lib]
-name = "evlib"
-crate-type = ["cdylib", "rlib"]
+name           = "evlib"
+crate-type     = ["cdylib", "rlib"]
 
 [dependencies]
 # Python bindings
-numpy = "0.18.0"
-pyo3 = { version = "0.18.3", features = ["extension-module"] }
-pyo3-ffi = "0.18.3"
+numpy          = "0.18.0"
+pyo3           = { version = "0.18.3", features = ["extension-module"] }
+pyo3-ffi       = "0.18.3"
 
-# Data processing
-ndarray = "0.15.6"
-ndarray-rand = "0.14.0"
+# Core data processing
+ndarray        = "0.15.6"
+ndarray-rand   = "0.14.0"
+rand           = "=0.8.5"
+rand_distr     = "=0.4.3"
 
-# Random number generation
-rand = "=0.8.5"
-rand_distr = "=0.4.3"
+# Torch-style tensor ops (via Candle)
+candle-core    = "0.9.1"
+candle-nn      = "0.9.1"
 
-# Tensor operations with Candle
-candle-core = "0.9.1"
-candle-nn   = "0.9.1"
-
-# File formats and I/O
-memmap2 = "0.5"
-
-# Image handling
-image = "0.24"
-
-# Async support
-async-channel = "1.6"
-
-# Other utilities
-lazy_static = "1.4"
-hdf5 = "0.8.1"
+# I/O & utilities
+memmap2        = "0.5"
+image          = "0.24"
+async-channel  = "1.6"
+lazy_static    = "1.4"
+hdf5           = "0.8.1"
 
 [features]
-default = ["python"]
-python = []
-cuda    = ["candle-core/cuda"]
-metal   = ["candle-core/metal"]
+default        = ["python"]
+python         = []
+cuda           = ["candle-core/cuda"]
+metal          = ["candle-core/metal"]
