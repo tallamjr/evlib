@@ -214,8 +214,9 @@ pub mod python {
         sensor_resolution = None,
         sort = true
     ))]
-    pub fn add_random_events_py<'py>(
-        py: Python<'py>,
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_random_events_py(
+        py: Python<'_>,
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
         ts: PyReadonlyArray1<f64>,

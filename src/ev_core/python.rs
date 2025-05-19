@@ -1,6 +1,6 @@
 // Python bindings for ev_core
 
-use super::{Events, from_numpy_arrays};
+use super::{from_numpy_arrays, Events};
 use ndarray::Array1;
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
@@ -10,8 +10,8 @@ use rand::prelude::*;
 /// Convert events to a block representation
 #[pyfunction]
 #[pyo3(name = "events_to_block")]
-pub fn events_to_block_py<'py>(
-    py: Python<'py>,
+pub fn events_to_block_py(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -34,12 +34,32 @@ pub fn events_to_block_py<'py>(
     Ok(block.into_pyarray(py).to_object(py))
 }
 
+/// Parameters for adding random events to an event stream
+pub struct AddRandomEventsParams {
+    pub to_add: usize,
+    pub sensor_resolution: Option<(i64, i64)>,
+    pub sort: bool,
+    pub return_merged: bool,
+}
+
+impl Default for AddRandomEventsParams {
+    fn default() -> Self {
+        Self {
+            to_add: 0,
+            sensor_resolution: None,
+            sort: true,
+            return_merged: true,
+        }
+    }
+}
+
 /// Add random events drawn from a uniform distribution
 #[pyfunction]
 #[pyo3(name = "add_random_events")]
 #[pyo3(signature = (xs, ys, ts, ps, to_add, sensor_resolution=None, sort=true, return_merged=true))]
-pub fn add_random_events<'py>(
-    py: Python<'py>,
+#[allow(clippy::too_many_arguments)]
+pub fn add_random_events(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -49,40 +69,57 @@ pub fn add_random_events<'py>(
     sort: bool,
     return_merged: bool,
 ) -> PyResult<PyObject> {
+    let params = AddRandomEventsParams {
+        to_add,
+        sensor_resolution,
+        sort,
+        return_merged,
+    };
+    add_random_events_impl(py, xs, ys, ts, ps, params)
+}
+
+fn add_random_events_impl(
+    py: Python<'_>,
+    xs: PyReadonlyArray1<i64>,
+    ys: PyReadonlyArray1<i64>,
+    ts: PyReadonlyArray1<f64>,
+    ps: PyReadonlyArray1<i64>,
+    params: AddRandomEventsParams,
+) -> PyResult<PyObject> {
     let xs_array = xs.as_array();
     let ys_array = ys.as_array();
     let ts_array = ts.as_array();
     let ps_array = ps.as_array();
 
     // Generate random events
-    let max_x = match sensor_resolution {
+    let max_x = match params.sensor_resolution {
         Some((w, _)) => w - 1,
         None => xs_array.fold(0, |acc, &x| acc.max(x)),
     };
 
-    let max_y = match sensor_resolution {
+    let max_y = match params.sensor_resolution {
         Some((_, h)) => h - 1,
         None => ys_array.fold(0, |acc, &y| acc.max(y)),
     };
 
     let mut rng = thread_rng();
 
-    let mut xs_new = Vec::with_capacity(to_add);
-    let mut ys_new = Vec::with_capacity(to_add);
-    let mut ts_new = Vec::with_capacity(to_add);
-    let mut ps_new = Vec::with_capacity(to_add);
+    let mut xs_new = Vec::with_capacity(params.to_add);
+    let mut ys_new = Vec::with_capacity(params.to_add);
+    let mut ts_new = Vec::with_capacity(params.to_add);
+    let mut ps_new = Vec::with_capacity(params.to_add);
 
     let min_ts = ts_array.fold(f64::INFINITY, |acc, &t| acc.min(t));
     let max_ts = ts_array.fold(f64::NEG_INFINITY, |acc, &t| acc.max(t));
 
-    for _ in 0..to_add {
+    for _ in 0..params.to_add {
         xs_new.push(rng.gen_range(0..=max_x));
         ys_new.push(rng.gen_range(0..=max_y));
         ts_new.push(rng.gen_range(min_ts..=max_ts));
         ps_new.push(if rng.gen_bool(0.5) { 1 } else { -1 });
     }
 
-    if return_merged {
+    if params.return_merged {
         // Merge both arrays
         let mut all_xs = Vec::with_capacity(xs_array.len() + xs_new.len());
         let mut all_ys = Vec::with_capacity(ys_array.len() + ys_new.len());
@@ -106,7 +143,7 @@ pub fn add_random_events<'py>(
         let merged_ts = Array1::from(all_ts);
         let merged_ps = Array1::from(all_ps);
 
-        if sort {
+        if params.sort {
             // Sort by timestamp
             let mut indices: Vec<usize> = (0..merged_ts.len()).collect();
             indices.sort_by(|&i, &j| merged_ts[i].partial_cmp(&merged_ts[j]).unwrap());
@@ -157,7 +194,7 @@ pub fn add_random_events<'py>(
         let ts_new_array = Array1::from(ts_new);
         let ps_new_array = Array1::from(ps_new);
 
-        if sort {
+        if params.sort {
             // Sort by timestamp
             let mut indices: Vec<usize> = (0..ts_new_array.len()).collect();
             indices.sort_by(|&i, &j| ts_new_array[i].partial_cmp(&ts_new_array[j]).unwrap());
@@ -208,8 +245,8 @@ pub fn add_random_events<'py>(
 #[pyfunction]
 #[pyo3(name = "remove_events")]
 #[pyo3(signature = (xs, ys, ts, ps, to_remove, add_noise=0))]
-pub fn remove_events<'py>(
-    py: Python<'py>,
+pub fn remove_events(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -270,7 +307,7 @@ pub fn remove_events<'py>(
         .map(|&i| ps_array[i])
         .collect::<Array1<i64>>();
 
-    if add_noise <= 0 {
+    if add_noise == 0 {
         // Convert arrays to Python objects
         let xs_py = selected_xs.into_pyarray(py).to_object(py);
         let ys_py = selected_ys.into_pyarray(py).to_object(py);
@@ -360,7 +397,7 @@ pub fn remove_events<'py>(
 /// Merge multiple sets of events into a single chronologically sorted list
 #[pyfunction]
 #[pyo3(name = "merge_events")]
-pub fn merge_events<'py>(py: Python<'py>, event_sets: &PyTuple) -> PyResult<PyObject> {
+pub fn merge_events(py: Python<'_>, event_sets: &PyTuple) -> PyResult<PyObject> {
     // Collect all event sets
     let mut all_sets: Vec<Events> = Vec::new();
     for event_set in event_sets.iter() {

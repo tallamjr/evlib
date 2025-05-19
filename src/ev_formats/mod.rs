@@ -6,7 +6,6 @@ use hdf5::File as H5File;
 use memmap2::Mmap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
-use std::path::Path;
 
 /// Load events from an HDF5 file
 ///
@@ -198,22 +197,30 @@ impl Iterator for EventFileIterator {
                 // Parse values
                 let t = match parts[0].parse::<f64>() {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
+                    Err(e) => {
+                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+                    }
                 };
 
                 let x = match parts[1].parse::<u16>() {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
+                    Err(e) => {
+                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+                    }
                 };
 
                 let y = match parts[2].parse::<u16>() {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
+                    Err(e) => {
+                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+                    }
                 };
 
                 let p = match parts[3].parse::<i8>() {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
+                    Err(e) => {
+                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+                    }
                 };
 
                 // Create and return event
@@ -245,11 +252,7 @@ impl<'a> TimeWindowIter<'a> {
     /// * `events` - Event array to iterate over
     /// * `window_duration` - Duration of each time window in seconds
     pub fn new(events: &'a Events, window_duration: f64) -> Self {
-        let start_time = if !events.is_empty() {
-            events[0].t
-        } else {
-            0.0
-        };
+        let start_time = if !events.is_empty() { events[0].t } else { 0.0 };
 
         let end_time = start_time + window_duration;
 
@@ -263,7 +266,7 @@ impl<'a> TimeWindowIter<'a> {
     }
 }
 
-impl<'a> Iterator for TimeWindowIter<'a> {
+impl Iterator for TimeWindowIter<'_> {
     type Item = Vec<Event>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -298,17 +301,20 @@ impl<'a> Iterator for TimeWindowIter<'a> {
 #[cfg(feature = "python")]
 pub mod python {
     use super::*;
-    use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+    use numpy::{PyArray1, PyReadonlyArray1};
     use pyo3::prelude::*;
-    use pyo3::types::PyBytes;
     use std::io::Write;
+    use std::path::Path;
 
     /// Load events from a file (text, HDF5, or binary)
     ///
     /// Automatically detects the format based on file extension
     #[pyfunction]
     #[pyo3(name = "load_events")]
-    pub fn load_events_py<'py>(py: Python<'py>, path: &str) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
+    pub fn load_events_py(
+        py: Python<'_>,
+        path: &str,
+    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
         // Determine file format
         let path_obj = Path::new(path);
         let events = if let Some(ext) = path_obj.extension() {
@@ -317,7 +323,10 @@ pub mod python {
                     PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("HDF5 error: {}", e))
                 })?,
                 "bin" | "dat" => mmap_events(path).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Binary file error: {}", e))
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                        "Binary file error: {}",
+                        e
+                    ))
                 })?,
                 _ => load_events_from_text(path).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Text file error: {}", e))
@@ -379,7 +388,10 @@ pub mod python {
 
         // Create HDF5 file
         let file = H5File::create(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create HDF5 file: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to create HDF5 file: {}",
+                e
+            ))
         })?;
 
         // Create a group to store the data
@@ -388,49 +400,65 @@ pub mod python {
         })?;
 
         // Convert arrays to Rust vectors
-        let xs_vec: Vec<u16> = xs
-            .as_array()
-            .iter()
-            .map(|&x| x as u16)
-            .collect();
-        let ys_vec: Vec<u16> = ys
-            .as_array()
-            .iter()
-            .map(|&y| y as u16)
-            .collect();
+        let xs_vec: Vec<u16> = xs.as_array().iter().map(|&x| x as u16).collect();
+        let ys_vec: Vec<u16> = ys.as_array().iter().map(|&y| y as u16).collect();
         let ts_vec: Vec<f64> = ts.as_slice().unwrap().to_vec();
-        let ps_vec: Vec<i8> = ps
-            .as_array()
-            .iter()
-            .map(|&p| p as i8)
-            .collect();
+        let ps_vec: Vec<i8> = ps.as_array().iter().map(|&p| p as i8).collect();
 
         // Create datasets for each component
         let xs_shape = [n];
-        let xs_dataset = group.new_dataset::<u16>().shape(xs_shape).create("xs").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create xs dataset: {}", e))
-        })?;
+        let xs_dataset = group
+            .new_dataset::<u16>()
+            .shape(xs_shape)
+            .create("xs")
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                    "Failed to create xs dataset: {}",
+                    e
+                ))
+            })?;
         xs_dataset.write(&xs_vec).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write xs data: {}", e))
         })?;
 
-        let ys_dataset = group.new_dataset::<u16>().shape(xs_shape).create("ys").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ys dataset: {}", e))
-        })?;
+        let ys_dataset = group
+            .new_dataset::<u16>()
+            .shape(xs_shape)
+            .create("ys")
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                    "Failed to create ys dataset: {}",
+                    e
+                ))
+            })?;
         ys_dataset.write(&ys_vec).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ys data: {}", e))
         })?;
 
-        let ts_dataset = group.new_dataset::<f64>().shape(xs_shape).create("ts").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ts dataset: {}", e))
-        })?;
+        let ts_dataset = group
+            .new_dataset::<f64>()
+            .shape(xs_shape)
+            .create("ts")
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                    "Failed to create ts dataset: {}",
+                    e
+                ))
+            })?;
         ts_dataset.write(&ts_vec).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ts data: {}", e))
         })?;
 
-        let ps_dataset = group.new_dataset::<i8>().shape(xs_shape).create("ps").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create ps dataset: {}", e))
-        })?;
+        let ps_dataset = group
+            .new_dataset::<i8>()
+            .shape(xs_shape)
+            .create("ps")
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                    "Failed to create ps dataset: {}",
+                    e
+                ))
+            })?;
         ps_dataset.write(&ps_vec).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ps data: {}", e))
         })?;
@@ -494,21 +522,21 @@ pub mod python {
     impl PyEventFileIterator {
         #[new]
         fn new(path: String) -> Self {
-            PyEventFileIterator {
-                path,
-                reader: None,
-            }
+            PyEventFileIterator { path, reader: None }
         }
 
         fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
             slf
         }
 
-        fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<(f64, i64, i64, i64)>> {
+        fn __next__(&mut self, _py: Python<'_>) -> PyResult<Option<(f64, i64, i64, i64)>> {
             // Initialize reader if needed
             if self.reader.is_none() {
                 self.reader = Some(EventFileIterator::new(&self.path).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to open file: {}", e))
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                        "Failed to open file: {}",
+                        e
+                    ))
                 })?);
             }
 
@@ -590,9 +618,9 @@ pub mod python {
             slf
         }
 
-        fn __next__<'py>(
+        fn __next__(
             &mut self,
-            py: Python<'py>,
+            py: Python<'_>,
         ) -> PyResult<Option<(PyObject, PyObject, PyObject, PyObject)>> {
             if self.current_idx >= self.events_ts.len() {
                 return Ok(None);

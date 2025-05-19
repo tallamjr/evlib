@@ -9,8 +9,9 @@ use rand::prelude::*;
 /// Add correlated events in the vicinity of existing events
 #[pyfunction]
 #[pyo3(signature = (xs, ys, ts, ps, to_add, sort=true, return_merged=true, xy_std=1.5, ts_std=0.001, add_noise=0))]
-pub fn add_correlated_events<'py>(
-    py: Python<'py>,
+#[allow(clippy::too_many_arguments)]
+pub fn add_correlated_events(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -281,8 +282,8 @@ pub fn add_correlated_events<'py>(
 /// Flip events along x axis
 #[pyfunction]
 #[pyo3(signature = (xs, ys, ts, ps, sensor_resolution=(180, 240)))]
-pub fn flip_events_x<'py>(
-    py: Python<'py>,
+pub fn flip_events_x(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -313,8 +314,8 @@ pub fn flip_events_x<'py>(
 /// Flip events along y axis
 #[pyfunction]
 #[pyo3(signature = (xs, ys, ts, ps, sensor_resolution=(180, 240)))]
-pub fn flip_events_y<'py>(
-    py: Python<'py>,
+pub fn flip_events_y(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -345,8 +346,8 @@ pub fn flip_events_y<'py>(
 /// Clip events to bounds
 #[pyfunction]
 #[pyo3(signature = (xs, ys, ts=None, ps=None, bounds=vec![180, 240], set_zero=false))]
-pub fn clip_events_to_bounds<'py>(
-    py: Python<'py>,
+pub fn clip_events_to_bounds(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: Option<PyReadonlyArray1<f64>>,
@@ -357,14 +358,8 @@ pub fn clip_events_to_bounds<'py>(
     // No need for unsafe in Rust 2021
     let xs_array = xs.as_array().to_owned();
     let ys_array = ys.as_array().to_owned();
-    let ts_array = match ts {
-        Some(ts) => Some(ts.as_array().to_owned()),
-        None => None,
-    };
-    let ps_array = match ps {
-        Some(ps) => Some(ps.as_array().to_owned()),
-        None => None,
-    };
+    let ts_array = ts.map(|ts| ts.as_array().to_owned());
+    let ps_array = ps.map(|ps| ps.as_array().to_owned());
 
     // Process bounds
     let bounds = if bounds.len() == 2 {
@@ -402,35 +397,23 @@ pub fn clip_events_to_bounds<'py>(
         let xs_masked = &xs_array * &mask_array;
         let ys_masked = &ys_array * &mask_array;
 
-        let ts_masked = match &ts_array {
-            Some(ts) => {
-                let ts_f64 = ts.clone();
-                let mask_f64 = mask_array.mapv(|v| v as f64);
-                Some(ts_f64 * mask_f64)
-            },
-            None => None,
-        };
+        let ts_masked = ts_array.as_ref().map(|ts| {
+            let ts_f64 = ts.clone();
+            let mask_f64 = mask_array.mapv(|v| v as f64);
+            ts_f64 * mask_f64
+        });
 
-        let ps_masked = match &ps_array {
-            Some(ps) => Some(ps * &mask_array),
-            None => None,
-        };
+        let ps_masked = ps_array.as_ref().map(|ps| ps * &mask_array);
 
         // Convert arrays to Python objects
         let xs_py = xs_masked.to_pyarray(py).to_object(py);
         let ys_py = ys_masked.to_pyarray(py).to_object(py);
 
         // Handle timestamp array (ts), which can be None
-        let ts_py = match ts_masked {
-            Some(ts) => ts.to_pyarray(py).to_object(py),
-            None => py.None(),
-        };
+        let ts_py = ts_masked.map_or_else(|| py.None(), |ts| ts.to_pyarray(py).to_object(py));
 
         // Handle polarities array (ps), which can be None
-        let ps_py = match ps_masked {
-            Some(ps) => ps.to_pyarray(py).to_object(py),
-            None => py.None(),
-        };
+        let ps_py = ps_masked.map_or_else(|| py.None(), |ps| ps.to_pyarray(py).to_object(py));
 
         // Create result tuple
         let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
@@ -452,31 +435,29 @@ pub fn clip_events_to_bounds<'py>(
         let xs_clipped = indices.iter().map(|&i| xs_array[i]).collect::<Vec<i64>>();
         let ys_clipped = indices.iter().map(|&i| ys_array[i]).collect::<Vec<i64>>();
 
-        let ts_clipped = match &ts_array {
-            Some(ts) => Some(indices.iter().map(|&i| ts[i]).collect::<Vec<f64>>()),
-            None => None,
-        };
+        let ts_clipped = ts_array
+            .as_ref()
+            .map(|ts| indices.iter().map(|&i| ts[i]).collect::<Vec<f64>>());
 
-        let ps_clipped = match &ps_array {
-            Some(ps) => Some(indices.iter().map(|&i| ps[i]).collect::<Vec<i64>>()),
-            None => None,
-        };
+        let ps_clipped = ps_array
+            .as_ref()
+            .map(|ps| indices.iter().map(|&i| ps[i]).collect::<Vec<i64>>());
 
         // Convert arrays to Python objects
         let xs_py = Array1::from(xs_clipped).to_pyarray(py).to_object(py);
         let ys_py = Array1::from(ys_clipped).to_pyarray(py).to_object(py);
 
         // Handle timestamp array (ts), which can be None
-        let ts_py = match ts_clipped {
-            Some(ts) => Array1::from(ts).to_pyarray(py).to_object(py),
-            None => py.None(),
-        };
+        let ts_py = ts_clipped.map_or_else(
+            || py.None(),
+            |ts| Array1::from(ts).to_pyarray(py).to_object(py),
+        );
 
         // Handle polarities array (ps), which can be None
-        let ps_py = match ps_clipped {
-            Some(ps) => Array1::from(ps).to_pyarray(py).to_object(py),
-            None => py.None(),
-        };
+        let ps_py = ps_clipped.map_or_else(
+            || py.None(),
+            |ps| Array1::from(ps).to_pyarray(py).to_object(py),
+        );
 
         // Create result tuple
         let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
@@ -488,8 +469,9 @@ pub fn clip_events_to_bounds<'py>(
 /// Rotate events by a given angle around a given center of rotation
 #[pyfunction]
 #[pyo3(signature = (xs, ys, ts, ps, sensor_resolution=(180, 240), theta_radians=None, center_of_rotation=None, clip_to_range=false))]
-pub fn rotate_events<'py>(
-    py: Python<'py>,
+#[allow(clippy::too_many_arguments)]
+pub fn rotate_events(
+    py: Python<'_>,
     xs: PyReadonlyArray1<i64>,
     ys: PyReadonlyArray1<i64>,
     ts: PyReadonlyArray1<f64>,
@@ -520,7 +502,7 @@ pub fn rotate_events<'py>(
             let cx = rng.gen_range(0..sensor_resolution.1);
             let cy = rng.gen_range(0..sensor_resolution.0);
             (cx, cy)
-        },
+        }
     };
 
     // Calculate centered coordinates
@@ -558,7 +540,7 @@ pub fn rotate_events<'py>(
 
     if clip_to_range {
         // Filter events that are out of bounds
-        let bounds = vec![0, sensor_resolution.0, 0, sensor_resolution.1];
+        let bounds = [0, sensor_resolution.0, 0, sensor_resolution.1];
         let min_y = bounds[0];
         let max_y = bounds[1];
         let min_x = bounds[2];

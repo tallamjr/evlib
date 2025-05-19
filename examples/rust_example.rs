@@ -1,13 +1,13 @@
 use evlib::{
     ev_augmentation as augmentation,
+    ev_core::{infer_resolution, Event, Events},
     // ev_processing is disabled pending API updates
     // ev_processing::{
     //     FlowParams, FlowWarp, ObjectiveFunction, VarianceObjective, WarpModel,
     //     grid_search_optimization,
     // },
     ev_formats as formats,
-    ev_core::{Event, Events, infer_resolution},
-    ev_representations as representations, 
+    ev_representations as representations,
     ev_visualization as visualization,
 };
 use image::{ImageFormat, RgbImage};
@@ -141,4 +141,3 @@ fn create_synthetic_events(num_events: usize) -> Events {
 
     events
 }
-

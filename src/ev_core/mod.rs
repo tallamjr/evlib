@@ -38,7 +38,7 @@ pub fn events_to_tensor(events: &Events) -> Result<Tensor> {
 
     if n == 0 {
         // Return an empty tensor with shape (0, 4)
-        return Tensor::zeros((0, 4), DType::F32, &*DEVICE);
+        return Tensor::zeros((0, 4), DType::F32, &DEVICE);
     }
 
     let mut xs = Vec::with_capacity(n);
@@ -54,10 +54,10 @@ pub fn events_to_tensor(events: &Events) -> Result<Tensor> {
     }
 
     // Stack the arrays into a Nx4 tensor
-    let xs = Tensor::from_vec(xs, (n, 1), &*DEVICE)?;
-    let ys = Tensor::from_vec(ys, (n, 1), &*DEVICE)?;
-    let ts = Tensor::from_vec(ts, (n, 1), &*DEVICE)?;
-    let ps = Tensor::from_vec(ps, (n, 1), &*DEVICE)?;
+    let xs = Tensor::from_vec(xs, (n, 1), &DEVICE)?;
+    let ys = Tensor::from_vec(ys, (n, 1), &DEVICE)?;
+    let ts = Tensor::from_vec(ts, (n, 1), &DEVICE)?;
+    let ps = Tensor::from_vec(ps, (n, 1), &DEVICE)?;
 
     Tensor::cat(&[xs, ys, ts, ps], 1)
 }

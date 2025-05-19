@@ -192,10 +192,10 @@ where
     O: ObjectiveFunction,
 {
     // For this simplified version, we'll just return the initial parameters
-    // In a real implementation, we would use numerical optimization or 
+    // In a real implementation, we would use numerical optimization or
     // integrate with a version of Candle that supports autograd
     let params = initial_params;
-    
+
     // Return the parameters unchanged
     Ok(params)
 }

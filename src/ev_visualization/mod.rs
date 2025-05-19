@@ -230,8 +230,8 @@ pub fn tensor_to_image(tensor: &Tensor, colormap: Option<&str>) -> CandleResult<
 
         for y in 0..height {
             for x in 0..width {
-                let r_idx = (0 * height * width + y * width + x) as usize;
-                let g_idx = (1 * height * width + y * width + x) as usize;
+                let r_idx = (y * width + x) as usize;
+                let g_idx = (height * width + y * width + x) as usize;
                 let b_idx = (2 * height * width + y * width + x) as usize;
 
                 if r_idx < normalized.len() && g_idx < normalized.len() && b_idx < normalized.len()
@@ -361,8 +361,8 @@ pub fn visualize_flow_field(
     grid_size: u32,
 ) -> RgbImage {
     let (width, height) = (resolution.0 as u32, resolution.1 as u32);
-    let grid_cols = (width + grid_size - 1) / grid_size;
-    let grid_rows = (height + grid_size - 1) / grid_size;
+    let grid_cols = width.div_ceil(grid_size);
+    let grid_rows = height.div_ceil(grid_size);
 
     // Create a white background image
     let mut img = RgbImage::from_pixel(width, height, Rgb([255, 255, 255]));
@@ -434,7 +434,7 @@ fn draw_line(img: &mut RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, color: Rgb<
     // Bresenham's line algorithm
     let dx = if x0 > x1 { x0 - x1 } else { x1 - x0 };
     let dy = if y0 > y1 { y0 - y1 } else { y1 - y0 };
-    
+
     // Convert to i32 for signed operations
     let dx_i32 = dx as i32;
     let dy_i32 = dy as i32;
@@ -503,8 +503,8 @@ pub mod python {
     /// Convert events to an RGB image for visualization
     #[pyfunction]
     #[pyo3(name = "draw_events_to_image")]
-    pub fn draw_events_to_image_py<'py>(
-        py: Python<'py>,
+    pub fn draw_events_to_image_py(
+        py: Python<'_>,
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
         ts: PyReadonlyArray1<f64>,

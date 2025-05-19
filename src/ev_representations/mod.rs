@@ -3,7 +3,7 @@
 
 pub mod voxel_grid;
 
-use crate::ev_core::{DEVICE, Events};
+use crate::ev_core::{Events, DEVICE};
 use candle_core::{DType, Result, Tensor};
 
 /// Create a voxel grid representation of events
@@ -31,13 +31,9 @@ pub fn events_to_voxel_grid(
     // Handle empty events case
     if events.is_empty() {
         return if voxel_method == "polaritySeparate" {
-            Tensor::zeros(
-                (2 * num_bins as usize, height as usize, width as usize),
-                DType::F32,
-                &*DEVICE,
-            )
+            Tensor::zeros((2 * num_bins as usize, height, width), DType::F32, &DEVICE)
         } else {
-            Tensor::zeros((num_bins as usize, height as usize, width as usize), DType::F32, &*DEVICE)
+            Tensor::zeros((num_bins as usize, height, width), DType::F32, &DEVICE)
         };
     }
 
@@ -92,11 +88,11 @@ pub fn events_to_voxel_grid(
 
     // Convert to Candle Tensor
     let dims = if voxel_method == "polaritySeparate" {
-        (2 * num_bins as usize, height as usize, width as usize)
+        (2 * num_bins as usize, height, width)
     } else {
-        (num_bins as usize, height as usize, width as usize)
+        (num_bins as usize, height, width)
     };
-    Tensor::from_vec(grid, dims, &*DEVICE)
+    Tensor::from_vec(grid, dims, &DEVICE)
 }
 
 /// Create a timestamp image (time surface) representation of events
@@ -121,9 +117,9 @@ pub fn events_to_timestamp_image(
     // Handle empty events
     if events.is_empty() {
         return if polarity_separate {
-            Tensor::zeros((2, height as usize, width as usize), DType::F32, &*DEVICE)
+            Tensor::zeros((2, height, width), DType::F32, &DEVICE)
         } else {
-            Tensor::zeros((1, height as usize, width as usize), DType::F32, &*DEVICE)
+            Tensor::zeros((1, height, width), DType::F32, &DEVICE)
         };
     }
 
@@ -166,7 +162,7 @@ pub fn events_to_timestamp_image(
     // Convert to tensor
     if polarity_separate {
         let all_timestamps = [&timestamps_pos[..], &timestamps_neg[..]].concat();
-        Tensor::from_vec(all_timestamps, (2, height as usize, width as usize), &*DEVICE)
+        Tensor::from_vec(all_timestamps, (2, height, width), &DEVICE)
     } else {
         // Combine both polarities, taking the most recent timestamp
         let mut timestamps = vec![0f32; width * height];
@@ -177,7 +173,7 @@ pub fn events_to_timestamp_image(
                 timestamps_neg[i]
             };
         }
-        Tensor::from_vec(timestamps, (1, height as usize, width as usize), &*DEVICE)
+        Tensor::from_vec(timestamps, (1, height, width), &DEVICE)
     }
 }
 
@@ -215,14 +211,14 @@ pub fn events_to_count_image(
         let counts_neg_f32: Vec<f32> = counts_neg.iter().map(|&x| x as f32).collect();
 
         let all_counts = [&counts_pos_f32[..], &counts_neg_f32[..]].concat();
-        Tensor::from_vec(all_counts, (2, height as usize, width as usize), &*DEVICE)
+        Tensor::from_vec(all_counts, (2, height, width), &DEVICE)
     } else {
         // Create a single-channel image with combined counts
         let mut counts = vec![0f32; width * height];
         for i in 0..counts.len() {
             counts[i] = (counts_pos[i] + counts_neg[i]) as f32;
         }
-        Tensor::from_vec(counts, (1, height as usize, width as usize), &*DEVICE)
+        Tensor::from_vec(counts, (1, height, width), &DEVICE)
     }
 }
 
@@ -246,7 +242,7 @@ pub fn events_to_frame(
     let mut frame = vec![0f32; width * height];
 
     if events.is_empty() {
-        return Tensor::from_vec(frame, (1, height as usize, width as usize), &*DEVICE);
+        return Tensor::from_vec(frame, (1, height, width), &DEVICE);
     }
 
     // Accumulate based on method
@@ -293,7 +289,7 @@ pub fn events_to_frame(
         }
     }
 
-    Tensor::from_vec(frame, (1, height as usize, width as usize), &*DEVICE)
+    Tensor::from_vec(frame, (1, height, width), &DEVICE)
 }
 
 /// Create a time window representation of events
@@ -349,10 +345,16 @@ pub fn events_to_time_windows(
             } else {
                 // Add empty tensor if no events in window
                 let tensor = match representation {
-                    "voxel" => {
-                        Tensor::zeros((5, resolution.1 as usize, resolution.0 as usize), DType::F32, &*DEVICE)?
-                    }
-                    _ => Tensor::zeros((1, resolution.1 as usize, resolution.0 as usize), DType::F32, &*DEVICE)?,
+                    "voxel" => Tensor::zeros(
+                        (5, resolution.1 as usize, resolution.0 as usize),
+                        DType::F32,
+                        &DEVICE,
+                    )?,
+                    _ => Tensor::zeros(
+                        (1, resolution.1 as usize, resolution.0 as usize),
+                        DType::F32,
+                        &DEVICE,
+                    )?,
                 };
                 result.push(tensor);
             }
@@ -387,8 +389,9 @@ pub mod python {
     /// Python binding for voxel grid conversion
     #[pyfunction]
     #[pyo3(name = "events_to_voxel_grid")]
-    pub fn events_to_voxel_grid_py<'py>(
-        py: Python<'py>,
+    #[allow(clippy::too_many_arguments)]
+    pub fn events_to_voxel_grid_py(
+        py: Python<'_>,
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
         ts: PyReadonlyArray1<f64>,
