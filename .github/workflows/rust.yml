@@ -62,6 +62,10 @@ jobs:
           uv venv --python "${{ matrix.python-version }}"  # create .venv, set VIRTUAL_ENV
           source .venv/bin/activate
 
+      - name: Set PYO3_PYTHON for PyO3 compatibility
+        run: |
+          echo "PYO3_PYTHON=$(pwd)/.venv/bin/python" >> $GITHUB_ENV
+
       - name: Install Rust target for arm64
         run: rustup target add aarch64-apple-darwin
 
