@@ -14,19 +14,19 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    # Only run if the Rust workflow completed successfully
+    # Only run if the Tag Version  workflow completed successfully
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       # Check all files for linting and formatting one last time
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Fetch all history for tags
-
-      - uses: pre-commit/action@v3.0.1
-        with:
-          extra_args: run --all-files
 
       # Debug step to understand workflow context
       - name: Debug workflow context
@@ -38,24 +38,21 @@ jobs:
           if [[ -n "${{ secrets.PYPI_API_TOKEN }}" ]]; then echo "PYPI_API_TOKEN is available"; else echo "PYPI_API_TOKEN is missing"; fi
           if [[ -n "${{ secrets.CRATES_IO_API_TOKEN }}" ]]; then echo "CRATES_IO_API_TOKEN is available"; else echo "CRATES_IO_API_TOKEN is missing"; fi
 
-      # Build wheel before publishing
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      # Install HDF5 deps on host (needed for building)
-      - name: Install HDF5 & pkg-config
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config
-
       # Install uv & create .venv
       - name: Install uv & create venv
         run: |
           pip install uv
           uv venv
           source .venv/bin/activate
+          uv pip install pre-commit
+          pre-commit
+          pre-commit run --all-files
+
+      # Install HDF5 deps on host (needed for building)
+      - name: Install HDF5 & pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
 
       # Install maturin inside the venv
       - name: Install maturin
