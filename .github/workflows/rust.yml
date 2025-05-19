@@ -67,8 +67,10 @@ jobs:
 
       - name: Set environment for Rust build
         run: |
-          export CARGO_BUILD_RUSTFLAGS="-C link-arg=-arch -C link-arg=arm64"
-          echo "CARGO_BUILD_RUSTFLAGS=-C link-arg=-arch -C link-arg=arm64" >> $GITHUB_ENV
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            export CARGO_BUILD_RUSTFLAGS="-C link-arg=-arch -C link-arg=arm64"
+            echo "CARGO_BUILD_RUSTFLAGS=-C link-arg=-arch -C link-arg=arm64" >> $GITHUB_ENV
+          fi
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
