@@ -76,7 +76,7 @@ docs/_build/
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
 
 # Thumbnails
 ._*
@@ -718,3 +718,6 @@ par-*
 
 tests/*.mp4
 tests/*.png
+
+# Temporary Cargo config for Python linking
+.cargo/config.toml

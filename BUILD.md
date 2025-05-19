@@ -47,9 +47,33 @@ dependency versions for reproducible installs. The uv.lock file should be
 committed to version control to ensure consistent environments across all
 development machines.
 
+## Building with Cargo
+
+For direct cargo builds, use the provided build script which handles Python integration:
+
+```bash
+# Make sure the script is executable
+chmod +x build.sh
+
+# Run the build script (uses activated virtual environment)
+./build.sh
+```
+
+This script automatically:
+1. Detects your Python installation from the active virtual environment
+2. Finds the correct Python library and include paths
+3. Sets up the necessary environment variables for building with PyO3
+4. Builds the project with the python feature enabled
+
+For development builds without the release optimization:
+
+```bash
+./build.sh --debug
+```
+
 ## Building with Maturin
 
-[Maturin](https://github.com/PyO3/maturin) is used to build the Rust extension module.
+Alternatively, [Maturin](https://github.com/PyO3/maturin) can be used to build the Rust extension module.
 
 ### Development Build
 
@@ -168,4 +192,3 @@ You can also install the built wheels locally using uv:
 ```bash
 uv pip install target/wheels/*.whl
 ```
-

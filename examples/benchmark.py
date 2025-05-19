@@ -42,29 +42,23 @@ def python_events_to_block_parallel(xs, ys, ts, ps, num_cores):
     n = len(xs)
     chunk_size = n // num_cores
     chunks = []
-    
+
     # Create chunks of data
     for i in range(num_cores):
         start = i * chunk_size
         end = start + chunk_size if i < num_cores - 1 else n
-        chunks.append((
-            xs[start:end],
-            ys[start:end],
-            ts[start:end],
-            ps[start:end]
-        ))
-    
+        chunks.append((xs[start:end], ys[start:end], ts[start:end], ps[start:end]))
+
     # Process chunks in parallel
     with ProcessPoolExecutor(max_workers=num_cores) as executor:
         results = list(executor.map(python_events_to_block_chunk, chunks))
-    
+
     # Combine results
     return np.vstack(results)
 
 
 def python_add_random_events(xs, ys, ts, ps, to_add):
     """Pure Python implementation of add_random_events"""
-    n = len(xs)
     max_x = max(xs)
     max_y = max(ys)
     min_ts = min(ts)
@@ -107,28 +101,25 @@ def python_add_random_events_parallel(xs, ys, ts, ps, to_add, num_cores):
     max_y = max(ys)
     min_ts = min(ts)
     max_ts = max(ts)
-    
+
     # Divide the work
     chunk_size = to_add // num_cores
-    
+
     # Create partial function with fixed parameters
-    generate_chunk = partial(
-        _generate_random_events_chunk, 
-        max_x, max_y, min_ts, max_ts
-    )
-    
+    generate_chunk = partial(_generate_random_events_chunk, max_x, max_y, min_ts, max_ts)
+
     # Generate chunks in parallel
     chunks = []
     with ProcessPoolExecutor(max_workers=num_cores) as executor:
         chunk_sizes = [chunk_size] * (num_cores - 1) + [to_add - (num_cores - 1) * chunk_size]
         chunks = list(executor.map(generate_chunk, chunk_sizes))
-    
+
     # Combine chunks
     new_xs = np.concatenate([chunk[0] for chunk in chunks])
     new_ys = np.concatenate([chunk[1] for chunk in chunks])
     new_ts = np.concatenate([chunk[2] for chunk in chunks])
     new_ps = np.concatenate([chunk[3] for chunk in chunks])
-    
+
     # Merge with original events
     merged_xs = np.concatenate([xs, new_xs])
     merged_ys = np.concatenate([ys, new_ys])
@@ -162,29 +153,31 @@ def python_flip_events_x_parallel(xs, ys, ts, ps, sensor_resolution, num_cores):
     n = len(xs)
     chunk_size = n // num_cores
     chunks = []
-    
+
     # Create chunks of data
     for i in range(num_cores):
         start = i * chunk_size
         end = start + chunk_size if i < num_cores - 1 else n
-        chunks.append((
-            xs[start:end],
-            ys[start:end],
-            ts[start:end],
-            ps[start:end],
-            sensor_resolution
-        ))
-    
+        chunks.append(
+            (
+                xs[start:end],
+                ys[start:end],
+                ts[start:end],
+                ps[start:end],
+                sensor_resolution,
+            )
+        )
+
     # Process chunks in parallel
     with ProcessPoolExecutor(max_workers=num_cores) as executor:
         results = list(executor.map(python_flip_events_x_chunk, chunks))
-    
+
     # Combine results
     flipped_xs = np.concatenate([res[0] for res in results])
     flipped_ys = np.concatenate([res[1] for res in results])
     flipped_ts = np.concatenate([res[2] for res in results])
     flipped_ps = np.concatenate([res[3] for res in results])
-    
+
     return flipped_xs, flipped_ys, flipped_ts, flipped_ps
 
 
@@ -203,7 +196,7 @@ def benchmark_function(func, *args, iterations=10):
 
 def main():
     print("evlib benchmark")
-    
+
     # Number of cores for multi-core benchmarks
     num_cores = 10
     print(f"System has {multiprocessing.cpu_count()} CPU cores available")
@@ -220,10 +213,10 @@ def main():
     ps = np.random.choice([-1, 1], size=num_events).astype(np.int64)
 
     print("\n=== Single-Core Benchmarks ===")
-    
+
     # Store benchmark results for summary table
     benchmark_results = {}
-    
+
     # Benchmark events_to_block (single-core)
     print("\nBenchmarking events_to_block (single-core)...")
     py_time_block_single, py_result = benchmark_function(python_events_to_block, xs, ys, ts, ps)
@@ -237,9 +230,13 @@ def main():
     py_sum = np.sum(py_result)
     rust_sum = np.sum(rust_result)
     print(f"Results match: {np.isclose(py_sum, rust_sum)}")
-    
+
     # Store results
-    benchmark_results["events_to_block"] = (py_time_block_single, None, rust_time_block_single)
+    benchmark_results["events_to_block"] = (
+        py_time_block_single,
+        None,
+        rust_time_block_single,
+    )
 
     # Benchmark add_random_events (single-core)
     print("\nBenchmarking add_random_events (single-core)...")
@@ -257,9 +254,13 @@ def main():
     print(f"Rust implementation: {rust_time_add_single:.6f} seconds")
     print(f"Speedup: {py_time_add_single / rust_time_add_single:.2f}x")
     print(f"Output length: Python={len(py_xs)}, Rust={len(rust_xs)}")
-    
+
     # Store results
-    benchmark_results["add_random_events"] = (py_time_add_single, None, rust_time_add_single)
+    benchmark_results["add_random_events"] = (
+        py_time_add_single,
+        None,
+        rust_time_add_single,
+    )
 
     # Benchmark flip_events_x (single-core)
     print("\nBenchmarking flip_events_x (single-core)...")
@@ -276,12 +277,16 @@ def main():
     print(f"Python implementation: {py_time_flip_single:.6f} seconds")
     print(f"Rust implementation: {rust_time_flip_single:.6f} seconds")
     print(f"Speedup: {py_time_flip_single / rust_time_flip_single:.2f}x")
-    
+
     # Store results
-    benchmark_results["flip_events_x"] = (py_time_flip_single, None, rust_time_flip_single)
-    
+    benchmark_results["flip_events_x"] = (
+        py_time_flip_single,
+        None,
+        rust_time_flip_single,
+    )
+
     print("\n=== Multi-Core Benchmarks ({} cores) ===".format(num_cores))
-    
+
     # Benchmark events_to_block (multi-core)
     print("\nBenchmarking events_to_block (multi-core)...")
     py_time_block_multi, py_result_multi = benchmark_function(
@@ -291,15 +296,21 @@ def main():
     print(f"Python multi-core implementation: {py_time_block_multi:.6f} seconds")
     print(f"Python speedup (multi-core vs single-core): {py_time_block_single / py_time_block_multi:.2f}x")
     print(f"Rust implementation (single-core): {rust_time_block_single:.6f} seconds")
-    print(f"Speedup (Rust single-core vs Python multi-core): {py_time_block_multi / rust_time_block_single:.2f}x")
+    print(
+        f"Speedup (Rust single-core vs Python multi-core): {py_time_block_multi / rust_time_block_single:.2f}x"
+    )
 
     # Verify multi-core results match
     py_sum_multi = np.sum(py_result_multi)
     print(f"Multi-core results match single-core: {np.isclose(py_sum, py_sum_multi)}")
-    
+
     # Update benchmark results
-    benchmark_results["events_to_block"] = (py_time_block_single, py_time_block_multi, rust_time_block_single)
-    
+    benchmark_results["events_to_block"] = (
+        py_time_block_single,
+        py_time_block_multi,
+        rust_time_block_single,
+    )
+
     # Benchmark add_random_events (multi-core)
     print("\nBenchmarking add_random_events (multi-core)...")
     py_time_add_multi, (py_xs_multi, py_ys_multi, py_ts_multi, py_ps_multi) = benchmark_function(
@@ -311,10 +322,14 @@ def main():
     print(f"Rust implementation (single-core): {rust_time_add_single:.6f} seconds")
     print(f"Speedup (Rust single-core vs Python multi-core): {py_time_add_multi / rust_time_add_single:.2f}x")
     print(f"Output length: Python multi-core={len(py_xs_multi)}")
-    
+
     # Update benchmark results
-    benchmark_results["add_random_events"] = (py_time_add_single, py_time_add_multi, rust_time_add_single)
-    
+    benchmark_results["add_random_events"] = (
+        py_time_add_single,
+        py_time_add_multi,
+        rust_time_add_single,
+    )
+
     # Benchmark flip_events_x (multi-core)
     print("\nBenchmarking flip_events_x (multi-core)...")
     py_time_flip_multi, py_flip_multi = benchmark_function(
@@ -324,19 +339,29 @@ def main():
     print(f"Python multi-core implementation: {py_time_flip_multi:.6f} seconds")
     print(f"Python speedup (multi-core vs single-core): {py_time_flip_single / py_time_flip_multi:.2f}x")
     print(f"Rust implementation (single-core): {rust_time_flip_single:.6f} seconds")
-    print(f"Speedup (Rust single-core vs Python multi-core): {py_time_flip_multi / rust_time_flip_single:.2f}x")
-    
+    print(
+        f"Speedup (Rust single-core vs Python multi-core): {py_time_flip_multi / rust_time_flip_single:.2f}x"
+    )
+
     # Update benchmark results
-    benchmark_results["flip_events_x"] = (py_time_flip_single, py_time_flip_multi, rust_time_flip_single)
-    
+    benchmark_results["flip_events_x"] = (
+        py_time_flip_single,
+        py_time_flip_multi,
+        rust_time_flip_single,
+    )
+
     # Summary table
     print("\n=== Summary ===")
-    print("Operation\t| Python (1 core)\t| Python (10 cores)\t| Rust (1 core)\t| Rust vs Py (1 core)\t| Rust vs Py (10 cores)")
+    print(
+        "Operation\t| Python (1 core)\t| Python (10 cores)\t| Rust (1 core)\t| Rust vs Py (1 core)\t| Rust vs Py (10 cores)"
+    )
     print("-" * 110)
-    
+
     # Print summary table
     for op, (py_single, py_multi, rust_single) in benchmark_results.items():
-        print(f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {rust_single:.6f} s\t| {py_single / rust_single:.2f}x\t| {py_multi / rust_single:.2f}x")
+        print(
+            f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {rust_single:.6f} s\t| {py_single / rust_single:.2f}x\t| {py_multi / rust_single:.2f}x"
+        )
 
 
 if __name__ == "__main__":

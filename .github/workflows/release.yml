@@ -1,24 +1,75 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  workflow_run:
+    workflows: ["Tag Version"]
+    types:
+      - completed
+    branches: [main, master]
+
+# Add explicit permissions
+permissions:
+  contents: write
+  id-token: write # Needed for trusted publishing
 
 jobs:
   publish:
+    # Only run if the Tag Version  workflow completed successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
+      # Check all files for linting and formatting one last time
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for tags
 
-      # 1) Publish wheels to PyPI
+      # Debug step to understand workflow context
+      - name: Debug workflow context
+        run: |
+          echo "Tag triggered: ${{ github.ref }}"
+          echo "Tag name: ${{ github.ref_name }}"
+          git tag -l
+          echo "Checking secrets availability (won't print values):"
+          if [[ -n "${{ secrets.PYPI_API_TOKEN }}" ]]; then echo "PYPI_API_TOKEN is available"; else echo "PYPI_API_TOKEN is missing"; fi
+          if [[ -n "${{ secrets.CRATES_IO_API_TOKEN }}" ]]; then echo "CRATES_IO_API_TOKEN is available"; else echo "CRATES_IO_API_TOKEN is missing"; fi
+
+      # Install HDF5 deps on host (needed for building)
+      - name: Install HDF5 & pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+
+      # Install uv & create .venv
+      - name: Install uv & create venv
+        run: |
+          pip install uv
+          uv venv
+          source .venv/bin/activate
+          uv pip install pre-commit
+          pre-commit
+          pre-commit run --all-files
+
+      # Install maturin inside the venv
+      - name: Install maturin
+        run: uv pip install maturin
+
+      # Build the wheels
+      - name: Build wheels with maturin
+        run: uv run maturin build --release
+
+      # Publish wheels to PyPI
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           username: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-      # 2) Publish Rust crate(s) to crates.io
+      # Publish Rust crate(s) to crates.io
       - name: Publish to crates.io
         uses: katyo/publish-crates@v2
         with:

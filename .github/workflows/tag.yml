@@ -1,21 +1,46 @@
 name: Tag Version
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Rust"]
+    types:
+      - completed
     branches: [main, master]
-    paths:
-      - "Cargo.toml"
+
+permissions:
+  contents: write
 
 jobs:
   check-version-and-tag:
     runs-on: ubuntu-latest
+    # Only run if the Rust workflow completed successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2 # Need history to compare changes
 
+      - name: Check if Cargo.toml was changed
+        id: check_cargo_toml
+        run: |
+          # Get the list of changed files in the triggering event
+          git fetch origin ${{ github.event.workflow_run.head_branch }}
+          git checkout ${{ github.event.workflow_run.head_sha }}
+
+          # Check if Cargo.toml was among the changed files
+          CARGO_CHANGED=$(git diff --name-only HEAD^ HEAD | grep -c "Cargo.toml" || true)
+
+          if [ "$CARGO_CHANGED" -gt 0 ]; then
+            echo "Cargo.toml was changed"
+            echo "cargo_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Cargo.toml was not changed"
+            echo "cargo_changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Check for version change and create tag
+        if: steps.check_cargo_toml.outputs.cargo_changed == 'true'
         run: |
           # Get the current and previous Cargo.toml content
           git diff HEAD^ HEAD -- Cargo.toml > cargo_diff.txt

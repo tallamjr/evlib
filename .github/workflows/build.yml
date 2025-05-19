@@ -3,7 +3,9 @@ name: Maturin Build
 on:
   push:
     branches: [main, master]
-    tags: ["*"]
+    tags:
+      - "*"
+      - "!v*.*.*"  # Exclude version tags as they're handled by release.yml
   pull_request:
   workflow_dispatch:
 
@@ -50,6 +52,12 @@ jobs:
       - name: Install maturin
         run: uv pip install maturin # uv pip => installs into .venv
 
-      # 5) Build & install the extension
-      - name: Develop with maturin
+      # 5) Build & install the extension - first try build.sh, then fallback to maturin
+      - name: Build with build.sh
+        run: |
+          chmod +x ./build.sh
+          ./build.sh || echo "Direct build failed, falling back to maturin"
+
+      - name: Develop with maturin (fallback)
+        if: ${{ failure() }}
         run: uv run maturin develop --release # uv run => activates .venv, satisfies maturin develop
