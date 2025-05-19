@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   publish:
-    # Only run if the Tag Version  workflow completed successfully
+    # Only run if the Tag Version workflow completed successfully
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     strategy:
@@ -44,6 +44,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libhdf5-dev pkg-config
 
+      # Set up Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Set up Rust
+      - uses: dtolnay/rust-toolchain@stable
+
       # Install uv & create .venv
       - name: Install uv & create venv
         run: |
@@ -60,16 +68,24 @@ jobs:
 
       # Build the wheels
       - name: Build wheels with maturin
-        run: uv run maturin build --release
+        run: |
+          source .venv/bin/activate
+          maturin build --release
 
-      # Publish wheels to PyPI
+      # Build sdist
+      - name: Build sdist
+        run: |
+          source .venv/bin/activate
+          maturin sdist
+
+      # Publish to PyPI
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          username: __token__
+          packages-dir: target/wheels
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-      # Publish Rust crate(s) to crates.io
+      # Publish Rust crate to crates.io
       - name: Publish to crates.io
         uses: katyo/publish-crates@v2
         with:
