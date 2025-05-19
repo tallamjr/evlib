@@ -1,0 +1,43 @@
+name: Tag Version
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "Cargo.toml"
+
+jobs:
+  check-version-and-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # Need history to compare changes
+
+      - name: Check for version change and create tag
+        run: |
+          # Get the current and previous Cargo.toml content
+          git diff HEAD^ HEAD -- Cargo.toml > cargo_diff.txt
+
+          # Check if version was changed
+          if grep -q '^\+version =' cargo_diff.txt; then
+            # Extract the new version
+            VERSION=$(grep '^version =' Cargo.toml | cut -d '"' -f2)
+            echo "Found new version: $VERSION"
+
+            # Check if tag already exists
+            if ! git ls-remote --tags origin | grep -q "refs/tags/v$VERSION"; then
+              # Create and push the tag
+              git config --local user.email "actions@github.com"
+              git config --local user.name "GitHub Actions"
+              echo "Creating tag v$VERSION"
+              git tag -a "v$VERSION" -m "Release version $VERSION"
+              git push origin "v$VERSION"
+              echo "Successfully pushed tag v$VERSION"
+            else
+              echo "Tag v$VERSION already exists, skipping"
+            fi
+          else
+            echo "No version change detected in Cargo.toml"
+          fi
