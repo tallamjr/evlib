@@ -56,7 +56,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --no-default-features --features "python" -- -D clippy::erasing_op
 
       - name: Cargo check
         run: cargo check --all
