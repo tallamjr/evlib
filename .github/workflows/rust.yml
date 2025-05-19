@@ -90,4 +90,6 @@ jobs:
         run: cargo check --all
 
       - name: Cargo build
-        run: cargo build --release
+        run: |
+          chmod +x ./build.sh
+          ./build.sh
