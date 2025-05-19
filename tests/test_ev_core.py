@@ -67,9 +67,7 @@ def test_merge_events_multiple():
     )
 
     # Merge events - the correct format is a tuple of tuples
-    merged_xs, merged_ys, merged_ts, merged_ps = merge_events(
-        (events1, events2, events3)
-    )
+    merged_xs, merged_ys, merged_ts, merged_ps = merge_events((events1, events2, events3))
 
     # Check lengths
     assert len(merged_xs) == 6
@@ -155,4 +153,3 @@ def test_merge_events_empty():
     assert np.array_equal(merged_ys, events3[1])
     assert np.array_equal(merged_ts, events3[2])
     assert np.array_equal(merged_ps, events3[3])
-

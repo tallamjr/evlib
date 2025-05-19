@@ -117,16 +117,14 @@ def main():
     print(f"Created {num_events} synthetic events")
 
     # Display original events
-    fig = visualize_events([(xs, ys, ts, ps)], ["Original Events"])
+    visualize_events([(xs, ys, ts, ps)], ["Original Events"])
     plt.show()
 
     # Apply augmentations
     print("\nApplying augmentations...")
 
     # Add random events
-    xs_rand, ys_rand, ts_rand, ps_rand = evlib.add_random_events(
-        xs, ys, ts, ps, to_add=200
-    )
+    xs_rand, ys_rand, ts_rand, ps_rand = evlib.add_random_events(xs, ys, ts, ps, to_add=200)
     print(f"Added random events. New count: {len(xs_rand)}")
 
     # Add correlated events
@@ -143,12 +141,12 @@ def main():
         ts,
         ps,
         sensor_resolution=sensor_resolution,
-        theta_radians=np.radians(45)
+        theta_radians=np.radians(45),
     )
     print("Rotated events by 45 degrees")
 
     # Visualize augmented events
-    fig = visualize_events(
+    visualize_events(
         [
             (xs, ys, ts, ps),
             (xs_rand, ys_rand, ts_rand, ps_rand),
@@ -171,11 +169,11 @@ def main():
     # Create voxel grid
     try:
         # Flatten the arrays for the voxel grid function
-        xs_flat = xs.flatten() if hasattr(xs, 'flatten') else xs
-        ys_flat = ys.flatten() if hasattr(ys, 'flatten') else ys
-        ts_flat = ts.flatten() if hasattr(ts, 'flatten') else ts
-        ps_flat = ps.flatten() if hasattr(ps, 'flatten') else ps
-        
+        xs_flat = xs.flatten() if hasattr(xs, "flatten") else xs
+        ys_flat = ys.flatten() if hasattr(ys, "flatten") else ys
+        ts_flat = ts.flatten() if hasattr(ts, "flatten") else ts
+        ps_flat = ps.flatten() if hasattr(ps, "flatten") else ps
+
         # Convert to voxel grid using evlib function
         voxel_grid = evlib.representations.events_to_voxel_grid_py(
             xs_flat, ys_flat, ts_flat, ps_flat, 5, sensor_resolution, "count"
@@ -192,7 +190,7 @@ def main():
     print(f"Created voxel grid with shape: {voxel_grid.shape}")
 
     # Visualize voxel grid
-    fig = visualize_voxel_grid(voxel_grid)
+    visualize_voxel_grid(voxel_grid)
     plt.show()
 
     print("\nExample completed successfully!")
@@ -200,4 +198,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

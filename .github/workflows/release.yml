@@ -9,16 +9,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Check all files for linting and formatting one last time
       - uses: actions/checkout@v4
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: run --all-files
 
-      # 1) Publish wheels to PyPI
+      # Publish wheels to PyPI
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           username: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-      # 2) Publish Rust crate(s) to crates.io
+      # Publish Rust crate(s) to crates.io
       - name: Publish to crates.io
         uses: katyo/publish-crates@v2
         with:

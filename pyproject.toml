@@ -61,3 +61,6 @@ include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.black]
+line-length = 110

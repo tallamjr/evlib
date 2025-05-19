@@ -14,9 +14,7 @@ import numpy as np
 import evlib
 
 # Set data path to slider_depth dataset
-data_path = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), "../data/slider_depth/"
-)
+data_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../data/slider_depth/")
 
 test_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -96,9 +94,7 @@ def test_single_frame_reconstruction():
             print(f"Traceback: {type(e).__name__}")
 
 
-def custom_multi_frame_reconstruction(
-    xs, ys, ts, ps, height, width, num_frames, num_bins
-):
+def custom_multi_frame_reconstruction(xs, ys, ts, ps, height, width, num_frames, num_bins):
     """
     Custom function to reconstruct multiple frames from events
 
@@ -205,12 +201,8 @@ def test_multi_frame_reconstruction():
                     axes[i].axis("off")
 
                 plt.tight_layout()
-                plt.savefig(
-                    f"{test_path}/multi_frame_recon_f{num_frames}_b{num_bins}.png"
-                )
-                print(
-                    f"Saved visualization to multi_frame_recon_f{num_frames}_b{num_bins}.png"
-                )
+                plt.savefig(f"{test_path}/multi_frame_recon_f{num_frames}_b{num_bins}.png")
+                print(f"Saved visualization to multi_frame_recon_f{num_frames}_b{num_bins}.png")
 
             except Exception as e:
                 print(f"Error: {e}")
@@ -220,4 +212,3 @@ def test_multi_frame_reconstruction():
 if __name__ == "__main__":
     test_single_frame_reconstruction()
     test_multi_frame_reconstruction()
-

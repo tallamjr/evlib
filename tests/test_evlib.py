@@ -45,9 +45,7 @@ def test_merge_events():
     ps2 = np.array([1, -1], dtype=np.int64)
 
     # Merge events
-    merged_xs, merged_ys, merged_ts, merged_ps = merge_events(
-        ((xs1, ys1, ts1, ps1), (xs2, ys2, ts2, ps2))
-    )
+    merged_xs, merged_ys, merged_ts, merged_ps = merge_events(((xs1, ys1, ts1, ps1), (xs2, ys2, ts2, ps2)))
 
     # Check merged results
     assert len(merged_xs) == 4
@@ -90,9 +88,7 @@ def test_add_random_events():
     assert np.all(np.isin(new_ps, [1, -1]))
 
     # The implementation always merges events, even with sort=False
-    new_xs, new_ys, new_ts, new_ps = add_random_events(
-        xs, ys, ts, ps, to_add, sort=False
-    )
+    new_xs, new_ys, new_ts, new_ps = add_random_events(xs, ys, ts, ps, to_add, sort=False)
 
     # Check if result has merged events (original + added)
     assert len(new_xs) == len(xs) + to_add
@@ -170,9 +166,7 @@ def test_add_correlated_events():
     assert len(new_ps) == to_add
 
     # Check with adding noise
-    new_xs, new_ys, new_ts, new_ps = add_correlated_events(
-        xs, ys, ts, ps, to_add, add_noise=3
-    )
+    new_xs, new_ys, new_ts, new_ps = add_correlated_events(xs, ys, ts, ps, to_add, add_noise=3)
 
     # Check if the result has correct number of events (to_add + noise)
     assert len(new_xs) == len(xs) + to_add + 3
@@ -230,9 +224,7 @@ def test_clip_events_to_bounds():
     assert np.all(new_ys >= bounds[0]) and np.all(new_ys < bounds[1])
 
     # Test with set_zero=True
-    new_xs, new_ys, new_ts, new_ps = clip_events_to_bounds(
-        xs, ys, ts, ps, bounds, set_zero=True
-    )
+    new_xs, new_ys, new_ts, new_ps = clip_events_to_bounds(xs, ys, ts, ps, bounds, set_zero=True)
 
     # Check if out-of-bounds events are set to zero
     assert len(new_xs) == len(xs)

@@ -168,4 +168,3 @@ You can also install the built wheels locally using uv:
 ```bash
 uv pip install target/wheels/*.whl
 ```
-

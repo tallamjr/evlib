@@ -14,6 +14,6 @@ ps = np.array([1, -1, 1], dtype=np.int64)
 try:
     # Try with all the parameters explicit
     result = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 3, (100, 100), "count")
-    print('Success:', result.shape)
+    print("Success:", result.shape)
 except Exception as e:
-    print('Error:', e)
+    print("Error:", e)
