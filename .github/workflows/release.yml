@@ -38,6 +38,12 @@ jobs:
           if [[ -n "${{ secrets.PYPI_API_TOKEN }}" ]]; then echo "PYPI_API_TOKEN is available"; else echo "PYPI_API_TOKEN is missing"; fi
           if [[ -n "${{ secrets.CRATES_IO_API_TOKEN }}" ]]; then echo "CRATES_IO_API_TOKEN is available"; else echo "CRATES_IO_API_TOKEN is missing"; fi
 
+      # Install HDF5 deps on host (needed for building)
+      - name: Install HDF5 & pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+
       # Install uv & create .venv
       - name: Install uv & create venv
         run: |
@@ -47,12 +53,6 @@ jobs:
           uv pip install pre-commit
           pre-commit
           pre-commit run --all-files
-
-      # Install HDF5 deps on host (needed for building)
-      - name: Install HDF5 & pkg-config
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config
 
       # Install maturin inside the venv
       - name: Install maturin
