@@ -35,19 +35,22 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install HDF5 (macOS)
-        if: matrix.os == 'macos-latest'
+      # Install HDF5 deps on host
+      - name: Install HDF5 & pkg-config
         run: |
-          brew install hdf5
-          echo "HDF5_DIR=$(brew --prefix hdf5)" >> $GITHUB_ENV
-          echo "Adding HDF5 to PKG_CONFIG_PATH"
-          echo "PKG_CONFIG_PATH=$(brew --prefix hdf5)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-
-      - name: Install HDF5 (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            sudo apt-get update
+            sudo apt-get install -y libhdf5-dev pkg-config
+          else
+            brew update
+            brew install cmake
+            brew install hdf5@1.10
+            brew install pkgconf
+            H5P=$(brew --prefix hdf5@1.10)
+            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+          fi
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
