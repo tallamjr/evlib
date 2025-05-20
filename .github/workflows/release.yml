@@ -34,36 +34,36 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,aarch64-apple-darwin,x86_64-apple-darwin
+          targets: x86_64-unknown-linux-gnu # ,aarch64-unknown-linux-gnu,aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Install dependencies
-        run: |
-          brew update
-          brew install hdf5@1.10 pkg-config zig
-          H5P=$(brew --prefix hdf5@1.10)
-          echo "HDF5_DIR=${H5P}"       >> $GITHUB_ENV
-          echo "HDF5_ROOT=${H5P}"      >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-          echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
-
-      - name: Verify targets
-        run: rustup target list --installed
-
-      - name: Set up Docker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io
-          sudo systemctl start docker
-          sudo systemctl enable docker
-          docker --version
-
-      - name: Build for all targets
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-          cross build --target x86_64-unknown-linux-gnu --all-features
-          cross build --target aarch64-unknown-linux-gnu --all-features
-          cross build --target aarch64-apple-darwin --all-features
-          cross build --target x86_64-apple-darwin --all-features
+      # - name: Install dependencies
+      #   run: |
+      #     brew update
+      #     brew install hdf5@1.10 pkg-config zig
+      #     H5P=$(brew --prefix hdf5@1.10)
+      #     echo "HDF5_DIR=${H5P}"       >> $GITHUB_ENV
+      #     echo "HDF5_ROOT=${H5P}"      >> $GITHUB_ENV
+      #     echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+      #     echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
+      #
+      # - name: Verify targets
+      #   run: rustup target list --installed
+      #
+      # - name: Set up Docker
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y docker.io
+      #     sudo systemctl start docker
+      #     sudo systemctl enable docker
+      #     docker --version
+      #
+      # - name: Build for all targets
+      #   run: |
+      #     cargo install cross --git https://github.com/cross-rs/cross
+      #     cross build --target x86_64-unknown-linux-gnu --all-features
+      #     cross build --target aarch64-unknown-linux-gnu --all-features
+      #     cross build --target aarch64-apple-darwin --all-features
+      #     cross build --target x86_64-apple-darwin --all-features
 
       - name: Publish to crates.io
         run: cargo publish --all-features --allow-dirty
@@ -85,17 +85,17 @@ jobs:
             platform: linux-x86_64
             build_args: "--release --target x86_64-unknown-linux-gnu --manylinux 2014 --zig"
 
-          # Linux aarch64 (via Zig)
-          - name: aarch64-linux-gnu
-            rust_target: aarch64-unknown-linux-gnu
-            platform: linux-aarch64
-            build_args: "--release --target aarch64-unknown-linux-gnu --manylinux 2014 --zig"
-
+          # # Linux aarch64 (via Zig)
+          # - name: aarch64-linux-gnu
+          #   rust_target: aarch64-unknown-linux-gnu
+          #   platform: linux-aarch64
+          #   build_args: "--release --target aarch64-unknown-linux-gnu --manylinux 2014 --zig"
+          #
           # macOS universal2 (arm64 + x86_64)
-          - name: universal2
-            rust_target: aarch64-apple-darwin,x86_64-apple-darwin
-            platform: macos-universal2
-            build_args: "--release --target universal2-apple-darwin --zig"
+          # - name: universal2
+          #   rust_target: aarch64-apple-darwin,x86_64-apple-darwin
+          #   platform: macos-universal2
+          #   build_args: "--release --target universal2-apple-darwin --zig"
 
     steps:
       - uses: actions/checkout@v4
