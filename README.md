@@ -5,7 +5,7 @@
     </td>
     <td>
       <h1 style="margin: 0;">
-        <code>evlib</code>: <em>the</em> Event Vision Library
+        <code>evlib</code>: Event-Vision Library
       </h1>
     </td>
   </tr>
@@ -16,7 +16,10 @@
 [![PyPI Version](https://img.shields.io/pypi/v/evlib.svg)](https://pypi.org/project/evlib/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/evlib.svg)](https://pypi.org/project/evlib/)
 [![Python](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml)
+[![Rust](https://github.com/tallamjr/evlib/actions/workflows/rust.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/rust.yml)
+![Crates.io Version](https://img.shields.io/crates/v/evlib)
 [![Build](https://github.com/tallamjr/evlib/actions/workflows/build.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/build.yml)
+[![Release](https://github.com/tallamjr/evlib/actions/workflows/release.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/release.yml)
 [![Codecov](https://codecov.io/gh/tallamjr/evlib/branch/master/graph/badge.svg)](https://codecov.io/gh/tallamjr/evlib)
 [![License](https://img.shields.io/github/license/tallamjr/evlib)](https://github.com/tallamjr/evlib/blob/master/LICENSE.md)
 

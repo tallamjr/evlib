@@ -28,6 +28,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "numpy >= 1.24.0",
 ]
 
 dynamic = ["version"]
@@ -44,12 +45,11 @@ dev = [
     "twine",
 ]
 plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0"]
-numpy = ["numpy >= 1.24.0"]
 jupyter = ["jupyter >= 1.0.0"]
 
 # All
 all = [
-  "evlib[dev,plot,numpy,jupyter]",
+  "evlib[dev,plot,jupyter]",
 ]
 
 [tool.maturin]

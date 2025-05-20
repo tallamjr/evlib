@@ -49,12 +49,21 @@ jobs:
       - name: Verify targets
         run: rustup target list --installed
 
+      - name: Set up Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          docker --version
+
       - name: Build for all targets
         run: |
-          cargo build --target x86_64-unknown-linux-gnu --all-features
-          cargo build --target aarch64-unknown-linux-gnu --all-features
-          cargo build --target aarch64-apple-darwin --all-features
-          cargo build --target x86_64-apple-darwin --all-features
+          cargo install cross --git https://github.com/cross-rs/cross
+          cross build --target x86_64-unknown-linux-gnu --all-features
+          cross build --target aarch64-unknown-linux-gnu --all-features
+          cross build --target aarch64-apple-darwin --all-features
+          cross build --target x86_64-apple-darwin --all-features
 
       - name: Publish to crates.io
         run: cargo publish --all-features --allow-dirty
@@ -121,16 +130,6 @@ jobs:
           echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
           echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
-
-      - name: Setup Zig linker for Linux targets
-        if: contains(matrix.target.name, 'linux')
-        run: |
-          bash .github/scripts/setup-zig-linker.sh "${{ matrix.target.name }}" "${{ matrix.target.rust_target }}"
-          RUST_TARGET="${{ matrix.target.rust_target }}"
-          RUST_TARGET_UPPER=$(echo "$RUST_TARGET" | tr '[:lower:]' '[:upper:]')
-          RUST_TARGET_NO_DASH=$(echo "$RUST_TARGET_UPPER" | tr '-' '_')
-          echo "CARGO_TARGET_${RUST_TARGET_NO_DASH}_LINKER=$HOME/.cargo/bin/$RUST_TARGET-cc" >> $GITHUB_ENV
-          echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
 
       - uses: actions/setup-python@v5
         with:

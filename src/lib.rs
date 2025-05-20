@@ -1,6 +1,3 @@
-use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
-
 // Core modules
 pub mod ev_augmentation;
 pub mod ev_core;
@@ -13,10 +10,16 @@ pub mod ev_visualization;
 // Re-export core types for easier usage
 pub use ev_core::{Event, Events, DEVICE};
 
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3::wrap_pyfunction;
+
 /// A Python module implemented in Rust for event camera processing
 ///
 /// This library provides tools for working with event-based vision data,
 /// including data loading, augmentation, representations, and visualization.
+#[cfg(feature = "python")]
 #[pymodule]
 fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register helper functions
@@ -104,7 +107,14 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 /// Returns the version of the library
+#[cfg(feature = "python")]
 #[pyfunction]
 fn version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
+}
+
+/// Returns the version of the library (non-Python version)
+#[cfg(not(feature = "python"))]
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }

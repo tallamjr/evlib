@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.1.45"
+version         = "0.1.48"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "High-performance event-camera utilities with Python bindings via PyO3"
@@ -10,7 +10,16 @@ repository      = "https://github.com/tallamjr/evlib"
 homepage        = "https://github.com/tallamjr/evlib"
 documentation   = "https://docs.rs/evlib"
 keywords        = ["event-camera", "vision", "rust", "python", "pyo3"]
-categories      = ["science", "data-processing"]
+categories      = ["science", "multimedia"]
+exclude         = [
+    "data/**/*",
+    "dist/**/*",
+    "examples/**/*",
+    "python/**/*",
+    "tests/**/*",
+    "*.png",
+    "*.mp4",
+]
 
 [lib]
 name           = "evlib"

@@ -1,24 +1,18 @@
 import evlib
 
-print("\nImporting directly from evlib:")
-try:
-    # Try directly accessing evlib.formats.load_events
-    print("evlib.formats:", dir(evlib.formats))
-    print("evlib.formats.load_events exists:", hasattr(evlib.formats, "load_events"))
-    print("Type of evlib.formats.load_events:", type(evlib.formats.load_events))
 
-    # Try importing from evlib
+def test_evlib_import():
+    """Test that evlib can be imported."""
+    assert hasattr(evlib, "__version__")
 
-    print("Successfully imported load_events from evlib.formats")
-except Exception as e:
-    print(f"Error: {e}")
 
-print("\nWorkaround for testing:")
-try:
-    # Direct access seems to work
-    print("Testing direct access:")
+def test_evlib_formats():
+    """Test that evlib.formats submodule exists and has expected attributes."""
+    assert hasattr(evlib, "formats")
+    assert hasattr(evlib.formats, "load_events")
+    assert callable(evlib.formats.load_events)
+
+    # Test function attributes
     func = evlib.formats.load_events
-    print("Function name:", func.__name__)
-    print("Function module:", func.__module__)
-except Exception as e:
-    print(f"Error: {e}")
+    assert hasattr(func, "__name__")
+    assert func.__name__ == "load_events"
