@@ -14,115 +14,149 @@ permissions:
 jobs:
   publish-crate:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-publish-
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config
+          brew update
+          brew install hdf5@1.10 pkg-config zig
+          H5P=$(brew --prefix hdf5@1.10)
+          echo "HDF5_DIR=${H5P}"       >> $GITHUB_ENV
+          echo "HDF5_ROOT=${H5P}"      >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+          echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
+
+      - name: Verify targets
+        run: rustup target list --installed
+
+      - name: Build for all targets
+        run: |
+          cargo build --target x86_64-unknown-linux-gnu --all-features
+          cargo build --target aarch64-unknown-linux-gnu --all-features
+          cargo build --target aarch64-apple-darwin --all-features
+          cargo build --target x86_64-apple-darwin --all-features
 
       - name: Publish to crates.io
-        run: cargo publish --allow-dirty
+        run: cargo publish --all-features --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
 
   build-wheels:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    name: ${{ matrix.os }} - ${{ matrix.target }} - Py${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
+    name: macOS - ${{ matrix.target.name }} - Py${{ matrix.python-version }}
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
-        include:
-          # Linux x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+        target:
+          # Linux x86_64 (via Zig)
+          - name: x86_64-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
-            install_deps: sudo apt-get update && sudo apt-get install -y libhdf5-dev pkg-config
-            build_args: --release --target x86_64-unknown-linux-gnu
-            post_build: |
-              for whl in target/wheels/*.whl; do
-                if [[ "$whl" != *manylinux* ]]; then
-                  auditwheel repair "$whl" --plat manylinux2014_x86_64 -w target/wheels/
-                  rm "$whl"
-                fi
-              done
-            install_auditwheel: python -m pip install auditwheel
+            build_args: "--release --target x86_64-unknown-linux-gnu --manylinux 2014 --zig"
 
           # Linux aarch64 (via Zig)
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+          - name: aarch64-linux-gnu
+            rust_target: aarch64-unknown-linux-gnu
             platform: linux-aarch64
-            install_deps: |
-              sudo dpkg --add-architecture arm64
-              sudo apt-get update
-              sudo apt-get install -y libhdf5-dev pkg-config libhdf5-dev:arm64
-            build_args: --release --target aarch64-unknown-linux-gnu --zig
-            maturin_extra: pip install "maturin[zig]"
+            build_args: "--release --target aarch64-unknown-linux-gnu --manylinux 2014 --zig"
 
-          # macOS universal2
-          - os: macos-latest
-            target: universal2
+          # macOS universal2 (arm64 + x86_64)
+          - name: universal2
+            rust_target: aarch64-apple-darwin,x86_64-apple-darwin
             platform: macos-universal2
-            install_deps: |
-              brew update
-              brew install hdf5@1.10 pkg-config
-              H5P=$(brew --prefix hdf5@1.10)
-              echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
-              echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-            build_args: --release --universal2
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            build_args: "--release --target universal2-apple-darwin --zig"
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Install Rust with appropriate targets
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.target.name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target.name }}-
+
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_targets || matrix.target }}
+          targets: ${{ matrix.target.rust_target }}
 
-      # Install system dependencies
       - name: Install dependencies
-        run: ${{ matrix.install_deps }}
+        run: |
+          brew update
+          brew install cmake
+          brew install hdf5@1.10
+          brew install pkgconf
+          brew install zig
+          H5P=$(brew --prefix hdf5@1.10)
+          echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+          echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+          echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
 
-      # Setup Python
+      - name: Setup Zig linker for Linux targets
+        if: contains(matrix.target.name, 'linux')
+        run: |
+          bash .github/scripts/setup-zig-linker.sh "${{ matrix.target.name }}" "${{ matrix.target.rust_target }}"
+          RUST_TARGET="${{ matrix.target.rust_target }}"
+          RUST_TARGET_UPPER=$(echo "$RUST_TARGET" | tr '[:lower:]' '[:upper:]')
+          RUST_TARGET_NO_DASH=$(echo "$RUST_TARGET_UPPER" | tr '-' '_')
+          echo "CARGO_TARGET_${RUST_TARGET_NO_DASH}_LINKER=$HOME/.cargo/bin/$RUST_TARGET-cc" >> $GITHUB_ENV
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
 
-      # Install maturin and auditwheel if needed
       - name: Install build tools
         run: |
+          pip install --upgrade pip
           pip install uv
           uv venv
           source .venv/bin/activate
-          uv pip install maturin
-          ${{ matrix.maturin_extra }}
-          ${{ matrix.install_auditwheel }}
+          uv pip install "maturin[zig]>=1.4.0"
+          maturin --version
 
       # Build wheels
       - name: Build wheels
         run: |
           source .venv/bin/activate
-          maturin build ${{ matrix.build_args }} -i python${{ matrix.python-version }}
-          ${{ matrix.post_build }}
+          maturin build ${{ matrix.target.build_args }} --interpreter python${{ matrix.python-version }}
 
       # Upload wheels
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.platform }}-python${{ matrix.python-version }}
+          name: wheels-${{ matrix.target.platform }}-python${{ matrix.python-version }}
           path: target/wheels/*.whl
 
   publish-wheels:

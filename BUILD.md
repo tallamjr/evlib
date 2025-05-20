@@ -178,6 +178,41 @@ For manylinux wheels:
 maturin build --release --manylinux=2014
 ```
 
+## Cross-Compilation with Zig
+
+You can use Zig to cross-compile wheels for different platforms:
+
+1. Install Zig:
+   ```bash
+   # macOS
+   brew install zig
+
+   # Ubuntu/Debian
+   sudo apt-get update
+   sudo apt-get install -y wget
+   ZIG_VERSION="0.11.0"
+   wget -O zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+   sudo tar -xf zig.tar.xz -C /opt
+   sudo ln -sf /opt/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
+   ```
+
+2. Install Maturin with Zig support:
+   ```bash
+   pip install "maturin[zig]"
+   ```
+
+3. Build Linux wheels from macOS:
+   ```bash
+   maturin build --release --target x86_64-unknown-linux-gnu --manylinux 2014 --zig --interpreter python3.12
+   ```
+
+4. Build Linux ARM wheels from any platform:
+   ```bash
+   maturin build --release --target aarch64-unknown-linux-gnu --manylinux 2014 --zig --interpreter python3.12
+   ```
+
+This approach eliminates the need for Docker containers when cross-compiling and makes multi-platform wheel building much simpler.
+
 ## Publishing to PyPI
 
 First build the wheels and then use twine to upload:

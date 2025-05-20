@@ -55,8 +55,8 @@ jobs:
       # 5) Build & install the extension - first try build.sh, then fallback to maturin
       - name: Build with build.sh
         run: |
-          chmod +x ./build.sh
-          ./build.sh || echo "Direct build failed, falling back to maturin"
+          chmod +x .github/scripts/build.sh
+          .github/scripts/build.sh || echo "Direct build failed, falling back to maturin"
 
       - name: Develop with maturin (fallback)
         if: ${{ failure() }}

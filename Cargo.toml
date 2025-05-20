@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.1.39"
+version         = "0.1.45"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "High-performance event-camera utilities with Python bindings via PyO3"

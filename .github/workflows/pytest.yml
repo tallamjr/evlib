@@ -63,7 +63,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install .[all]
-          uv pip install pytest-nbmake
 
       - name: Build evlib
         run: |
