@@ -1,9 +1,13 @@
 // E2VID: Event to Video reconstruction implementation
 // Based on the paper "High Speed and High Dynamic Range Video with an Event Camera"
 
-use crate::ev_core::{Events, DEVICE};
+use crate::ev_core::Events;
+use crate::ev_processing::reconstruction::pytorch_loader::{
+    E2VidModelLoader, E2VidNet, ModelLoaderConfig,
+};
 use crate::ev_representations::voxel_grid::EventsToVoxelGrid;
-use candle_core::{DType, Result as CandleResult, Tensor};
+use candle_core::{DType, Device, Result as CandleResult, Tensor};
+use candle_nn::{Module, VarBuilder, VarMap};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -42,111 +46,21 @@ impl Default for E2VidConfig {
 
 /// A wrapper for event-based video reconstruction
 pub struct E2Vid {
-    #[allow(dead_code)]
     config: E2VidConfig,
-    #[allow(dead_code)]
     image_shape: (usize, usize),
     voxel_grid: EventsToVoxelGrid,
-    reconstructor: Option<ImageReconstructor>,
+    network: Option<E2VidNet>,
     last_output: Option<Tensor>,
+    device: Device,
 }
 
-// Forward declarations for the reconstructor
-struct ImageReconstructor {
-    // In a full implementation, this would use a neural network model
-    // Here, we implement a simplified version that accumulates event frames
-    image_height: usize,
-    image_width: usize,
-    #[allow(dead_code)]
-    num_bins: usize,
-    intensity_scale: f32,
-    intensity_offset: f32,
-    #[allow(dead_code)]
-    apply_filtering: bool,
-    #[allow(dead_code)]
-    alpha: f32,
-}
-
-impl ImageReconstructor {
-    pub fn new(
-        image_height: usize,
-        image_width: usize,
-        num_bins: usize,
-        intensity_scale: f32,
-        intensity_offset: f32,
-        apply_filtering: bool,
-        alpha: f32,
-    ) -> Self {
-        Self {
-            image_height,
-            image_width,
-            num_bins,
-            intensity_scale,
-            intensity_offset,
-            apply_filtering,
-            alpha,
-        }
-    }
-
-    pub fn update_reconstruction(&mut self, event_tensor: &Tensor) -> CandleResult<Tensor> {
-        // In a full implementation, this would apply a neural network
-        // Here we implement a simple accumulation method
-
-        // Sum along the time dimension (bin axis)
-        let event_frame = event_tensor.sum(0)?;
-
-        // Convert to CPU and get the data directly as Vec for manual processing
-        let data = event_frame.to_dtype(DType::F32)?.to_vec2()?;
-
-        // Process data manually - compute min/max
-        let mut min_val = f32::INFINITY;
-        let mut max_val = f32::NEG_INFINITY;
-
-        for row in &data {
-            for &val in row {
-                min_val = min_val.min(val);
-                max_val = max_val.max(val);
-            }
-        }
-
-        // If all values are the same, return constant image
-        if (max_val - min_val).abs() < 1e-6 {
-            let constant_val = self.intensity_offset;
-            let mut flat_data = Vec::with_capacity(self.image_height * self.image_width);
-
-            for _ in 0..(self.image_height * self.image_width) {
-                flat_data.push(constant_val);
-            }
-
-            return Tensor::from_vec(flat_data, (self.image_height, self.image_width), &DEVICE);
-        }
-
-        // Normalize data manually
-        let range = max_val - min_val;
-        let mut normalized_data = Vec::with_capacity(self.image_height * self.image_width);
-
-        for row in data {
-            for val in row {
-                // Normalize to [0,1]
-                let norm_val = (val - min_val) / range;
-
-                // Apply intensity scale and offset
-                let scaled_val = norm_val * self.intensity_scale + self.intensity_offset;
-
-                // Clamp to [0,1]
-                let clamped_val = scaled_val.clamp(0.0, 1.0);
-
-                normalized_data.push(clamped_val);
-            }
-        }
-
-        // Create tensor from normalized data
-        Tensor::from_vec(
-            normalized_data,
-            (self.image_height, self.image_width),
-            &DEVICE,
-        )
-    }
+/// E2VID reconstruction modes
+#[derive(Debug, Clone)]
+pub enum E2VidMode {
+    /// Use a real neural network loaded from PyTorch model
+    NeuralNetwork,
+    /// Use simple accumulation for testing/fallback
+    SimpleAccumulation,
 }
 
 impl E2Vid {
@@ -158,27 +72,64 @@ impl E2Vid {
     /// Create a new E2VID reconstruction engine with custom configuration
     pub fn with_config(image_height: usize, image_width: usize, config: E2VidConfig) -> Self {
         let image_shape = (image_height, image_width);
+        let device = if config.use_gpu {
+            // Note: This would need proper CUDA device initialization
+            Device::Cpu // Fallback to CPU for now
+        } else {
+            Device::Cpu
+        };
 
         // Create events to voxel grid converter
         let voxel_grid = EventsToVoxelGrid::new(config.num_bins, image_width, image_height);
-
-        // Create the reconstructor
-        let reconstructor = Some(ImageReconstructor::new(
-            image_height,
-            image_width,
-            config.num_bins,
-            config.intensity_scale,
-            config.intensity_offset,
-            config.apply_filtering,
-            config.alpha,
-        ));
 
         Self {
             config,
             image_shape,
             voxel_grid,
-            reconstructor,
+            network: None,
             last_output: None,
+            device,
+        }
+    }
+
+    /// Load neural network from PyTorch model file
+    pub fn load_model_from_file(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
+        let model_config = ModelLoaderConfig {
+            device: self.device.clone(),
+            dtype: DType::F32,
+            strict_loading: true,
+            verbose: false,
+        };
+
+        match E2VidModelLoader::load_from_pth(model_path, model_config) {
+            Ok(network) => {
+                self.network = Some(network);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Failed to load model: {:?}", e);
+                // Fall back to creating a network with random weights
+                self.create_default_network()
+            }
+        }
+    }
+
+    /// Create a default network with random weights for testing
+    pub fn create_default_network(&mut self) -> CandleResult<()> {
+        let var_map = VarMap::new();
+        let vs = VarBuilder::from_varmap(&var_map, DType::F32, &self.device);
+
+        match E2VidNet::new(&vs) {
+            Ok(network) => {
+                self.network = Some(network);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Failed to create default network: {:?}", e);
+                Err(candle_core::Error::Msg(
+                    "Failed to initialize network".to_string(),
+                ))
+            }
         }
     }
 
@@ -205,14 +156,92 @@ impl E2Vid {
         // Convert events to tensor representation
         let event_tensor = self.voxel_grid.process_events(events)?;
 
-        // Get the reconstructor
-        let reconstructor = self
-            .reconstructor
-            .as_mut()
-            .expect("Reconstructor not initialized");
+        // Ensure we have a network loaded
+        if self.network.is_none() {
+            self.create_default_network()?;
+        }
 
-        // Update the reconstruction
-        let output = reconstructor.update_reconstruction(&event_tensor)?;
+        // Get the network
+        let network = self
+            .network
+            .as_ref()
+            .expect("Network should be initialized");
+
+        // Add batch dimension if not present
+        let input_tensor = if event_tensor.dims().len() == 3 {
+            // Add batch dimension: (C, H, W) -> (1, C, H, W)
+            event_tensor.unsqueeze(0)?
+        } else {
+            event_tensor
+        };
+
+        // Run inference
+        let output = network.forward(&input_tensor)?;
+
+        // Remove batch dimension for output: (1, 1, H, W) -> (H, W)
+        let output = output.squeeze(0)?.squeeze(0)?;
+
+        // Apply intensity scaling and offset
+        let scaled_output = output.affine(
+            self.config.intensity_scale as f64,
+            self.config.intensity_offset as f64,
+        )?;
+
+        // Clamp to [0, 1] range
+        let clamped_output = scaled_output.clamp(0.0, 1.0)?;
+
+        // Save the output for reference
+        self.last_output = Some(clamped_output.clone());
+
+        Ok(clamped_output)
+    }
+
+    /// Process events with simple accumulation (fallback method)
+    pub fn process_events_simple(&mut self, events: &Events) -> CandleResult<Tensor> {
+        // Convert events to tensor representation
+        let event_tensor = self.voxel_grid.process_events(events)?;
+
+        // Simple accumulation method - sum along time dimension
+        let event_frame = event_tensor.sum(0)?;
+
+        // Convert to appropriate device and dtype
+        let event_frame = event_frame.to_device(&self.device)?.to_dtype(DType::F32)?;
+
+        // Get tensor data for normalization
+        let data = event_frame.to_vec2::<f32>()?;
+
+        // Compute min/max for normalization
+        let mut min_val = f32::INFINITY;
+        let mut max_val = f32::NEG_INFINITY;
+
+        for row in &data {
+            for &val in row {
+                min_val = min_val.min(val);
+                max_val = max_val.max(val);
+            }
+        }
+
+        // Normalize if there's any variation
+        let normalized_data = if (max_val - min_val).abs() < 1e-6 {
+            // All values are the same, return constant image
+            vec![self.config.intensity_offset; self.image_shape.0 * self.image_shape.1]
+        } else {
+            let range = max_val - min_val;
+            let mut normalized = Vec::with_capacity(self.image_shape.0 * self.image_shape.1);
+
+            for row in data {
+                for val in row {
+                    let norm_val = (val - min_val) / range;
+                    let scaled_val =
+                        norm_val * self.config.intensity_scale + self.config.intensity_offset;
+                    normalized.push(scaled_val.clamp(0.0, 1.0));
+                }
+            }
+            normalized
+        };
+
+        // Create output tensor
+        let output = Tensor::from_vec(normalized_data, self.image_shape, &self.device)?;
 
         // Save the output for reference
         self.last_output = Some(output.clone());
@@ -230,7 +259,7 @@ impl EventsToVoxelGrid {
         // If no events, return empty grid
         if events.is_empty() {
             let voxel_data = vec![0.0f32; self.num_bins * height * width];
-            return Tensor::from_vec(voxel_data, (self.num_bins, height, width), &DEVICE);
+            return Tensor::from_vec(voxel_data, (self.num_bins, height, width), &Device::Cpu);
         }
 
         // Initialize voxel grid (flattened array for simplicity)
@@ -270,6 +299,6 @@ impl EventsToVoxelGrid {
         }
 
         // Create tensor from voxel grid
-        Tensor::from_vec(voxel_grid, (self.num_bins, height, width), &DEVICE)
+        Tensor::from_vec(voxel_grid, (self.num_bins, height, width), &Device::Cpu)
     }
 }

@@ -4,6 +4,7 @@ pub mod ev_core;
 pub mod ev_formats;
 pub mod ev_processing;
 pub mod ev_representations;
+pub mod ev_tracking;
 pub mod ev_transforms;
 pub mod ev_visualization;
 
@@ -58,6 +59,10 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_representations::python::events_to_voxel_grid_py,
         py
     )?)?;
+    representations_submodule.add_function(wrap_pyfunction!(
+        ev_representations::python::events_to_smooth_voxel_grid_py,
+        py
+    )?)?;
     m.add_submodule(representations_submodule)?;
 
     // Register ev_formats module as "formats" in Python
@@ -97,6 +102,25 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         py
     )?)?;
     m.add_submodule(processing_submodule)?;
+
+    // Register ev_tracking module as "tracking" in Python
+    let tracking_submodule = PyModule::new(py, "tracking")?;
+    tracking_submodule.add_function(wrap_pyfunction!(
+        ev_tracking::python::extract_keypoints_from_mask_py,
+        py
+    )?)?;
+    tracking_submodule.add_function(wrap_pyfunction!(
+        ev_tracking::python::prepare_event_representation_py,
+        py
+    )?)?;
+    tracking_submodule.add_function(wrap_pyfunction!(
+        ev_tracking::python::track_points_mock_py,
+        py
+    )?)?;
+    tracking_submodule.add_class::<ev_tracking::python::PyPoint2D>()?;
+    tracking_submodule.add_class::<ev_tracking::python::PyQueryPoint>()?;
+    tracking_submodule.add_class::<ev_tracking::python::PyTrackResult>()?;
+    m.add_submodule(tracking_submodule)?;
 
     // No legacy functionality - all functions are registered in their respective modules
 

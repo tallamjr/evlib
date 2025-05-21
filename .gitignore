@@ -714,10 +714,14 @@ dkms.conf
 *.txz
 
 **/.claude/settings.local.json
-par-*
+**/.claude/*
+CLAUDE.md
 
 tests/*.mp4
 tests/*.png
 
 # Temporary Cargo config for Python linking
 .cargo/config.toml
+
+data/original/
+models/

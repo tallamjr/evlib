@@ -1,6 +1,7 @@
 // Representations module
 // Converting event streams into different tensor representations for ML and visualization
 
+pub mod smooth_voxel_grid;
 pub mod voxel_grid;
 
 use crate::ev_core::{Events, DEVICE};
@@ -399,7 +400,7 @@ pub mod python {
         num_bins: usize,
         resolution: Option<(i64, i64)>,
         voxel_method: Option<&str>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<(PyObject, (usize, usize, usize))> {
         // Convert to our internal types
         let events = from_numpy_arrays(xs, ys, ts, ps);
 
@@ -426,14 +427,73 @@ pub mod python {
             .to_vec1()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 
-        // Create numpy array with correct shape
+        // Get dimensions
         let dims = shape.dims();
-        let array = numpy::ndarray::Array::from_shape_vec(
-            (dims[0] as usize, dims[1] as usize, dims[2] as usize),
-            data,
+        let shape_tuple = (dims[0], dims[1], dims[2]);
+
+        // Create 1D flat array
+        let flat_array = numpy::ndarray::Array::from_vec(data);
+
+        // Return flat array and shape tuple
+        Ok((flat_array.into_pyarray(py).to_object(py), shape_tuple))
+    }
+
+    /// Python binding for smooth voxel grid conversion
+    #[pyfunction]
+    #[pyo3(name = "events_to_smooth_voxel_grid")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn events_to_smooth_voxel_grid_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+        num_bins: usize,
+        resolution: Option<(i64, i64)>,
+        interpolation: Option<&str>,
+    ) -> PyResult<(PyObject, (usize, usize, usize))> {
+        use crate::ev_representations::smooth_voxel_grid::events_to_smooth_voxel_grid;
+
+        // Convert to our internal types
+        let events = from_numpy_arrays(xs, ys, ts, ps);
+
+        // Determine resolution
+        let res = match resolution {
+            Some((w, h)) => (w as u16, h as u16),
+            None => {
+                let max_x = events.iter().map(|e| e.x).max().unwrap_or(0) + 1;
+                let max_y = events.iter().map(|e| e.y).max().unwrap_or(0) + 1;
+                (max_x, max_y)
+            }
+        };
+
+        // Convert interpolation method
+        let interp_method = interpolation.map(|s| s.to_string());
+
+        // Create smooth voxel grid
+        let voxel_tensor = events_to_smooth_voxel_grid(
+            &events,
+            num_bins,
+            res.0 as usize,
+            res.1 as usize,
+            interp_method,
         )
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 
-        Ok(array.into_pyarray(py).to_object(py))
+        // Convert to numpy array
+        let shape = voxel_tensor.shape();
+        let data: Vec<f32> = voxel_tensor
+            .to_vec1()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
+
+        // Get dimensions
+        let dims = shape.dims();
+        let shape_tuple = (dims[0], dims[1], dims[2]);
+
+        // Create 1D flat array
+        let flat_array = numpy::ndarray::Array::from_vec(data);
+
+        // Return flat array and shape tuple
+        Ok((flat_array.into_pyarray(py).to_object(py), shape_tuple))
     }
 }

@@ -5,7 +5,7 @@
     </td>
     <td>
       <h1 style="margin: 0;">
-        <code>evlib</code>: Event-Vision Library
+        <code>evlib</code>: Event Camera Utilities in Rust
       </h1>
     </td>
   </tr>
@@ -143,6 +143,7 @@ pytest
   - Rotating events
 - Event representations
   - Voxel grid representation
+  - Smooth voxel grid representation with interpolation
 - Event visualisation and display
 - Event-to-video reconstruction
 
@@ -156,6 +157,7 @@ use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issu
 | Event Augmentation         | Random/correlated event addition/removal    | ✅ Implemented |
 | Event Transformations      | Flipping, rotation, clipping                | ✅ Implemented |
 | Voxel Grid                 | Event-to-voxel grid conversion              | ✅ Implemented |
+| Smooth Voxel Grid          | Interpolated voxel grid representation      | ✅ Implemented |
 | Visualisation              | Event-to-image conversion tools             | ✅ Implemented |
 | E2VID (Basic)              | Simple event-to-video reconstruction        | ✅ Implemented |
 | OpenEB Format Support      | Compatibility with OpenEB data formats      | ⏳ Planned     |
@@ -349,6 +351,14 @@ voxel_grid = evlib.representations.events_to_voxel_grid_py(
 )
 
 print(f"Voxel grid shape: {voxel_grid.shape}")  # (5, 100, 100)
+
+# Convert events to smooth voxel grid with interpolation
+interpolation = "trilinear"  # Options: "trilinear", "bilinear", "temporal"
+smooth_voxel_grid = evlib.representations.events_to_smooth_voxel_grid(
+    xs, ys, ts, ps, num_bins, resolution, interpolation
+)
+
+print(f"Smooth voxel grid shape: {smooth_voxel_grid.shape}")  # (5, 100, 100)
 ```
 
 ### Event Visualisation
