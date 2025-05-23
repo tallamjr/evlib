@@ -403,7 +403,7 @@ mod tests {
 
         let cell = ConvLSTMCell::new(vb, 3, 16, 3).unwrap();
         assert_eq!(cell.hidden_dim, 16);
-        assert_eq!(cell.kernel_size, 3);
+        assert_eq!(cell._kernel_size, 3);
     }
 
     #[test]

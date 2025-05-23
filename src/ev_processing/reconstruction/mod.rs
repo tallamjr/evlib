@@ -11,6 +11,8 @@ pub mod onnx_loader_simple;
 pub mod python;
 pub mod python_temporal;
 pub mod pytorch_loader;
+pub mod spade;
+pub mod spade_e2vid;
 
 // Re-export main items for easier access
 pub use convlstm::{BiConvLSTM, ConvLSTM, ConvLSTMCell, MergeMode};
@@ -21,3 +23,5 @@ pub use gpu_utils::{get_best_device, get_gpu_type, is_gpu_available, GpuOptimiza
 pub use metrics::{ms_ssim, mse, psnr, ssim, ReconstructionMetrics};
 pub use onnx_loader_simple::{ModelConverter, OnnxE2VidModel, OnnxModelConfig};
 pub use pytorch_loader::{E2VidModelLoader, E2VidNet, LoadedModel, ModelLoaderConfig};
+pub use spade::{SpadeGenerator, SpadeNorm, SpadeResBlock};
+pub use spade_e2vid::{HybridSpadeE2Vid, SpadeE2Vid, SpadeE2VidLite};

@@ -86,12 +86,23 @@ amount of tooling found here too: https://github.com/tub-rip/ETAP
    - 🔲 Python bindings for FireNet+
    - 🔲 Performance benchmarking vs base FireNet
 
-### Phase 3: Advanced Architectures (6-8 weeks)
+### Phase 3: Advanced Architectures (6-8 weeks) 🚧 IN PROGRESS
 
 **Priority: MEDIUM**
 
-5. **SPADE-E2VID**: Requires custom SPADE layers (3-4 weeks)
+5. **SPADE-E2VID**: Spatially-adaptive normalization (3-4 weeks) ✅ COMPLETED
+   - ✅ SPADE normalization layers (SpadeNorm, SpadeResBlock)
+   - ✅ SpadeGenerator for full image synthesis
+   - ✅ SpadeE2Vid with full SPADE integration
+   - ✅ HybridSpadeE2Vid with learnable path blending
+   - ✅ SpadeE2VidLite lightweight variant
+   - 🔲 Python bindings for SPADE models
+   - 🔲 Pre-trained model support
+
 6. **SSL-E2VID**: Self-supervised approach (3-4 weeks)
+   - 🔲 Self-supervised loss functions
+   - 🔲 Temporal consistency losses
+   - 🔲 Contrastive learning framework
 
 ### Phase 4: Cutting-Edge Research (8-12 weeks)
 
@@ -140,7 +151,7 @@ amount of tooling found here too: https://github.com/tub-rip/ETAP
 - ⏳ Loading actual pre-trained weights (.pth files)
 - ⏳ GPU optimization (CUDA/Metal providers)
 - ✅ ConvLSTM layers for temporal processing
-- ⏳ SPADE normalization layers
+- ✅ SPADE normalization layers
 - ⏳ Benchmark metrics implementation
 
 **Benchmark Framework (EVREAL):**
