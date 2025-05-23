@@ -42,6 +42,11 @@ reimplemented in Rust for significantly better performance.
 
 * [⬇ Installation](#-installation)
   * [Development Setup](#development-setup)
+* [🧪 Testing](#-testing)
+  * [Rust Tests](#rust-tests)
+  * [Python Tests](#python-tests)
+  * [ONNX Model Integration Tests](#onnx-model-integration-tests)
+  * [Performance Tests](#performance-tests)
 * [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
 * [🚀 Performance](#-performance)
   * [Single-core Performance](#single-core-performance)
@@ -127,6 +132,113 @@ pre-commit install
 
 # Run tests
 pytest
+```
+
+## 🧪 Testing
+
+evlib includes a comprehensive test suite covering Rust core functionality, Python bindings, model integration, and performance benchmarks.
+
+### Rust Tests
+
+Run native Rust tests for core functionality:
+
+```bash
+# Run all Rust tests
+cargo test
+
+# Run specific test module
+cargo test smooth_voxel
+
+# Run with output
+cargo test -- --nocapture
+
+# Run specific test file
+cargo test --test test_smooth_voxel
+```
+
+### Python Tests
+
+Run Python tests for bindings and integration:
+
+```bash
+# Run all Python tests
+pytest
+
+# Run specific test file
+pytest tests/test_evlib.py
+
+# Run with verbose output
+pytest -v
+
+# Run tests with benchmarks
+pytest --benchmark-only
+
+# Test notebooks
+pytest --nbmake examples/
+
+# Run specific functionality tests
+pytest tests/test_representations.py::test_smooth_voxel
+pytest tests/test_reconstruction.py::test_e2vid_reconstruction
+```
+
+### ONNX Model Integration Tests
+
+Test ONNX Runtime integration and model loading:
+
+```bash
+# Run ONNX integration tests
+pytest tests/test_onnx_complete_integration.py
+
+# Test with real data
+pytest tests/test_model_loading_real_data.py
+
+# Test ONNX model loading specifically
+pytest tests/test_onnx_model_loading.py
+
+# Run reconstruction benchmarks
+pytest tests/test_e2vid_benchmarks.py
+```
+
+### Performance Tests
+
+Benchmark performance across different implementations:
+
+```bash
+# Run all benchmarks
+pytest --benchmark-only
+
+# Run specific benchmark
+pytest tests/test_e2vid_benchmarks.py --benchmark-only
+
+# Compare Rust vs Python performance
+pytest tests/test_smooth_voxel.py --benchmark-compare
+
+# Save benchmark results
+pytest --benchmark-only --benchmark-save=baseline
+```
+
+### Test Data
+
+Tests use sample data from `data/slider_depth/`:
+- `events.txt` - Event stream data (1M+ events)
+- `calib.txt` - Camera calibration parameters
+- `images/` - Ground truth frames for reconstruction testing
+- Models in `models/` directory (e.g., `ETAP_v1_cvpr25.pth` - 202MB)
+
+### Continuous Integration
+
+The test suite is designed for CI/CD workflows:
+
+```bash
+# Full test suite (CI)
+pytest tests/ --cov=evlib --cov-report=xml
+
+# Format check
+black --check python/ tests/ examples/
+cargo fmt --check
+
+# Lint check
+cargo clippy -- -D warnings
 ```
 
 ## 🗺️ Roadmap and Current Features

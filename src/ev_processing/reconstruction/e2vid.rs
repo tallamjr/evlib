@@ -2,6 +2,8 @@
 // Based on the paper "High Speed and High Dynamic Range Video with an Event Camera"
 
 use crate::ev_core::Events;
+use crate::ev_processing::reconstruction::e2vid_arch::{E2VidUNet, FireNet};
+use crate::ev_processing::reconstruction::onnx_loader_simple::{OnnxE2VidModel, OnnxModelConfig};
 use crate::ev_processing::reconstruction::pytorch_loader::{
     E2VidModelLoader, E2VidNet, ModelLoaderConfig,
 };
@@ -44,12 +46,20 @@ impl Default for E2VidConfig {
     }
 }
 
+/// Model backend type for E2VID
+enum ModelBackend {
+    Candle(E2VidNet),
+    CandleUNet(E2VidUNet),
+    CandleFireNet(FireNet),
+    Onnx(OnnxE2VidModel),
+}
+
 /// A wrapper for event-based video reconstruction
 pub struct E2Vid {
     config: E2VidConfig,
     image_shape: (usize, usize),
     voxel_grid: EventsToVoxelGrid,
-    network: Option<E2VidNet>,
+    model: Option<ModelBackend>,
     last_output: Option<Tensor>,
     device: Device,
 }
@@ -59,6 +69,10 @@ pub struct E2Vid {
 pub enum E2VidMode {
     /// Use a real neural network loaded from PyTorch model
     NeuralNetwork,
+    /// Use the optimized UNet architecture
+    UNet,
+    /// Use the lightweight FireNet architecture for real-time processing
+    FireNet,
     /// Use simple accumulation for testing/fallback
     SimpleAccumulation,
 }
@@ -86,7 +100,7 @@ impl E2Vid {
             config,
             image_shape,
             voxel_grid,
-            network: None,
+            model: None,
             last_output: None,
             device,
         }
@@ -103,33 +117,86 @@ impl E2Vid {
 
         match E2VidModelLoader::load_from_pth(model_path, model_config) {
             Ok(network) => {
-                self.network = Some(network);
+                self.model = Some(ModelBackend::Candle(network));
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Failed to load model: {:?}", e);
+                eprintln!("Failed to load PyTorch model: {:?}", e);
                 // Fall back to creating a network with random weights
                 self.create_default_network()
             }
         }
     }
 
-    /// Create a default network with random weights for testing
-    pub fn create_default_network(&mut self) -> CandleResult<()> {
-        let var_map = VarMap::new();
-        let vs = VarBuilder::from_varmap(&var_map, DType::F32, &self.device);
+    /// Load neural network from ONNX model file
+    pub fn load_onnx_model(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
+        let onnx_config = OnnxModelConfig {
+            device: self.device.clone(),
+            dtype: DType::F32,
+            verbose: false,
+        };
 
-        match E2VidNet::new(&vs) {
-            Ok(network) => {
-                self.network = Some(network);
+        match OnnxE2VidModel::load_from_file(model_path, onnx_config) {
+            Ok(model) => {
+                self.model = Some(ModelBackend::Onnx(model));
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Failed to create default network: {:?}", e);
-                Err(candle_core::Error::Msg(
-                    "Failed to initialize network".to_string(),
-                ))
+                eprintln!("Failed to load ONNX model: {:?}", e);
+                Err(candle_core::Error::Msg(format!(
+                    "Failed to load ONNX model: {}",
+                    e
+                )))
             }
+        }
+    }
+
+    /// Create a default network with random weights for testing
+    pub fn create_default_network(&mut self) -> CandleResult<()> {
+        self.create_network(E2VidMode::UNet)
+    }
+
+    /// Create a network with specified architecture
+    pub fn create_network(&mut self, mode: E2VidMode) -> CandleResult<()> {
+        let var_map = VarMap::new();
+        let vs = VarBuilder::from_varmap(&var_map, DType::F32, &self.device);
+
+        match mode {
+            E2VidMode::NeuralNetwork => match E2VidNet::new(&vs) {
+                Ok(network) => {
+                    self.model = Some(ModelBackend::Candle(network));
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("Failed to create default network: {:?}", e);
+                    Err(candle_core::Error::Msg(
+                        "Failed to initialize network".to_string(),
+                    ))
+                }
+            },
+            E2VidMode::UNet => match E2VidUNet::new(vs, self.config.num_bins, 32) {
+                Ok(network) => {
+                    self.model = Some(ModelBackend::CandleUNet(network));
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("Failed to create UNet: {:?}", e);
+                    Err(e)
+                }
+            },
+            E2VidMode::FireNet => match FireNet::new(vs, self.config.num_bins) {
+                Ok(network) => {
+                    self.model = Some(ModelBackend::CandleFireNet(network));
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("Failed to create FireNet: {:?}", e);
+                    Err(e)
+                }
+            },
+            _ => Err(candle_core::Error::Msg(
+                "Invalid mode for network creation".to_string(),
+            )),
         }
     }
 
@@ -156,16 +223,10 @@ impl E2Vid {
         // Convert events to tensor representation
         let event_tensor = self.voxel_grid.process_events(events)?;
 
-        // Ensure we have a network loaded
-        if self.network.is_none() {
+        // Ensure we have a model loaded
+        if self.model.is_none() {
             self.create_default_network()?;
         }
-
-        // Get the network
-        let network = self
-            .network
-            .as_ref()
-            .expect("Network should be initialized");
 
         // Add batch dimension if not present
         let input_tensor = if event_tensor.dims().len() == 3 {
@@ -175,8 +236,15 @@ impl E2Vid {
             event_tensor
         };
 
-        // Run inference
-        let output = network.forward(&input_tensor)?;
+        // Run inference based on model backend
+        let output = match self.model.as_ref().expect("Model should be initialized") {
+            ModelBackend::Candle(network) => network.forward(&input_tensor)?,
+            ModelBackend::CandleUNet(network) => network.forward(&input_tensor)?,
+            ModelBackend::CandleFireNet(network) => network.forward(&input_tensor)?,
+            ModelBackend::Onnx(model) => model
+                .forward(&input_tensor)
+                .map_err(|e| candle_core::Error::Msg(format!("ONNX inference failed: {}", e)))?,
+        };
 
         // Remove batch dimension for output: (1, 1, H, W) -> (H, W)
         let output = output.squeeze(0)?.squeeze(0)?;

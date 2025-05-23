@@ -68,7 +68,7 @@ mod tests {
         assert_eq!(shape.dims()[2], 100);
 
         // Verify all values are zero
-        let data = result.to_vec1().unwrap();
+        let data = result.to_vec1::<f32>().unwrap();
         assert!(data.iter().all(|&x| x == 0.0));
     }
 
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(shape.dims()[2], 100);
 
         // Verify the grid has non-zero values
-        let data = result.to_vec1().unwrap();
+        let data = result.to_vec1::<f32>().unwrap();
         assert!(data.iter().any(|&x| x != 0.0));
     }
 
@@ -104,7 +104,7 @@ mod tests {
         assert_eq!(shape.dims()[2], 100);
 
         // Verify the grid has non-zero values
-        let data = result.to_vec1().unwrap();
+        let data = result.to_vec1::<f32>().unwrap();
         assert!(data.iter().any(|&x| x != 0.0));
     }
 
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(shape.dims()[2], 100);
 
         // Verify the grid has non-zero values
-        let data = result.to_vec1().unwrap();
+        let data = result.to_vec1::<f32>().unwrap();
         assert!(data.iter().any(|&x| x != 0.0));
     }
 
@@ -138,7 +138,7 @@ mod tests {
         assert_eq!(shape.dims()[2], 100);
 
         // Verify the grid has non-zero values
-        let data = result.to_vec1().unwrap();
+        let data = result.to_vec1::<f32>().unwrap();
         assert!(data.iter().any(|&x| x != 0.0));
     }
 }

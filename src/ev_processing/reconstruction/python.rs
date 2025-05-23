@@ -1,10 +1,11 @@
 // Python bindings for event-based reconstruction
 
-use super::e2vid::{E2Vid, E2VidConfig};
+use super::e2vid::{E2Vid, E2VidConfig, E2VidMode};
 use crate::ev_core::Event;
 use numpy::{IntoPyArray, PyArray3, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+use std::path::PathBuf;
 
 /// Python wrapper to create video reconstructions from events using E2VID
 #[pyfunction]
@@ -55,7 +56,7 @@ pub fn events_to_video_py(
     })?;
 
     // Convert tensor to numpy array
-    let output_vec = output.to_vec2().map_err(|e| {
+    let output_vec = output.to_vec2::<f32>().map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Error converting output to vector: {}",
             e
@@ -165,7 +166,7 @@ pub fn reconstruct_events_to_frames_py(
         })?;
 
         // Convert tensor to numpy array
-        let output_vec = output.to_vec2().map_err(|e| {
+        let output_vec = output.to_vec2::<f32>().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Error converting output to vector: {}",
                 e
@@ -189,4 +190,162 @@ pub fn reconstruct_events_to_frames_py(
     }
 
     Ok(frames.into())
+}
+
+/// Advanced Python wrapper for E2VID with model selection
+#[pyfunction]
+#[pyo3(name = "events_to_video_advanced")]
+#[allow(clippy::too_many_arguments)]
+pub fn events_to_video_advanced_py(
+    xs: PyReadonlyArray1<i64>,
+    ys: PyReadonlyArray1<i64>,
+    ts: PyReadonlyArray1<f64>,
+    ps: PyReadonlyArray1<i64>,
+    height: usize,
+    width: usize,
+    num_bins: Option<usize>,
+    model_type: Option<&str>,
+    model_path: Option<&str>,
+) -> PyResult<Py<PyArray3<f32>>> {
+    let py = xs.py();
+
+    // Convert arrays to native Rust types
+    let xs_array = xs.as_array();
+    let ys_array = ys.as_array();
+    let ts_array = ts.as_array();
+    let ps_array = ps.as_array();
+
+    // Create events vector
+    let mut events = Vec::with_capacity(xs_array.len());
+    for i in 0..xs_array.len() {
+        events.push(Event {
+            x: xs_array[i] as u16,
+            y: ys_array[i] as u16,
+            t: ts_array[i],
+            polarity: ps_array[i] as i8,
+        });
+    }
+
+    // Sort events by timestamp
+    events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Create E2VID config
+    let mut config = E2VidConfig::default();
+    if let Some(bins) = num_bins {
+        config.num_bins = bins;
+    }
+    if let Some(path) = model_path {
+        config.model_path = PathBuf::from(path);
+    }
+
+    // Create E2VID reconstructor
+    let mut e2vid = E2Vid::with_config(height, width, config);
+
+    // Set up model based on type
+    match model_type {
+        Some("unet") => {
+            e2vid.create_network(E2VidMode::UNet).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error creating UNet: {}",
+                    e
+                ))
+            })?;
+        }
+        Some("firenet") => {
+            e2vid.create_network(E2VidMode::FireNet).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error creating FireNet: {}",
+                    e
+                ))
+            })?;
+        }
+        Some("onnx") => {
+            if let Some(path) = model_path {
+                e2vid.load_onnx_model(&PathBuf::from(path)).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Error loading ONNX model: {}",
+                        e
+                    ))
+                })?;
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "ONNX model requires model_path",
+                ));
+            }
+        }
+        Some("simple") => {
+            // Use simple accumulation
+            let output = e2vid.process_events_simple(&events).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error processing events: {}",
+                    e
+                ))
+            })?;
+
+            let output_vec = output.to_vec2::<f32>().map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error converting output to vector: {}",
+                    e
+                ))
+            })?;
+
+            let mut frame = vec![0.0; height * width];
+            for y in 0..height {
+                for x in 0..width {
+                    frame[y * width + x] = output_vec[y][x];
+                }
+            }
+
+            let output_shape = [height, width, 1];
+            let output_array = frame.into_pyarray(py).reshape(output_shape).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error reshaping output array: {}",
+                    e
+                ))
+            })?;
+
+            return Ok(output_array.to_owned());
+        }
+        _ => {
+            // Default to UNet
+            e2vid.create_network(E2VidMode::UNet).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Error creating default UNet: {}",
+                    e
+                ))
+            })?;
+        }
+    }
+
+    // Process events
+    let output = e2vid.process_events(&events).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error processing events: {}", e))
+    })?;
+
+    // Convert tensor to numpy array
+    let output_vec = output.to_vec2::<f32>().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Error converting output to vector: {}",
+            e
+        ))
+    })?;
+
+    // Reshape output
+    let mut frame = vec![0.0; height * width];
+    for y in 0..height {
+        for x in 0..width {
+            frame[y * width + x] = output_vec[y][x];
+        }
+    }
+
+    // Convert to numpy array
+    let output_shape = [height, width, 1];
+    let output_array = frame.into_pyarray(py).reshape(output_shape).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Error reshaping output array: {}",
+            e
+        ))
+    })?;
+
+    Ok(output_array.to_owned())
 }

@@ -101,6 +101,10 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_processing::reconstruction::python::reconstruct_events_to_frames_py,
         py
     )?)?;
+    processing_submodule.add_function(wrap_pyfunction!(
+        ev_processing::reconstruction::python::events_to_video_advanced_py,
+        py
+    )?)?;
     m.add_submodule(processing_submodule)?;
 
     // Register ev_tracking module as "tracking" in Python
