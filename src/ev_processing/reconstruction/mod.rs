@@ -9,6 +9,7 @@ pub mod gpu_utils;
 pub mod metrics;
 pub mod onnx_loader_simple;
 pub mod python;
+pub mod python_temporal;
 pub mod pytorch_loader;
 
 // Re-export main items for easier access
