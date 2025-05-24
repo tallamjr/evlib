@@ -13,6 +13,8 @@ pub mod python_temporal;
 pub mod pytorch_loader;
 pub mod spade;
 pub mod spade_e2vid;
+pub mod ssl_e2vid;
+pub mod ssl_losses;
 
 // Re-export main items for easier access
 pub use convlstm::{BiConvLSTM, ConvLSTM, ConvLSTMCell, MergeMode};
@@ -25,3 +27,8 @@ pub use onnx_loader_simple::{ModelConverter, OnnxE2VidModel, OnnxModelConfig};
 pub use pytorch_loader::{E2VidModelLoader, E2VidNet, LoadedModel, ModelLoaderConfig};
 pub use spade::{SpadeGenerator, SpadeNorm, SpadeResBlock};
 pub use spade_e2vid::{HybridSpadeE2Vid, SpadeE2Vid, SpadeE2VidLite};
+pub use ssl_e2vid::{EventAugmentation, SslE2Vid, SslE2VidMomentum, SslTrainer};
+pub use ssl_losses::{
+    ContrastiveLoss, EventReconstructionLoss, PhotometricLoss, SSLLoss, SSLLossComponents,
+    SSLLossConfig, TemporalConsistencyLoss,
+};
