@@ -237,3 +237,6 @@ pub mod reconstruction;
 
 /// Module for model zoo management
 pub mod model_zoo;
+
+/// Module for real-time streaming processing
+pub mod streaming;

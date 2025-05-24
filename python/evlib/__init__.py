@@ -70,7 +70,11 @@ def create_voxel_grid(xs, ys, ts, ps, num_bins, resolution=(None, None), method=
 
         # Process each event
         for x, y, t, p in zip(xs, ys, ts, ps):
-            if 0 <= x < width and 0 <= y < height:
+            # Convert to integer indices
+            x_idx = int(x)
+            y_idx = int(y)
+
+            if 0 <= x_idx < width and 0 <= y_idx < height:
                 # Calculate normalized timestamp
                 t_norm = (t - t_min) / t_range
 
@@ -79,11 +83,11 @@ def create_voxel_grid(xs, ys, ts, ps, num_bins, resolution=(None, None), method=
 
                 # Update grid based on method
                 if method == "binary":
-                    grid[bin_idx, y, x] = 1.0
+                    grid[bin_idx, y_idx, x_idx] = 1.0
                 elif method == "polarity":
-                    grid[bin_idx, y, x] += float(p)
+                    grid[bin_idx, y_idx, x_idx] += float(p)
                 else:  # "count"
-                    grid[bin_idx, y, x] += 1.0
+                    grid[bin_idx, y_idx, x_idx] += 1.0
 
         return grid
 
