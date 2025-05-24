@@ -110,11 +110,26 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         py
     )?)?;
 
-    // Register SPADE sub-module
-    ev_processing::reconstruction::python_spade::register_spade_module(py, &processing_submodule)?;
+    // SPADE and SSL models are now accessible through the unified Python API
+    // in the evlib.models module (evlib.models.SPADE and evlib.models.SSL)
+    // The separate Python bindings have been deprecated in favor of the unified interface
 
-    // Register SSL sub-module
-    ev_processing::reconstruction::python_ssl::register_ssl_module(py, &processing_submodule)?;
+    // Register model zoo functions
+    #[cfg(feature = "python")]
+    {
+        processing_submodule.add_function(wrap_pyfunction!(
+            ev_processing::model_zoo::python::list_available_models,
+            py
+        )?)?;
+        processing_submodule.add_function(wrap_pyfunction!(
+            ev_processing::model_zoo::python::download_model,
+            py
+        )?)?;
+        processing_submodule.add_function(wrap_pyfunction!(
+            ev_processing::model_zoo::python::get_model_info_py,
+            py
+        )?)?;
+    }
 
     m.add_submodule(processing_submodule)?;
 

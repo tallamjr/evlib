@@ -8,6 +8,12 @@ import evlib.evlib as evlib_rust
 # Import numpy for reshaping
 import numpy as np
 
+# Import the high-level models API
+from . import models
+
+# Export models in __all__
+__all__ = ["models", "create_voxel_grid", "create_smooth_voxel_grid"]
+
 
 # Define wrapper functions for the voxel grid representations
 def create_voxel_grid(xs, ys, ts, ps, num_bins, resolution=(None, None), method="count"):

@@ -234,3 +234,6 @@ pub mod models {
 
 /// Module for event-based video reconstruction
 pub mod reconstruction;
+
+/// Module for model zoo management
+pub mod model_zoo;
