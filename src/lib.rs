@@ -109,6 +109,13 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_processing::reconstruction::python_temporal::events_to_video_temporal_py,
         py
     )?)?;
+
+    // Register SPADE sub-module
+    ev_processing::reconstruction::python_spade::register_spade_module(py, &processing_submodule)?;
+
+    // Register SSL sub-module
+    ev_processing::reconstruction::python_ssl::register_ssl_module(py, &processing_submodule)?;
+
     m.add_submodule(processing_submodule)?;
 
     // Register ev_tracking module as "tracking" in Python

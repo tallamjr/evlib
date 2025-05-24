@@ -9,6 +9,8 @@ pub mod gpu_utils;
 pub mod metrics;
 pub mod onnx_loader_simple;
 pub mod python;
+pub mod python_spade;
+pub mod python_ssl;
 pub mod python_temporal;
 pub mod pytorch_loader;
 pub mod spade;
