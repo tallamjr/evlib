@@ -317,6 +317,19 @@ pub fn events_to_video_advanced_py(
         }
     }
 
+    // Handle empty events case for neural models
+    if events.is_empty() {
+        let frame = vec![0.0; height * width];
+        let output_shape = [height, width, 1];
+        let output_array = frame.into_pyarray(py).reshape(output_shape).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Error reshaping output array: {}",
+                e
+            ))
+        })?;
+        return Ok(output_array.to_owned());
+    }
+
     // Process events
     let output = e2vid.process_events(&events).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error processing events: {}", e))

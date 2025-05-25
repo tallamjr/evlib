@@ -124,18 +124,18 @@ def main():
     print("\nApplying augmentations...")
 
     # Add random events
-    xs_rand, ys_rand, ts_rand, ps_rand = evlib.add_random_events(xs, ys, ts, ps, to_add=200)
+    xs_rand, ys_rand, ts_rand, ps_rand = evlib.augmentation.add_random_events(xs, ys, ts, ps, to_add=200)
     print(f"Added random events. New count: {len(xs_rand)}")
 
     # Add correlated events
-    xs_corr, ys_corr, ts_corr, ps_corr = evlib.add_correlated_events(
+    xs_corr, ys_corr, ts_corr, ps_corr = evlib.augmentation.add_correlated_events(
         xs, ys, ts, ps, to_add=150, xy_std=3.0, ts_std=0.01
     )
     print(f"Added correlated events. New count: {len(xs_corr)}")
 
     # Rotate events
     sensor_resolution = (128, 128)
-    xs_rot, ys_rot, theta, center = evlib.rotate_events(
+    xs_rot, ys_rot, theta, center = evlib.augmentation.rotate_events(
         xs,
         ys,
         ts,
@@ -175,9 +175,10 @@ def main():
         ps_flat = ps.flatten() if hasattr(ps, "flatten") else ps
 
         # Convert to voxel grid using evlib function
-        voxel_grid = evlib.representations.events_to_voxel_grid_py(
+        voxel_data, voxel_shape = evlib.representations.events_to_voxel_grid(
             xs_flat, ys_flat, ts_flat, ps_flat, 5, sensor_resolution, "count"
         )
+        voxel_grid = voxel_data.reshape(voxel_shape)
     except Exception as e:
         print(f"Note: Falling back to simple representation: {e}")
         # Simple implementation for demonstration

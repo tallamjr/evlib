@@ -133,7 +133,7 @@ def main():
     print(f"Generated {len(xs)} events")
 
     # Apply correlated noise
-    new_xs, new_ys, new_ts, new_ps = evlib.add_correlated_events(
+    new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_correlated_events(
         xs,
         ys,
         ts,
@@ -146,8 +146,10 @@ def main():
     sensor_resolution = (height, width)
 
     # Flip along both axes (rotate 180 degrees)
-    flipped_xs, flipped_ys, _, _ = evlib.flip_events_x(new_xs, new_ys, new_ts, new_ps, sensor_resolution)
-    flipped_xs, flipped_ys, flipped_ts, flipped_ps = evlib.flip_events_y(
+    flipped_xs, flipped_ys, _, _ = evlib.augmentation.flip_events_x(
+        new_xs, new_ys, new_ts, new_ps, sensor_resolution
+    )
+    flipped_xs, flipped_ys, flipped_ts, flipped_ps = evlib.augmentation.flip_events_y(
         flipped_xs, flipped_ys, new_ts, new_ps, sensor_resolution
     )
 

@@ -36,6 +36,7 @@ ndarray        = "0.15.6"
 ndarray-rand   = "0.14.0"
 rand           = "=0.8.5"
 rand_distr     = "=0.4.3"
+fastrand       = "2.0"
 
 # Torch-style tensor ops (via Candle)
 candle-core    = "0.9.1"
@@ -51,6 +52,11 @@ async-channel  = "1.6"
 lazy_static    = "1.4"
 hdf5           = "0.8.1"
 
+# GStreamer for video processing
+gstreamer      = { version = "0.22", optional = true }
+gstreamer-app  = { version = "0.22", optional = true }
+gstreamer-video = { version = "0.22", optional = true }
+
 # HTTP client and async runtime for model downloading
 reqwest        = { version = "0.11", features = ["blocking"] }
 tokio          = { version = "1", features = ["rt", "macros"] }
@@ -65,3 +71,4 @@ default        = ["python"]
 python         = []
 cuda           = ["candle-core/cuda"]
 metal          = ["candle-core/metal"]
+gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]

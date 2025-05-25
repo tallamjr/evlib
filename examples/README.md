@@ -10,8 +10,60 @@ The module structure has been updated:
 - `evlib.formats` - Data loading and saving
 - `evlib.representations` - Event representations (voxel grid, etc.)
 - `evlib.visualization` - Visualization utilities
+- `evlib.processing` - Neural network models and reconstruction algorithms
+- `evlib.simulation` - Event simulation from video data
 
 ## Examples
+
+### GStreamer Integration (NEW)
+
+#### Webcam Capture Demo
+```bash
+python gstreamer_webcam_demo.py
+```
+Demonstrates real-time webcam capture with GStreamer:
+- Live video capture from default webcam
+- Event simulation from captured frames
+- Real-time processing pipeline
+- Event data export and analysis
+
+#### Video File Processing Demo
+```bash
+python gstreamer_video_file_demo.py [video_file.mp4]
+```
+Demonstrates video file processing with GStreamer:
+- Support for multiple video formats (MP4, AVI, MOV, etc.)
+- ESIM-style event simulation with configurable parameters
+- Comprehensive event analysis and statistics
+- Multi-format event data export
+
+#### Complete Event Simulation Pipeline
+```bash
+# Webcam capture
+python gstreamer_event_simulation_complete.py --source webcam
+
+# Video file processing
+python gstreamer_event_simulation_complete.py --source video --file path/to/video.mp4
+
+# With reconstruction
+python gstreamer_event_simulation_complete.py --source webcam --reconstruct
+```
+Demonstrates the complete pipeline:
+- Real-time video capture OR video file processing
+- Advanced ESIM algorithm with noise modelling
+- Event-based reconstruction integration
+- Performance benchmarking and analysis
+- Rich visualizations and statistics
+
+#### Interactive Jupyter Notebook
+```bash
+jupyter notebook gstreamer_integration_demo.ipynb
+```
+Interactive notebook demonstrating:
+- Step-by-step GStreamer integration
+- Event simulation with parameter tuning
+- Comprehensive visualizations
+- Real-time analysis and statistics
 
 ### Basic Usage
 ```
@@ -63,24 +115,71 @@ Benchmarks the Rust-backed implementation against pure Python:
 
 ## Requirements
 
-These examples require:
+### Basic Examples
 - NumPy
 - Matplotlib
 - evlib
 
-## Usage Notes
+### GStreamer Examples (Additional)
+- GStreamer system libraries
+- evlib built with gstreamer feature
+- Optional: Jupyter for notebook examples
 
-1. Make sure you have installed evlib:
-```
+## Installation
+
+### Standard Installation
+```bash
 pip install evlib
 ```
 
-2. For development:
-```
+### Development Installation
+```bash
 pip install -e ".[dev]"
 ```
 
-3. Run any example directly:
+### GStreamer Integration
+For GStreamer examples, build evlib with GStreamer support:
+```bash
+# Install GStreamer system libraries first
+# macOS: brew install gstreamer gst-plugins-base gst-plugins-good
+# Ubuntu: sudo apt-get install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+# Build evlib with GStreamer support
+maturin develop --features gstreamer
 ```
+
+## Usage Notes
+
+1. Run any basic example directly:
+```bash
 python examples/basic_usage.py
 ```
+
+2. For GStreamer examples:
+```bash
+# Test webcam capture
+python examples/gstreamer_webcam_demo.py
+
+# Process a video file
+python examples/gstreamer_video_file_demo.py path/to/video.mp4
+
+# Interactive notebook
+jupyter notebook examples/gstreamer_integration_demo.ipynb
+```
+
+3. For performance-critical applications, build in release mode:
+```bash
+maturin develop --release --features gstreamer
+```
+
+## Troubleshooting
+
+### GStreamer Issues
+- **Import Error**: Ensure GStreamer system libraries are installed
+- **Build Failure**: Check that pkg-config can find GStreamer libraries
+- **Runtime Error**: Verify webcam permissions and device availability
+
+### Performance Tips
+- Use release builds for benchmarking: `maturin develop --release`
+- Enable hardware acceleration when available
+- Adjust event simulation parameters based on your video content

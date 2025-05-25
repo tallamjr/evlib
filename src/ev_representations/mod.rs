@@ -424,6 +424,8 @@ pub mod python {
         // Convert to numpy array
         let shape = voxel_tensor.shape();
         let data: Vec<f32> = voxel_tensor
+            .flatten_all()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?
             .to_vec1()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 
@@ -483,6 +485,8 @@ pub mod python {
         // Convert to numpy array
         let shape = voxel_tensor.shape();
         let data: Vec<f32> = voxel_tensor
+            .flatten_all()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?
             .to_vec1()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 

@@ -1,12 +1,7 @@
-import pytest
 import numpy as np
+import pytest
+
 import evlib
-
-
-def test_hello_world():
-    """hello_world function has been removed in updated version"""
-    # Skip this test as the hello_world function is no longer part of the library
-    pytest.skip("hello_world function has been removed")
 
 
 def test_version():

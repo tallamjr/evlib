@@ -73,13 +73,13 @@ def main():
 
     # 1. Flip events along x-axis
     # Flip events along x axis
-    flipped_x_xs, flipped_x_ys, flipped_x_ts, flipped_x_ps = evlib.flip_events_x(
+    flipped_x_xs, flipped_x_ys, flipped_x_ts, flipped_x_ps = evlib.augmentation.flip_events_x_py(
         xs, ys, ts, ps, sensor_resolution
     )
 
     # 2. Flip events along y-axis
     # Flip events along y axis
-    flipped_y_xs, flipped_y_ys, flipped_y_ts, flipped_y_ps = evlib.flip_events_y(
+    flipped_y_xs, flipped_y_ys, flipped_y_ts, flipped_y_ps = evlib.augmentation.flip_events_y_py(
         xs, ys, ts, ps, sensor_resolution
     )
 
@@ -87,7 +87,7 @@ def main():
     theta_radians = np.pi / 4  # 45 degrees
     center_of_rotation = (50, 50)  # Center of rotation
     # Rotate events
-    rotated_xs, rotated_ys, theta_returned, center_returned = evlib.rotate_events(
+    rotated_xs, rotated_ys, theta_returned, center_returned = evlib.augmentation.rotate_events_py(
         xs,
         ys,
         ts,
@@ -100,7 +100,9 @@ def main():
     # 4. Clip events to bounds
     bounds = [30, 70, 30, 70]  # [min_y, max_y, min_x, max_x]
     # Clip events to bounds
-    clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.clip_events_to_bounds(xs, ys, ts, ps, bounds)
+    clipped_xs, clipped_ys, clipped_ts, clipped_ps = evlib.augmentation.clip_events_to_bounds_py(
+        xs, ys, ts, ps, bounds
+    )
 
     # Visualize all transformations
     visualize_transformations(

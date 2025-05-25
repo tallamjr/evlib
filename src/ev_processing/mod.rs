@@ -240,3 +240,6 @@ pub mod model_zoo;
 
 /// Module for real-time streaming processing
 pub mod streaming;
+
+/// Module for hardware acceleration optimizations
+pub mod acceleration;

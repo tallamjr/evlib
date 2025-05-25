@@ -14,7 +14,7 @@ def create_temp_event_file(file_format, num_events=100):
     xs = np.random.randint(0, 100, num_events, dtype=np.int64)
     ys = np.random.randint(0, 100, num_events, dtype=np.int64)
     ts = np.sort(np.random.random(num_events).astype(np.float64))  # Sorted timestamps
-    ps = np.random.choice([-1, 1], num_events, dtype=np.int64)
+    ps = np.random.choice([-1, 1], num_events).astype(np.int64)
 
     # Create a temporary file with the given format
     with tempfile.NamedTemporaryFile(suffix=f".{file_format}", delete=False) as tmp_file:

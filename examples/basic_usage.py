@@ -23,13 +23,13 @@ def main():
     print(f"Event data shape: x={xs.shape}, y={ys.shape}, t={ts.shape}, p={ps.shape}")
 
     # Convert to block representation
-    block = evlib.core.events_to_block_py(xs, ys, ts, ps)
+    block = evlib.core.events_to_block(xs, ys, ts, ps)
     print(f"Block representation shape: {block.shape}")
     print("Block format (x,y,t,p):")
     print(block)
 
     # Add more events
-    added_xs, added_ys, added_ts, added_ps = evlib.augmentation.add_random_events_py(xs, ys, ts, ps, to_add=3)
+    added_xs, added_ys, added_ts, added_ps = evlib.augmentation.add_random_events(xs, ys, ts, ps, to_add=3)
 
     print("\nAfter adding random events:")
     print(f"Original count: {len(xs)}, New count: {len(added_xs)}")

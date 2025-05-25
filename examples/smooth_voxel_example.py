@@ -98,17 +98,29 @@ def compare_voxel_methods(events, resolution=(128, 128), num_bins=5):
     xs, ys, ts, ps = events
 
     # Create standard voxel grid using wrapper function
-    std_voxel_grid = evlib.create_voxel_grid(xs, ys, ts, ps, num_bins, resolution, "count")
+    std_voxel_data, std_shape = evlib.representations.events_to_voxel_grid(
+        xs, ys, ts, ps, num_bins, resolution, "count"
+    )
+    std_voxel_grid = std_voxel_data.reshape(std_shape)
     print(f"Standard voxel grid shape: {std_voxel_grid.shape}, sum: {np.sum(std_voxel_grid)}")
 
     # Create smooth voxel grids with different interpolation methods using wrapper functions
-    smooth_trilinear = evlib.create_smooth_voxel_grid(xs, ys, ts, ps, num_bins, resolution, "trilinear")
+    smooth_tri_data, smooth_tri_shape = evlib.representations.events_to_smooth_voxel_grid(
+        xs, ys, ts, ps, num_bins, resolution, "trilinear"
+    )
+    smooth_trilinear = smooth_tri_data.reshape(smooth_tri_shape)
     print(f"Trilinear voxel grid shape: {smooth_trilinear.shape}, sum: {np.sum(smooth_trilinear)}")
 
-    smooth_bilinear = evlib.create_smooth_voxel_grid(xs, ys, ts, ps, num_bins, resolution, "bilinear")
+    smooth_bil_data, smooth_bil_shape = evlib.representations.events_to_smooth_voxel_grid(
+        xs, ys, ts, ps, num_bins, resolution, "bilinear"
+    )
+    smooth_bilinear = smooth_bil_data.reshape(smooth_bil_shape)
     print(f"Bilinear voxel grid shape: {smooth_bilinear.shape}, sum: {np.sum(smooth_bilinear)}")
 
-    smooth_temporal = evlib.create_smooth_voxel_grid(xs, ys, ts, ps, num_bins, resolution, "temporal")
+    smooth_temp_data, smooth_temp_shape = evlib.representations.events_to_smooth_voxel_grid(
+        xs, ys, ts, ps, num_bins, resolution, "temporal"
+    )
+    smooth_temporal = smooth_temp_data.reshape(smooth_temp_shape)
     print(f"Temporal voxel grid shape: {smooth_temporal.shape}, sum: {np.sum(smooth_temporal)}")
 
     # Return all grids for possible visualization if needed

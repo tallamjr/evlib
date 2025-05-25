@@ -4,6 +4,7 @@ pub mod ev_core;
 pub mod ev_formats;
 pub mod ev_processing;
 pub mod ev_representations;
+pub mod ev_simulation;
 pub mod ev_tracking;
 pub mod ev_transforms;
 pub mod ev_visualization;

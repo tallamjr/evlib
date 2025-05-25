@@ -19,7 +19,8 @@ def test_events_to_voxel_grid_py():
 
     try:
         # Create voxel grid
-        voxel_grid = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+        voxel_data, voxel_shape = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+        voxel_grid = voxel_data.reshape(voxel_shape)
 
         # Check shape and type
         assert voxel_grid.shape == (num_bins, resolution[0], resolution[1])
@@ -48,7 +49,8 @@ def test_events_to_voxel_grid_py_empty():
 
     try:
         # Create voxel grid
-        voxel_grid = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+        voxel_data, voxel_shape = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+        voxel_grid = voxel_data.reshape(voxel_shape)
 
         # Check shape and type
         assert voxel_grid.shape == (num_bins, resolution[0], resolution[1])
@@ -79,7 +81,8 @@ def test_events_to_voxel_grid_py_methods():
 
         for method in methods:
             # Create voxel grid
-            voxel_grid = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, method)
+            voxel_data, voxel_shape = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, method)
+            voxel_grid = voxel_data.reshape(voxel_shape)
 
             # Check shape and type
             assert voxel_grid.shape == (num_bins, resolution[0], resolution[1])
@@ -106,7 +109,8 @@ def test_events_to_voxel_grid_py_resolution():
 
         for resolution in resolutions:
             # Create voxel grid
-            voxel_grid = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+            voxel_data, voxel_shape = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+            voxel_grid = voxel_data.reshape(voxel_shape)
 
             # Check shape and type
             assert voxel_grid.shape == (num_bins, resolution[0], resolution[1])
@@ -131,7 +135,8 @@ def test_events_to_voxel_grid_py_bins():
         # Test different number of bins
         for num_bins in [1, 3, 5, 10]:
             # Create voxel grid
-            voxel_grid = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+            voxel_data, voxel_shape = events_to_voxel_grid_py(xs, ys, ts, ps, num_bins, resolution, "count")
+            voxel_grid = voxel_data.reshape(voxel_shape)
 
             # Check shape and type
             assert voxel_grid.shape == (num_bins, resolution[0], resolution[1])
