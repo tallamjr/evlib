@@ -15,6 +15,9 @@ pub mod video_processing;
 #[cfg(feature = "gstreamer")]
 pub mod gstreamer_video;
 
+#[cfg(feature = "gstreamer")]
+pub mod realtime_stream;
+
 #[cfg(feature = "python")]
 pub mod python;
 

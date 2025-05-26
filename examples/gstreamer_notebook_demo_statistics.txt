@@ -1,0 +1,24 @@
+# GStreamer Event Simulation Statistics
+# Generated: 2025-05-27 15:00:57
+
+[Video Configuration]
+resolution = (640, 480)
+fps = 30.0
+duration_seconds = 5.0
+device = cpu
+
+[Simulation Configuration]
+contrast_threshold_pos = 0.15
+contrast_threshold_neg = 0.15
+sigma_contrast = 0.03
+noise_level = 0.01
+
+[Event Statistics]
+total_events = 291111
+pos_events = 145537
+neg_events = 145574
+duration = 4.933333333333334
+event_rate = 59008.98648648649
+event_density = 0.19208654455236487
+pos_percentage = 49.99364503574238
+neg_percentage = 50.00635496425762

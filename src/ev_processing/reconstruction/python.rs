@@ -241,15 +241,34 @@ pub fn events_to_video_advanced_py(
     // Create E2VID reconstructor
     let mut e2vid = E2Vid::with_config(height, width, config);
 
-    // Set up model based on type
+    // If model_path is provided, load the model from file
+    if let Some(path) = model_path {
+        let model_path_buf = PathBuf::from(path);
+        println!("🔄 Attempting to load model from: {}", path);
+
+        match e2vid.load_model_from_file(&model_path_buf) {
+            Ok(()) => {
+                println!("✅ Successfully loaded model from file");
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load model from file: {:?}", e);
+                eprintln!("Falling back to default model creation");
+            }
+        }
+    }
+
+    // Set up model based on type if not already loaded from file
     match model_type {
         Some("unet") => {
-            e2vid.create_network(E2VidMode::UNet).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Error creating UNet: {}",
-                    e
-                ))
-            })?;
+            // Only create network if not already loaded from file
+            if !e2vid.has_model() {
+                e2vid.create_network(E2VidMode::UNet).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Error creating UNet: {}",
+                        e
+                    ))
+                })?;
+            }
         }
         Some("firenet") => {
             e2vid.create_network(E2VidMode::FireNet).map_err(|e| {

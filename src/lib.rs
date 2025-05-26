@@ -111,6 +111,9 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         py
     )?)?;
 
+    // Add E2Vid class for direct access to Rust implementation
+    processing_submodule.add_class::<ev_processing::reconstruction::e2vid::E2Vid>()?;
+
     // SPADE and SSL models are now accessible through the unified Python API
     // in the evlib.models module (evlib.models.SPADE and evlib.models.SSL)
     // The separate Python bindings have been deprecated in favor of the unified interface
@@ -133,6 +136,22 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     }
 
     m.add_submodule(processing_submodule)?;
+
+    // Register ev_processing::streaming module as "streaming" in Python
+    let streaming_submodule = PyModule::new(py, "streaming")?;
+    streaming_submodule.add_function(wrap_pyfunction!(
+        ev_processing::streaming::python::create_streaming_config,
+        py
+    )?)?;
+    streaming_submodule.add_function(wrap_pyfunction!(
+        ev_processing::streaming::python::process_events_streaming,
+        py
+    )?)?;
+    streaming_submodule.add_class::<ev_processing::streaming::python::PyStreamingConfig>()?;
+    streaming_submodule.add_class::<ev_processing::streaming::python::PyStreamingStats>()?;
+    streaming_submodule.add_class::<ev_processing::streaming::python::PyStreamingProcessor>()?;
+    streaming_submodule.add_class::<ev_processing::streaming::python::PyEventStream>()?;
+    m.add_submodule(streaming_submodule)?;
 
     // Register ev_tracking module as "tracking" in Python
     let tracking_submodule = PyModule::new(py, "tracking")?;
@@ -163,6 +182,32 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_simulation::python::esim_simulate_py,
         simulation_submodule
     )?)?;
+
+    // Add real-time streaming functions (conditionally available with GStreamer)
+    simulation_submodule.add_function(wrap_pyfunction!(
+        ev_simulation::python::is_realtime_available,
+        simulation_submodule
+    )?)?;
+
+    #[cfg(feature = "gstreamer")]
+    {
+        simulation_submodule.add_function(wrap_pyfunction!(
+            ev_simulation::python::create_realtime_stream_py,
+            simulation_submodule
+        )?)?;
+        simulation_submodule.add_class::<ev_simulation::python::PyRealtimeStreamConfig>()?;
+        simulation_submodule.add_class::<ev_simulation::python::PyRealtimeEventStream>()?;
+        simulation_submodule.add_class::<ev_simulation::python::PyStreamingStats>()?;
+    }
+
+    #[cfg(not(feature = "gstreamer"))]
+    {
+        simulation_submodule.add_function(wrap_pyfunction!(
+            ev_simulation::python::create_realtime_stream_py,
+            simulation_submodule
+        )?)?;
+    }
+
     simulation_submodule.add_class::<ev_simulation::python::PySimulationConfig>()?;
     simulation_submodule.add_class::<ev_simulation::python::PyVideoToEventsConverter>()?;
     simulation_submodule.add_class::<ev_simulation::python::PySimulationStats>()?;

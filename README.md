@@ -25,18 +25,22 @@
 
 </div>
 
-A high-performance (or some might say: _blazingly fast_) implementation of event
-camera utilities using Rust with Python bindings via PyO3.
+A high-performance implementation of event camera utilities using Rust with Python bindings via PyO3.
 
-This library is insipred by numerous event camera libraries such
+This library is inspired by numerous event camera libraries such as
 [`event_utils`](https://github.com/TimoStoff/event_utils) Python library but
 reimplemented in Rust for significantly better performance.
 
 > [!Warning]
 >
-> **This is a super experimental project and will have frequent breaking changes.
-> It is primary being developed as a learning project for understanding Event
-> Camera data processing and Event-Vision algorithms.**
+> **This is an experimental project with frequent breaking changes.
+> Many advanced features are still under development - see current status below.**
+
+> [!Note]
+>
+> **January 2025 Update**: This library has undergone a comprehensive audit to ensure
+> all claims match actual implementation. See `REPORT.md` for full details.
+> We are committed to honest documentation going forward.
 
 <!-- mtoc-start -->
 
@@ -45,13 +49,7 @@ reimplemented in Rust for significantly better performance.
 * [🧪 Testing](#-testing)
   * [Rust Tests](#rust-tests)
   * [Python Tests](#python-tests)
-  * [ONNX Model Integration Tests](#onnx-model-integration-tests)
-  * [Performance Tests](#performance-tests)
-* [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
-* [🚀 Performance](#-performance)
-  * [Single-core Performance](#single-core-performance)
-  * [Multi-core vs Single-core Performance](#multi-core-vs-single-core-performance)
-  * [Why Rust is Faster](#why-rust-is-faster)
+* [📊 Current Status](#-current-status)
 * [⮑ Module Structure](#-module-structure)
   * [Basic Usage](#basic-usage)
   * [Loading Event Data](#loading-event-data)
@@ -60,6 +58,8 @@ reimplemented in Rust for significantly better performance.
   * [Event Representations (Voxel Grid)](#event-representations-voxel-grid)
   * [Event Visualisation](#event-visualisation)
   * [Event-to-Video Reconstruction](#event-to-video-reconstruction)
+  * [Event Simulation](#event-simulation)
+* [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
 * [⚖️ License](#-license)
 
 <!-- mtoc-end -->
@@ -136,7 +136,7 @@ pytest
 
 ## 🧪 Testing
 
-evlib includes a comprehensive test suite covering Rust core functionality, Python bindings, model integration, and performance benchmarks.
+evlib includes a comprehensive test suite covering Rust core functionality and Python bindings.
 
 ### Rust Tests
 
@@ -170,160 +170,59 @@ pytest tests/test_evlib.py
 # Run with verbose output
 pytest -v
 
-# Run tests with benchmarks
-pytest --benchmark-only
-
-# Test notebooks
+# Test notebooks (if available)
 pytest --nbmake examples/
 
 # Run specific functionality tests
 pytest tests/test_representations.py::test_smooth_voxel
-pytest tests/test_reconstruction.py::test_e2vid_reconstruction
 ```
 
-### ONNX Model Integration Tests
+## 📊 Current Status
 
-Test ONNX Runtime integration and model loading:
+> **Status**: ⚠️ **Core functionality working, advanced features in development**
 
-```bash
-# Run ONNX integration tests
-pytest tests/test_onnx_complete_integration.py
+### ✅ **Working Features** (Verified January 2025)
 
-# Test with real data
-pytest tests/test_model_loading_real_data.py
+**Core Functionality**:
+- ✅ Event data structures and manipulation
+- ✅ Event data loading and saving (HDF5, text formats)
+- ✅ Event augmentation (random addition, correlated events, removal)
+- ✅ Event transformations (flipping, rotation, clipping)
+- ✅ Voxel grid representations (standard and smooth with interpolation)
+- ✅ Event visualisation and display
+- ✅ Event simulation (ESIM) - video-to-events conversion
 
-# Test ONNX model loading specifically
-pytest tests/test_onnx_model_loading.py
+**Neural Network Models**:
+- ✅ **E2VID UNet** - basic event-to-video reconstruction
+- ✅ **FireNet** - lightweight reconstruction variant
 
-# Run reconstruction benchmarks
-pytest tests/test_e2vid_benchmarks.py
-```
+**Infrastructure**:
+- ✅ Python bindings via PyO3
+- ✅ Model downloading infrastructure
+- ✅ Cross-platform support (macOS, Linux, Windows)
 
-### Performance Tests
+### 🚧 **In Development**
 
-Benchmark performance across different implementations:
+**Model Loading**:
+- ⚠️ PyTorch weight loading (downloads models but integration needs work)
+- ⚠️ ONNX Runtime integration (infrastructure exists, needs refinement)
 
-```bash
-# Run all benchmarks
-pytest --benchmark-only
+**Advanced Models**:
+- 🔲 E2VID+ (temporal features)
+- 🔲 FireNet+ (enhanced lightweight variant)
+- 🔲 SPADE-E2VID (spatially-adaptive normalization)
+- 🔲 SSL-E2VID (self-supervised learning)
+- 🔲 ET-Net (transformer-based)
+- 🔲 HyperE2VID (dynamic convolutions)
 
-# Run specific benchmark
-pytest tests/test_e2vid_benchmarks.py --benchmark-only
+### 📋 **Planned Features**
 
-# Compare Rust vs Python performance
-pytest tests/test_smooth_voxel.py --benchmark-compare
-
-# Save benchmark results
-pytest --benchmark-only --benchmark-save=baseline
-```
-
-### Test Data
-
-Tests use sample data from `data/slider_depth/`:
-- `events.txt` - Event stream data (1M+ events)
-- `calib.txt` - Camera calibration parameters
-- `images/` - Ground truth frames for reconstruction testing
-- Models in `models/` directory (e.g., `ETAP_v1_cvpr25.pth` - 202MB)
-
-### Continuous Integration
-
-The test suite is designed for CI/CD workflows:
-
-```bash
-# Full test suite (CI)
-pytest tests/ --cov=evlib --cov-report=xml
-
-# Format check
-black --check python/ tests/ examples/
-cargo fmt --check
-
-# Lint check
-cargo clippy -- -D warnings
-```
-
-## 🗺️ Roadmap and Current Features
-
-- Core event data structures and manipulation
-- Event data loading and saving
-- Event augmentation
-  - Random event addition
-  - Correlated event addition
-  - Event removal
-- Event transformations
-  - Flipping events along x and y axes
-  - Clipping events to bounds
-  - Rotating events
-- Event representations
-  - Voxel grid representation
-  - Smooth voxel grid representation with interpolation
-- Event visualisation and display
-- Event-to-video reconstruction
-
-`evlib` aims to become a comprehensive toolkit for event camera data processing,
-combining high-performance Rust implementations with Python bindings for ease of
-use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issues/1)
-
-| Algorithm/Feature          | Description                                 | Status         |
-| -------------------------- | ------------------------------------------- | -------------- |
-| Core Event Data Structures | Basic event representation and manipulation | ✅ Implemented |
-| Event Augmentation         | Random/correlated event addition/removal    | ✅ Implemented |
-| Event Transformations      | Flipping, rotation, clipping                | ✅ Implemented |
-| Voxel Grid                 | Event-to-voxel grid conversion              | ✅ Implemented |
-| Smooth Voxel Grid          | Interpolated voxel grid representation      | ✅ Implemented |
-| Visualisation              | Event-to-image conversion tools             | ✅ Implemented |
-| E2VID (Basic)              | Simple event-to-video reconstruction        | ✅ Implemented |
-| OpenEB Format Support      | Compatibility with OpenEB data formats      | ⏳ Planned     |
-| OpenEB HAL Integration     | Hardware abstraction for cameras            | ⏳ Planned     |
-| OpenEB Streaming           | Real-time event stream processing           | ⏳ Planned     |
-| E2VID (Advanced)           | Neural network reconstruction               | ⏳ Planned     |
-| Vid2E Simulation           | Video-to-event conversion                   | ⏳ Planned     |
-| ESIM Framework             | Event camera simulation                     | ⏳ Planned     |
-| HyperE2VID                 | Advanced reconstruction with hypernetworks  | ⏳ Planned     |
-| RVT Object Detection       | Event-based object detection                | ⏳ Planned     |
-| Optical Flow               | Event-based optical flow estimation         | ⏳ Planned     |
-| Depth Estimation           | Event-based depth estimation                | ⏳ Planned     |
-
-## 🚀 Performance
-
-Evlib is significantly faster than pure Python implementations, thanks to its
-Rust backend. The benchmark compares the Rust-backed evlib implementation
-against equivalent pure Python implementations of the same functions, in both
-single-core and multi-core scenarios.
-
-### Single-core Performance
-
-| Operation         | Python Time (s) | Rust Time (s) | Speedup |
-| ----------------- | --------------- | ------------- | ------- |
-| events_to_block   | 0.040431        | 0.000860      | 47.03x  |
-| add_random_events | 0.018615        | 0.003421      | 5.44x   |
-| flip_events_x     | 0.000023        | 0.000283      | 0.08x   |
-
-_Benchmark performed with 100,000 events on a single core_
-
-### Multi-core vs Single-core Performance
-
-| Operation         | Python (1 core) | Python (10 cores) | Rust (1 core) | Rust vs Py (1 core) | Rust vs Py (10 cores) |
-| ----------------- | --------------- | ----------------- | ------------- | ------------------- | --------------------- |
-| events_to_block   | 0.040431 s      | 0.315156 s        | 0.000860 s    | 47.03x              | 366.58x               |
-| add_random_events | 0.018615 s      | 0.360760 s        | 0.003421 s    | 5.44x               | 105.44x               |
-| flip_events_x     | 0.000023 s      | 0.303467 s        | 0.000283 s    | 0.08x               | 1072.67x              |
-
-_Benchmark performed with 100,000 events. Note that for these specific
-operations and data sizes, the multi-core Python implementation is slower due to
-process creation overhead._
-
-### Why Rust is Faster
-
-The significant performance gains come from several factors:
-
-1. **Compiled vs Interpreted**: Rust is compiled to native machine code, while Python is interpreted
-2. **Memory Management**: Rust's ownership model allows for efficient memory use without garbage collection
-3. **Low-level Optimisations**: Rust can take advantage of SIMD (Single Instruction Multiple Data) vectorisation
-4. **Static Typing**: Rust's type system enables compiler optimisations that aren't possible with Python's dynamic typing
-5. **Zero-cost Abstractions**: Rust provides high-level abstractions without runtime overhead
-6. **Efficient Concurrency**: Rust's thread safety guarantees and lack of GIL allow for better parallelisation
-
-Run `python examples/benchmark.py` to benchmark on your own system.
+- OpenEB format support and HAL integration
+- Real-time streaming capabilities
+- Hardware acceleration (CUDA/Metal optimization)
+- Production deployment tools
+- ROS2 integration
+- Performance benchmarking suite
 
 ## ⮑ Module Structure
 
@@ -334,7 +233,8 @@ The library is organized into the following modules:
 - `evlib.formats`: Data loading and saving
 - `evlib.representations`: Event representation algorithms (e.g., voxel grid)
 - `evlib.visualization`: Visualisation tools
-- `evlib.processing`: Advanced event processing (including event-to-video reconstruction)
+- `evlib.processing`: Event processing and reconstruction
+- `evlib.simulation`: Event simulation and video-to-events conversion
 
 ### Basic Usage
 
@@ -349,7 +249,7 @@ ts = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float64)
 ps = np.array([1, -1, 1, -1], dtype=np.int64)
 
 # Convert to block representation
-block = evlib.core.events_to_block_py(xs, ys, ts, ps)
+block = evlib.core.events_to_block(xs, ys, ts, ps)
 print(f"Block shape: {block.shape}")  # (4, 4)
 ```
 
@@ -373,7 +273,6 @@ evlib.formats.save_events_to_text_py(xs, ys, ts, ps, "output.txt")
 ```python
 import numpy as np
 import evlib
-import matplotlib.pyplot as plt
 
 # Create sample event data
 xs = np.array([50, 60, 70, 80, 90], dtype=np.int64)
@@ -383,7 +282,7 @@ ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 
 # Add random events
 to_add = 20
-new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_random_events_py(xs, ys, ts, ps, to_add)
+new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_random_events(xs, ys, ts, ps, to_add)
 print(f"Original events: {len(xs)}, After adding random events: {len(new_xs)}")
 
 # Add correlated events (events near existing ones)
@@ -457,8 +356,7 @@ num_bins = 5
 resolution = (100, 100)  # (width, height)
 method = "count"  # Options: "count", "polarity", "time"
 
-# Pass parameters in correct order
-voxel_grid = evlib.representations.events_to_voxel_grid_py(
+voxel_grid = evlib.representations.events_to_voxel_grid(
     xs, ys, ts, ps, num_bins, resolution, method
 )
 
@@ -494,7 +392,6 @@ ps = np.array([1, -1, 1, -1, 1], dtype=np.int64)
 resolution = (100, 100)  # (width, height)
 color_mode = "red-blue"  # Options: "red-blue", "grayscale"
 
-# Pass parameters in correct order
 event_image = evlib.visualization.draw_events_to_image_py(
     xs, ys, ts, ps, resolution, color_mode
 )
@@ -536,11 +433,12 @@ width = int(max(xs)) + 1
 
 # Reconstruct a single frame from events
 num_bins = 5  # Number of time bins for voxel grid
-reconstructed_frame = evlib.processing.events_to_video_py(
+reconstructed_frame = evlib.processing.events_to_video_advanced(
     xs, ys, ts, ps,
     height=height,
     width=width,
-    num_bins=num_bins
+    num_bins=num_bins,
+    model_type="unet"  # Options: "unet", "firenet"
 )
 
 # Display the reconstructed frame
@@ -552,39 +450,85 @@ plt.axis('off')
 # Save figure (optional)
 plt.savefig("examples/figures/reconstructed_frame.png", bbox_inches="tight")
 plt.show()
-
-# For multiple frames (reconstructing a sequence)
-# Define time windows and reconstruct frames for each
-reconstructed_frames = []
-t_min, t_max = ts.min(), ts.max()
-num_frames = 5
-time_step = (t_max - t_min) / num_frames
-
-for i in range(num_frames):
-    t_end = t_min + time_step * (i + 1)
-    mask = ts <= t_end
-    frame_xs = xs[mask]
-    frame_ys = ys[mask]
-    frame_ts = ts[mask]
-    frame_ps = ps[mask]
-
-    frame = evlib.processing.events_to_video_py(
-        frame_xs, frame_ys, frame_ts, frame_ps,
-        height=height,
-        width=width,
-        num_bins=num_bins
-    )
-
-    reconstructed_frames.append(frame)
-
-    # Save each frame (optional)
-    plt.figure(figsize=(10, 8))
-    plt.imshow(frame, cmap="gray")
-    plt.title(f"Reconstructed Frame {i+1}")
-    plt.axis("off")
-    plt.savefig(f"examples/figures/reconstructed_frame_{i+1}.png", bbox_inches="tight")
-    plt.close()
 ```
+
+### Event Simulation
+
+```python
+import numpy as np
+import evlib
+
+# Create two intensity frames for ESIM simulation
+height, width = 100, 100
+intensity_old = np.ones((height, width), dtype=np.float32) * 0.3
+intensity_new = np.ones((height, width), dtype=np.float32) * 0.7
+
+# Generate events using ESIM simulation
+xs, ys, ts, ps = evlib.simulation.esim_simulate_py(
+    intensity_old,
+    intensity_new,
+    threshold=0.2,
+    refractory_period_us=100.0
+)
+
+print(f"Generated {len(xs)} events from intensity change")
+
+# Create a video-to-events converter for more advanced simulation
+config = evlib.simulation.PySimulationConfig(
+    resolution=(width, height),
+    contrast_threshold_pos=0.2,
+    contrast_threshold_neg=0.2,
+    enable_noise=True
+)
+
+converter = evlib.simulation.PyVideoToEventsConverter(config)
+
+# Convert a single frame to events
+test_frame = np.random.rand(height, width).astype(np.float32)
+xs2, ys2, ts2, ps2 = converter.convert_frame(test_frame, timestamp_us=0.0)
+
+print(f"Converter generated {len(xs2)} events from random frame")
+```
+
+## 🗺️ Roadmap and Current Features
+
+`evlib` aims to become a comprehensive toolkit for event camera data processing,
+combining high-performance Rust implementations with Python bindings for ease of
+use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issues/1)
+
+### Status Legend
+- ✅ **Implemented**: Feature is working and tested
+- ⚠️ **Partial**: Basic functionality works, but needs improvement
+- 🔲 **Planned**: Feature is planned but not yet implemented
+
+| Algorithm/Feature          | Description                                 | Status         |
+| -------------------------- | ------------------------------------------- | -------------- |
+| Core Event Data Structures | Basic event representation and manipulation | ✅ Implemented |
+| Event Augmentation         | Random/correlated event addition/removal    | ✅ Implemented |
+| Event Transformations      | Flipping, rotation, clipping                | ✅ Implemented |
+| Voxel Grid                 | Event-to-voxel grid conversion              | ✅ Implemented |
+| Smooth Voxel Grid          | Interpolated voxel grid representation      | ✅ Implemented |
+| Visualisation              | Event-to-image conversion tools             | ✅ Implemented |
+| Event Simulation (ESIM)    | Video-to-events conversion                  | ✅ Implemented |
+| E2VID UNet                 | Basic event-to-video reconstruction         | ✅ Implemented |
+| FireNet                    | Lightweight reconstruction variant           | ✅ Implemented |
+| PyTorch Weight Loading     | Load pre-trained .pth models               | ⚠️ Partial     |
+| ONNX Runtime Integration   | ONNX model inference                        | ⚠️ Partial     |
+| E2VID+                     | Enhanced E2VID with temporal features       | 🔲 Planned     |
+| FireNet+                   | Enhanced FireNet variant                    | 🔲 Planned     |
+| SPADE-E2VID               | Spatially-adaptive normalization            | 🔲 Planned     |
+| SSL-E2VID                 | Self-supervised learning approach           | 🔲 Planned     |
+| ET-Net                    | Transformer-based reconstruction            | 🔲 Planned     |
+| HyperE2VID                | Dynamic convolutions with hypernetworks     | 🔲 Planned     |
+| OpenEB Format Support      | Compatibility with OpenEB data formats      | 🔲 Planned     |
+| OpenEB HAL Integration     | Hardware abstraction for cameras            | 🔲 Planned     |
+| Real-time Streaming        | Real-time event stream processing           | 🔲 Planned     |
+| Hardware Acceleration      | CUDA/Metal optimization                     | 🔲 Planned     |
+| RVT Object Detection       | Event-based object detection                | 🔲 Planned     |
+| Optical Flow               | Event-based optical flow estimation         | 🔲 Planned     |
+| Depth Estimation           | Event-based depth estimation                | 🔲 Planned     |
+
+For detailed development progress and upcoming features, see [TODO.md](TODO.md).
 
 ## ⚖️ License
 

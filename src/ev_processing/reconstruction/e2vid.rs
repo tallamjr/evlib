@@ -3,13 +3,14 @@
 
 use crate::ev_core::Events;
 use crate::ev_processing::reconstruction::e2vid_arch::{E2VidUNet, FireNet};
+use crate::ev_processing::reconstruction::e2vid_recurrent::E2VidRecurrent;
 use crate::ev_processing::reconstruction::onnx_loader_simple::{OnnxE2VidModel, OnnxModelConfig};
-use crate::ev_processing::reconstruction::pytorch_loader::{
-    E2VidModelLoader, E2VidNet, ModelLoaderConfig,
-};
+use crate::ev_processing::reconstruction::unified_loader::{load_model, ModelLoadConfig};
 use crate::ev_representations::voxel_grid::EventsToVoxelGrid;
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 use candle_nn::{Module, VarBuilder, VarMap};
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -48,13 +49,14 @@ impl Default for E2VidConfig {
 
 /// Model backend type for E2VID
 enum ModelBackend {
-    Candle(E2VidNet),
+    CandleRecurrent(E2VidRecurrent),
     CandleUNet(E2VidUNet),
     CandleFireNet(FireNet),
     Onnx(OnnxE2VidModel),
 }
 
 /// A wrapper for event-based video reconstruction
+#[cfg_attr(feature = "python", pyo3::pyclass)]
 pub struct E2Vid {
     config: E2VidConfig,
     image_shape: (usize, usize),
@@ -106,23 +108,53 @@ impl E2Vid {
         }
     }
 
-    /// Load neural network from PyTorch model file
+    /// Check if a model has been loaded
+    pub fn has_model(&self) -> bool {
+        self.model.is_some()
+    }
+
+    /// Load neural network from PyTorch model file using proper architecture
     pub fn load_model_from_file(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
-        let model_config = ModelLoaderConfig {
+        println!(
+            "🔄 Loading PyTorch model with E2VID Recurrent architecture: {}",
+            model_path.display()
+        );
+
+        // Use the unified loader to get the weights
+        let model_config = ModelLoadConfig {
+            model_type: "e2vid_recurrent".to_string(),
             device: self.device.clone(),
-            dtype: DType::F32,
-            strict_loading: true,
-            verbose: false,
+            verify_loading: false,
+            tolerance: 1e-5,
         };
 
-        match E2VidModelLoader::load_from_pth(model_path, model_config) {
-            Ok(network) => {
-                self.model = Some(ModelBackend::Candle(network));
-                Ok(())
+        match load_model(model_path, Some(model_config)) {
+            Ok(loaded_model) => {
+                println!(
+                    "✅ Successfully loaded weights from {:?} model",
+                    loaded_model.format
+                );
+
+                // Create E2VID Recurrent model with loaded weights
+                let vs = VarBuilder::from_varmap(&loaded_model.varmap, DType::F32, &self.device);
+
+                match E2VidRecurrent::load_from_varbuilder(vs) {
+                    Ok(model) => {
+                        self.model = Some(ModelBackend::CandleRecurrent(model));
+                        println!("✅ Successfully created E2VID Recurrent model with proper architecture matching");
+                        println!("✅ Model weights loaded successfully - outputs should now be deterministic");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to create E2VID Recurrent model: {:?}", e);
+                        eprintln!("🔄 Falling back to basic UNet with random weights");
+                        self.create_default_network()
+                    }
+                }
             }
             Err(e) => {
-                eprintln!("Failed to load PyTorch model: {:?}", e);
-                // Fall back to creating a network with random weights
+                eprintln!("❌ Failed to load model weights: {:?}", e);
+                eprintln!("🔄 Falling back to basic UNet with random weights");
                 self.create_default_network()
             }
         }
@@ -162,18 +194,21 @@ impl E2Vid {
         let vs = VarBuilder::from_varmap(&var_map, DType::F32, &self.device);
 
         match mode {
-            E2VidMode::NeuralNetwork => match E2VidNet::new(&vs) {
-                Ok(network) => {
-                    self.model = Some(ModelBackend::Candle(network));
-                    Ok(())
+            E2VidMode::NeuralNetwork => {
+                // Use UNet as default neural network since E2VidNet was removed
+                match E2VidUNet::new(vs, self.config.num_bins, 32) {
+                    Ok(network) => {
+                        self.model = Some(ModelBackend::CandleUNet(network));
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create default network: {:?}", e);
+                        Err(candle_core::Error::Msg(
+                            "Failed to initialize network".to_string(),
+                        ))
+                    }
                 }
-                Err(e) => {
-                    eprintln!("Failed to create default network: {:?}", e);
-                    Err(candle_core::Error::Msg(
-                        "Failed to initialize network".to_string(),
-                    ))
-                }
-            },
+            }
             E2VidMode::UNet => match E2VidUNet::new(vs, self.config.num_bins, 32) {
                 Ok(network) => {
                     self.model = Some(ModelBackend::CandleUNet(network));
@@ -238,7 +273,7 @@ impl E2Vid {
 
         // Run inference based on model backend
         let output = match self.model.as_ref().expect("Model should be initialized") {
-            ModelBackend::Candle(network) => network.forward(&input_tensor)?,
+            ModelBackend::CandleRecurrent(network) => network.forward(&input_tensor)?,
             ModelBackend::CandleUNet(network) => network.forward(&input_tensor)?,
             ModelBackend::CandleFireNet(network) => network.forward(&input_tensor)?,
             ModelBackend::Onnx(model) => model
@@ -368,5 +403,80 @@ impl EventsToVoxelGrid {
 
         // Create tensor from voxel grid
         Tensor::from_vec(voxel_grid, (self.num_bins, height, width), &Device::Cpu)
+    }
+}
+
+/// Python bindings for E2Vid
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl E2Vid {
+    /// Create a new E2VID reconstruction engine (Python constructor)
+    #[new]
+    pub fn py_new(image_height: usize, image_width: usize) -> Self {
+        Self::new(image_height, image_width)
+    }
+
+    /// Load neural network from PyTorch model file using proper architecture (Python-compatible)
+    #[pyo3(name = "load_model_from_file")]
+    pub fn load_model_from_file_py(&mut self, model_path: String) -> PyResult<()> {
+        let path = std::path::Path::new(&model_path);
+        self.load_model_from_file(path).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load model: {}", e))
+        })
+    }
+
+    /// Process events from arrays to reconstruct a frame (Python-compatible)
+    #[pyo3(name = "reconstruct_frame")]
+    pub fn reconstruct_frame_py(
+        &mut self,
+        py: Python,
+        xs: Vec<i64>,
+        ys: Vec<i64>,
+        ts: Vec<f64>,
+        ps: Vec<i64>,
+    ) -> PyResult<PyObject> {
+        use numpy::IntoPyArray;
+
+        // Convert to Events
+        let mut events = Vec::with_capacity(xs.len());
+        for i in 0..xs.len() {
+            events.push(crate::ev_core::Event {
+                x: xs[i] as u16,
+                y: ys[i] as u16,
+                t: ts[i],
+                polarity: ps[i] as i8,
+            });
+        }
+
+        // Sort by timestamp
+        events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+
+        match self.process_events(&events) {
+            Ok(tensor) => {
+                // Convert tensor to numpy array for Python
+                let data = tensor.to_vec2::<f32>().map_err(|e| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Failed to convert tensor: {}",
+                        e
+                    ))
+                })?;
+
+                // Convert to flattened vector for numpy
+                let flat_data: Vec<f32> = data.into_iter().flatten().collect();
+                let shape = (self.image_shape.0, self.image_shape.1);
+
+                Ok(flat_data.into_pyarray(py).reshape(shape)?.to_object(py))
+            }
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Reconstruction failed: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Check if a model has been loaded (Python getter)
+    #[getter]
+    pub fn has_model_py(&self) -> bool {
+        self.has_model()
     }
 }

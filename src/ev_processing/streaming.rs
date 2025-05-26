@@ -9,6 +9,9 @@ use super::reconstruction::unified_loader::{load_model, LoadedModel, ModelLoadCo
 use crate::ev_core::Event;
 use crate::ev_representations::events_to_voxel_grid;
 
+#[cfg(feature = "python")]
+pub mod python;
+
 /// Configuration for streaming event processor
 #[derive(Debug, Clone)]
 pub struct StreamingConfig {

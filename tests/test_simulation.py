@@ -447,9 +447,7 @@ def test_evlib_simulation_integration():
     intensity_new = np.ones((height, width), dtype=np.float32) * 0.7
 
     # Call the ESIM simulation function
-    xs, ys, ts, ps = evlib.simulation.esim_simulate_py(
-        intensity_old, intensity_new, threshold=0.2, refractory_period_us=100.0
-    )
+    xs, ys, ts, ps = evlib.simulation.esim_simulate_py(intensity_old, intensity_new, threshold=0.2)
 
     # Validate results
     assert isinstance(xs, np.ndarray)

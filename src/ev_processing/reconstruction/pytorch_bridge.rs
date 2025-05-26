@@ -70,13 +70,17 @@ impl PyTorchLoader {
                 .call_method1("load", (path.to_string_lossy().to_string(), "cpu"))
                 .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
-            // Extract state dict
-            let state_dict = if checkpoint.hasattr("state_dict")? {
-                checkpoint
-                    .getattr("state_dict")
-                    .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?
+            // Extract state dict - handle nested structure
+            let state_dict = if checkpoint.contains("state_dict")? {
+                let nested_state_dict = checkpoint
+                    .get_item("state_dict")
+                    .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
+
+                println!("Found nested state_dict, extracting model weights...");
+                nested_state_dict
             } else {
                 // Assume checkpoint is already a state dict
+                println!("Treating checkpoint as direct state dict...");
                 checkpoint
             };
 
@@ -98,20 +102,42 @@ impl PyTorchLoader {
             .call_method0("keys")
             .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
+        println!(
+            "Processing state dict with {} keys",
+            keys.len().unwrap_or(0)
+        );
+
         for key in keys.iter()? {
             let key = key?;
             let key_str = key
                 .extract::<String>()
                 .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
-            // Get the tensor
-            let tensor = state_dict
+            // Get the value
+            let value = state_dict
                 .get_item(key)
                 .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
-            // Convert to Candle tensor
-            let candle_tensor = self.pytorch_to_candle(py, tensor)?;
-            candle_state_dict.insert(key_str, candle_tensor);
+            // Check if it's a tensor by looking for tensor-specific attributes
+            if value.hasattr("detach").unwrap_or(false) && value.hasattr("shape").unwrap_or(false) {
+                // Convert to Candle tensor
+                match self.pytorch_to_candle(py, value) {
+                    Ok(candle_tensor) => {
+                        println!("✅ Converted tensor: {}", key_str);
+                        candle_state_dict.insert(key_str, candle_tensor);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Failed to convert tensor for key '{}': {}",
+                            key_str, e
+                        );
+                        // Skip this key rather than failing entirely
+                    }
+                }
+            } else {
+                // Skip non-tensor values (e.g., strings, metadata)
+                eprintln!("Skipping non-tensor key: {}", key_str);
+            }
         }
 
         Ok(candle_state_dict)

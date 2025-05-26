@@ -220,7 +220,7 @@ def main():
     # Benchmark events_to_block (single-core)
     print("\nBenchmarking events_to_block (single-core)...")
     py_time_block_single, py_result = benchmark_function(python_events_to_block, xs, ys, ts, ps)
-    rust_time_block_single, rust_result = benchmark_function(core.events_to_block_py, xs, ys, ts, ps)
+    rust_time_block_single, rust_result = benchmark_function(core.events_to_block, xs, ys, ts, ps)
 
     print(f"Python implementation: {py_time_block_single:.6f} seconds")
     print(f"Rust implementation: {rust_time_block_single:.6f} seconds")
@@ -247,7 +247,7 @@ def main():
     )
 
     rust_time_add_single, (rust_xs, rust_ys, rust_ts, rust_ps) = benchmark_function(
-        augmentation.add_random_events_py, xs, ys, ts, ps, to_add
+        augmentation.add_random_events, xs, ys, ts, ps, to_add
     )
 
     print(f"Python implementation: {py_time_add_single:.6f} seconds")

@@ -53,7 +53,7 @@ def main():
     # 1. Add random events
     to_add = 15
     # Add random events
-    new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_random_events_py(xs, ys, ts, ps, to_add)
+    new_xs, new_ys, new_ts, new_ps = evlib.augmentation.add_random_events(xs, ys, ts, ps, to_add)
     print(f"Original events: {len(xs)}, After adding random events: {len(new_xs)}")
 
     # 2. Add correlated events
@@ -62,7 +62,7 @@ def main():
     ts_std = 0.005  # Standard deviation for timestamps
 
     # Add correlated events
-    corr_xs, corr_ys, corr_ts, corr_ps = evlib.augmentation.add_correlated_events_py(
+    corr_xs, corr_ys, corr_ts, corr_ps = evlib.augmentation.add_correlated_events(
         xs, ys, ts, ps, to_add, xy_std=xy_std, ts_std=ts_std
     )
     print(f"Original events: {len(xs)}, After adding correlated events: {len(corr_xs)}")
@@ -70,7 +70,7 @@ def main():
     # 3. Remove events
     to_remove = 2
     # Remove events
-    rem_xs, rem_ys, rem_ts, rem_ps = evlib.augmentation.remove_events_py(xs, ys, ts, ps, to_remove)
+    rem_xs, rem_ys, rem_ts, rem_ps = evlib.augmentation.remove_events(xs, ys, ts, ps, to_remove)
     print(f"Original events: {len(xs)}, After removing events: {len(rem_xs)}")
 
     # Visualize the results

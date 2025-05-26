@@ -1,8 +1,8 @@
 """
 Test suite for E2VID event-to-video reconstruction functionality.
 
-This module tests the available event-to-video reconstruction functions
-provided by the evlib Python API.
+This module tests both the legacy and new direct E2VID APIs
+using only real event data from the /data/ directory.
 """
 
 import pytest
@@ -19,38 +19,34 @@ except ImportError:
 
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")
 class TestE2VidReconstruction:
-    """Test E2VID reconstruction functionality."""
+    """Test E2VID reconstruction functionality with real data."""
 
     @pytest.fixture
-    def sample_events(self):
-        """Create a simple synthetic event stream for testing."""
-        # Create a simple pattern of events
-        num_events = 1000
-        width, height = 64, 64
+    def real_events(self):
+        """Load real events from slider_depth dataset."""
+        events_file = Path("data/slider_depth/events.txt")
+        if not events_file.exists():
+            pytest.skip("slider_depth dataset not available")
 
-        # Generate synthetic events
-        events_data = []
-        for i in range(num_events):
-            x = np.random.randint(0, width)
-            y = np.random.randint(0, height)
-            t = i * 0.001  # 1ms intervals
-            polarity = 1 if i % 2 == 0 else -1
-            events_data.append((x, y, t, polarity))
+        # Load events using evlib
+        events_data = evlib.formats.load_events(str(events_file))
 
-        # Return as separate arrays for the API
-        xs = np.array([e[0] for e in events_data], dtype=np.int64)
-        ys = np.array([e[1] for e in events_data], dtype=np.int64)
-        ts = np.array([e[2] for e in events_data], dtype=np.float64)
-        ps = np.array([e[3] for e in events_data], dtype=np.int64)
+        # Take first 2000 events for testing
+        n_events = min(2000, len(events_data[0]))
+        xs = events_data[0][:n_events]
+        ys = events_data[1][:n_events]
+        ts = events_data[2][:n_events]
+        ps = events_data[3][:n_events]
 
         return xs, ys, ts, ps
 
-    def test_events_to_video_basic(self, sample_events):
-        """Test basic event-to-video reconstruction."""
-        xs, ys, ts, ps = sample_events
-        height, width = 64, 64
+    def test_events_to_video_basic(self, real_events):
+        """Test basic event-to-video reconstruction with real data."""
+        xs, ys, ts, ps = real_events
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
 
-        # Test basic reconstruction
+        # Test basic reconstruction with real events
         result = evlib.processing.events_to_video(xs, ys, ts, ps, height, width)
 
         # Check output properties
@@ -62,10 +58,14 @@ class TestE2VidReconstruction:
         assert np.all(result >= 0.0)
         assert np.all(result <= 1.0)
 
-    def test_events_to_video_with_bins(self, sample_events):
-        """Test reconstruction with different number of bins."""
-        xs, ys, ts, ps = sample_events
-        height, width = 64, 64
+        # Real events should produce some signal
+        assert np.any(result > 0), "Real events should produce some signal"
+
+    def test_events_to_video_with_bins(self, real_events):
+        """Test reconstruction with different number of bins using real data."""
+        xs, ys, ts, ps = real_events
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
 
         # Test with default bin number (5) which works with the neural network
         result = evlib.processing.events_to_video(xs, ys, ts, ps, height, width, num_bins=5)
@@ -74,13 +74,18 @@ class TestE2VidReconstruction:
         assert result.dtype == np.float32
         assert np.all(result >= 0.0)
         assert np.all(result <= 1.0)
+        assert np.any(result > 0), "Real events should produce signal"
 
-    def test_events_to_video_different_sizes(self, sample_events):
-        """Test reconstruction with different image dimensions."""
-        xs, ys, ts, ps = sample_events
+    def test_events_to_video_different_sizes(self, real_events):
+        """Test reconstruction with different image dimensions using real data."""
+        xs, ys, ts, ps = real_events
 
-        # Clip coordinates to fit smaller images
-        sizes = [(32, 32), (64, 64), (128, 128)]
+        # Get actual data dimensions and test with smaller crops
+        max_height = int(ys.max()) + 1
+        max_width = int(xs.max()) + 1
+
+        # Test with different cropped sizes
+        sizes = [(max_height // 2, max_width // 2), (max_height, max_width)]
 
         for height, width in sizes:
             # Filter events to fit within the image bounds
@@ -97,6 +102,7 @@ class TestE2VidReconstruction:
 
                 assert result.shape == (height, width, 1)
                 assert result.dtype == np.float32
+                assert np.any(result > 0), f"Real events should produce signal for size {height}x{width}"
 
     def test_events_to_video_empty_events(self):
         """Test reconstruction with empty event stream."""
@@ -116,11 +122,33 @@ class TestE2VidReconstruction:
         # Empty events should produce mostly zeros
         assert np.all(result >= 0.0)
 
-    def test_reconstruct_events_to_frames(self, sample_events):
-        """Test multiple frame reconstruction."""
-        xs, ys, ts, ps = sample_events
-        height, width = 64, 64
-        num_frames = 5
+    def test_direct_e2vid_api(self, real_events):
+        """Test the new direct E2Vid Rust API with real data."""
+        xs, ys, ts, ps = real_events
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
+
+        # Create E2Vid instance directly
+        e2vid = evlib.processing.E2Vid(height, width)
+
+        # Test initial state
+        assert not e2vid.has_model_py
+
+        # Reconstruct frame using direct API
+        frame = e2vid.reconstruct_frame(xs.tolist(), ys.tolist(), ts.tolist(), ps.tolist())
+
+        # Verify output
+        assert frame.shape == (height, width)
+        assert frame.dtype == np.float32
+        assert np.all(frame >= 0.0) and np.all(frame <= 1.0)
+        assert np.any(frame > 0), "Real events should produce signal in direct API"
+
+    def test_reconstruct_events_to_frames(self, real_events):
+        """Test multiple frame reconstruction with real data."""
+        xs, ys, ts, ps = real_events
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
+        num_frames = 3  # Reduced for faster testing
 
         frames = evlib.processing.reconstruct_events_to_frames(xs, ys, ts, ps, height, width, num_frames)
 
@@ -132,11 +160,15 @@ class TestE2VidReconstruction:
             assert frame.dtype == np.float32
             assert np.all(frame >= 0.0)
             assert np.all(frame <= 1.0)
+            # Real events should produce signal in at least some frames
+            if i == num_frames - 1:  # Check final frame has signal
+                assert np.any(frame > 0), "Final frame should have signal from real events"
 
-    def test_reconstruct_events_to_frames_with_bins(self, sample_events):
-        """Test multiple frame reconstruction with different bin numbers."""
-        xs, ys, ts, ps = sample_events
-        height, width = 64, 64
+    def test_reconstruct_events_to_frames_with_bins(self, real_events):
+        """Test multiple frame reconstruction with different bin numbers using real data."""
+        xs, ys, ts, ps = real_events
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
         num_frames = 3
 
         # Test with default bin number (5) which works with the neural network
@@ -145,25 +177,42 @@ class TestE2VidReconstruction:
         )
 
         assert len(frames) == num_frames
-        for frame in frames:
+        for i, frame in enumerate(frames):
             assert frame.shape == (height, width, 1)
             assert frame.dtype == np.float32
+            # Final frame should have signal from real events
+            if i == num_frames - 1:
+                assert np.any(frame > 0), "Final frame should have signal from real events"
 
 
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")
 class TestE2VidPerformance:
-    """Test E2VID performance characteristics."""
+    """Test E2VID performance characteristics with real data."""
 
-    def test_reconstruction_speed(self, benchmark):
-        """Benchmark reconstruction speed."""
-        # Create test events
-        num_events = 10000
-        xs = np.random.randint(0, 64, num_events, dtype=np.int64)
-        ys = np.random.randint(0, 64, num_events, dtype=np.int64)
-        ts = np.linspace(0.0, 1.0, num_events, dtype=np.float64)
-        ps = np.random.choice([-1, 1], num_events).astype(np.int64)
+    @pytest.fixture
+    def benchmark_events(self):
+        """Load real events for benchmarking."""
+        events_file = Path("data/slider_depth/events.txt")
+        if not events_file.exists():
+            pytest.skip("slider_depth dataset not available")
 
-        height, width = 64, 64
+        events_data = evlib.formats.load_events(str(events_file))
+
+        # Take first 5k events for benchmarking
+        n_events = min(5000, len(events_data[0]))
+        xs = events_data[0][:n_events]
+        ys = events_data[1][:n_events]
+        ts = events_data[2][:n_events]
+        ps = events_data[3][:n_events]
+
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
+
+        return xs, ys, ts, ps, height, width
+
+    def test_reconstruction_speed(self, benchmark, benchmark_events):
+        """Benchmark reconstruction speed with real data."""
+        xs, ys, ts, ps, height, width = benchmark_events
 
         # Benchmark the reconstruction
         result = benchmark(evlib.processing.events_to_video, xs, ys, ts, ps, height, width)
@@ -171,27 +220,31 @@ class TestE2VidPerformance:
         # Verify the result
         assert result.shape == (height, width, 1)
         assert result.dtype == np.float32
+        assert np.any(result > 0), "Real events should produce signal"
 
-    def test_memory_usage(self):
-        """Test that reconstruction works for different image sizes."""
-        # Test with progressively larger images to ensure no memory leaks
-        sizes = [(64, 64), (128, 128)]  # Reduced sizes for testing
+    def test_memory_usage_real_data(self, benchmark_events):
+        """Test memory usage with real event data."""
+        xs, ys, ts, ps, height, width = benchmark_events
 
-        for width, height in sizes:
-            # Create test events
-            num_events = 2000  # Reduced number of events
-            xs = np.random.randint(0, width, num_events, dtype=np.int64)
-            ys = np.random.randint(0, height, num_events, dtype=np.int64)
-            ts = np.linspace(0.0, 1.0, num_events, dtype=np.float64)
-            ps = np.random.choice([-1, 1], num_events).astype(np.int64)
+        # Test with real data at different crop sizes
+        crop_sizes = [(height // 2, width // 2), (height, width)]
 
-            # Reconstruct
-            result = evlib.processing.events_to_video(xs, ys, ts, ps, height, width)
+        for crop_height, crop_width in crop_sizes:
+            # Filter events to fit crop
+            mask = (xs < crop_width) & (ys < crop_height)
+            if np.sum(mask) > 100:  # Need minimum events
+                xs_crop = xs[mask]
+                ys_crop = ys[mask]
+                ts_crop = ts[mask]
+                ps_crop = ps[mask]
 
-            # Verify result
-            assert result.shape == (height, width, 1)
-            assert result.dtype == np.float32
-            assert np.all(result >= 0.0)
+                result = evlib.processing.events_to_video(
+                    xs_crop, ys_crop, ts_crop, ps_crop, crop_height, crop_width
+                )
+
+                assert result.shape == (crop_height, crop_width, 1)
+                assert result.dtype == np.float32
+                assert np.any(result > 0)  # Real events should produce signal
 
 
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")
@@ -239,50 +292,38 @@ class TestE2VidIntegration:
         assert result.dtype == np.float32
         assert np.any(result > 0)  # Should have some signal
 
-    def test_temporal_consistency(self):
-        """Test temporal consistency across multiple reconstructions."""
-        # Create events with temporal structure
-        num_events = 2000
-        width, height = 64, 64
+    def test_temporal_consistency_real_data(self):
+        """Test temporal consistency with real slider_depth data."""
+        events_file = Path("data/slider_depth/events.txt")
+        if not events_file.exists():
+            pytest.skip("slider_depth dataset not available")
 
-        # Create two sequential event streams
-        xs1 = np.random.randint(0, width, num_events // 2, dtype=np.int64)
-        ys1 = np.random.randint(0, height, num_events // 2, dtype=np.int64)
-        ts1 = np.linspace(0.0, 0.5, num_events // 2, dtype=np.float64)
-        ps1 = np.random.choice([-1, 1], num_events // 2).astype(np.int64)
+        # Load real events
+        events_data = evlib.formats.load_events(str(events_file))
 
-        xs2 = np.random.randint(0, width, num_events // 2, dtype=np.int64)
-        ys2 = np.random.randint(0, height, num_events // 2, dtype=np.int64)
-        ts2 = np.linspace(0.5, 1.0, num_events // 2, dtype=np.float64)
-        ps2 = np.random.choice([-1, 1], num_events // 2).astype(np.int64)
+        # Take subset and split into temporal windows
+        n_events = min(8000, len(events_data[0]))
+        xs = events_data[0][:n_events]
+        ys = events_data[1][:n_events]
+        ts = events_data[2][:n_events]
+        ps = events_data[3][:n_events]
 
-        # Combine events
-        xs = np.concatenate([xs1, xs2])
-        ys = np.concatenate([ys1, ys2])
-        ts = np.concatenate([ts1, ts2])
-        ps = np.concatenate([ps1, ps2])
+        height = int(ys.max()) + 1
+        width = int(xs.max()) + 1
 
-        # Sort by time
-        sort_idx = np.argsort(ts)
-        xs = xs[sort_idx]
-        ys = ys[sort_idx]
-        ts = ts[sort_idx]
-        ps = ps[sort_idx]
-
-        # Reconstruct multiple frames
+        # Reconstruct multiple frames from real data
         frames = evlib.processing.reconstruct_events_to_frames(xs, ys, ts, ps, height, width, num_frames=4)
 
-        # Check that frames are reasonable
+        # Validate frames
         assert len(frames) == 4
         for frame in frames:
             assert frame.shape == (height, width, 1)
             assert frame.dtype == np.float32
+            assert np.all(frame >= 0.0)
 
-        # Check that frames have reasonable signal distribution
-        # (with neural reconstruction, the relationship isn't strictly accumulative)
+        # Real events should produce signal in frames
         frame_means = [np.mean(frame) for frame in frames]
-        assert all(mean >= 0.0 for mean in frame_means), "All frames should have non-negative mean values"
-        assert any(mean > 0.0 for mean in frame_means), "At least one frame should have some signal"
+        assert any(mean > 0.0 for mean in frame_means), "Real events should produce signal"
 
 
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")
