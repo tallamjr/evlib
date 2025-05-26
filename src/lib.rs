@@ -153,6 +153,21 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     tracking_submodule.add_class::<ev_tracking::python::PyTrackResult>()?;
     m.add_submodule(tracking_submodule)?;
 
+    // Register ev_simulation module as "simulation" in Python
+    let simulation_submodule = PyModule::new(py, "simulation")?;
+    simulation_submodule.add_function(wrap_pyfunction!(
+        ev_simulation::python::video_to_events_py,
+        simulation_submodule
+    )?)?;
+    simulation_submodule.add_function(wrap_pyfunction!(
+        ev_simulation::python::esim_simulate_py,
+        simulation_submodule
+    )?)?;
+    simulation_submodule.add_class::<ev_simulation::python::PySimulationConfig>()?;
+    simulation_submodule.add_class::<ev_simulation::python::PyVideoToEventsConverter>()?;
+    simulation_submodule.add_class::<ev_simulation::python::PySimulationStats>()?;
+    m.add_submodule(simulation_submodule)?;
+
     // No legacy functionality - all functions are registered in their respective modules
 
     // Build info

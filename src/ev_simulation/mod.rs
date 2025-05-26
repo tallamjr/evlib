@@ -15,6 +15,9 @@ pub mod video_processing;
 #[cfg(feature = "gstreamer")]
 pub mod gstreamer_video;
 
+#[cfg(feature = "python")]
+pub mod python;
+
 use crate::ev_core::Event;
 
 /// Event camera simulation configuration
