@@ -89,22 +89,69 @@ impl LoadedModel {
             )));
         }
 
-        // TODO: Implement actual PyTorch .pth loading when Candle adds support
-        // Current Candle version (0.9.1) doesn't have from_pth method
-        // Options for future implementation:
-        // 1. Wait for Candle to add from_pth support
-        // 2. Use Python script to convert .pth to SafeTensors format
-        // 3. Implement custom pickle parser for .pth files
-        // 4. Use PyO3 to load weights via Python and convert to Candle tensors
+        // Try tch-rs first (if available), fallback to PyO3 bridge
+        #[cfg(feature = "pytorch")]
+        {
+            if config.verbose {
+                println!("Attempting to load PyTorch model using tch-rs...");
+            }
 
-        if config.verbose {
-            println!("Note: PyTorch .pth loading is not yet implemented.");
-            println!("Consider converting your model to ONNX format using the provided script.");
+            match super::pytorch_tch_loader::ModelConverter::convert_e2vid_model(
+                path.as_ref(),
+                &config.device,
+            ) {
+                Ok(state_dict) => {
+                    if config.verbose {
+                        println!(
+                            "Successfully loaded PyTorch model with tch-rs: {} tensors",
+                            state_dict.len()
+                        );
+                    }
+                    return Ok(Self { state_dict, config });
+                }
+                Err(e) => {
+                    if config.verbose {
+                        println!("tch-rs loading failed: {}, trying PyO3 bridge...", e);
+                    }
+                }
+            }
         }
 
-        // For now, return empty state dict as placeholder
-        let state_dict = HashMap::new();
-        Ok(Self { state_dict, config })
+        // Fallback to PyO3 bridge
+        let bridge_result = super::pytorch_bridge::PyTorchLoader::new(config.device.clone())
+            .load_checkpoint(path.as_ref());
+
+        match bridge_result {
+            Ok(state_dict) => {
+                if config.verbose {
+                    println!(
+                        "Successfully loaded PyTorch checkpoint with PyO3 bridge: {} tensors",
+                        state_dict.len()
+                    );
+                }
+                Ok(Self { state_dict, config })
+            }
+            Err(e) => {
+                if config.verbose {
+                    #[cfg(feature = "pytorch")]
+                    println!("Warning: Both tch-rs and PyO3 bridge failed to load PyTorch weights");
+                    #[cfg(not(feature = "pytorch"))]
+                    println!("Warning: PyO3 bridge failed to load PyTorch weights");
+                    println!(
+                        "Consider converting your model to ONNX format for better compatibility."
+                    );
+                    println!(
+                        "ONNX models provide better cross-platform compatibility and performance."
+                    );
+                }
+
+                // Return error instead of silently failing with empty dict
+                Err(ModelLoadError::InvalidModelFormat(format!(
+                    "Failed to load PyTorch checkpoint: {}. \n\
+                    RECOMMENDED: Convert to ONNX format using the provided conversion script for better compatibility.", e
+                )))
+            }
+        }
     }
 
     /// Get a tensor from the state dict

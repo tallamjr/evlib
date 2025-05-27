@@ -10,12 +10,16 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/actions/**"
   pull_request:
     paths:
       - "**.rs"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - ".github/workflows/rust.yml"
+      - ".github/actions/**"
   workflow_dispatch:
 
 jobs:
@@ -26,7 +30,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -36,30 +39,14 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install HDF5 & pkg-config
-        run: |
-          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
-            sudo apt-get update
-            sudo apt-get install -y libhdf5-dev pkg-config
-          else
-            brew update
-            brew install cmake
-            brew install hdf5@1.10
-            brew install pkgconf
-            H5P=$(brew --prefix hdf5@1.10)
-            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
-            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-          fi
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: '3.12'
+          os: ${{ matrix.os }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # Install uv & create .venv
-      - name: Install uv & create venv
+      - name: Install Python dependencies
         run: |
-          pip install uv                                   # install uv into system Python
-          uv venv --python "${{ matrix.python-version }}"  # create .venv, set VIRTUAL_ENV
           source .venv/bin/activate
           uv pip install .[all]
 
@@ -67,18 +54,12 @@ jobs:
         run: |
           echo "PYO3_PYTHON=$(pwd)/.venv/bin/python" >> $GITHUB_ENV
 
-      - name: Install Rust target for arm64
-        run: rustup target add aarch64-apple-darwin
-
-      - name: Set environment for Rust build
-        run: |
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            export CARGO_BUILD_RUSTFLAGS="-C link-arg=-arch -C link-arg=arm64"
-            echo "CARGO_BUILD_RUSTFLAGS=-C link-arg=-arch -C link-arg=arm64" >> $GITHUB_ENV
-          fi
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+          cache-targets: true
+          cache-all-crates: true
 
       - name: Check formatting
         run: cargo fmt --all -- --check

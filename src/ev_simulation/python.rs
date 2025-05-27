@@ -728,14 +728,15 @@ mod realtime_bindings {
         true // Available when compiled with gstreamer feature
     }
 
-    // Re-export the realtime bindings
-    pub use self::{create_realtime_stream_py, is_realtime_available};
-    pub use self::{PyRealtimeEventStream, PyRealtimeStreamConfig, PyStreamingStats};
+    // Re-export the realtime bindings are already public in this module
 }
 
 // Export realtime bindings conditionally
 #[cfg(feature = "gstreamer")]
-pub use realtime_bindings::*;
+pub use realtime_bindings::{
+    create_realtime_stream_py, is_realtime_available, PyRealtimeEventStream,
+    PyRealtimeStreamConfig, PyStreamingStats,
+};
 
 // Fallback functions when GStreamer is not available
 #[cfg(not(feature = "gstreamer"))]

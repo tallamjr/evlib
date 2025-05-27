@@ -18,6 +18,7 @@ pub mod python;
 pub mod python_temporal;
 pub mod pytorch_bridge;
 pub mod pytorch_loader;
+pub mod pytorch_tch_loader;
 pub mod spade;
 pub mod spade_e2vid;
 pub mod ssl_e2vid;

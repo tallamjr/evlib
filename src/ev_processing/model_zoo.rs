@@ -140,21 +140,8 @@ impl ModelZoo {
             },
         );
 
-        // E2VID+
-        self.models.insert(
-            "e2vid_plus".to_string(),
-            ModelInfo {
-                name: "e2vid_plus".to_string(),
-                variant: "enhanced".to_string(),
-                url: "https://github.com/tallamjr/evlib/releases/download/v0.2.0/e2vid_plus.onnx"
-                    .to_string(),
-                checksum: "sha256:e2vid_plus_placeholder_checksum".to_string(),
-                architecture: ModelArchitecture::E2VidPlus,
-                format: "onnx".to_string(),
-                size: 52_428_800, // ~50MB
-                description: "E2VID+ with ConvLSTM for temporal processing".to_string(),
-            },
-        );
+        // E2VID+ - Not yet available, removing from model zoo
+        // TODO: Add E2VID+ when a real implementation is available
 
         // SPADE-E2VID - Available from RodrigoGantier's repository
         self.models.insert(
@@ -189,22 +176,8 @@ impl ModelZoo {
             },
         );
 
-        // FireNet+
-        self.models.insert(
-            "firenet_plus".to_string(),
-            ModelInfo {
-                name: "firenet_plus".to_string(),
-                variant: "enhanced".to_string(),
-                url: "https://github.com/tallamjr/evlib/releases/download/v0.2.0/firenet_plus.onnx"
-                    .to_string(),
-                checksum: "sha256:firenet_plus_placeholder_checksum".to_string(),
-                architecture: ModelArchitecture::FireNetPlus,
-                format: "onnx".to_string(),
-                size: 10_485_760, // ~10MB
-                description: "FireNet+ with temporal gating for enhanced reconstruction"
-                    .to_string(),
-            },
-        );
+        // FireNet+ - Not yet available, removing from model zoo
+        // TODO: Add FireNet+ when a real implementation is available
 
         // ET-Net - Transformer-based architecture (from Weng et al., ICCV 2021)
         self.models.insert(
@@ -222,21 +195,8 @@ impl ModelZoo {
             },
         );
 
-        // HyperE2VID - Dynamic convolutions architecture
-        self.models.insert(
-            "hyper_e2vid".to_string(),
-            ModelInfo {
-                name: "hyper_e2vid".to_string(),
-                variant: "dynamic".to_string(),
-                url: "https://github.com/tallamjr/evlib/releases/download/v0.2.0/hyper_e2vid.onnx"
-                    .to_string(),
-                checksum: "sha256:hyper_e2vid_placeholder_checksum".to_string(),
-                architecture: ModelArchitecture::HyperE2Vid,
-                format: "onnx".to_string(),
-                size: 62_914_560, // ~60MB
-                description: "HyperE2VID with hypernetwork-based dynamic convolutions".to_string(),
-            },
-        );
+        // HyperE2VID - Not yet available, removing from model zoo
+        // TODO: Add HyperE2VID when a real implementation is available
     }
 
     /// List all available models

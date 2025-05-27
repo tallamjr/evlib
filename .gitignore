@@ -713,9 +713,7 @@ dkms.conf
 *.msp
 *.txz
 
-**/.claude/settings.local.json
-**/.claude/*
-CLAUDE.md
+*.local.*
 
 tests/*.mp4
 tests/*.png

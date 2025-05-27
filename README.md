@@ -36,11 +36,6 @@ reimplemented in Rust for significantly better performance.
 > **This is an experimental project with frequent breaking changes.
 > Many advanced features are still under development - see current status below.**
 
-> [!Note]
->
-> **January 2025 Update**: This library has undergone a comprehensive audit to ensure
-> all claims match actual implementation. See `REPORT.md` for full details.
-> We are committed to honest documentation going forward.
 
 <!-- mtoc-start -->
 
@@ -59,6 +54,7 @@ reimplemented in Rust for significantly better performance.
   * [Event Visualisation](#event-visualisation)
   * [Event-to-Video Reconstruction](#event-to-video-reconstruction)
   * [Event Simulation](#event-simulation)
+  * [Real-time Webcam Event Streaming](#real-time-webcam-event-streaming)
 * [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
 * [⚖️ License](#-license)
 
@@ -106,9 +102,12 @@ uv pip install -e ".[all]"
 
 ### Development Setup
 
-For detailed development setup instructions, see [BUILD.md](BUILD.md).
+#### Prerequisites
+- Rust (latest stable version)
+- Python 3.10+ (3.12 recommended)
+- uv (recommended) or pip with venv
 
-Quick setup:
+#### Quick Development Setup
 
 ```bash
 # Clone repository
@@ -116,9 +115,8 @@ git clone https://github.com/yourusername/evlib.git
 cd evlib
 
 # Create virtual environment
-uv venv --python <python-version> # 3.12 recommended
+uv venv --python 3.12  # or your preferred version
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install pip
 
 # Install for development using uv (recommended)
 uv pip install -e ".[dev]"
@@ -132,6 +130,59 @@ pre-commit install
 
 # Run tests
 pytest
+```
+
+#### Building the Rust Extension
+
+**Method 1: Using Maturin (Recommended)**
+
+```bash
+# Development build (fast iteration)
+maturin develop
+
+# Release build for testing performance
+maturin develop --release
+
+# Build wheel for distribution
+maturin build --release
+```
+
+**Method 2: Using Custom Build Script**
+
+```bash
+# Make script executable
+chmod +x build.sh
+
+# Development build
+./build.sh --debug
+
+# Release build
+./build.sh
+```
+
+#### Advanced Build Options
+
+**Cross-compilation with Zig:**
+
+```bash
+# Install Zig and maturin with Zig support
+pip install "maturin[zig]"
+
+# Build Linux wheels from macOS
+maturin build --release --target x86_64-unknown-linux-gnu --manylinux 2014 --zig
+
+# Build ARM wheels
+maturin build --release --target aarch64-unknown-linux-gnu --manylinux 2014 --zig
+```
+
+**Platform-specific wheels:**
+
+```bash
+# Universal2 wheel on macOS
+maturin build --release --universal2
+
+# Manylinux wheels for Linux
+maturin build --release --manylinux=2014
 ```
 
 ## 🧪 Testing
@@ -490,6 +541,116 @@ xs2, ys2, ts2, ps2 = converter.convert_frame(test_frame, timestamp_us=0.0)
 print(f"Converter generated {len(xs2)} events from random frame")
 ```
 
+### Real-time Webcam Event Streaming
+
+**Requirements**: GStreamer development libraries must be installed on your system.
+
+```bash
+# macOS (using Homebrew)
+brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
+
+# Ubuntu/Debian
+sudo apt-get install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+                     libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \
+                     gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+                     gstreamer1.0-plugins-ugly
+
+# CentOS/RHEL/Fedora
+sudo dnf install gstreamer1-devel gstreamer1-plugins-base-devel \
+                 gstreamer1-plugins-good gstreamer1-plugins-bad-free \
+                 gstreamer1-plugins-ugly-free
+```
+
+**Build with GStreamer support**:
+
+```bash
+# Rebuild evlib with GStreamer feature enabled
+maturin develop --features gstreamer
+
+# Or for release build
+maturin develop --release --features gstreamer
+```
+
+**Interactive Webcam Demo**:
+
+```bash
+# Run the interactive webcam event streaming demo
+python examples/webcam_event_demo.py --fps 30 --threshold 0.15 --device_id 0
+```
+
+**Interactive Controls**:
+- **Arrow Keys**: Adjust contrast thresholds (↑/↓ for positive, ←/→ for negative)
+- **+/-**: Increase/decrease frame rate
+- **r**: Reset to original configuration
+- **s**: Save current frame and events
+- **q/Escape**: Quit the demo
+
+**Python API Example**:
+
+```python
+import evlib
+import numpy as np
+import time
+
+# Configure real-time streaming
+config = evlib.simulation.PyRealtimeStreamConfig(
+    width=640,
+    height=480,
+    fps=30.0,
+    contrast_threshold_pos=0.15,
+    contrast_threshold_neg=0.15,
+    refractory_period_us=100.0,
+    device_id=0,
+    enable_noise=False
+)
+
+# Create and start stream
+stream = evlib.simulation.PyRealtimeEventStream(config)
+stream.start()
+
+try:
+    for _ in range(100):  # Process 100 frames
+        # Get latest events
+        events = stream.get_events()
+
+        if len(events) > 0:
+            print(f"Received {len(events)} events")
+
+            # Access event data
+            for event in events:
+                x, y, timestamp, polarity = event
+                # Process individual events...
+
+        # Get performance statistics
+        stats = stream.get_stats()
+        if stats.frames_processed % 30 == 0:  # Every second at 30fps
+            print(f"FPS: {stats.current_fps:.1f}, "
+                  f"Events/sec: {stats.events_per_second:.0f}")
+
+        time.sleep(0.033)  # ~30 FPS
+
+finally:
+    stream.stop()
+```
+
+**Configuration Options**:
+
+```python
+# Advanced configuration
+config = evlib.simulation.PyRealtimeStreamConfig(
+    width=1280,                    # Camera resolution width
+    height=720,                    # Camera resolution height
+    fps=60.0,                      # Target frame rate
+    contrast_threshold_pos=0.2,     # Positive contrast threshold
+    contrast_threshold_neg=0.2,     # Negative contrast threshold
+    refractory_period_us=50.0,     # Refractory period in microseconds
+    device_id=0,                   # Camera device ID
+    enable_noise=True,             # Enable noise simulation
+    buffer_size=10000,             # Event buffer size
+    enable_smoothing=True          # Enable temporal smoothing
+)
+```
+
 ## 🗺️ Roadmap and Current Features
 
 `evlib` aims to become a comprehensive toolkit for event camera data processing,
@@ -522,7 +683,7 @@ use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issu
 | HyperE2VID                | Dynamic convolutions with hypernetworks     | 🔲 Planned     |
 | OpenEB Format Support      | Compatibility with OpenEB data formats      | 🔲 Planned     |
 | OpenEB HAL Integration     | Hardware abstraction for cameras            | 🔲 Planned     |
-| Real-time Streaming        | Real-time event stream processing           | 🔲 Planned     |
+| Real-time Streaming        | Real-time event stream processing           | ✅ Implemented |
 | Hardware Acceleration      | CUDA/Metal optimization                     | 🔲 Planned     |
 | RVT Object Detection       | Event-based object detection                | 🔲 Planned     |
 | Optical Flow               | Event-based optical flow estimation         | 🔲 Planned     |

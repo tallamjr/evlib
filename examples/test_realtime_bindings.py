@@ -25,9 +25,9 @@ def test_import():
 def test_realtime_availability():
     """Test if real-time streaming is available"""
     try:
-        from evlib.simulation import is_realtime_available
+        import evlib
 
-        available = is_realtime_available()
+        available = evlib.simulation.is_realtime_available()
 
         if available:
             print("✓ Real-time streaming is available (GStreamer support detected)")
@@ -44,7 +44,9 @@ def test_realtime_availability():
 def test_realtime_config():
     """Test creating a real-time stream configuration"""
     try:
-        from evlib.simulation import PyRealtimeStreamConfig
+        import evlib
+
+        PyRealtimeStreamConfig = evlib.simulation.PyRealtimeStreamConfig
 
         # Test default config
         config = PyRealtimeStreamConfig()
@@ -90,7 +92,10 @@ def test_realtime_config():
 def test_stream_creation():
     """Test creating a real-time event stream (without starting it)"""
     try:
-        from evlib.simulation import PyRealtimeStreamConfig, PyRealtimeEventStream
+        import evlib
+
+        PyRealtimeStreamConfig = evlib.simulation.PyRealtimeStreamConfig
+        PyRealtimeEventStream = evlib.simulation.PyRealtimeEventStream
 
         # Create config
         config = PyRealtimeStreamConfig(
@@ -134,7 +139,9 @@ def test_stream_creation():
 def test_convenience_function():
     """Test the convenience function for creating streams"""
     try:
-        from evlib.simulation import create_realtime_stream_py
+        import evlib
+
+        create_realtime_stream_py = evlib.simulation.create_realtime_stream_py
 
         # This should work even without webcam, just creating the object
         stream = create_realtime_stream_py(

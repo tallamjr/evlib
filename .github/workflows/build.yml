@@ -3,10 +3,26 @@ name: Maturin Build
 on:
   push:
     branches: [main, master]
+    paths:
+      - "**.rs"
+      - "**.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "pyproject.toml"
+      - ".github/workflows/build.yml"
+      - ".github/actions/**"
     tags:
       - "*"
       - "!v*.*.*"  # Exclude version tags as they're handled by release.yml
   pull_request:
+    paths:
+      - "**.rs"
+      - "**.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "pyproject.toml"
+      - ".github/workflows/build.yml"
+      - ".github/actions/**"
   workflow_dispatch:
 
 jobs:
@@ -14,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -24,33 +40,25 @@ jobs:
         with:
           python-version: "3.x"
 
-      # 2) Install HDF5 deps on host
-      - name: Install HDF5 & pkg-config
-        run: |
-          if [[ "${{ matrix.os }}" == ubuntu-22.04 ]]; then
-            sudo apt-get update
-            sudo apt-get install -y libhdf5-dev pkg-config
-          else
-            brew update
-            brew install cmake
-            brew install hdf5@1.10
-            brew install pkgconf
-            H5P=$(brew --prefix hdf5@1.10)
-            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
-            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-          fi
+      # 1.5) Cache Rust dependencies
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+          cache-targets: true
 
-      # 3) Install uv & create .venv
-      - name: Install uv & create venv
-        run: |
-          pip install uv                           # install uv into system Python
-          uv venv                                   # create .venv, set VIRTUAL_ENV
-          source .venv/bin/activate
+      # 2) Setup dependencies with composite action
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: '3.12'
+          os: ${{ matrix.os }}
 
-      # 4) Install maturin inside the venv
+      # 3) Install maturin inside the venv
       - name: Install maturin
-        run: uv pip install maturin # uv pip => installs into .venv
+        run: |
+          source .venv/bin/activate
+          uv pip install maturin
 
       # 5) Build & install the extension - first try build.sh, then fallback to maturin
       - name: Build with build.sh

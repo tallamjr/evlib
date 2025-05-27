@@ -29,13 +29,19 @@ from collections import deque
 
 try:
     import evlib  # noqa: F401
-    from evlib.simulation import (
-        is_realtime_available,
-        create_realtime_stream_py,
-    )
+
+    is_realtime_available = evlib.simulation.is_realtime_available
+    create_realtime_stream_py = evlib.simulation.create_realtime_stream_py
 except ImportError as e:
     print(f"Error importing evlib: {e}")
     print("Please ensure evlib is installed with: pip install -e .")
+    sys.exit(1)
+
+try:
+    import numpy as np  # noqa: F401
+except ImportError as e:
+    print(f"Error importing numpy: {e}")
+    print("Please ensure numpy is installed with: pip install numpy")
     sys.exit(1)
 
 

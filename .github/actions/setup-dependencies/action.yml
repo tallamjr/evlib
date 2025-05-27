@@ -1,0 +1,57 @@
+name: 'Setup Dependencies'
+description: 'Install system dependencies (HDF5, pkg-config, GStreamer) and UV'
+inputs:
+  python-version:
+    description: 'Python version to install'
+    required: false
+    default: '3.12'
+  enable-gstreamer:
+    description: 'Install GStreamer for webcam functionality'
+    required: false
+    default: 'false'
+  os:
+    description: 'Operating system'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install system dependencies (Ubuntu)
+      if: startsWith(inputs.os, 'ubuntu')
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev pkg-config
+        if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
+          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+                                  libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \
+                                  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+                                  gstreamer1.0-plugins-ugly
+        fi
+
+    - name: Install system dependencies (macOS)
+      if: startsWith(inputs.os, 'macos')
+      shell: bash
+      run: |
+        brew update
+        brew install cmake hdf5@1.10 pkgconf
+        if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
+          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
+        fi
+
+        # Set HDF5 environment variables
+        H5P=$(brew --prefix hdf5@1.10)
+        echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
+        echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v5
+
+    - name: Setup Python with UV
+      shell: bash
+      run: |
+        uv venv --python "${{ inputs.python-version }}"
+        source .venv/bin/activate
+        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+        echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH

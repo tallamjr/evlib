@@ -162,11 +162,7 @@ impl E2Vid {
 
     /// Load neural network from ONNX model file
     pub fn load_onnx_model(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
-        let onnx_config = OnnxModelConfig {
-            device: self.device.clone(),
-            dtype: DType::F32,
-            verbose: false,
-        };
+        let onnx_config = OnnxModelConfig::default();
 
         match OnnxE2VidModel::load_from_file(model_path, onnx_config) {
             Ok(model) => {

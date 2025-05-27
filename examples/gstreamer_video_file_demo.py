@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 """
-GStreamer Video File Processing Demo for evlib
+IMPORTANT NOTE: This is a demonstration of synthetic video generation,
+NOT actual GStreamer integration.
 
-This example demonstrates how to process video files using GStreamer integration
-and convert them to events using evlib's simulation pipeline.
+WARNING: GStreamer integration is not yet implemented in evlib.
+This example generates synthetic video patterns to demonstrate the event simulation pipeline.
 
-Requirements:
-- GStreamer system libraries installed
-- evlib built with gstreamer feature: `maturin develop --features gstreamer`
-- A sample video file (MP4, AVI, MOV, etc.)
-
-Usage:
-    python gstreamer_video_file_demo.py [video_file_path]
+This file will be updated with real GStreamer functionality in a future release.
 
 Author: evlib contributors
 """
@@ -92,8 +87,8 @@ def process_video_file(video_path, max_frames=None):
         num_frames = min(metadata["total_frames"], max_frames or metadata["total_frames"])
 
         for frame_idx in range(num_frames):
-            # In real implementation, this would load from GStreamer pipeline
-            # Create synthetic frame for demo
+            # PLACEHOLDER: This creates synthetic frames instead of loading from GStreamer
+            # TODO: Replace with actual GStreamer pipeline when implemented
             height, width = config["output_resolution"][1], config["output_resolution"][0]
 
             # Create moving pattern based on frame index

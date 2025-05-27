@@ -118,17 +118,15 @@ jobs:
         with:
           targets: ${{ matrix.target.rust_target }}
 
-      - name: Install dependencies
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: ${{ matrix.python-version }}
+          os: 'macos-latest'
+
+      - name: Install additional build tools
         run: |
-          brew update
-          brew install cmake
-          brew install hdf5@1.10
-          brew install pkgconf
           brew install zig
-          H5P=$(brew --prefix hdf5@1.10)
-          echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
-          echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
           echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.zig-cache" >> $GITHUB_ENV
 
       - uses: actions/setup-python@v5
@@ -138,9 +136,6 @@ jobs:
 
       - name: Install build tools
         run: |
-          pip install --upgrade pip
-          pip install uv
-          uv venv
           source .venv/bin/activate
           uv pip install "maturin[zig]>=1.4.0"
           maturin --version

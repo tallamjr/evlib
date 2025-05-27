@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.1.50"
+version         = "0.1.51"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "High-performance event-camera utilities with Python bindings via PyO3"
@@ -42,6 +42,9 @@ fastrand       = "2.0"
 candle-core    = "0.9.1"
 candle-nn      = "0.9.1"
 
+# Optional PyTorch integration via tch-rs
+tch            = { version = "0.16", optional = true }
+
 # ONNX Runtime for model inference
 ort            = { version = "2.0.0-rc.9", default-features = false, features = ["download-binaries", "copy-dylibs"] }
 
@@ -62,6 +65,7 @@ reqwest        = { version = "0.11", features = ["blocking"] }
 tokio          = { version = "1", features = ["rt", "macros"] }
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
+num_cpus       = "1.16"
 
 [dev-dependencies]
 tempfile       = "3.8"
@@ -72,3 +76,4 @@ python         = []
 cuda           = ["candle-core/cuda"]
 metal          = ["candle-core/metal"]
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
+pytorch        = ["dep:tch"]

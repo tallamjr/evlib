@@ -270,8 +270,12 @@ impl GstVideoProcessor {
         let tensor = Tensor::from_vec(frame_data, (height, width, 3), &self.device)?;
 
         // Convert to grayscale for event simulation (H, W)
-        let weights = Tensor::from_vec(vec![0.299, 0.587, 0.114], (3,), &self.device)?;
-        let grayscale = tensor.matmul(&weights.unsqueeze(1)?)?.squeeze(2)?;
+        // Use weighted sum: 0.299*R + 0.587*G + 0.114*B
+        let r_channel = tensor.narrow(2, 0, 1)?.squeeze(2)?;
+        let g_channel = tensor.narrow(2, 1, 1)?.squeeze(2)?;
+        let b_channel = tensor.narrow(2, 2, 1)?.squeeze(2)?;
+
+        let grayscale = ((&r_channel * 0.299)? + (&g_channel * 0.587)? + (&b_channel * 0.114)?)?;
 
         Ok(grayscale)
     }

@@ -2,8 +2,10 @@
 """
 ETAP Point Tracking Example using evlib
 
-This example demonstrates how to use the new ETAP integration in evlib
-for tracking arbitrary points through event streams.
+WARNING: This example uses mock tracking functionality for demonstration purposes.
+Real ETAP integration is not yet implemented.
+
+This example will be updated with actual ETAP functionality in a future release.
 """
 
 import numpy as np
@@ -141,12 +143,13 @@ def main():
         print(f"   Error preparing representation: {e}")
         return
 
-    # 6. Track points using mock ETAP
-    print("\n🔄 Tracking points...")
+    # 6. Track points using MOCK ETAP (placeholder implementation)
+    print("\n🔄 Tracking points... (using mock implementation)")
     try:
         # Flatten the event representation for the mock function
         event_repr_flat = event_repr.flatten().astype(np.float32)
 
+        # WARNING: This uses a mock implementation, not real ETAP tracking
         track_results = evlib.tracking.track_points_mock(event_repr_flat, query_points, num_frames=10)
 
         print(f"   Tracked {len(track_results)} point trajectories")

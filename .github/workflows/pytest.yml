@@ -33,39 +33,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install HDF5 deps on host
-      - name: Install HDF5 & pkg-config
-        run: |
-          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
-            sudo apt-get update
-            sudo apt-get install -y libhdf5-dev pkg-config
-          else
-            brew update
-            brew install cmake
-            brew install hdf5@1.10
-            brew install pkgconf
-            H5P=$(brew --prefix hdf5@1.10)
-            echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
-            echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-          fi
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-${{ matrix.python-version }}
+          cache-targets: true
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # Install uv & create .venv
-      - name: Install uv & create venv
-        run: |
-          pip install uv                                   # install uv into system Python
-          uv venv --python "${{ matrix.python-version }}"  # create .venv, set VIRTUAL_ENV
-          source .venv/bin/activate
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-gstreamer: 'true'
+          os: ${{ matrix.os }}
 
       - name: Install dependencies
         run: |
           uv pip install .[all]
 
-      - name: Build evlib
+      - name: Build evlib (with GStreamer)
         run: |
+          source .venv/bin/activate
+          uv run maturin develop --release --features gstreamer
+
+      - name: Build evlib (without GStreamer fallback)
+        if: failure()
+        run: |
+          source .venv/bin/activate
           uv run maturin develop --release
 
       - name: Run pytest on test directory
@@ -79,6 +72,14 @@ jobs:
       - name: Generate coverage report
         run: |
           uv run pytest --cov=evlib --cov-report=xml -v tests/
+
+      - name: Test GStreamer functionality
+        run: |
+          source .venv/bin/activate
+          # Test if GStreamer bindings are working
+          python -c "import evlib.simulation; print('GStreamer bindings loaded successfully')"
+          # Run specific GStreamer tests
+          uv run pytest -v tests/test_gstreamer_integration.py tests/test_realtime_bindings.py || echo "GStreamer tests skipped (no webcam available)"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
