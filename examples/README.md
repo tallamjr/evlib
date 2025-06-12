@@ -27,15 +27,16 @@ Demonstrates real-time webcam capture with GStreamer:
 - Real-time processing pipeline
 - Event data export and analysis
 
-#### Video File Processing Demo
+#### Synthetic Event Generation Demo
 ```bash
-python gstreamer_video_file_demo.py [video_file.mp4]
+python synthetic_event_generation_demo.py [pattern_name]
 ```
-Demonstrates video file processing with GStreamer:
-- Support for multiple video formats (MP4, AVI, MOV, etc.)
+Demonstrates synthetic event generation for testing and development:
+- Generates synthetic video patterns (moving sine waves, etc.)
 - ESIM-style event simulation with configurable parameters
 - Comprehensive event analysis and statistics
 - Multi-format event data export
+- NOTE: Does not use real video files; use external tools to extract frames
 
 #### Complete Event Simulation Pipeline
 ```bash
@@ -160,8 +161,8 @@ python examples/basic_usage.py
 # Test webcam capture
 python examples/gstreamer_webcam_demo.py
 
-# Process a video file
-python examples/gstreamer_video_file_demo.py path/to/video.mp4
+# Generate synthetic events
+python examples/synthetic_event_generation_demo.py my_pattern
 
 # Interactive notebook
 jupyter notebook examples/gstreamer_integration_demo.ipynb

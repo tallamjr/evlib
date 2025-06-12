@@ -29,7 +29,7 @@ A high-performance implementation of event camera utilities using Rust with Pyth
 
 This library is inspired by numerous event camera libraries such as
 [`event_utils`](https://github.com/TimoStoff/event_utils) Python library but
-reimplemented in Rust for significantly better performance.
+reimplemented in Rust for improved performance in certain operations.
 
 > [!Warning]
 >
@@ -55,6 +55,7 @@ reimplemented in Rust for significantly better performance.
   * [Event-to-Video Reconstruction](#event-to-video-reconstruction)
   * [Event Simulation](#event-simulation)
   * [Real-time Webcam Event Streaming](#real-time-webcam-event-streaming)
+  * [Ultra-Fast Terminal Visualization](#ultra-fast-terminal-visualization)
 * [🗺️ Roadmap and Current Features](#-roadmap-and-current-features)
 * [⚖️ License](#-license)
 
@@ -246,6 +247,11 @@ pytest tests/test_representations.py::test_smooth_voxel
 **Neural Network Models**:
 - ✅ **E2VID UNet** - basic event-to-video reconstruction
 - ✅ **FireNet** - lightweight reconstruction variant
+
+**Real-time Visualization**:
+- ✅ **Terminal-based visualization** - ultra-fast Ratatui rendering (60-120+ FPS)
+- ✅ **Rust-optimized OpenCV demo** - high-performance event visualization (30-60 FPS)
+- ✅ **Real-time event streaming** - low-latency webcam processing
 
 **Infrastructure**:
 - ✅ Python bindings via PyO3
@@ -651,6 +657,157 @@ config = evlib.simulation.PyRealtimeStreamConfig(
 )
 ```
 
+### Ultra-Fast Terminal Visualization
+
+For maximum performance event visualization, `evlib` provides a pure Rust terminal-based visualizer using [Ratatui](https://ratatui.rs/). This eliminates all GUI overhead and provides the fastest possible visualization experience.
+
+#### Features
+
+- **⚡ Ultra-high performance**: 60-120+ FPS rendering directly in terminal
+- **🚀 Zero GUI overhead**: No OpenCV, X11, or graphics libraries required
+- **🔧 SSH-friendly**: Works over SSH and in headless environments
+- **📊 Real-time statistics**: Live FPS, event counts, and performance metrics
+- **🎮 Interactive controls**: Keyboard controls for all parameters
+- **🎨 Color-coded events**: Red for positive, blue for negative events with decay
+
+#### Installation & Build
+
+**Prerequisites:**
+```bash
+# macOS
+brew install hdf5 pkg-config cmake gstreamer
+
+# Ubuntu/Debian
+sudo apt-get install libhdf5-dev pkg-config cmake libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+**Build the terminal binary:**
+```bash
+# Build ultra-fast terminal visualizer
+cargo build --release --features "terminal gstreamer" --bin evlib-terminal --no-default-features
+```
+
+#### Usage
+
+**Basic usage:**
+```bash
+# Default settings (most stable)
+./target/release/evlib-terminal
+
+# High-performance settings
+./target/release/evlib-terminal --fps 120 --threshold 0.3 --decay 30 --max-events 500
+
+# Lower resolution for maximum FPS
+./target/release/evlib-terminal --width 320 --height 240 --fps 120 --threshold 0.4 --decay 20
+
+# Show all available options
+./target/release/evlib-terminal --help
+```
+
+**Advanced configuration:**
+```bash
+# Custom camera and processing settings
+./target/release/evlib-terminal \
+    --device_id 0 \
+    --fps 60 \
+    --threshold 0.25 \
+    --width 640 \
+    --height 480 \
+    --buffer_size 500 \
+    --decay 50 \
+    --max-events 1000 \
+    --no-stats  # Disable statistics for even better performance
+```
+
+#### Terminal Controls
+
+| Key | Action |
+|-----|--------|
+| `q`, `Esc` | Quit application |
+| `p`, `Space` | Pause/Resume streaming |
+| `r` | Reset all statistics |
+| `s` | Toggle statistics display |
+| `+`/`-` | Adjust event decay time |
+| `h`, `F1` | Toggle help screen |
+
+#### Performance Comparison
+
+| Visualization Method | Expected FPS | Overhead | Use Case |
+|---------------------|-------------|----------|----------|
+| **Rust Terminal Binary** | **60-120+ FPS** | Minimal | Maximum performance |
+| Python + Rust Visualization | 30-60 FPS | Moderate | Development/debugging |
+| Original Python Demo | 7-15 FPS | High | Basic functionality |
+
+#### Performance Tuning
+
+**For maximum FPS:**
+- **Increase threshold** (`--threshold 0.3-0.5`): Reduces event count
+- **Lower resolution** (`--width 320 --height 240`): Faster processing
+- **Reduce decay time** (`--decay 20-30`): Fewer events on screen
+- **Limit events** (`--max-events 300-500`): Prevent overload
+- **Disable statistics** (`--no-stats`): Eliminate display overhead
+
+**Recommended settings by use case:**
+```bash
+# Real-time development (good balance)
+./target/release/evlib-terminal --fps 60 --threshold 0.3 --width 640 --height 480
+
+# Maximum performance (demos/showcases)
+./target/release/evlib-terminal --fps 120 --threshold 0.4 --width 320 --height 240 --decay 20 --max-events 300
+
+# High quality (research/analysis)
+./target/release/evlib-terminal --fps 30 --threshold 0.2 --width 1280 --height 720 --decay 100
+```
+
+#### Alternative Visualization Options
+
+**1. Optimized Python Demo with Rust Backend:**
+```bash
+# Build with Python and Rust visualization support
+maturin develop --release --features "python gstreamer"
+
+# Run optimized Python demo (30-60 FPS)
+python examples/webcam_event_demo_opencv.py --fps 60 --threshold 0.25
+
+# Toggle between Rust and Python visualization with 'u' key
+# Use 'f' key for fast mode, 'm' for real-time mode
+```
+
+**2. Terminal Visualization from Python:**
+```bash
+# Build with terminal support from Python
+maturin develop --release --features "python terminal gstreamer"
+
+# Run terminal demo from Python
+python examples/webcam_event_demo_terminal.py --fps 60 --threshold 0.25 --decay 50
+```
+
+#### Troubleshooting
+
+**Build Issues:**
+```bash
+# Missing dependencies
+brew install hdf5 pkg-config cmake gstreamer  # macOS
+sudo apt-get install libhdf5-dev pkg-config cmake libgstreamer1.0-dev  # Ubuntu
+
+# Clean build if encountering issues
+cargo clean
+cargo build --release --features "terminal gstreamer" --bin evlib-terminal --no-default-features
+```
+
+**Runtime Issues:**
+- **"No camera found"**: Try different `--device_id` values (0, 1, 2...)
+- **Low frame rate**: Increase `--threshold`, lower resolution, reduce `--max-events`
+- **Permission errors**: Check camera permissions in system settings
+
+**Performance Tips:**
+- Terminal size affects rendering speed - smaller terminals = higher FPS
+- Good lighting helps generate stable events
+- USB 3.0 cameras typically perform better than USB 2.0
+- Close other applications using the camera
+
+The **Rust terminal binary provides the absolute fastest event visualization** by eliminating all unnecessary overhead and rendering directly to the terminal using highly optimized Rust code.
+
 ## 🗺️ Roadmap and Current Features
 
 `evlib` aims to become a comprehensive toolkit for event camera data processing,
@@ -681,6 +838,8 @@ use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issu
 | SSL-E2VID                 | Self-supervised learning approach           | 🔲 Planned     |
 | ET-Net                    | Transformer-based reconstruction            | 🔲 Planned     |
 | HyperE2VID                | Dynamic convolutions with hypernetworks     | 🔲 Planned     |
+| Terminal Visualization     | Ultra-fast Ratatui terminal rendering       | ✅ Implemented |
+| Rust-optimized Visualization | High-performance OpenCV event display    | ✅ Implemented |
 | OpenEB Format Support      | Compatibility with OpenEB data formats      | 🔲 Planned     |
 | OpenEB HAL Integration     | Hardware abstraction for cameras            | 🔲 Planned     |
 | Real-time Streaming        | Real-time event stream processing           | ✅ Implemented |
@@ -690,6 +849,24 @@ use. A tracking issue can be found [here](https://github.com/tallamjr/evlib/issu
 | Depth Estimation           | Event-based depth estimation                | 🔲 Planned     |
 
 For detailed development progress and upcoming features, see [TODO.md](TODO.md).
+
+## 📊 Performance Characteristics
+
+The Rust implementation shows mixed performance compared to pure Python:
+
+| Operation | Rust vs Python (single-core) | Notes |
+|-----------|------------------------------|-------|
+| `events_to_block` | **1.3x faster** | Modest improvement for array conversion |
+| `add_random_events` | **5x slower** | Complex operations favor NumPy |
+| `flip_events_x` | **50x slower** | Simple operations better in NumPy |
+
+**Key Takeaways:**
+- Rust excels at complex algorithms and memory-intensive operations
+- Python/NumPy is superior for simple array operations
+- Performance varies significantly by operation type
+- Multi-threading overhead affects some benchmarks
+
+Run `python examples/benchmark.py` to see performance on your system.
 
 ## ⚖️ License
 

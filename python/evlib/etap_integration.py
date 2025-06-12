@@ -14,10 +14,37 @@ import warnings
 
 import numpy as np
 
+
+def find_etap_installation():
+    """Find ETAP installation in common locations."""
+    possible_paths = [
+        os.environ.get("ETAP_PATH"),
+        Path.home() / "git" / "ETAP",
+        Path.home() / "github" / "ETAP",
+        Path.home() / "src" / "ETAP",
+        Path("/opt/ETAP"),
+        Path("/usr/local/share/ETAP"),
+        # Legacy path for backwards compatibility
+        Path("/Users/tallam/github/tallamjr/clones/ETAP"),
+    ]
+
+    for path in possible_paths:
+        if path and Path(path).exists():
+            src_path = Path(path) / "src"
+            if src_path.exists():
+                return src_path
+    return None
+
+
 # Add ETAP repository to Python path
-ETAP_REPO_PATH = Path("/Users/tallam/github/tallamjr/clones/ETAP")
-if ETAP_REPO_PATH.exists():
-    sys.path.insert(0, str(ETAP_REPO_PATH / "src"))
+ETAP_REPO_PATH = find_etap_installation()
+if ETAP_REPO_PATH:
+    sys.path.insert(0, str(ETAP_REPO_PATH))
+    print(f"Found ETAP installation at: {ETAP_REPO_PATH.parent}")
+else:
+    print(
+        "Warning: ETAP installation not found. Set ETAP_PATH environment variable or install in standard location."
+    )
 
 try:
     import torch
@@ -58,7 +85,7 @@ class ETAPTracker:
 
     def __init__(
         self,
-        model_path: Optional[str] = None,
+        model_path: str,
         device: str = "auto",
         window_len: int = 8,
         stride: int = 4,
@@ -69,7 +96,7 @@ class ETAPTracker:
         Initialize ETAP tracker.
 
         Args:
-            model_path: Path to ETAP model weights (.pth file)
+            model_path: Path to ETAP model weights (.pth file) - REQUIRED
             device: Device for inference ('cpu', 'cuda', 'mps', or 'auto')
             window_len: Temporal window length for tracking
             stride: Stride parameter for model
@@ -107,11 +134,14 @@ class ETAPTracker:
             num_in_channels=num_bins,
         ).to(self.device)
 
-        # Load weights if provided
-        if model_path and os.path.exists(model_path):
-            self.load_model(model_path)
-        else:
-            print(f"Warning: Model path '{model_path}' not found. Using untrained model.")
+        # Validate and load model weights (required)
+        if not model_path:
+            raise ValueError("model_path is required and cannot be None")
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"ETAP model not found at: {model_path}")
+
+        self.load_model(model_path)
 
         # Set to evaluation mode
         self.model.eval()
@@ -137,8 +167,7 @@ class ETAPTracker:
             self.model.load_state_dict(state_dict, strict=False)
             print(f"Loaded ETAP model from: {model_path}")
         except Exception as e:
-            print(f"Error loading model: {e}")
-            print("Using untrained model.")
+            raise RuntimeError(f"Failed to load ETAP model from {model_path}: {e}")
 
     def events_to_tensor(
         self,
@@ -253,21 +282,28 @@ class ETAPTracker:
             return track_results
 
 
-def create_etap_tracker(model_path: Optional[str] = None, device: str = "auto", **kwargs):
+def create_etap_tracker(model_path: str, device: str = "auto", **kwargs):
     """
     Convenience function to create an ETAP tracker.
 
     Args:
-        model_path: Path to ETAP model weights
+        model_path: Path to ETAP model weights (REQUIRED)
         device: Device for inference
         **kwargs: Additional arguments for ETAPTracker
 
     Returns:
-        Initialized ETAP tracker or None if not available
+        Initialized ETAP tracker
+
+    Raises:
+        RuntimeError: If PyTorch or ETAP not available
+        ValueError: If model_path is None
+        FileNotFoundError: If model file not found
     """
-    if not TORCH_AVAILABLE or not ETAP_AVAILABLE:
-        warnings.warn("ETAP tracker not available. Check PyTorch and ETAP installation.")
-        return None
+    if not TORCH_AVAILABLE:
+        raise RuntimeError("PyTorch not available. Install PyTorch to use ETAP tracking.")
+
+    if not ETAP_AVAILABLE:
+        raise RuntimeError("ETAP not available. Check ETAP installation and ETAP_PATH environment variable.")
 
     return ETAPTracker(model_path=model_path, device=device, **kwargs)
 
@@ -279,7 +315,7 @@ def track_points_with_etap(
     ps: np.ndarray,
     query_points: List[evlib.tracking.PyQueryPoint],
     resolution: Tuple[int, int],
-    model_path: Optional[str] = None,
+    model_path: str,
     device: str = "auto",
     **kwargs,
 ):
@@ -290,17 +326,19 @@ def track_points_with_etap(
         xs, ys, ts, ps: Event data
         query_points: Points to track
         resolution: Sensor resolution
-        model_path: Path to ETAP model weights
+        model_path: Path to ETAP model weights (REQUIRED)
         device: Device for inference
         **kwargs: Additional tracker arguments
 
     Returns:
-        Tracking results or None if ETAP not available
+        Tracking results
+
+    Raises:
+        RuntimeError: If PyTorch or ETAP not available
+        ValueError: If model_path is None
+        FileNotFoundError: If model file not found
     """
     tracker = create_etap_tracker(model_path=model_path, device=device, **kwargs)
-    if tracker is None:
-        return None
-
     return tracker.track_points((xs, ys, ts, ps), query_points, resolution)
 
 
@@ -324,15 +362,14 @@ if __name__ == "__main__":
 
     if status["fully_functional"]:
         print("✅ ETAP integration fully available")
-        try:
-            tracker = create_etap_tracker()
-            if tracker:
-                print("✅ ETAP tracker created successfully")
-            else:
-                print("❌ Failed to create ETAP tracker")
-        except Exception as e:
-            print(f"❌ Error creating tracker: {e}")
+        print("Note: To create a tracker, provide a path to ETAP model weights:")
+        print("  tracker = create_etap_tracker('/path/to/etap_model.pth')")
+        print("  Or set ETAP_PATH environment variable to point to ETAP repository")
     else:
         print("❌ ETAP integration not fully available")
+        if not status["torch_available"]:
+            print("  - Install PyTorch: pip install torch")
+        if not status["etap_available"]:
+            print("  - Set ETAP_PATH environment variable or install ETAP in standard location")
 
     print("Integration test complete.")

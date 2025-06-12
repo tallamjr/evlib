@@ -259,7 +259,7 @@ pub mod keypoints {
                     // Check minimum distance constraint
                     let too_close = keypoints
                         .iter()
-                        .any(|kp| kp.distance_to(&point) < config.min_distance);
+                        .any(|kp: &Point2D| kp.distance_to(&point) < config.min_distance);
 
                     if !too_close {
                         keypoints.push(point);
@@ -358,25 +358,147 @@ pub mod keypoints {
     }
 
     fn extract_skeleton_keypoints(
-        _mask: &[bool],
-        _width: usize,
-        _height: usize,
-        _config: &KeypointConfig,
+        mask: &[bool],
+        width: usize,
+        height: usize,
+        config: &KeypointConfig,
     ) -> Vec<Point2D> {
-        // Skeleton extraction would require morphological operations
-        // For now, return empty vector as a placeholder
-        Vec::new()
+        // Implement morphological skeleton extraction using Zhang-Suen thinning algorithm
+        let mut skeleton = mask.to_vec();
+        let mut changed = true;
+
+        // Apply Zhang-Suen thinning algorithm
+        while changed {
+            changed = false;
+            let mut to_remove = Vec::new();
+
+            // Sub-iteration 1
+            for y in 1..height - 1 {
+                for x in 1..width - 1 {
+                    if skeleton[y * width + x] && should_remove_pixel(&skeleton, x, y, width, true)
+                    {
+                        to_remove.push(y * width + x);
+                        changed = true;
+                    }
+                }
+            }
+
+            for &idx in &to_remove {
+                skeleton[idx] = false;
+            }
+
+            to_remove.clear();
+
+            // Sub-iteration 2
+            for y in 1..height - 1 {
+                for x in 1..width - 1 {
+                    if skeleton[y * width + x] && should_remove_pixel(&skeleton, x, y, width, false)
+                    {
+                        to_remove.push(y * width + x);
+                        changed = true;
+                    }
+                }
+            }
+
+            for &idx in &to_remove {
+                skeleton[idx] = false;
+            }
+        }
+
+        // Extract keypoints from skeleton
+        let mut keypoints = Vec::new();
+        for y in 1..height - 1 {
+            for x in 1..width - 1 {
+                if skeleton[y * width + x] {
+                    // Check if this is a junction or endpoint
+                    let neighbor_count = count_skeleton_neighbors(&skeleton, x, y, width);
+                    if neighbor_count == 1 || neighbor_count >= 3 {
+                        let point = Point2D::new(x as f32, y as f32);
+
+                        // Check minimum distance constraint
+                        let too_close = keypoints
+                            .iter()
+                            .any(|kp: &Point2D| kp.distance_to(&point) < config.min_distance);
+
+                        if !too_close && keypoints.len() < config.num_points {
+                            keypoints.push(point);
+                        }
+                    }
+                }
+            }
+        }
+
+        keypoints
     }
 
     fn extract_corner_keypoints(
-        _mask: &[bool],
-        _width: usize,
-        _height: usize,
-        _config: &KeypointConfig,
+        mask: &[bool],
+        width: usize,
+        height: usize,
+        config: &KeypointConfig,
     ) -> Vec<Point2D> {
-        // Corner detection would require image processing algorithms
-        // For now, return empty vector as a placeholder
-        Vec::new()
+        // Implement Harris corner detection on binary mask
+        let mut keypoints = Vec::new();
+
+        // Convert boolean mask to float for gradient computation
+        let mut image: Vec<f32> = mask.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect();
+
+        // Apply Gaussian smoothing
+        image = gaussian_blur(&image, width, height, 1.0);
+
+        // Compute image gradients
+        let (grad_x, grad_y) = compute_gradients(&image, width, height);
+
+        // Compute Harris response
+        let k = 0.04; // Harris corner detection parameter
+        let window_size = 3;
+
+        for y in window_size..height - window_size {
+            for x in window_size..width - window_size {
+                let mut ixx = 0.0;
+                let mut iyy = 0.0;
+                let mut ixy = 0.0;
+
+                // Compute structure tensor in local window
+                for dy in -(window_size as i32)..(window_size as i32 + 1) {
+                    for dx in -(window_size as i32)..(window_size as i32 + 1) {
+                        let nx = (x as i32 + dx) as usize;
+                        let ny = (y as i32 + dy) as usize;
+                        let idx = ny * width + nx;
+
+                        let gx = grad_x[idx];
+                        let gy = grad_y[idx];
+
+                        ixx += gx * gx;
+                        iyy += gy * gy;
+                        ixy += gx * gy;
+                    }
+                }
+
+                // Compute Harris response
+                let det = ixx * iyy - ixy * ixy;
+                let trace = ixx + iyy;
+                let response = det - k * trace * trace;
+
+                // Check if this is a corner
+                if response > config.quality_threshold {
+                    let point = Point2D::new(x as f32, y as f32);
+
+                    // Check minimum distance constraint
+                    let too_close = keypoints
+                        .iter()
+                        .any(|kp: &Point2D| kp.distance_to(&point) < config.min_distance);
+
+                    if !too_close && keypoints.len() < config.num_points {
+                        keypoints.push(point);
+                    }
+                }
+            }
+        }
+
+        // Sort by Harris response (would need to store responses, simplified here)
+        keypoints.truncate(config.num_points);
+        keypoints
     }
 
     fn calculate_centroid(mask: &[bool], width: usize, height: usize) -> Option<Point2D> {
@@ -399,6 +521,157 @@ pub mod keypoints {
         } else {
             None
         }
+    }
+
+    // Helper functions for skeleton extraction (Zhang-Suen thinning)
+    fn should_remove_pixel(
+        mask: &[bool],
+        x: usize,
+        y: usize,
+        width: usize,
+        first_subiteration: bool,
+    ) -> bool {
+        let idx = y * width + x;
+        if !mask[idx] {
+            return false;
+        }
+
+        // Get 8-connected neighbors in clockwise order starting from top
+        let neighbors = [
+            mask[(y - 1) * width + x],     // P2 (top)
+            mask[(y - 1) * width + x + 1], // P3 (top-right)
+            mask[y * width + x + 1],       // P4 (right)
+            mask[(y + 1) * width + x + 1], // P5 (bottom-right)
+            mask[(y + 1) * width + x],     // P6 (bottom)
+            mask[(y + 1) * width + x - 1], // P7 (bottom-left)
+            mask[y * width + x - 1],       // P8 (left)
+            mask[(y - 1) * width + x - 1], // P9 (top-left)
+        ];
+
+        // Count the number of black-to-white transitions in the sequence P2,P3,P4,P5,P6,P7,P8,P9,P2
+        let mut transitions = 0;
+        for i in 0..8 {
+            if !neighbors[i] && neighbors[(i + 1) % 8] {
+                transitions += 1;
+            }
+        }
+
+        // Count the number of black pixel neighbors
+        let black_neighbors = neighbors.iter().filter(|&&n| n).count();
+
+        // Zhang-Suen conditions
+        let condition1 = black_neighbors >= 2 && black_neighbors <= 6;
+        let condition2 = transitions == 1;
+
+        if first_subiteration {
+            let condition3 = !neighbors[0] || !neighbors[2] || !neighbors[4]; // P2 * P4 * P6 = 0
+            let condition4 = !neighbors[2] || !neighbors[4] || !neighbors[6]; // P4 * P6 * P8 = 0
+            condition1 && condition2 && condition3 && condition4
+        } else {
+            let condition3 = !neighbors[0] || !neighbors[2] || !neighbors[6]; // P2 * P4 * P8 = 0
+            let condition4 = !neighbors[0] || !neighbors[4] || !neighbors[6]; // P2 * P6 * P8 = 0
+            condition1 && condition2 && condition3 && condition4
+        }
+    }
+
+    fn count_skeleton_neighbors(mask: &[bool], x: usize, y: usize, width: usize) -> usize {
+        let neighbors = [
+            mask[(y - 1) * width + x],     // top
+            mask[(y - 1) * width + x + 1], // top-right
+            mask[y * width + x + 1],       // right
+            mask[(y + 1) * width + x + 1], // bottom-right
+            mask[(y + 1) * width + x],     // bottom
+            mask[(y + 1) * width + x - 1], // bottom-left
+            mask[y * width + x - 1],       // left
+            mask[(y - 1) * width + x - 1], // top-left
+        ];
+
+        neighbors.iter().filter(|&&n| n).count()
+    }
+
+    // Helper functions for corner detection
+    fn gaussian_blur(image: &[f32], width: usize, height: usize, sigma: f32) -> Vec<f32> {
+        let kernel_size = (6.0 * sigma).ceil() as usize | 1; // Ensure odd size
+        let half_size = kernel_size / 2;
+        let mut kernel = vec![0.0; kernel_size];
+
+        // Generate 1D Gaussian kernel
+        let mut sum = 0.0;
+        for i in 0..kernel_size {
+            let x = i as f32 - half_size as f32;
+            kernel[i] = (-0.5 * (x / sigma).powi(2)).exp();
+            sum += kernel[i];
+        }
+
+        // Normalize kernel
+        for k in &mut kernel {
+            *k /= sum;
+        }
+
+        // Apply separable filter (horizontal then vertical)
+        let mut temp = vec![0.0; width * height];
+        let mut result = vec![0.0; width * height];
+
+        // Horizontal pass
+        for y in 0..height {
+            for x in 0..width {
+                let mut value = 0.0;
+                for i in 0..kernel_size {
+                    let sx = x as i32 + i as i32 - half_size as i32;
+                    let sx = sx.max(0).min(width as i32 - 1) as usize;
+                    value += image[y * width + sx] * kernel[i];
+                }
+                temp[y * width + x] = value;
+            }
+        }
+
+        // Vertical pass
+        for y in 0..height {
+            for x in 0..width {
+                let mut value = 0.0;
+                for i in 0..kernel_size {
+                    let sy = y as i32 + i as i32 - half_size as i32;
+                    let sy = sy.max(0).min(height as i32 - 1) as usize;
+                    value += temp[sy * width + x] * kernel[i];
+                }
+                result[y * width + x] = value;
+            }
+        }
+
+        result
+    }
+
+    fn compute_gradients(image: &[f32], width: usize, height: usize) -> (Vec<f32>, Vec<f32>) {
+        let mut grad_x = vec![0.0; width * height];
+        let mut grad_y = vec![0.0; width * height];
+
+        // Sobel operators
+        let sobel_x = [-1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -1.0, 0.0, 1.0];
+        let sobel_y = [-1.0, -2.0, -1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 1.0];
+
+        for y in 1..height - 1 {
+            for x in 1..width - 1 {
+                let mut gx = 0.0;
+                let mut gy = 0.0;
+
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        let nx = (x as i32 + dx) as usize;
+                        let ny = (y as i32 + dy) as usize;
+                        let pixel_value = image[ny * width + nx];
+                        let kernel_idx = ((dy + 1) * 3 + (dx + 1)) as usize;
+
+                        gx += pixel_value * sobel_x[kernel_idx];
+                        gy += pixel_value * sobel_y[kernel_idx];
+                    }
+                }
+
+                grad_x[y * width + x] = gx;
+                grad_y[y * width + x] = gy;
+            }
+        }
+
+        (grad_x, grad_y)
     }
 }
 
@@ -456,35 +729,161 @@ pub mod etap {
             .collect()
     }
 
-    /// Mock ETAP tracking function
-    /// In a real implementation, this would interface with the actual ETAP model
-    pub fn track_points_mock(
-        _event_representation: &Tensor,
+    /// Demonstration tracking function
+    ///
+    /// NOTE: This is a placeholder implementation for demonstration purposes.
+    /// Real ETAP tracking would require:
+    /// 1. Loading pre-trained ETAP model weights
+    /// 2. Processing event representations through the neural network
+    /// 3. Extracting point trajectories from model predictions
+    ///
+    /// This function provides basic motion estimation based on event intensity gradients
+    /// for educational and testing purposes only.
+    pub fn track_points_demo(
+        event_representation: &Tensor,
         query_points: &[QueryPoint],
         num_frames: usize,
     ) -> CandleResult<HashMap<usize, TrackResult>> {
         let mut results = HashMap::new();
 
+        // Extract event representation data for basic motion estimation
+        let tensor_data = event_representation.flatten_all()?.to_vec1::<f32>()?;
+        let shape = event_representation.shape();
+        let dims = shape.dims();
+
+        // Expect format [B, T, C, H, W] or similar
+        if dims.len() < 3 {
+            return Err(candle_core::Error::Msg(
+                "Invalid tensor shape for tracking".to_string(),
+            ));
+        }
+
+        let height = dims[dims.len() - 2];
+        let width = dims[dims.len() - 1];
+
         for (i, query) in query_points.iter().enumerate() {
             let mut track_result = TrackResult::new();
+            let mut current_point = query.point;
 
-            // Mock tracking by adding some noise to the initial point
             for frame_idx in 0..num_frames {
-                let noise_x = (frame_idx as f32 * 0.1) * ((i as f32).sin());
-                let noise_y = (frame_idx as f32 * 0.1) * ((i as f32).cos());
+                // Basic motion estimation using local event intensity
+                let (motion_x, motion_y) =
+                    estimate_local_motion(&tensor_data, current_point, width, height, frame_idx);
 
-                let new_point = Point2D::new(query.point.x + noise_x, query.point.y + noise_y);
+                // Update point position with estimated motion
+                current_point.x += motion_x;
+                current_point.y += motion_y;
 
-                // Simulate decreasing visibility over time
-                let visibility = (1.0 - frame_idx as f32 / num_frames as f32).max(0.0);
+                // Clamp to image boundaries
+                current_point.x = current_point.x.max(0.0).min(width as f32 - 1.0);
+                current_point.y = current_point.y.max(0.0).min(height as f32 - 1.0);
 
-                track_result.add_frame(frame_idx as i32, new_point, visibility);
+                // Estimate visibility based on local event activity
+                let visibility = estimate_visibility(&tensor_data, current_point, width, height);
+
+                track_result.add_frame(frame_idx as i32, current_point, visibility);
             }
 
             results.insert(i, track_result);
         }
 
         Ok(results)
+    }
+
+    /// Estimate local motion based on event gradients
+    fn estimate_local_motion(
+        tensor_data: &[f32],
+        point: Point2D,
+        width: usize,
+        height: usize,
+        _frame_idx: usize,
+    ) -> (f32, f32) {
+        let x = point.x.round() as usize;
+        let y = point.y.round() as usize;
+
+        if x == 0 || x >= width - 1 || y == 0 || y >= height - 1 {
+            return (0.0, 0.0);
+        }
+
+        // Simple gradient-based motion estimation
+        let window_size = 3;
+        let mut grad_x = 0.0;
+        let mut grad_y = 0.0;
+        let mut count = 0;
+
+        for dy in -(window_size as i32)..=(window_size as i32) {
+            for dx in -(window_size as i32)..=(window_size as i32) {
+                let nx = (x as i32 + dx).max(0).min(width as i32 - 1) as usize;
+                let ny = (y as i32 + dy).max(0).min(height as i32 - 1) as usize;
+
+                if nx > 0 && nx < width - 1 && ny > 0 && ny < height - 1 {
+                    let idx = ny * width + nx;
+                    if idx < tensor_data.len() {
+                        let curr_val = tensor_data[idx];
+
+                        // Compute local gradients
+                        if nx > 0 && (ny * width + nx - 1) < tensor_data.len() {
+                            grad_x += curr_val - tensor_data[ny * width + nx - 1];
+                        }
+                        if ny > 0 && ((ny - 1) * width + nx) < tensor_data.len() {
+                            grad_y += curr_val - tensor_data[(ny - 1) * width + nx];
+                        }
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        if count > 0 {
+            grad_x /= count as f32;
+            grad_y /= count as f32;
+
+            // Scale motion based on gradient magnitude
+            let motion_scale = 0.1;
+            (grad_x * motion_scale, grad_y * motion_scale)
+        } else {
+            (0.0, 0.0)
+        }
+    }
+
+    /// Estimate point visibility based on local event activity
+    fn estimate_visibility(
+        tensor_data: &[f32],
+        point: Point2D,
+        width: usize,
+        height: usize,
+    ) -> f32 {
+        let x = point.x.round() as usize;
+        let y = point.y.round() as usize;
+
+        if x >= width || y >= height {
+            return 0.0;
+        }
+
+        let window_size = 2;
+        let mut activity = 0.0;
+        let mut count = 0;
+
+        for dy in -(window_size as i32)..=(window_size as i32) {
+            for dx in -(window_size as i32)..=(window_size as i32) {
+                let nx = (x as i32 + dx).max(0).min(width as i32 - 1) as usize;
+                let ny = (y as i32 + dy).max(0).min(height as i32 - 1) as usize;
+                let idx = ny * width + nx;
+
+                if idx < tensor_data.len() {
+                    activity += tensor_data[idx].abs();
+                    count += 1;
+                }
+            }
+        }
+
+        if count > 0 {
+            let avg_activity = activity / count as f32;
+            // Normalize visibility to [0, 1] range
+            (avg_activity * 2.0).min(1.0).max(0.0)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -726,10 +1125,10 @@ pub mod python {
         Ok(numpy_array.into_pyarray(py).to_object(py))
     }
 
-    /// Mock ETAP tracking function for Python
+    /// Demonstration ETAP tracking function for Python
     #[pyfunction]
-    #[pyo3(name = "track_points_mock")]
-    pub fn track_points_mock_py(
+    #[pyo3(name = "track_points_demo")]
+    pub fn track_points_demo_py(
         _py: Python<'_>,
         _event_representation: PyObject,
         query_points: Vec<PyQueryPoint>,
@@ -742,7 +1141,7 @@ pub mod python {
             .collect();
 
         // Create dummy tensor (in real implementation, would use the provided array)
-        // For mock implementation, we ignore the actual event representation
+        // For demonstration implementation, we create a simple tensor
         let tensor = candle_core::Tensor::zeros(
             (1, 1, 5, 256, 256),
             candle_core::DType::F32,
@@ -750,8 +1149,8 @@ pub mod python {
         )
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 
-        // Track points
-        let results = etap::track_points_mock(&tensor, &query_points_rust, num_frames)
+        // Track points using demonstration algorithm
+        let results = etap::track_points_demo(&tensor, &query_points_rust, num_frames)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
 
         // Convert to Python types

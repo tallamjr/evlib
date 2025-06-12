@@ -8,6 +8,9 @@ This example demonstrates:
 2. Measuring performance of basic operations
 3. Comparing Rust implementation with Python
 4. Comparing single-core vs multi-core performance
+
+Note: Results show mixed performance - Rust excels at some operations
+while Python/NumPy is faster for simple array manipulations.
 """
 import time
 import multiprocessing

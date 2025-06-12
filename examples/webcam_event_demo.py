@@ -23,9 +23,10 @@ Controls:
 
 import argparse
 import sys
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 from collections import deque
+
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 
 try:
     import evlib  # noqa: F401
@@ -87,7 +88,7 @@ class WebcamEventDemo:
 
     def setup_visualization(self):
         """Setup matplotlib visualization with subplots"""
-        plt.style.use("dark_background")
+        plt.style.use("default")  # Use default style for white background
         self.fig, ((self.ax_events, self.ax_stats), (self.ax_fps, self.ax_count)) = plt.subplots(
             2, 2, figsize=(12, 8)
         )

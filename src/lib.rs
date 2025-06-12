@@ -164,7 +164,7 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         py
     )?)?;
     tracking_submodule.add_function(wrap_pyfunction!(
-        ev_tracking::python::track_points_mock_py,
+        ev_tracking::python::track_points_demo_py,
         py
     )?)?;
     tracking_submodule.add_class::<ev_tracking::python::PyPoint2D>()?;
@@ -212,6 +212,32 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     simulation_submodule.add_class::<ev_simulation::python::PyVideoToEventsConverter>()?;
     simulation_submodule.add_class::<ev_simulation::python::PySimulationStats>()?;
     m.add_submodule(simulation_submodule)?;
+
+    // Register ev_visualization module as "visualization" in Python
+    let visualization_submodule = PyModule::new(py, "visualization")?;
+    visualization_submodule.add_function(wrap_pyfunction!(
+        ev_visualization::python::draw_events_to_image_py,
+        py
+    )?)?;
+    visualization_submodule
+        .add_class::<ev_visualization::python::PyRealtimeVisualizationConfig>()?;
+    visualization_submodule
+        .add_class::<ev_visualization::python::PyEventVisualizationPipeline>()?;
+
+    // Terminal visualization (optional)
+    #[cfg(feature = "terminal")]
+    {
+        visualization_submodule.add_function(wrap_pyfunction!(
+            ev_visualization::python::create_terminal_event_viewer,
+            py
+        )?)?;
+        visualization_submodule
+            .add_class::<ev_visualization::python::PyTerminalVisualizationConfig>()?;
+        visualization_submodule
+            .add_class::<ev_visualization::python::PyTerminalEventVisualizer>()?;
+    }
+
+    m.add_submodule(visualization_submodule)?;
 
     // No legacy functionality - all functions are registered in their respective modules
 

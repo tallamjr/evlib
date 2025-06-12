@@ -124,76 +124,28 @@ impl ModelZoo {
             },
         );
 
-        // FireNet - Model checkpoint needs to be obtained from cedric-scheerlinck's branch
-        self.models.insert(
-            "firenet".to_string(),
-            ModelInfo {
-                name: "firenet".to_string(),
-                variant: "base".to_string(),
-                url: "https://github.com/cedric-scheerlinck/rpg_e2vid/tree/cedric/firenet"
-                    .to_string(),
-                checksum: "sha256:firenet_checkpoint_from_repository".to_string(),
-                architecture: ModelArchitecture::FireNet,
-                format: "pytorch".to_string(),
-                size: 5_242_880, // ~5MB (38k parameters, much smaller than E2VID)
-                description: "FireNet fast lightweight architecture (10ms inference)".to_string(),
-            },
-        );
+        // NOTE: FireNet removed from model zoo until downloadable model weights are available
+        // The repository at https://github.com/cedric-scheerlinck/rpg_e2vid/tree/cedric/firenet
+        // does not provide direct download URLs for pre-trained weights
 
         // E2VID+ - Not yet available, removing from model zoo
         // TODO: Add E2VID+ when a real implementation is available
 
-        // SPADE-E2VID - Available from RodrigoGantier's repository
-        self.models.insert(
-            "spade_e2vid".to_string(),
-            ModelInfo {
-                name: "spade_e2vid".to_string(),
-                variant: "full".to_string(),
-                url: "https://github.com/RodrigoGantier/SPADE_E2VID".to_string(),
-                checksum: "sha256:spade_checkpoint_from_repository".to_string(),
-                architecture: ModelArchitecture::SpadeE2Vid,
-                format: "pytorch".to_string(),
-                size: 41_943_040, // ~40MB
-                description:
-                    "SPADE-E2VID with spatially-adaptive denormalization (15.87% MSE improvement)"
-                        .to_string(),
-            },
-        );
+        // NOTE: SPADE-E2VID removed from model zoo until downloadable model weights are available
+        // The repository at https://github.com/RodrigoGantier/SPADE_E2VID
+        // does not provide direct download URLs for pre-trained weights
 
-        // SSL-E2VID - Available from TU Delft repository
-        self.models.insert(
-            "ssl_e2vid".to_string(),
-            ModelInfo {
-                name: "ssl_e2vid".to_string(),
-                variant: "self_supervised".to_string(),
-                url: "https://github.com/tudelft/ssl_e2vid".to_string(),
-                checksum: "sha256:ssl_checkpoint_from_repository".to_string(),
-                architecture: ModelArchitecture::SslE2Vid,
-                format: "pytorch".to_string(),
-                size: 31_457_280, // ~30MB
-                description: "SSL-E2VID self-supervised learning without ground truth data"
-                    .to_string(),
-            },
-        );
+        // NOTE: SSL-E2VID removed from model zoo until downloadable model weights are available
+        // The repository at https://github.com/tudelft/ssl_e2vid
+        // does not provide direct download URLs for pre-trained weights
 
         // FireNet+ - Not yet available, removing from model zoo
         // TODO: Add FireNet+ when a real implementation is available
 
-        // ET-Net - Transformer-based architecture (from Weng et al., ICCV 2021)
-        self.models.insert(
-            "et_net".to_string(),
-            ModelInfo {
-                name: "et_net".to_string(),
-                variant: "transformer".to_string(),
-                url: "https://github.com/WarranWeng/ET-Net".to_string(),
-                checksum: "sha256:et_net_checkpoint_pending_release".to_string(),
-                architecture: ModelArchitecture::ETNet,
-                format: "pytorch".to_string(),
-                size: 104_857_600, // ~100MB (estimated for transformer model)
-                description: "ET-Net: Event-based Video Reconstruction using Transformers"
-                    .to_string(),
-            },
-        );
+        // NOTE: ET-Net removed from model zoo until downloadable model weights are available
+        // The repository at https://github.com/WarranWeng/ET-Net
+        // does not provide direct download URLs for pre-trained weights
+        // Placeholder checksum "et_net_checkpoint_pending_release" indicates unavailable weights
 
         // HyperE2VID - Not yet available, removing from model zoo
         // TODO: Add HyperE2VID when a real implementation is available
@@ -207,6 +159,40 @@ impl ModelZoo {
     /// Get model info by name
     pub fn get_model_info(&self, name: &str) -> Option<&ModelInfo> {
         self.models.get(name)
+    }
+
+    /// Verify that a model has a valid download URL
+    pub fn verify_model_availability(&self, name: &str) -> Result<bool, String> {
+        let info = self
+            .models
+            .get(name)
+            .ok_or_else(|| format!("Model '{}' not found in model zoo", name))?;
+
+        // Check if URL is a direct download link (not a repository URL)
+        if info.url.contains("github.com") && !info.url.contains("/releases/download/") {
+            return Err(format!(
+                "Model '{}' has repository URL instead of direct download link: {}",
+                name, info.url
+            ));
+        }
+
+        // Check for placeholder checksums
+        if info.checksum.contains("from_repository") || info.checksum.contains("pending_release") {
+            return Err(format!(
+                "Model '{}' has placeholder checksum: {}",
+                name, info.checksum
+            ));
+        }
+
+        Ok(true)
+    }
+
+    /// List only models with verified download URLs
+    pub fn list_verified_models(&self) -> Vec<&ModelInfo> {
+        self.models
+            .values()
+            .filter(|info| self.verify_model_availability(&info.name).is_ok())
+            .collect()
     }
 
     /// Get the path where a model would be cached
@@ -232,6 +218,14 @@ impl ModelZoo {
 
     /// Download a model if not already cached
     pub async fn download_model(&self, name: &str) -> CandleResult<PathBuf> {
+        // Verify model availability before attempting download
+        if let Err(e) = self.verify_model_availability(name) {
+            return Err(candle_core::Error::Msg(format!(
+                "Cannot download model '{}': {}",
+                name, e
+            )));
+        }
+
         let info = self
             .models
             .get(name)
@@ -301,16 +295,10 @@ impl ModelZoo {
                 );
                 Ok(vb)
             }
-            _ => {
-                // Unknown format, initialize with random weights
-                let varmap = VarMap::new();
-                let vb = VarBuilder::from_varmap(&varmap, DType::F32, &self.device);
-                eprintln!(
-                    "Warning: Unknown model format at {:?} - initializing with random weights",
-                    model_path
-                );
-                Ok(vb)
-            }
+            _ => Err(candle_core::Error::Msg(format!(
+                "Unsupported model format for file: {:?}. Supported formats: .pth, .pt, .onnx",
+                model_path
+            ))),
         }
     }
 
@@ -347,12 +335,10 @@ impl ModelZoo {
                 Ok(VarBuilder::from_varmap(&varmap, DType::F32, &self.device))
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load PyTorch weights: {}", e);
-                eprintln!("Falling back to random initialization");
-
-                // Fallback to random weights
-                let varmap = VarMap::new();
-                Ok(VarBuilder::from_varmap(&varmap, DType::F32, &self.device))
+                Err(candle_core::Error::Msg(format!(
+                    "Failed to load PyTorch weights from {:?}: {}. Ensure the model file is valid and accessible.",
+                    model_path, e
+                )))
             }
         }
     }
@@ -592,7 +578,26 @@ mod tests {
     fn test_list_models() {
         let zoo = ModelZoo::new(None).unwrap();
         let models = zoo.list_models();
-        assert!(models.len() >= 5); // We have at least 5 models
+        assert!(models.len() >= 1); // We have at least 1 verified model (e2vid_unet)
+    }
+
+    #[test]
+    fn test_list_verified_models() {
+        let zoo = ModelZoo::new(None).unwrap();
+        let verified_models = zoo.list_verified_models();
+        // Only models with real download URLs should be included
+        assert!(!verified_models.is_empty());
+        // e2vid_unet should be available as it has a real download URL
+        assert!(verified_models.iter().any(|m| m.name == "e2vid_unet"));
+    }
+
+    #[test]
+    fn test_verify_model_availability() {
+        let zoo = ModelZoo::new(None).unwrap();
+        // e2vid_unet should be verified
+        assert!(zoo.verify_model_availability("e2vid_unet").is_ok());
+        // Non-existent model should fail
+        assert!(zoo.verify_model_availability("non_existent_model").is_err());
     }
 
     #[test]

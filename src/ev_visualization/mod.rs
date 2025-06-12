@@ -492,10 +492,19 @@ fn draw_arrowhead(img: &mut RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, color:
     draw_line(img, x1, y1, x3, y3, color);
 }
 
+pub mod realtime;
+
+#[cfg(feature = "terminal")]
+pub mod terminal;
+
 /// Python bindings for the visualization module
 #[cfg(feature = "python")]
 pub mod python {
+    use super::realtime::{EventVisualizationPipeline, RealtimeVisualizationConfig};
     use super::*;
+
+    #[cfg(feature = "terminal")]
+    use super::terminal::{TerminalEventVisualizer, TerminalVisualizationConfig};
     use crate::ev_core::from_numpy_arrays;
     use numpy::{IntoPyArray, PyReadonlyArray1};
     use pyo3::prelude::*;
@@ -542,5 +551,271 @@ pub mod python {
         }
 
         Ok(array.into_pyarray(py).to_object(py))
+    }
+
+    /// Python wrapper for realtime visualization config
+    #[pyclass]
+    #[derive(Clone)]
+    pub struct PyRealtimeVisualizationConfig {
+        pub inner: RealtimeVisualizationConfig,
+    }
+
+    #[pymethods]
+    impl PyRealtimeVisualizationConfig {
+        #[new]
+        #[pyo3(signature = (
+            display_width = None,
+            display_height = None,
+            event_decay_ms = None,
+            max_events = None,
+            show_fps = None,
+            background_color = None,
+            positive_color = None,
+            negative_color = None
+        ))]
+        pub fn new(
+            display_width: Option<u32>,
+            display_height: Option<u32>,
+            event_decay_ms: Option<f32>,
+            max_events: Option<usize>,
+            show_fps: Option<bool>,
+            background_color: Option<(u8, u8, u8)>,
+            positive_color: Option<(u8, u8, u8)>,
+            negative_color: Option<(u8, u8, u8)>,
+        ) -> Self {
+            let mut config = RealtimeVisualizationConfig::default();
+
+            if let Some(w) = display_width {
+                config.display_width = w;
+            }
+            if let Some(h) = display_height {
+                config.display_height = h;
+            }
+            if let Some(decay) = event_decay_ms {
+                config.event_decay_ms = decay;
+            }
+            if let Some(max) = max_events {
+                config.max_events = max;
+            }
+            if let Some(fps) = show_fps {
+                config.show_fps = fps;
+            }
+            if let Some((r, g, b)) = background_color {
+                config.background_color = [r, g, b];
+            }
+            if let Some((r, g, b)) = positive_color {
+                config.positive_color = [r, g, b];
+            }
+            if let Some((r, g, b)) = negative_color {
+                config.negative_color = [r, g, b];
+            }
+
+            Self { inner: config }
+        }
+    }
+
+    /// Python wrapper for realtime event visualization pipeline
+    #[pyclass]
+    pub struct PyEventVisualizationPipeline {
+        pipeline: EventVisualizationPipeline,
+    }
+
+    #[pymethods]
+    impl PyEventVisualizationPipeline {
+        #[new]
+        pub fn new(config: &PyRealtimeVisualizationConfig) -> Self {
+            Self {
+                pipeline: EventVisualizationPipeline::new(config.inner.clone()),
+            }
+        }
+
+        /// Process events and return RGB frame as numpy array
+        pub fn process_events(
+            &mut self,
+            py: Python<'_>,
+            xs: PyReadonlyArray1<i64>,
+            ys: PyReadonlyArray1<i64>,
+            ts: PyReadonlyArray1<f64>,
+            ps: PyReadonlyArray1<i64>,
+        ) -> PyResult<(PyObject, f32)> {
+            // Convert numpy arrays to events
+            let events = from_numpy_arrays(xs, ys, ts, ps);
+
+            // Process events
+            let (frame_data, fps, (width, height)) = self.pipeline.process_events(events);
+
+            // Convert RGB data to numpy array (height, width, 3)
+            let mut array =
+                numpy::ndarray::Array3::<u8>::zeros((height as usize, width as usize, 3));
+
+            for y in 0..height as usize {
+                for x in 0..width as usize {
+                    let pixel_idx = (y * width as usize + x) * 3;
+                    if pixel_idx + 2 < frame_data.len() {
+                        array[[y, x, 0]] = frame_data[pixel_idx]; // R
+                        array[[y, x, 1]] = frame_data[pixel_idx + 1]; // G
+                        array[[y, x, 2]] = frame_data[pixel_idx + 2]; // B
+                    }
+                }
+            }
+
+            Ok((array.into_pyarray(py).to_object(py), fps))
+        }
+
+        /// Get pipeline statistics
+        pub fn get_stats(&self) -> (u64, u64, f32) {
+            self.pipeline.get_stats()
+        }
+
+        /// Reset the pipeline
+        pub fn reset(&mut self) {
+            self.pipeline.reset();
+        }
+    }
+
+    /// Terminal visualization bindings (optional)
+    #[cfg(feature = "terminal")]
+    #[pyclass]
+    #[derive(Clone)]
+    pub struct PyTerminalVisualizationConfig {
+        pub inner: TerminalVisualizationConfig,
+    }
+
+    #[cfg(feature = "terminal")]
+    #[pymethods]
+    impl PyTerminalVisualizationConfig {
+        #[new]
+        #[pyo3(signature = (
+            event_decay_ms = None,
+            max_events = None,
+            target_fps = None,
+            show_stats = None,
+            canvas_scale = None
+        ))]
+        pub fn new(
+            event_decay_ms: Option<f32>,
+            max_events: Option<usize>,
+            target_fps: Option<f32>,
+            show_stats: Option<bool>,
+            canvas_scale: Option<f32>,
+        ) -> Self {
+            let mut config = TerminalVisualizationConfig::default();
+
+            if let Some(decay) = event_decay_ms {
+                config.event_decay_ms = decay;
+            }
+            if let Some(max) = max_events {
+                config.max_events = max;
+            }
+            if let Some(fps) = target_fps {
+                config.target_fps = fps;
+            }
+            if let Some(stats) = show_stats {
+                config.show_stats = stats;
+            }
+            if let Some(scale) = canvas_scale {
+                config.canvas_scale = scale;
+            }
+
+            Self { inner: config }
+        }
+    }
+
+    #[cfg(feature = "terminal")]
+    #[pyclass]
+    pub struct PyTerminalEventVisualizer {
+        visualizer: Option<TerminalEventVisualizer>,
+    }
+
+    #[cfg(feature = "terminal")]
+    #[pymethods]
+    impl PyTerminalEventVisualizer {
+        #[new]
+        pub fn new(config: &PyTerminalVisualizationConfig) -> PyResult<Self> {
+            let visualizer = TerminalEventVisualizer::new(config.inner.clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create terminal visualizer: {}",
+                    e
+                ))
+            })?;
+
+            Ok(Self {
+                visualizer: Some(visualizer),
+            })
+        }
+
+        /// Add events to the visualizer
+        pub fn add_events(
+            &mut self,
+            xs: PyReadonlyArray1<i64>,
+            ys: PyReadonlyArray1<i64>,
+            ts: PyReadonlyArray1<f64>,
+            ps: PyReadonlyArray1<i64>,
+        ) -> PyResult<()> {
+            if let Some(ref mut viz) = self.visualizer {
+                let events = from_numpy_arrays(xs, ys, ts, ps);
+                viz.add_events(events);
+            }
+            Ok(())
+        }
+
+        /// Handle input and return whether to continue
+        pub fn handle_input(&mut self) -> PyResult<bool> {
+            if let Some(ref mut viz) = self.visualizer {
+                viz.handle_input().map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Input error: {}", e))
+                })?;
+                Ok(!viz.should_quit())
+            } else {
+                Ok(false)
+            }
+        }
+
+        /// Render a frame
+        pub fn render_frame(&mut self) -> PyResult<()> {
+            if let Some(ref mut viz) = self.visualizer {
+                viz.render_frame().map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Render error: {}",
+                        e
+                    ))
+                })?;
+            }
+            Ok(())
+        }
+
+        /// Check if should quit
+        pub fn should_quit(&self) -> bool {
+            self.visualizer.as_ref().map_or(true, |v| v.should_quit())
+        }
+
+        /// Check if paused
+        pub fn is_paused(&self) -> bool {
+            self.visualizer.as_ref().map_or(false, |v| v.is_paused())
+        }
+
+        /// Get statistics as tuple (frames_rendered, events_processed, fps)
+        pub fn get_stats(&self) -> (u64, u64, f32) {
+            if let Some(ref viz) = self.visualizer {
+                let stats = viz.get_stats();
+                (
+                    stats.frames_rendered,
+                    stats.events_processed,
+                    stats.current_fps,
+                )
+            } else {
+                (0, 0, 0.0)
+            }
+        }
+    }
+
+    /// Create a terminal event stream viewer
+    #[cfg(feature = "terminal")]
+    #[pyfunction]
+    pub fn create_terminal_event_viewer(
+        config: Option<&PyTerminalVisualizationConfig>,
+    ) -> PyResult<PyTerminalEventVisualizer> {
+        let config = config.map(|c| c.inner.clone()).unwrap_or_default();
+        PyTerminalEventVisualizer::new(&PyTerminalVisualizationConfig { inner: config })
     }
 }

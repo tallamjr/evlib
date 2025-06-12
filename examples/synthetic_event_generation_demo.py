@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-IMPORTANT NOTE: This is a demonstration of synthetic video generation,
-NOT actual GStreamer integration.
+Synthetic Event Generation Demo
 
-WARNING: GStreamer integration is not yet implemented in evlib.
-This example generates synthetic video patterns to demonstrate the event simulation pipeline.
+This demonstration shows how to:
+1. Generate synthetic video patterns
+2. Simulate event camera data from video frames
+3. Analyze and save event data
 
-This file will be updated with real GStreamer functionality in a future release.
+NOTE: This does NOT use real video files or GStreamer.
+For real video processing, use external tools to extract frames
+and then apply the event simulation pipeline shown here.
 
 Author: evlib contributors
 """
@@ -21,7 +24,7 @@ try:
     print("✅ evlib imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import evlib: {e}")
-    print("Please build evlib with: maturin develop --features gstreamer")
+    print("Please build evlib with: maturin develop")
     exit(1)
 
 
@@ -46,24 +49,24 @@ def check_video_file(video_path):
     return True
 
 
-def process_video_file(video_path, max_frames=None):
+def generate_synthetic_video(video_path_hint, max_frames=None):
     """
-    Process video file using GStreamer
+    Generate synthetic video frames for event simulation demonstration
 
     Args:
-        video_path: Path to video file
-        max_frames: Maximum number of frames to process (None for all)
+        video_path_hint: Video file path (used only for metadata simulation)
+        max_frames: Maximum number of frames to generate (None for default)
 
     Returns:
-        List of processed frames and metadata
+        List of synthetic frames and metadata
     """
-    print(f"🎬 Processing video file: {video_path}")
+    print(f"🎬 Generating synthetic video patterns (inspired by: {video_path_hint})")
 
     try:
         # Create device (CPU for this demo)
         _device = "cpu"  # Will be used with actual GStreamer integration
 
-        print("🎥 Initializing GStreamer video processor...")
+        print("🎥 Initializing synthetic video generator...")
 
         # Video processing configuration
         config = {"output_resolution": (640, 480), "force_grayscale": True, "frame_rate": 30.0}
@@ -73,8 +76,8 @@ def process_video_file(video_path, max_frames=None):
         print(f"  🎨 Grayscale: {config['force_grayscale']}")
         print(f"  🎞️ Frame rate: {config['frame_rate']} fps")
 
-        # Simulate video processing
-        print("📸 Extracting frames from video...")
+        # Generate synthetic video frames
+        print("📸 Generating synthetic video frames...")
         frames = []
         metadata = {
             "fps": 30.0,
@@ -108,12 +111,12 @@ def process_video_file(video_path, max_frames=None):
                 progress = (frame_idx + 1) / num_frames * 100
                 print(f"  📊 Progress: {progress:.1f}% ({frame_idx + 1}/{num_frames} frames)")
 
-        print(f"✅ Video processing complete: {len(frames)} frames extracted")
+        print(f"✅ Synthetic video generation complete: {len(frames)} frames created")
 
         return frames, metadata
 
     except Exception as e:
-        print(f"❌ Video processing failed: {e}")
+        print(f"❌ Synthetic video generation failed: {e}")
         return [], {}
 
 
@@ -276,7 +279,7 @@ def analyze_events(events):
 
 def main():
     """Main demo function"""
-    print("🎬 GStreamer Video File Processing Demo")
+    print("🎬 Synthetic Event Generation Demo")
     print("=" * 50)
 
     # Get video file path
@@ -286,21 +289,21 @@ def main():
         # Use sample video or create placeholder
         video_path = "sample_video.mp4"
         print(f"ℹ️ No video file specified, using: {video_path}")
-        print("Usage: python gstreamer_video_file_demo.py <video_file>")
+        print("Usage: python synthetic_event_generation_demo.py <pattern_name>")
 
     # Check video file
     if not check_video_file(video_path):
-        print("💡 To test with a real video file:")
-        print("  python gstreamer_video_file_demo.py /path/to/your/video.mp4")
-        print("\n🎬 Proceeding with synthetic video data for demonstration...")
+        print("💡 This demo generates synthetic video patterns.")
+        print("  For real video processing, extract frames using external tools.")
+        print("\n🎬 Proceeding with synthetic pattern generation...")
         video_path = "synthetic_video"
 
-    # Step 1: Process video file
-    print("\n🎬 Step 1: Video Processing")
-    frames, metadata = process_video_file(video_path, max_frames=100)  # Limit for demo
+    # Step 1: Generate synthetic video
+    print("\n🎬 Step 1: Synthetic Video Generation")
+    frames, metadata = generate_synthetic_video(video_path, max_frames=100)  # Limit for demo
 
     if not frames:
-        print("❌ Failed to process video")
+        print("❌ Failed to generate synthetic video")
         return
 
     # Step 2: Simulate events
@@ -316,7 +319,7 @@ def main():
 
     # Step 4: Save results
     print("\n💾 Step 4: Save Results")
-    save_events_to_formats(events, "gstreamer_demo_events")
+    save_events_to_formats(events, "synthetic_demo_events")
 
     print("\n✅ Demo completed successfully!")
     print("\n💡 Next steps:")
