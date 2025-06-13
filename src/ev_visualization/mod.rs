@@ -573,6 +573,7 @@ pub mod python {
             positive_color = None,
             negative_color = None
         ))]
+        #[allow(clippy::too_many_arguments)]
         pub fn new(
             display_width: Option<u32>,
             display_height: Option<u32>,

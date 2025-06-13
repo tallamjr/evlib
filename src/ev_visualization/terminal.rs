@@ -12,12 +12,11 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    symbols,
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{
         canvas::{Canvas, Points},
-        Block, Borders, Clear, Gauge, List, ListItem, Paragraph,
+        Block, Borders, Clear, List, ListItem, Paragraph,
     },
     Frame, Terminal,
 };
@@ -218,7 +217,7 @@ impl TerminalEventVisualizer {
         let stats = self.stats.clone();
         let canvas_bounds = self.canvas_bounds;
         let event_buffer = self.event_buffer.clone();
-        let should_quit = self.should_quit;
+        let _should_quit = self.should_quit;
         let paused = self.paused;
         let show_help = self.show_help;
 
@@ -229,214 +228,11 @@ impl TerminalEventVisualizer {
                 &stats,
                 canvas_bounds,
                 &event_buffer,
-                should_quit,
                 paused,
                 show_help,
             )
         })?;
         Ok(())
-    }
-
-    /// Render the UI
-    fn render_ui(&mut self, f: &mut Frame) {
-        let size = f.area();
-        self.stats.terminal_size = (size.width, size.height);
-
-        if self.show_help {
-            self.render_help(f);
-            return;
-        }
-
-        // Create layout
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([
-                Constraint::Length(3),                                          // Header
-                Constraint::Min(10),                                            // Canvas
-                Constraint::Length(if self.config.show_stats { 8 } else { 3 }), // Stats/Footer
-            ])
-            .split(size);
-
-        // Render header
-        self.render_header(f, chunks[0]);
-
-        // Render event canvas
-        self.render_canvas(f, chunks[1]);
-
-        // Render stats/footer
-        if self.config.show_stats {
-            self.render_stats(f, chunks[2]);
-        } else {
-            self.render_footer(f, chunks[2]);
-        }
-    }
-
-    /// Render header
-    fn render_header(&self, f: &mut Frame, area: Rect) {
-        let status = if self.paused { "PAUSED" } else { "RUNNING" };
-        let status_style = if self.paused {
-            Style::default().fg(Color::Red)
-        } else {
-            Style::default().fg(Color::Green)
-        };
-
-        let header = Paragraph::new(vec![Line::from(vec![
-            Span::styled("Event Stream Visualizer ", Style::default().fg(Color::Cyan)),
-            Span::styled("(Terminal Mode)", Style::default().fg(Color::Gray)),
-            Span::raw(" | "),
-            Span::styled(status, status_style),
-            Span::raw(" | "),
-            Span::styled(
-                format!("{:.1} FPS", self.stats.current_fps),
-                Style::default().fg(Color::Yellow),
-            ),
-        ])])
-        .block(Block::default().borders(Borders::ALL))
-        .alignment(Alignment::Center);
-
-        f.render_widget(header, area);
-    }
-
-    /// Render event canvas
-    fn render_canvas(&self, f: &mut Frame, area: Rect) {
-        let canvas = Canvas::default()
-            .block(Block::default().borders(Borders::ALL).title("Events"))
-            .x_bounds([self.canvas_bounds.0, self.canvas_bounds.2])
-            .y_bounds([self.canvas_bounds.1, self.canvas_bounds.3])
-            .paint(|ctx| {
-                // Separate positive and negative events
-                let now = Instant::now();
-                let decay_ms = self.config.event_decay_ms;
-
-                let mut positive_events = Vec::new();
-                let mut negative_events = Vec::new();
-
-                for (event, timestamp) in &self.event_buffer {
-                    let age_ms = now.duration_since(*timestamp).as_millis() as f32;
-                    if age_ms < decay_ms {
-                        let _alpha = 1.0 - (age_ms / decay_ms);
-                        let x = event.x as f64;
-                        let y = event.y as f64;
-
-                        if event.polarity > 0 {
-                            positive_events.push((x, y));
-                        } else {
-                            negative_events.push((x, y));
-                        }
-                    }
-                }
-
-                // Draw positive events (red)
-                if !positive_events.is_empty() {
-                    ctx.draw(&Points {
-                        coords: &positive_events,
-                        color: Color::Red,
-                    });
-                }
-
-                // Draw negative events (blue)
-                if !negative_events.is_empty() {
-                    ctx.draw(&Points {
-                        coords: &negative_events,
-                        color: Color::Blue,
-                    });
-                }
-            });
-
-        f.render_widget(canvas, area);
-    }
-
-    /// Render statistics
-    fn render_stats(&self, f: &mut Frame, area: Rect) {
-        let stats_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-
-        // Left column - Performance stats
-        let perf_items = vec![
-            ListItem::new(format!("FPS: {:.1}", self.stats.current_fps)),
-            ListItem::new(format!("Frames: {}", self.stats.frames_rendered)),
-            ListItem::new(format!("Events: {}", self.stats.events_processed)),
-            ListItem::new(format!(
-                "Events/Frame: {:.1}",
-                self.stats.avg_events_per_frame
-            )),
-        ];
-
-        let perf_list = List::new(perf_items)
-            .block(Block::default().borders(Borders::ALL).title("Performance"));
-
-        f.render_widget(perf_list, stats_chunks[0]);
-
-        // Right column - Configuration
-        let config_items = vec![
-            ListItem::new(format!("Decay: {:.0}ms", self.config.event_decay_ms)),
-            ListItem::new(format!("Max Events: {}", self.config.max_events)),
-            ListItem::new(format!(
-                "Terminal: {}x{}",
-                self.stats.terminal_size.0, self.stats.terminal_size.1
-            )),
-            ListItem::new(format!(
-                "Canvas: {}x{}",
-                self.stats.canvas_size.0, self.stats.canvas_size.1
-            )),
-        ];
-
-        let config_list = List::new(config_items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Configuration"),
-        );
-
-        f.render_widget(config_list, stats_chunks[1]);
-    }
-
-    /// Render footer
-    fn render_footer(&self, f: &mut Frame, area: Rect) {
-        let footer = Paragraph::new("Press 'h' for help, 'q' to quit, 'p' to pause, 'r' to reset")
-            .block(Block::default().borders(Borders::ALL))
-            .alignment(Alignment::Center);
-
-        f.render_widget(footer, area);
-    }
-
-    /// Render help screen
-    fn render_help(&self, f: &mut Frame) {
-        let size = f.area();
-        let area = Rect {
-            x: size.width / 4,
-            y: size.height / 4,
-            width: size.width / 2,
-            height: size.height / 2,
-        };
-
-        f.render_widget(Clear, area);
-
-        let help_text = vec![
-            Line::from("Terminal Event Visualizer Help"),
-            Line::from(""),
-            Line::from("Controls:"),
-            Line::from("  q, Esc    - Quit"),
-            Line::from("  p, Space  - Pause/Resume"),
-            Line::from("  r         - Reset statistics"),
-            Line::from("  s         - Toggle statistics"),
-            Line::from("  +/-       - Adjust event decay time"),
-            Line::from("  h, F1     - Toggle this help"),
-            Line::from(""),
-            Line::from("Events:"),
-            Line::from("  Red dots  - Positive events"),
-            Line::from("  Blue dots - Negative events"),
-            Line::from(""),
-            Line::from("Press any key to close help"),
-        ];
-
-        let help = Paragraph::new(help_text)
-            .block(Block::default().borders(Borders::ALL).title("Help"))
-            .alignment(Alignment::Left);
-
-        f.render_widget(help, area);
     }
 
     /// Check if should quit
@@ -507,7 +303,6 @@ fn render_ui_static(
     stats: &TerminalVisualizationStats,
     canvas_bounds: (f64, f64, f64, f64),
     event_buffer: &VecDeque<(Event, Instant)>,
-    should_quit: bool,
     paused: bool,
     show_help: bool,
 ) {
@@ -595,8 +390,11 @@ fn render_canvas_static(
             for (event, timestamp) in event_buffer {
                 let age_ms = now.duration_since(*timestamp).as_millis() as f32;
                 if age_ms < decay_ms {
-                    let x = event.x as f64;
-                    let y = event.y as f64;
+                    // Fix coordinate transformation:
+                    // 1. Flip X-axis: subtract from max to reverse horizontal movement
+                    // 2. Flip Y-axis: subtract from max to fix upside-down rendering
+                    let x = canvas_bounds.2 - event.x as f64;
+                    let y = canvas_bounds.3 - event.y as f64;
 
                     if event.polarity > 0 {
                         positive_events.push((x, y));

@@ -560,7 +560,7 @@ pub mod keypoints {
         let black_neighbors = neighbors.iter().filter(|&&n| n).count();
 
         // Zhang-Suen conditions
-        let condition1 = black_neighbors >= 2 && black_neighbors <= 6;
+        let condition1 = (2..=6).contains(&black_neighbors);
         let condition2 = transitions == 1;
 
         if first_subiteration {
@@ -597,10 +597,10 @@ pub mod keypoints {
 
         // Generate 1D Gaussian kernel
         let mut sum = 0.0;
-        for i in 0..kernel_size {
+        for (i, kernel_val) in kernel.iter_mut().enumerate().take(kernel_size) {
             let x = i as f32 - half_size as f32;
-            kernel[i] = (-0.5 * (x / sigma).powi(2)).exp();
-            sum += kernel[i];
+            *kernel_val = (-0.5 * (x / sigma).powi(2)).exp();
+            sum += *kernel_val;
         }
 
         // Normalize kernel
@@ -616,10 +616,10 @@ pub mod keypoints {
         for y in 0..height {
             for x in 0..width {
                 let mut value = 0.0;
-                for i in 0..kernel_size {
+                for (i, &kernel_val) in kernel.iter().enumerate().take(kernel_size) {
                     let sx = x as i32 + i as i32 - half_size as i32;
                     let sx = sx.max(0).min(width as i32 - 1) as usize;
-                    value += image[y * width + sx] * kernel[i];
+                    value += image[y * width + sx] * kernel_val;
                 }
                 temp[y * width + x] = value;
             }
@@ -629,10 +629,10 @@ pub mod keypoints {
         for y in 0..height {
             for x in 0..width {
                 let mut value = 0.0;
-                for i in 0..kernel_size {
+                for (i, &kernel_val) in kernel.iter().enumerate().take(kernel_size) {
                     let sy = y as i32 + i as i32 - half_size as i32;
                     let sy = sy.max(0).min(height as i32 - 1) as usize;
-                    value += temp[sy * width + x] * kernel[i];
+                    value += temp[sy * width + x] * kernel_val;
                 }
                 result[y * width + x] = value;
             }
@@ -806,13 +806,13 @@ pub mod etap {
         }
 
         // Simple gradient-based motion estimation
-        let window_size = 3;
+        let window_size = 3i32;
         let mut grad_x = 0.0;
         let mut grad_y = 0.0;
         let mut count = 0;
 
-        for dy in -(window_size as i32)..=(window_size as i32) {
-            for dx in -(window_size as i32)..=(window_size as i32) {
+        for dy in -window_size..=window_size {
+            for dx in -window_size..=window_size {
                 let nx = (x as i32 + dx).max(0).min(width as i32 - 1) as usize;
                 let ny = (y as i32 + dy).max(0).min(height as i32 - 1) as usize;
 
@@ -860,12 +860,12 @@ pub mod etap {
             return 0.0;
         }
 
-        let window_size = 2;
+        let window_size = 2i32;
         let mut activity = 0.0;
         let mut count = 0;
 
-        for dy in -(window_size as i32)..=(window_size as i32) {
-            for dx in -(window_size as i32)..=(window_size as i32) {
+        for dy in -window_size..=window_size {
+            for dx in -window_size..=window_size {
                 let nx = (x as i32 + dx).max(0).min(width as i32 - 1) as usize;
                 let ny = (y as i32 + dy).max(0).min(height as i32 - 1) as usize;
                 let idx = ny * width + nx;
@@ -880,7 +880,7 @@ pub mod etap {
         if count > 0 {
             let avg_activity = activity / count as f32;
             // Normalize visibility to [0, 1] range
-            (avg_activity * 2.0).min(1.0).max(0.0)
+            (avg_activity * 2.0).clamp(0.0, 1.0)
         } else {
             0.0
         }
