@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Camera Visualization (WASM)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #header {
+            padding: 20px;
+            text-align: center;
+        }
+
+        #canvas-container {
+            position: relative;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #eventCanvas {
+            background-color: #000000;
+            display: block;
+        }
+
+        #webcamCanvas {
+            display: none;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0052a3;
+        }
+
+        button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+        }
+
+        #status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            background-color: #28a745;
+        }
+
+        .error {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Event Camera Visualization (WASM)</h1>
+        <p>Real-time webcam-to-events conversion in browser</p>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="eventCanvas" width="640" height="480"></canvas>
+        <canvas id="webcamCanvas" width="640" height="480"></canvas>
+        <div id="stats">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Events/s: <span id="eventRate">0</span></div>
+            <div>Total Events: <span id="totalEvents">0</span></div>
+            <div>Processing: <span id="processingTime">0</span>ms</div>
+            <div>Mode: <span id="renderMode">WebGL</span></div>
+        </div>
+        <div id="status">Ready</div>
+    </div>
+
+    <div id="controls">
+        <button id="startBtn">Start Camera</button>
+        <button id="pauseBtn" disabled>Pause</button>
+        <div class="slider-container">
+            <label for="thresholdSlider">Threshold:</label>
+            <input type="range" id="thresholdSlider" min="5" max="50" value="15">
+            <span id="thresholdValue">0.15</span>
+        </div>
+        <div class="slider-container">
+            <label for="decaySlider">Decay:</label>
+            <input type="range" id="decaySlider" min="10" max="1000" value="100">
+            <span id="decayValue">100ms</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { WasmEsim } from './pkg/wasm_evlib.js';
+
+        // Global state
+        let wasmEsim = null;
+        let video = null;
+        let isRunning = false;
+        let isPaused = false;
+        let animationId = null;
+
+        // Performance tracking
+        let frameCount = 0;
+        let lastFpsUpdate = performance.now();
+        let totalEventCount = 0;
+        let eventsPerSecond = 0;
+        let lastEventCountUpdate = performance.now();
+        let eventCountThisSecond = 0;
+
+        // Canvas setup
+        const eventCanvas = document.getElementById('eventCanvas');
+        const webcamCanvas = document.getElementById('webcamCanvas');
+        const webcamCtx = webcamCanvas.getContext('2d');
+
+        // WebGL setup (reuse existing WebGL code)
+        let gl = eventCanvas.getContext('webgl') || eventCanvas.getContext('experimental-webgl');
+        let use2D = false;
+        let ctx = null;
+
+        // WebGL globals
+        let webglProgram, vertexBuffer, positionLocation, timeLocation, polarityLocation;
+        let currentTimeLocation, resolutionLocation, decayTimeLocation;
+
+        // Event buffer for GPU
+        const MAX_EVENTS = 100000;
+        let eventVertexData = new Float32Array(MAX_EVENTS * 4);
+        let eventWriteIndex = 0;
+        let activeEventCount = 0;
+
+        // UI elements
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const decaySlider = document.getElementById('decaySlider');
+        const decayValue = document.getElementById('decayValue');
+        const statusEl = document.getElementById('status');
+
+        // WebGL shader sources (same as original)
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            attribute float a_timestamp;
+            attribute float a_polarity;
+
+            uniform float u_currentTime;
+            uniform vec2 u_resolution;
+            uniform float u_decayTime;
+
+            varying float v_alpha;
+            varying float v_polarity;
+
+            void main() {
+                vec2 clipSpace = ((a_position / u_resolution) * 2.0) - 1.0;
+                gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+
+                float age = u_currentTime - a_timestamp;
+                v_alpha = max(0.0, 1.0 - (age / u_decayTime));
+                v_polarity = a_polarity;
+
+                gl_PointSize = mix(4.0, 2.0, age / u_decayTime);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision mediump float;
+
+            varying float v_alpha;
+            varying float v_polarity;
+
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float distance = length(coord);
+                if (distance > 0.5) {
+                    discard;
+                }
+
+                vec3 color = v_polarity > 0.5 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+                float edge = smoothstep(0.5, 0.3, distance);
+                gl_FragColor = vec4(color, v_alpha * edge);
+            }
+        `;
+
+        // Initialize WASM and WebGL
+        async function initialize() {
+            try {
+                // Initialize WASM
+                await init();
+                wasmEsim = new WasmEsim(640, 480);
+                console.log('WASM ESIM initialized');
+
+                // Initialize WebGL
+                if (gl && setupWebGL()) {
+                    console.log('Using WebGL acceleration');
+                    document.getElementById('renderMode').textContent = 'WebGL';
+                } else {
+                    console.log('Falling back to 2D canvas');
+                    use2D = true;
+                    ctx = eventCanvas.getContext('2d');
+                    document.getElementById('renderMode').textContent = '2D Canvas';
+                }
+
+                statusEl.textContent = 'Ready';
+                startBtn.disabled = false;
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                statusEl.textContent = 'Failed to initialize';
+                statusEl.classList.add('error');
+            }
+        }
+
+        // WebGL setup functions
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program linking error:', gl.getProgramInfoLog(program));
+                gl.deleteProgram(program);
+                return null;
+            }
+            return program;
+        }
+
+        function setupWebGL() {
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            if (!vertexShader || !fragmentShader) {
+                return false;
+            }
+
+            webglProgram = createProgram(gl, vertexShader, fragmentShader);
+            if (!webglProgram) {
+                return false;
+            }
+
+            gl.useProgram(webglProgram);
+
+            // Get locations
+            positionLocation = gl.getAttribLocation(webglProgram, 'a_position');
+            timeLocation = gl.getAttribLocation(webglProgram, 'a_timestamp');
+            polarityLocation = gl.getAttribLocation(webglProgram, 'a_polarity');
+
+            currentTimeLocation = gl.getUniformLocation(webglProgram, 'u_currentTime');
+            resolutionLocation = gl.getUniformLocation(webglProgram, 'u_resolution');
+            decayTimeLocation = gl.getUniformLocation(webglProgram, 'u_decayTime');
+
+            // Create buffer
+            vertexBuffer = gl.createBuffer();
+
+            // Enable blending
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            // Setup attributes
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.enableVertexAttribArray(timeLocation);
+            gl.enableVertexAttribArray(polarityLocation);
+
+            return true;
+        }
+
+        // Camera setup
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+
+                video = document.createElement('video');
+                video.srcObject = stream;
+                video.width = 640;
+                video.height = 480;
+                await video.play();
+
+                isRunning = true;
+                startBtn.textContent = 'Stop Camera';
+                pauseBtn.disabled = false;
+                statusEl.textContent = 'Streaming';
+
+                // Start processing loop
+                processFrame();
+            } catch (error) {
+                console.error('Camera access failed:', error);
+                statusEl.textContent = 'Camera access denied';
+                statusEl.classList.add('error');
+            }
+        }
+
+        function stopCamera() {
+            isRunning = false;
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video = null;
+            }
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            startBtn.textContent = 'Start Camera';
+            pauseBtn.disabled = true;
+            statusEl.textContent = 'Stopped';
+        }
+
+        // Process video frame
+        function processFrame() {
+            if (!isRunning || isPaused) {
+                if (isRunning) {
+                    animationId = requestAnimationFrame(processFrame);
+                }
+                return;
+            }
+
+            const startTime = performance.now();
+
+            // Draw video to canvas
+            webcamCtx.drawImage(video, 0, 0, 640, 480);
+            const imageData = webcamCtx.getImageData(0, 0, 640, 480);
+
+            // Process with WASM ESIM
+            try {
+                const eventData = wasmEsim.process_frame(imageData.data, performance.now());
+
+                // Parse binary events
+                if (eventData.length > 13) { // At least header + 1 event
+                    const events = parseBinaryEvents(eventData);
+                    eventCountThisSecond += events.length;
+                    totalEventCount += events.length;
+
+                    // Add to render buffer
+                    addEventsToBuffer(events);
+                }
+
+                // Render events
+                renderEvents();
+
+                // Update stats
+                updateStats(startTime);
+
+            } catch (error) {
+                console.error('Processing error:', error);
+            }
+
+            animationId = requestAnimationFrame(processFrame);
+        }
+
+        // Parse binary event data
+        function parseBinaryEvents(data) {
+            const view = new DataView(data.buffer);
+            const eventCount = view.getUint32(9, true);
+            const events = [];
+
+            let offset = 13; // Header size
+            const currentTime = performance.now();
+
+            for (let i = 0; i < eventCount; i++) {
+                if (offset + 13 > data.length) break;
+
+                const x = view.getUint16(offset, true);
+                const y = view.getUint16(offset + 2, true);
+                const polarity = data[offset + 12];
+
+                events.push({
+                    x: x,
+                    y: y,
+                    t: currentTime,
+                    polarity: polarity
+                });
+
+                offset += 13;
+            }
+
+            return events;
+        }
+
+        // Add events to GPU buffer
+        function addEventsToBuffer(events) {
+            for (const event of events) {
+                const baseIndex = (eventWriteIndex % MAX_EVENTS) * 4;
+
+                eventVertexData[baseIndex] = event.x;
+                eventVertexData[baseIndex + 1] = event.y;
+                eventVertexData[baseIndex + 2] = event.t;
+                eventVertexData[baseIndex + 3] = event.polarity > 0 ? 1.0 : 0.0;
+
+                eventWriteIndex++;
+            }
+
+            activeEventCount = Math.min(eventWriteIndex, MAX_EVENTS);
+        }
+
+        // Render events
+        function renderEvents() {
+            if (use2D) {
+                render2D();
+            } else {
+                renderWebGL();
+            }
+        }
+
+        function render2D() {
+            // Fade effect
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, 640, 480);
+            ctx.globalAlpha = 1.0;
+
+            // Draw recent events
+            const currentTime = performance.now();
+            const decayTime = parseFloat(decaySlider.value);
+            const startIdx = Math.max(0, eventWriteIndex - 5000); // Last 5000 events
+
+            for (let i = startIdx; i < eventWriteIndex; i++) {
+                const idx = (i % MAX_EVENTS) * 4;
+                const x = eventVertexData[idx];
+                const y = eventVertexData[idx + 1];
+                const t = eventVertexData[idx + 2];
+                const polarity = eventVertexData[idx + 3];
+
+                const age = currentTime - t;
+                if (age > decayTime) continue;
+
+                const alpha = 1.0 - (age / decayTime);
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = polarity > 0.5 ? '#ff0000' : '#0000ff';
+                ctx.fillRect(x, y, 2, 2);
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function renderWebGL() {
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            if (activeEventCount === 0) return;
+
+            // Update buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, eventVertexData.subarray(0, activeEventCount * 4), gl.DYNAMIC_DRAW);
+
+            // Set attributes
+            const stride = 4 * 4;
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, stride, 0);
+            gl.vertexAttribPointer(timeLocation, 1, gl.FLOAT, false, stride, 8);
+            gl.vertexAttribPointer(polarityLocation, 1, gl.FLOAT, false, stride, 12);
+
+            // Set uniforms
+            gl.uniform1f(currentTimeLocation, performance.now());
+            gl.uniform2f(resolutionLocation, 640, 480);
+            gl.uniform1f(decayTimeLocation, parseFloat(decaySlider.value));
+
+            // Draw
+            gl.drawArrays(gl.POINTS, 0, activeEventCount);
+        }
+
+        // Update statistics
+        function updateStats(startTime) {
+            frameCount++;
+            const now = performance.now();
+
+            // FPS update
+            if (now - lastFpsUpdate > 1000) {
+                const fps = frameCount / ((now - lastFpsUpdate) / 1000);
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+
+            // Events/s update
+            if (now - lastEventCountUpdate > 1000) {
+                eventsPerSecond = eventCountThisSecond;
+                document.getElementById('eventRate').textContent = eventsPerSecond.toLocaleString();
+                eventCountThisSecond = 0;
+                lastEventCountUpdate = now;
+            }
+
+            // Total events
+            document.getElementById('totalEvents').textContent = totalEventCount.toLocaleString();
+
+            // Processing time
+            const processingTime = now - startTime;
+            document.getElementById('processingTime').textContent = processingTime.toFixed(1);
+        }
+
+        // Event handlers
+        startBtn.addEventListener('click', () => {
+            if (isRunning) {
+                stopCamera();
+            } else {
+                startCamera();
+            }
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+            statusEl.textContent = isPaused ? 'Paused' : 'Streaming';
+        });
+
+        thresholdSlider.addEventListener('input', (e) => {
+            const threshold = e.target.value / 100.0;
+            thresholdValue.textContent = threshold.toFixed(2);
+            if (wasmEsim) {
+                wasmEsim.set_thresholds(threshold, threshold);
+            }
+        });
+
+        decaySlider.addEventListener('input', (e) => {
+            decayValue.textContent = e.target.value + 'ms';
+        });
+
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>
