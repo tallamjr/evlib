@@ -72,15 +72,15 @@ class E2VID(BaseModel):
 
             if recurrent_keys or lstm_keys:
                 print(
-                    f"🔍 Detected E2VID Recurrent architecture ({len(recurrent_keys + lstm_keys)} recurrent parameters)"
+                    f"Detected E2VID Recurrent architecture ({len(recurrent_keys + lstm_keys)} recurrent parameters)"
                 )
                 return "recurrent"
             else:
-                print(f"🔍 Detected E2VID UNet architecture ({len(keys)} parameters)")
+                print(f"Detected E2VID UNet architecture ({len(keys)} parameters)")
                 return "unet"
 
         except Exception as e:
-            print(f"⚠️  Could not detect architecture from {model_path}: {e}")
+            print(f"Could not detect architecture from {model_path}: {e}")
             print(f"   Falling back to variant: {self.variant}")
             return self.variant
 
@@ -141,7 +141,7 @@ class E2VID(BaseModel):
                 return frames
 
             except Exception as e:
-                print(f"⚠️  Direct Rust backend failed: {e}")
+                print(f"Direct Rust backend failed: {e}")
                 print("   Falling back to processing API")
 
         # Use the advanced reconstruction API for other cases

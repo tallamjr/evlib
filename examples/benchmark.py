@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Benchmark for evlib comparing the Rust-backed implementation
-to a simple pure Python implementation
+Benchmark for evlib demonstrating pure Python implementations
+of event processing functions
 
 This example demonstrates:
 1. Creating large event arrays
 2. Measuring performance of basic operations
-3. Comparing Rust implementation with Python
-4. Comparing single-core vs multi-core performance
+3. Comparing single-core vs multi-core performance
 
-Note: Results show mixed performance - Rust excels at some operations
-while Python/NumPy is faster for simple array manipulations.
+Note: Currently only includes pure Python implementations as 
+the Rust backend functions are not yet integrated.
 """
 import time
 import multiprocessing
@@ -19,7 +18,7 @@ from functools import partial
 
 import numpy as np
 
-from evlib import augmentation, core
+import evlib
 
 
 def python_events_to_block(xs, ys, ts, ps):
@@ -223,22 +222,23 @@ def main():
     # Benchmark events_to_block (single-core)
     print("\nBenchmarking events_to_block (single-core)...")
     py_time_block_single, py_result = benchmark_function(python_events_to_block, xs, ys, ts, ps)
-    rust_time_block_single, rust_result = benchmark_function(core.events_to_block, xs, ys, ts, ps)
+    # TODO: Add Rust benchmark when core.events_to_block is implemented
+    # rust_time_block_single, rust_result = benchmark_function(core.events_to_block, xs, ys, ts, ps)
 
     print(f"Python implementation: {py_time_block_single:.6f} seconds")
-    print(f"Rust implementation: {rust_time_block_single:.6f} seconds")
-    print(f"Speedup: {py_time_block_single / rust_time_block_single:.2f}x")
+    # print(f"Rust implementation: {rust_time_block_single:.6f} seconds")
+    # print(f"Speedup: {py_time_block_single / rust_time_block_single:.2f}x")
 
     # Verify results match
     py_sum = np.sum(py_result)
-    rust_sum = np.sum(rust_result)
-    print(f"Results match: {np.isclose(py_sum, rust_sum)}")
+    # rust_sum = np.sum(rust_result)
+    # print(f"Results match: {np.isclose(py_sum, rust_sum)}")
 
     # Store results
     benchmark_results["events_to_block"] = (
         py_time_block_single,
         None,
-        rust_time_block_single,
+        None,  # rust_time_block_single,
     )
 
     # Benchmark add_random_events (single-core)
@@ -249,20 +249,21 @@ def main():
         python_add_random_events, xs, ys, ts, ps, to_add
     )
 
-    rust_time_add_single, (rust_xs, rust_ys, rust_ts, rust_ps) = benchmark_function(
-        augmentation.add_random_events, xs, ys, ts, ps, to_add
-    )
+    # TODO: Add Rust benchmark when augmentation.add_random_events is implemented
+    # rust_time_add_single, (rust_xs, rust_ys, rust_ts, rust_ps) = benchmark_function(
+    #     augmentation.add_random_events, xs, ys, ts, ps, to_add
+    # )
 
     print(f"Python implementation: {py_time_add_single:.6f} seconds")
-    print(f"Rust implementation: {rust_time_add_single:.6f} seconds")
-    print(f"Speedup: {py_time_add_single / rust_time_add_single:.2f}x")
-    print(f"Output length: Python={len(py_xs)}, Rust={len(rust_xs)}")
+    # print(f"Rust implementation: {rust_time_add_single:.6f} seconds")
+    # print(f"Speedup: {py_time_add_single / rust_time_add_single:.2f}x")
+    print(f"Output length: Python={len(py_xs)}")
 
     # Store results
     benchmark_results["add_random_events"] = (
         py_time_add_single,
         None,
-        rust_time_add_single,
+        None,  # rust_time_add_single,
     )
 
     # Benchmark flip_events_x (single-core)
@@ -273,19 +274,20 @@ def main():
         python_flip_events_x, xs, ys, ts, ps, sensor_resolution
     )
 
-    rust_time_flip_single, rust_flip_result = benchmark_function(
-        augmentation.flip_events_x, xs, ys, ts, ps, sensor_resolution
-    )
+    # TODO: Add Rust benchmark when augmentation.flip_events_x is implemented
+    # rust_time_flip_single, rust_flip_result = benchmark_function(
+    #     augmentation.flip_events_x, xs, ys, ts, ps, sensor_resolution
+    # )
 
     print(f"Python implementation: {py_time_flip_single:.6f} seconds")
-    print(f"Rust implementation: {rust_time_flip_single:.6f} seconds")
-    print(f"Speedup: {py_time_flip_single / rust_time_flip_single:.2f}x")
+    # print(f"Rust implementation: {rust_time_flip_single:.6f} seconds")
+    # print(f"Speedup: {py_time_flip_single / rust_time_flip_single:.2f}x")
 
     # Store results
     benchmark_results["flip_events_x"] = (
         py_time_flip_single,
         None,
-        rust_time_flip_single,
+        None,  # rust_time_flip_single,
     )
 
     print("\n=== Multi-Core Benchmarks ({} cores) ===".format(num_cores))
@@ -298,10 +300,10 @@ def main():
 
     print(f"Python multi-core implementation: {py_time_block_multi:.6f} seconds")
     print(f"Python speedup (multi-core vs single-core): {py_time_block_single / py_time_block_multi:.2f}x")
-    print(f"Rust implementation (single-core): {rust_time_block_single:.6f} seconds")
-    print(
-        f"Speedup (Rust single-core vs Python multi-core): {py_time_block_multi / rust_time_block_single:.2f}x"
-    )
+    # print(f"Rust implementation (single-core): {rust_time_block_single:.6f} seconds")
+    # print(
+    #     f"Speedup (Rust single-core vs Python multi-core): {py_time_block_multi / rust_time_block_single:.2f}x"
+    # )
 
     # Verify multi-core results match
     py_sum_multi = np.sum(py_result_multi)
@@ -311,7 +313,7 @@ def main():
     benchmark_results["events_to_block"] = (
         py_time_block_single,
         py_time_block_multi,
-        rust_time_block_single,
+        None,  # rust_time_block_single,
     )
 
     # Benchmark add_random_events (multi-core)
@@ -322,15 +324,15 @@ def main():
 
     print(f"Python multi-core implementation: {py_time_add_multi:.6f} seconds")
     print(f"Python speedup (multi-core vs single-core): {py_time_add_single / py_time_add_multi:.2f}x")
-    print(f"Rust implementation (single-core): {rust_time_add_single:.6f} seconds")
-    print(f"Speedup (Rust single-core vs Python multi-core): {py_time_add_multi / rust_time_add_single:.2f}x")
+    # print(f"Rust implementation (single-core): {rust_time_add_single:.6f} seconds")
+    # print(f"Speedup (Rust single-core vs Python multi-core): {py_time_add_multi / rust_time_add_single:.2f}x")
     print(f"Output length: Python multi-core={len(py_xs_multi)}")
 
     # Update benchmark results
     benchmark_results["add_random_events"] = (
         py_time_add_single,
         py_time_add_multi,
-        rust_time_add_single,
+        None,  # rust_time_add_single,
     )
 
     # Benchmark flip_events_x (multi-core)
@@ -341,30 +343,36 @@ def main():
 
     print(f"Python multi-core implementation: {py_time_flip_multi:.6f} seconds")
     print(f"Python speedup (multi-core vs single-core): {py_time_flip_single / py_time_flip_multi:.2f}x")
-    print(f"Rust implementation (single-core): {rust_time_flip_single:.6f} seconds")
-    print(
-        f"Speedup (Rust single-core vs Python multi-core): {py_time_flip_multi / rust_time_flip_single:.2f}x"
-    )
+    # print(f"Rust implementation (single-core): {rust_time_flip_single:.6f} seconds")
+    # print(
+    #     f"Speedup (Rust single-core vs Python multi-core): {py_time_flip_multi / rust_time_flip_single:.2f}x"
+    # )
 
     # Update benchmark results
     benchmark_results["flip_events_x"] = (
         py_time_flip_single,
         py_time_flip_multi,
-        rust_time_flip_single,
+        None,  # rust_time_flip_single,
     )
 
     # Summary table
     print("\n=== Summary ===")
     print(
-        "Operation\t| Python (1 core)\t| Python (10 cores)\t| Rust (1 core)\t| Rust vs Py (1 core)\t| Rust vs Py (10 cores)"
+        "Operation\t| Python (1 core)\t| Python (10 cores)\t| Speedup (Multi vs Single)"
     )
-    print("-" * 110)
+    print("-" * 80)
 
     # Print summary table
     for op, (py_single, py_multi, rust_single) in benchmark_results.items():
-        print(
-            f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {rust_single:.6f} s\t| {py_single / rust_single:.2f}x\t| {py_multi / rust_single:.2f}x"
-        )
+        if py_multi is not None:
+            speedup = py_single / py_multi
+            print(
+                f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {speedup:.2f}x"
+            )
+        else:
+            print(
+                f"{op}\t| {py_single:.6f} s\t| N/A\t\t| N/A"
+            )
 
 
 if __name__ == "__main__":

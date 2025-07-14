@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -16,6 +17,7 @@ except ImportError:
 EVLIB_AVAILABLE = False
 try:
     import evlib
+
     EVLIB_AVAILABLE = True
 except ImportError:
     pass
@@ -58,7 +60,7 @@ def test_simd_availability():
 
     # Check platform-specific SIMD support
     architecture = platform.machine().lower()
-    
+
     expected_simd = {
         "x86_64": ["sse", "sse2", "avx", "avx2"],
         "amd64": ["sse", "sse2", "avx", "avx2"],
@@ -80,7 +82,7 @@ def test_simd_availability():
 
 def test_memory_pool_management():
     """Test memory pool for GPU acceleration."""
-    
+
     class MockMemoryPool:
         def __init__(self, size):
             self.size = size
@@ -130,7 +132,7 @@ def test_memory_pool_management():
 
 def test_device_optimization_strategies():
     """Test device-specific optimization strategies."""
-    
+
     optimization_strategies = {
         "cpu": {
             "simd": True,
@@ -162,11 +164,11 @@ def test_device_optimization_strategies():
         # Validate strategy options (all should be boolean)
         for strategy, enabled in strategies.items():
             assert isinstance(enabled, bool)
-        
+
         print(f"✓ {device} optimization strategies: {len(strategies)} options")
 
     # Test optimization selection logic
-    def select_optimizations(device_type, workload_size):        
+    def select_optimizations(device_type, workload_size):
         if workload_size < 1000:
             # Small workload - CPU optimizations
             return {"device": "cpu", "strategies": ["simd", "vectorization"]}
@@ -192,11 +194,11 @@ def test_device_optimization_strategies():
 
 def test_batch_processing_optimization():
     """Test batch processing for improved throughput."""
-    
+
     def simulate_processing(batch_size, use_gpu=False):
         """Simulate processing time for different batch sizes."""
         base_time = 1.0  # 1ms base processing time
-        
+
         if use_gpu:
             # GPU has overhead but better parallel processing
             overhead = 5.0
@@ -214,13 +216,13 @@ def test_batch_processing_optimization():
     for batch_size in batch_sizes:
         cpu_time = simulate_processing(batch_size, use_gpu=False)
         gpu_time = simulate_processing(batch_size, use_gpu=True)
-        
+
         cpu_times.append(cpu_time)
         gpu_times.append(gpu_time)
 
     # Validate that GPU becomes more efficient for larger batches
     assert gpu_times[-1] / cpu_times[-1] < gpu_times[0] / cpu_times[0]
-    
+
     # Find optimal batch size (GPU becomes better than CPU)
     optimal_batch = None
     for i, batch_size in enumerate(batch_sizes):
@@ -236,7 +238,7 @@ def test_batch_processing_optimization():
 
 def test_tensor_fusion_operations():
     """Test tensor fusion for optimization."""
-    
+
     # Simulate fused operations
     def simulate_fused_ops(num_operations, use_fusion=True):
         """Simulate fused vs separate tensor operations."""
@@ -247,41 +249,41 @@ def test_tensor_fusion_operations():
             return num_operations * 1.0
 
     operations = [1, 5, 10, 20, 50]
-    
+
     for num_ops in operations:
         separate_time = simulate_fused_ops(num_ops, use_fusion=False)
         fused_time = simulate_fused_ops(num_ops, use_fusion=True)
-        
+
         speedup = separate_time / fused_time
         assert speedup >= 1.0  # Fusion should never be slower
-        
+
         print(f"✓ {num_ops} ops: {speedup:.1f}x speedup with fusion")
 
 
 def test_performance_profiling():
     """Test performance profiling for optimization."""
-    
+
     class AccelerationProfiler:
         def __init__(self):
             self.timings = {}
-        
+
         def profile(self, name, operation):
             start_time = time.perf_counter()
             result = operation()
             end_time = time.perf_counter()
-            
+
             duration_ms = (end_time - start_time) * 1000
             if name not in self.timings:
                 self.timings[name] = []
             self.timings[name].append(duration_ms)
-            
+
             return result
-        
+
         def get_average_timing(self, name):
             if name in self.timings:
                 return sum(self.timings[name]) / len(self.timings[name])
             return None
-        
+
         def generate_report(self):
             report = "Performance Report:\n"
             for name, times in self.timings.items():
@@ -293,33 +295,33 @@ def test_performance_profiling():
 
     # Test profiler
     profiler = AccelerationProfiler()
-    
+
     # Profile some operations
     def fast_operation():
         time.sleep(0.001)  # 1ms
         return "fast"
-    
+
     def slow_operation():
         time.sleep(0.005)  # 5ms
         return "slow"
-    
+
     # Profile multiple runs
     for _ in range(3):
         profiler.profile("fast_op", fast_operation)
         profiler.profile("slow_op", slow_operation)
-    
+
     # Check results
     fast_avg = profiler.get_average_timing("fast_op")
     slow_avg = profiler.get_average_timing("slow_op")
-    
+
     assert fast_avg is not None
     assert slow_avg is not None
     assert slow_avg > fast_avg
-    
+
     report = profiler.generate_report()
     assert "fast_op" in report
     assert "slow_op" in report
-    
+
     print("✓ Performance profiling working correctly")
 
 
@@ -327,48 +329,48 @@ def test_real_world_acceleration_scenario():
     """Test realistic acceleration scenario."""
     if not TORCH_AVAILABLE:
         pytest.skip("PyTorch not available")
-    
+
     # Simulate event processing pipeline with acceleration
     def process_events_accelerated(num_events, device_type="cpu"):
         """Simulate accelerated event processing."""
-        
+
         # Base processing time per event
         base_time_per_event = 0.001  # 1μs per event
-        
+
         # Device-specific multipliers
         device_multipliers = {
             "cpu": 1.0,
             "cpu_simd": 0.5,  # 2x speedup with SIMD
-            "cuda": 0.1,      # 10x speedup with GPU
-            "metal": 0.125,   # 8x speedup with Metal
+            "cuda": 0.1,  # 10x speedup with GPU
+            "metal": 0.125,  # 8x speedup with Metal
         }
-        
+
         multiplier = device_multipliers.get(device_type, 1.0)
         processing_time = num_events * base_time_per_event * multiplier
-        
+
         return {
             "processing_time_ms": processing_time * 1000,
             "events_per_second": num_events / processing_time if processing_time > 0 else 0,
             "device": device_type,
         }
-    
+
     # Test different scenarios
     event_counts = [1000, 10000, 100000, 1000000]
     devices = ["cpu", "cpu_simd", "cuda", "metal"]
-    
+
     for num_events in event_counts:
         results = {}
         for device in devices:
             results[device] = process_events_accelerated(num_events, device)
-        
+
         # Validate acceleration benefits
         cpu_time = results["cpu"]["processing_time_ms"]
         simd_time = results["cpu_simd"]["processing_time_ms"]
         cuda_time = results["cuda"]["processing_time_ms"]
-        
+
         assert simd_time < cpu_time  # SIMD should be faster than plain CPU
         assert cuda_time < simd_time  # GPU should be faster than CPU+SIMD
-        
+
         print(f"✓ {num_events} events: CPU={cpu_time:.1f}ms, SIMD={simd_time:.1f}ms, CUDA={cuda_time:.1f}ms")
 
 

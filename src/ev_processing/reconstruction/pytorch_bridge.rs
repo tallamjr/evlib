@@ -123,7 +123,7 @@ impl PyTorchLoader {
                 // Convert to Candle tensor
                 match self.pytorch_to_candle(py, value) {
                     Ok(candle_tensor) => {
-                        println!("✅ Converted tensor: {}", key_str);
+                        println!("Converted tensor: {}", key_str);
                         candle_state_dict.insert(key_str, candle_tensor);
                     }
                     Err(e) => {

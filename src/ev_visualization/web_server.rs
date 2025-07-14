@@ -1,11 +1,11 @@
+use futures::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use warp::Filter;
-use warp::ws::{Message, WebSocket};
-use futures::{SinkExt, StreamExt};
-use serde::{Serialize, Deserialize};
 use uuid::Uuid;
+use warp::ws::{Message, WebSocket};
+use warp::Filter;
 
 use crate::ev_core::Event;
 
@@ -61,18 +61,26 @@ impl EventBroadcaster {
     pub async fn broadcast_events(&mut self, events: Vec<Event>) {
         let event_count = events.len();
         self.event_buffer.extend(events);
-        
+
         // More aggressive batching for higher throughput - send smaller, more frequent batches
-        if self.event_buffer.len() >= 100 || (!self.clients.is_empty() && self.event_buffer.len() >= 20) {
+        if self.event_buffer.len() >= 100
+            || (!self.clients.is_empty() && self.event_buffer.len() >= 20)
+        {
             let batch = std::mem::replace(&mut self.event_buffer, Vec::with_capacity(5000));
             if !batch.is_empty() {
                 let message = Self::serialize_events(&batch);
-                if batch.len() > 50 { // Only log larger batches to reduce spam
-                    println!("Broadcasting {} events ({} bytes) to {} clients", 
-                        batch.len(), message.len(), self.clients.len());
+                if batch.len() > 50 {
+                    // Only log larger batches to reduce spam
+                    println!(
+                        "Broadcasting {} events ({} bytes) to {} clients",
+                        batch.len(),
+                        message.len(),
+                        self.clients.len()
+                    );
                 }
-                
-                let disconnected_clients: Vec<Uuid> = self.clients
+
+                let disconnected_clients: Vec<Uuid> = self
+                    .clients
                     .iter()
                     .filter_map(|(id, client)| {
                         match client.tx.send(Message::binary(message.clone())) {
@@ -95,8 +103,12 @@ impl EventBroadcaster {
         } else {
             // Only log buffering for significant accumulations
             if self.event_buffer.len() % 100 == 0 && self.event_buffer.len() > 0 {
-                println!("Buffering {} events (total: {}, clients: {})", 
-                    event_count, self.event_buffer.len(), self.clients.len());
+                println!(
+                    "Buffering {} events (total: {}, clients: {})",
+                    event_count,
+                    self.event_buffer.len(),
+                    self.clients.len()
+                );
             }
         }
     }
@@ -106,7 +118,7 @@ impl EventBroadcaster {
         // Header: message_type (1) + timestamp (8) + event_count (4) = 13 bytes
         // Events: x (2) + y (2) + timestamp (8) + polarity (1) = 13 bytes per event
         let mut buffer = Vec::with_capacity(13 + events.len() * 13);
-        
+
         // Header
         buffer.push(1u8); // Message type: events
         if let Some(first_event) = events.first() {
@@ -151,19 +163,22 @@ impl EventWebServer {
         let websocket_route = warp::path("ws")
             .and(warp::ws())
             .and(warp::any().map(move || broadcaster.clone()))
-            .map(|ws: warp::ws::Ws, broadcaster: Arc<Mutex<EventBroadcaster>>| {
-                ws.on_upgrade(move |socket| handle_websocket(socket, broadcaster))
-            });
+            .map(
+                |ws: warp::ws::Ws, broadcaster: Arc<Mutex<EventBroadcaster>>| {
+                    ws.on_upgrade(move |socket| handle_websocket(socket, broadcaster))
+                },
+            );
 
         let static_route = warp::path::end()
             .and(warp::get())
-            .map(|| {
-                warp::reply::html(include_str!("../../static/index.html"))
-            });
+            .map(|| warp::reply::html(include_str!("../../static/index.html")));
 
         let routes = websocket_route.or(static_route);
 
-        println!("WebSocket server listening on {}:{}", self.config.host, self.config.port);
+        println!(
+            "WebSocket server listening on {}:{}",
+            self.config.host, self.config.port
+        );
         warp::serve(routes)
             .run(([127, 0, 0, 1], self.config.port))
             .await;
@@ -185,8 +200,11 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
     };
 
     broadcaster.lock().await.add_client(client).unwrap();
-    println!("Client {} connected (total clients: {})", 
-        client_id, broadcaster.lock().await.clients.len());
+    println!(
+        "Client {} connected (total clients: {})",
+        client_id,
+        broadcaster.lock().await.clients.len()
+    );
 
     // Spawn task to forward messages from channel to websocket
     let mut send_task = tokio::spawn(async move {
@@ -219,6 +237,169 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
     }
 
     broadcaster.lock().await.remove_client(&client_id);
-    println!("Client {} disconnected (remaining clients: {})", 
-        client_id, broadcaster.lock().await.clients.len());
+    println!(
+        "Client {} disconnected (remaining clients: {})",
+        client_id,
+        broadcaster.lock().await.clients.len()
+    );
+}
+
+/// Python bindings for the web server
+#[cfg(feature = "python")]
+pub mod python {
+    use super::*;
+    use crate::ev_core::from_numpy_arrays;
+    use numpy::PyReadonlyArray1;
+    use pyo3::prelude::*;
+    // std::sync::Arc and tokio::sync::Mutex removed (unused imports)
+
+    /// Python wrapper for WebServerConfig
+    #[pyclass]
+    #[derive(Clone)]
+    pub struct PyWebServerConfig {
+        pub inner: WebServerConfig,
+    }
+
+    #[pymethods]
+    impl PyWebServerConfig {
+        #[new]
+        #[pyo3(signature = (
+            port = None,
+            host = None,
+            max_clients = None,
+            event_batch_size = None,
+            batch_interval_ms = None
+        ))]
+        pub fn new(
+            port: Option<u16>,
+            host: Option<String>,
+            max_clients: Option<usize>,
+            event_batch_size: Option<usize>,
+            batch_interval_ms: Option<u64>,
+        ) -> Self {
+            let mut config = WebServerConfig::default();
+
+            if let Some(p) = port {
+                config.port = p;
+            }
+            if let Some(h) = host {
+                config.host = h;
+            }
+            if let Some(mc) = max_clients {
+                config.max_clients = mc;
+            }
+            if let Some(ebs) = event_batch_size {
+                config.event_batch_size = ebs;
+            }
+            if let Some(bi) = batch_interval_ms {
+                config.batch_interval_ms = bi;
+            }
+
+            Self { inner: config }
+        }
+
+        #[getter]
+        pub fn port(&self) -> u16 {
+            self.inner.port
+        }
+
+        #[getter]
+        pub fn host(&self) -> String {
+            self.inner.host.clone()
+        }
+    }
+
+    /// Python wrapper for EventWebServer
+    #[pyclass]
+    pub struct PyEventWebServer {
+        server: EventWebServer,
+        runtime: Option<tokio::runtime::Runtime>,
+    }
+
+    #[pymethods]
+    impl PyEventWebServer {
+        #[new]
+        pub fn new(config: &PyWebServerConfig) -> Self {
+            let server = EventWebServer::new(config.inner.clone());
+            let runtime = tokio::runtime::Runtime::new().ok();
+
+            Self { server, runtime }
+        }
+
+        /// Start the web server (blocking)
+        pub fn run(&mut self) -> PyResult<()> {
+            if let Some(ref runtime) = self.runtime {
+                runtime.block_on(self.server.run());
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    "Failed to create tokio runtime",
+                ))
+            }
+        }
+
+        /// Start the web server (non-blocking)
+        pub fn start(&mut self) -> PyResult<()> {
+            if let Some(ref runtime) = self.runtime {
+                let server = EventWebServer::new(self.server.config.clone());
+                runtime.spawn(async move {
+                    server.run().await;
+                });
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    "Failed to create tokio runtime",
+                ))
+            }
+        }
+
+        /// Send events to all connected clients
+        pub fn send_events(
+            &self,
+            xs: PyReadonlyArray1<i64>,
+            ys: PyReadonlyArray1<i64>,
+            ts: PyReadonlyArray1<f64>,
+            ps: PyReadonlyArray1<i64>,
+        ) -> PyResult<()> {
+            let events = from_numpy_arrays(xs, ys, ts, ps);
+
+            if let Some(ref runtime) = self.runtime {
+                let broadcaster = self.server.broadcaster();
+                runtime.block_on(async {
+                    broadcaster.lock().await.broadcast_events(events).await;
+                });
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    "Runtime not available",
+                ))
+            }
+        }
+
+        /// Get the server URL
+        pub fn get_url(&self) -> String {
+            format!(
+                "http://{}:{}",
+                self.server.config.host, self.server.config.port
+            )
+        }
+    }
+
+    /// Create a web server with default configuration
+    #[pyfunction]
+    pub fn create_web_server(config: Option<&PyWebServerConfig>) -> PyEventWebServer {
+        let config = config.map(|c| c.inner.clone()).unwrap_or_default();
+        let server = EventWebServer::new(config);
+        let runtime = tokio::runtime::Runtime::new().ok();
+
+        PyEventWebServer { server, runtime }
+    }
+
+    /// Create a default web server configuration
+    #[pyfunction]
+    pub fn create_web_server_config() -> PyWebServerConfig {
+        PyWebServerConfig {
+            inner: WebServerConfig::default(),
+        }
+    }
 }

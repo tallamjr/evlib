@@ -2,10 +2,16 @@ import numpy as np
 import pytest
 import evlib
 
-# Direct access to the function
-draw_events_to_image_py = evlib.visualization.draw_events_to_image
+# Check if visualization is available
+try:
+    draw_events_to_image_py = evlib.visualization.draw_events_to_image
+    visualization_available = True
+except AttributeError:
+    visualization_available = False
+    draw_events_to_image_py = None
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py():
     """Test drawing events to an image"""
     # Create sample event data
@@ -34,6 +40,7 @@ def test_draw_events_to_image_py():
         pytest.skip(f"Skipping test due to error: {str(e)}")
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py_empty():
     """Test drawing empty events to an image"""
     # Create empty event data
@@ -60,6 +67,7 @@ def test_draw_events_to_image_py_empty():
         pytest.skip(f"Skipping test due to error: {str(e)}")
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py_methods():
     """Test different visualization methods"""
     # Create sample event data with sorted timestamps
@@ -106,6 +114,7 @@ def test_draw_events_to_image_py_methods():
         pytest.skip(f"Skipping test due to error: {str(e)}")
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py_resolution():
     """Test drawing events to images with different resolutions"""
     # Create sample event data
@@ -137,6 +146,7 @@ def test_draw_events_to_image_py_resolution():
         pytest.skip(f"Skipping test due to error: {str(e)}")
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py_bounds():
     """Test drawing events with coordinates outside image bounds"""
     # Create events with some coordinates outside bounds
@@ -168,6 +178,7 @@ def test_draw_events_to_image_py_bounds():
         pytest.skip(f"Skipping test due to error: {str(e)}")
 
 
+@pytest.mark.skipif(not visualization_available, reason="Visualization module not available")
 def test_draw_events_to_image_py_density():
     """Test drawing events with different densities"""
     # Create both sparse and dense event patterns

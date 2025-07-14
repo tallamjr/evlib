@@ -248,10 +248,10 @@ pub fn events_to_video_advanced_py(
 
         match e2vid.load_model_from_file(&model_path_buf) {
             Ok(()) => {
-                println!("✅ Successfully loaded model from file");
+                println!("Successfully loaded model from file");
             }
             Err(e) => {
-                eprintln!("⚠️ Failed to load model from file: {:?}", e);
+                eprintln!("Failed to load model from file: {:?}", e);
                 eprintln!("Falling back to default model creation");
             }
         }

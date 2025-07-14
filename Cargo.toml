@@ -29,6 +29,10 @@ crate-type     = ["cdylib", "rlib"]
 name           = "evlib-terminal"
 required-features = ["terminal", "gstreamer"]
 
+[[bin]]
+name           = "evlib-web"
+required-features = ["gstreamer", "terminal"]
+
 [dependencies]
 # Python bindings
 numpy          = "0.18.0"
@@ -66,10 +70,16 @@ gstreamer-video = { version = "0.22", optional = true }
 
 # HTTP client and async runtime for model downloading
 reqwest        = { version = "0.11", features = ["blocking"] }
-tokio          = { version = "1", features = ["rt", "macros"] }
+tokio          = { version = "1.35", features = ["full"] }
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
 num_cpus       = "1.16"
+
+# WebSocket server
+warp           = "0.3"
+uuid           = { version = "1.6", features = ["v4", "serde"] }
+dashmap        = "5.5"
+futures        = "0.3"
 
 # Terminal UI (optional)
 ratatui        = { version = "0.28", optional = true }

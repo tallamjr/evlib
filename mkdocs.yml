@@ -1,0 +1,133 @@
+site_name: evlib Documentation
+site_description: High-performance event camera utilities in Rust with Python bindings
+site_author: evlib Team
+site_url: https://tallamjr.github.io/evlib/
+
+repo_name: tallamjr/evlib
+repo_url: https://github.com/tallamjr/evlib
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.tabs.link
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/camera
+
+  font:
+    code: Roboto Mono
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/tallamjr/evlib
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/evlib/
+
+plugins:
+  - search:
+      lang: en
+  - tags
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - footnotes
+  - tables
+  - pymdownx.arithmatex:
+      generic: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Performance Guide: getting-started/performance.md
+  - User Guide:
+      - Loading Data: user-guide/loading-data.md
+      - Event Representations: user-guide/representations.md
+      - Visualization: user-guide/visualization.md
+      - Neural Networks: user-guide/models.md
+      - Augmentation: user-guide/augmentation.md
+  - API Reference:
+      - Core: api/core.md
+      - Formats: api/formats.md
+      - Representations: api/representations.md
+      - Processing: api/processing.md
+      - Visualization: api/visualization.md
+      - Augmentation: api/augmentation.md
+  - Examples:
+      - Jupyter Notebooks: examples/notebooks.md
+      - Python Scripts: examples/scripts.md
+      - Benchmarks: examples/benchmarks.md
+  - Development:
+      - Contributing: development/contributing.md
+      - Architecture: development/architecture.md
+      - Testing: development/testing.md
+      - Release Notes: development/releases.md
+
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - javascripts/mathjax.js

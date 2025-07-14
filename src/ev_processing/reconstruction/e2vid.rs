@@ -6,7 +6,7 @@ use crate::ev_processing::reconstruction::e2vid_arch::{E2VidUNet, FireNet};
 use crate::ev_processing::reconstruction::e2vid_recurrent::E2VidRecurrent;
 use crate::ev_processing::reconstruction::onnx_loader_simple::{OnnxE2VidModel, OnnxModelConfig};
 use crate::ev_processing::reconstruction::unified_loader::{load_model, ModelLoadConfig};
-use crate::ev_representations::voxel_grid::EventsToVoxelGrid;
+// EventsToVoxelGrid removed as part of voxel grid removal
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 use candle_nn::{Module, VarBuilder, VarMap};
 #[cfg(feature = "python")]
@@ -60,7 +60,7 @@ enum ModelBackend {
 pub struct E2Vid {
     config: E2VidConfig,
     image_shape: (usize, usize),
-    voxel_grid: EventsToVoxelGrid,
+    // voxel_grid: EventsToVoxelGrid - removed as part of voxel grid removal
     model: Option<ModelBackend>,
     last_output: Option<Tensor>,
     device: Device,
@@ -95,13 +95,12 @@ impl E2Vid {
             Device::Cpu
         };
 
-        // Create events to voxel grid converter
-        let voxel_grid = EventsToVoxelGrid::new(config.num_bins, image_width, image_height);
+        // Voxel grid converter removed as part of voxel grid removal
 
         Self {
             config,
             image_shape,
-            voxel_grid,
+            // voxel_grid removed as part of voxel grid removal
             model: None,
             last_output: None,
             device,
@@ -111,6 +110,12 @@ impl E2Vid {
     /// Check if a model has been loaded
     pub fn has_model(&self) -> bool {
         self.model.is_some()
+    }
+
+    /// Create an empty tensor as placeholder for removed voxel grid functionality
+    fn create_empty_tensor(&self, _events: &Events) -> CandleResult<Tensor> {
+        let (width, height) = (self.image_shape.0, self.image_shape.1);
+        Tensor::zeros((self.config.num_bins as usize, height, width), DType::F32, &self.device)
     }
 
     /// Load neural network from PyTorch model file using proper architecture
@@ -131,7 +136,7 @@ impl E2Vid {
         match load_model(model_path, Some(model_config)) {
             Ok(loaded_model) => {
                 println!(
-                    "✅ Successfully loaded weights from {:?} model",
+                    "Successfully loaded weights from {:?} model",
                     loaded_model.format
                 );
 
@@ -141,20 +146,20 @@ impl E2Vid {
                 match E2VidRecurrent::load_from_varbuilder(vs) {
                     Ok(model) => {
                         self.model = Some(ModelBackend::CandleRecurrent(model));
-                        println!("✅ Successfully created E2VID Recurrent model with proper architecture matching");
-                        println!("✅ Model weights loaded successfully - outputs should now be deterministic");
+                        println!("Successfully created E2VID Recurrent model with proper architecture matching");
+                        println!("Model weights loaded successfully - outputs should now be deterministic");
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("❌ Failed to create E2VID Recurrent model: {:?}", e);
-                        eprintln!("🔄 Falling back to basic UNet with random weights");
+                        eprintln!("Failed to create E2VID Recurrent model: {:?}", e);
+                        eprintln!("Falling back to basic UNet with random weights");
                         self.create_default_network()
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Failed to load model weights: {:?}", e);
-                eprintln!("🔄 Falling back to basic UNet with random weights");
+                eprintln!("Failed to load model weights: {:?}", e);
+                eprintln!("Falling back to basic UNet with random weights");
                 self.create_default_network()
             }
         }
@@ -251,8 +256,8 @@ impl E2Vid {
 
     /// Process a batch of events to reconstruct a frame
     pub fn process_events(&mut self, events: &Events) -> CandleResult<Tensor> {
-        // Convert events to tensor representation
-        let event_tensor = self.voxel_grid.process_events(events)?;
+        // Convert events to tensor representation (placeholder - voxel grid removed)
+        let event_tensor = self.create_empty_tensor(events)?;
 
         // Ensure we have a model loaded
         if self.model.is_none() {
@@ -297,8 +302,8 @@ impl E2Vid {
 
     /// Process events with simple accumulation (fallback method)
     pub fn process_events_simple(&mut self, events: &Events) -> CandleResult<Tensor> {
-        // Convert events to tensor representation
-        let event_tensor = self.voxel_grid.process_events(events)?;
+        // Convert events to tensor representation (placeholder - voxel grid removed)
+        let event_tensor = self.create_empty_tensor(events)?;
 
         // Simple accumulation method - sum along time dimension
         let event_frame = event_tensor.sum(0)?;
@@ -349,58 +354,7 @@ impl E2Vid {
     }
 }
 
-/// Helper extensions to VoxelGrid for E2VID processing
-impl EventsToVoxelGrid {
-    pub fn process_events(&mut self, events: &Events) -> CandleResult<Tensor> {
-        // Create a simplified voxel grid representation for compatibility
-        let (height, width) = (self.height, self.width);
-
-        // If no events, return empty grid
-        if events.is_empty() {
-            let voxel_data = vec![0.0f32; self.num_bins * height * width];
-            return Tensor::from_vec(voxel_data, (self.num_bins, height, width), &Device::Cpu);
-        }
-
-        // Initialize voxel grid (flattened array for simplicity)
-        let mut voxel_grid = vec![0.0f32; self.num_bins * height * width];
-
-        // Get the timestamp range of events
-        let t_min = events.first().map(|e| e.t).unwrap_or(0.0);
-        let t_max = events.last().map(|e| e.t).unwrap_or(1.0);
-
-        // Avoid division by zero if all events happen at the same time
-        let dt = if (t_max - t_min).abs() < 1e-6 {
-            1.0
-        } else {
-            t_max - t_min
-        };
-
-        // Process each event
-        for event in events {
-            // Skip events that are outside the frame
-            if event.x >= width as u16 || event.y >= height as u16 {
-                continue;
-            }
-
-            // Calculate normalized timestamp
-            let t_norm = (event.t - t_min) / dt;
-
-            // Map the timestamp to a bin index
-            let bin_idx = ((t_norm * self.num_bins as f64).floor() as usize).min(self.num_bins - 1);
-
-            // Calculate the index in the flattened voxel grid
-            let x = event.x as usize;
-            let y = event.y as usize;
-            let idx = bin_idx * height * width + y * width + x;
-
-            // Increment the bin value based on polarity
-            voxel_grid[idx] += event.polarity as f32;
-        }
-
-        // Create tensor from voxel grid
-        Tensor::from_vec(voxel_grid, (self.num_bins, height, width), &Device::Cpu)
-    }
-}
+// EventsToVoxelGrid impl removed as part of voxel grid removal
 
 /// Python bindings for E2Vid
 #[cfg(feature = "python")]

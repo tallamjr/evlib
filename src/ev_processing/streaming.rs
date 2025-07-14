@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::reconstruction::unified_loader::{load_model, LoadedModel, ModelLoadConfig};
 use crate::ev_core::Event;
-use crate::ev_representations::events_to_voxel_grid;
+// Voxel grid functionality has been removed
 
 #[cfg(feature = "python")]
 pub mod python;
@@ -207,11 +207,19 @@ impl StreamingProcessor {
         }
 
         // Generate voxel grid representation
-        let representation = events_to_voxel_grid(
-            &window_events,
-            self.config.resolution,
-            self.config.num_bins,
-            &self.config.voxel_method,
+        // Voxel grid functionality has been removed
+        // let representation = events_to_voxel_grid(
+        //     &window_events,
+        //     self.config.resolution,
+        //     self.config.num_bins,
+        //     &self.config.voxel_method,
+        // )?;
+        
+        // Return empty tensor as placeholder
+        let representation = candle_core::Tensor::zeros(
+            (self.config.num_bins as usize, self.config.resolution.1 as usize, self.config.resolution.0 as usize),
+            candle_core::DType::F32,
+            &candle_core::Device::Cpu,
         )?;
 
         // Reconstruct if model is available

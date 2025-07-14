@@ -5,12 +5,17 @@ pub mod ev_formats;
 pub mod ev_processing;
 pub mod ev_representations;
 pub mod ev_simulation;
-pub mod ev_tracking;
 pub mod ev_transforms;
 pub mod ev_visualization;
 
 // Re-export core types for easier usage
 pub use ev_core::{Event, Events, DEVICE};
+
+// Test modules
+#[cfg(test)]
+mod test_evt2_detection;
+#[cfg(test)]
+mod test_polarity_conversion;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
@@ -26,6 +31,8 @@ use pyo3::wrap_pyfunction;
 fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, py)?)?;
+    
+    // Voxel grid functions have been removed
 
     // Register ev_core module as "core" in Python
     let core_submodule = PyModule::new(py, "core")?;
@@ -56,25 +63,29 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
 
     // Register ev_representations module as "representations" in Python
     let representations_submodule = PyModule::new(py, "representations")?;
-    representations_submodule.add_function(wrap_pyfunction!(
-        ev_representations::python::events_to_voxel_grid_py,
-        py
-    )?)?;
-    representations_submodule.add_function(wrap_pyfunction!(
-        ev_representations::python::events_to_smooth_voxel_grid_py,
-        py
-    )?)?;
+    // Voxel grid functions have been removed
     m.add_submodule(representations_submodule)?;
 
     // Register ev_formats module as "formats" in Python
     let formats_submodule = PyModule::new(py, "formats")?;
     formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, py)?)?;
     formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::load_events_filtered_py,
+        py
+    )?)?;
+    formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
         py
     )?)?;
     formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_text_py,
+        py
+    )?)?;
+
+    // Add format detection functions
+    formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, py)?)?;
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::get_format_description_py,
         py
     )?)?;
 
@@ -90,6 +101,19 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_visualization::python::draw_events_to_image_py,
         py
     )?)?;
+
+    // Add web server functionality
+    viz_submodule.add_function(wrap_pyfunction!(
+        ev_visualization::web_server::python::create_web_server,
+        py
+    )?)?;
+    viz_submodule.add_function(wrap_pyfunction!(
+        ev_visualization::web_server::python::create_web_server_config,
+        py
+    )?)?;
+    viz_submodule.add_class::<ev_visualization::web_server::python::PyWebServerConfig>()?;
+    viz_submodule.add_class::<ev_visualization::web_server::python::PyEventWebServer>()?;
+
     m.add_submodule(viz_submodule)?;
 
     // Register ev_processing module as "processing" in Python
@@ -153,24 +177,6 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     streaming_submodule.add_class::<ev_processing::streaming::python::PyEventStream>()?;
     m.add_submodule(streaming_submodule)?;
 
-    // Register ev_tracking module as "tracking" in Python
-    let tracking_submodule = PyModule::new(py, "tracking")?;
-    tracking_submodule.add_function(wrap_pyfunction!(
-        ev_tracking::python::extract_keypoints_from_mask_py,
-        py
-    )?)?;
-    tracking_submodule.add_function(wrap_pyfunction!(
-        ev_tracking::python::prepare_event_representation_py,
-        py
-    )?)?;
-    tracking_submodule.add_function(wrap_pyfunction!(
-        ev_tracking::python::track_points_demo_py,
-        py
-    )?)?;
-    tracking_submodule.add_class::<ev_tracking::python::PyPoint2D>()?;
-    tracking_submodule.add_class::<ev_tracking::python::PyQueryPoint>()?;
-    tracking_submodule.add_class::<ev_tracking::python::PyTrackResult>()?;
-    m.add_submodule(tracking_submodule)?;
 
     // Register ev_simulation module as "simulation" in Python
     let simulation_submodule = PyModule::new(py, "simulation")?;

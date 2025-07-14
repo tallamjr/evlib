@@ -722,4 +722,8 @@ tests/*.png
 .cargo/config.toml
 
 data/original/
+data/gen4/
+data/eTram/
 models/
+
+inspo/

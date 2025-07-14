@@ -361,12 +361,12 @@ if __name__ == "__main__":
     print(f"Fully functional: {status['fully_functional']}")
 
     if status["fully_functional"]:
-        print("✅ ETAP integration fully available")
+        print("ETAP integration fully available")
         print("Note: To create a tracker, provide a path to ETAP model weights:")
         print("  tracker = create_etap_tracker('/path/to/etap_model.pth')")
         print("  Or set ETAP_PATH environment variable to point to ETAP repository")
     else:
-        print("❌ ETAP integration not fully available")
+        print("ETAP integration not fully available")
         if not status["torch_available"]:
             print("  - Install PyTorch: pip install torch")
         if not status["etap_available"]:

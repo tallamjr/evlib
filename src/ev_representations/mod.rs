@@ -1,100 +1,12 @@
 // Representations module
 // Converting event streams into different tensor representations for ML and visualization
 
-pub mod smooth_voxel_grid;
-pub mod voxel_grid;
+// Smooth voxel grid module has been removed
 
 use crate::ev_core::{Events, DEVICE};
 use candle_core::{DType, Result, Tensor};
 
-/// Create a voxel grid representation of events
-///
-/// Voxel grids divide events into time bins, creating a 3D tensor (bins, height, width)
-/// where each bin represents events occurring during a specific time slice.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `resolution` - Sensor resolution (width, height)
-/// * `num_bins` - Number of time bins to divide events into
-/// * `voxel_method` - Method to accumulate events:
-///   - "count" - Count events in each voxel
-///   - "binary" - 1 if any event in voxel, 0 otherwise
-///   - "polarity" - Sum polarities in each voxel (positive/negative events can cancel)
-///   - "polaritySeparate" - Create 2*num_bins with positive and negative events separated
-pub fn events_to_voxel_grid(
-    events: &Events,
-    resolution: (u16, u16),
-    num_bins: u32,
-    voxel_method: &str,
-) -> Result<Tensor> {
-    let (width, height) = (resolution.0 as usize, resolution.1 as usize);
-
-    // Handle empty events case
-    if events.is_empty() {
-        return if voxel_method == "polaritySeparate" {
-            Tensor::zeros((2 * num_bins as usize, height, width), DType::F32, &DEVICE)
-        } else {
-            Tensor::zeros((num_bins as usize, height, width), DType::F32, &DEVICE)
-        };
-    }
-
-    // Determine time range
-    let t_min = events.first().unwrap().t;
-    let t_max = events.last().unwrap().t;
-    let dt = t_max - t_min + f64::EPSILON; // Total time span
-
-    let mut grid = if voxel_method == "polaritySeparate" {
-        vec![0f32; 2 * num_bins as usize * height * width]
-    } else {
-        vec![0f32; num_bins as usize * height * width]
-    };
-
-    // Process each event
-    for ev in events {
-        // Calculate which bin this event belongs to
-        let bin = (((ev.t - t_min) / dt) * (num_bins as f64)) as usize;
-        let bin_index = bin.min(num_bins as usize - 1); // Ensure last event goes into last bin
-
-        // For polaritySeparate, separate positive and negative events
-        let bin_offset = if voxel_method == "polaritySeparate" {
-            if ev.polarity > 0 {
-                bin_index
-            } else {
-                bin_index + num_bins as usize
-            }
-        } else {
-            bin_index
-        };
-
-        // Calculate index in the flat grid
-        let idx = bin_offset * (width * height) + (ev.y as usize * width + ev.x as usize);
-
-        // Update the grid based on the method
-        match voxel_method {
-            "binary" => {
-                grid[idx] = 1.0; // Mark presence
-            }
-            "polarity" => {
-                grid[idx] += ev.polarity as f32; // Sum polarities
-            }
-            "polaritySeparate" => {
-                grid[idx] += 1.0; // Count events separately by polarity
-            }
-            _ => {
-                // Default "count"
-                grid[idx] += 1.0; // Count events
-            }
-        }
-    }
-
-    // Convert to Candle Tensor
-    let dims = if voxel_method == "polaritySeparate" {
-        (2 * num_bins as usize, height, width)
-    } else {
-        (num_bins as usize, height, width)
-    };
-    Tensor::from_vec(grid, dims, &DEVICE)
-}
+// Voxel grid functionality has been removed
 
 /// Create a timestamp image (time surface) representation of events
 ///
@@ -302,7 +214,7 @@ pub fn events_to_frame(
 /// * `events` - Event stream to convert
 /// * `resolution` - Sensor resolution (width, height)
 /// * `window_duration` - Duration of each time window in seconds
-/// * `representation` - Type of representation to use for each window ("voxel", "count", "polarity")
+/// * `representation` - Type of representation to use for each window ("count", "polarity")
 pub fn events_to_time_windows(
     events: &Events,
     resolution: (u16, u16),
@@ -338,25 +250,17 @@ pub fn events_to_time_windows(
             // Process current window
             if !current_window.is_empty() {
                 let tensor = match representation {
-                    "voxel" => events_to_voxel_grid(&current_window, resolution, 5, "count")?,
                     "count" => events_to_count_image(&current_window, resolution, false)?,
                     _ => events_to_frame(&current_window, resolution, "polarity", false)?,
                 };
                 result.push(tensor);
             } else {
                 // Add empty tensor if no events in window
-                let tensor = match representation {
-                    "voxel" => Tensor::zeros(
-                        (5, resolution.1 as usize, resolution.0 as usize),
-                        DType::F32,
-                        &DEVICE,
-                    )?,
-                    _ => Tensor::zeros(
-                        (1, resolution.1 as usize, resolution.0 as usize),
-                        DType::F32,
-                        &DEVICE,
-                    )?,
-                };
+                let tensor = Tensor::zeros(
+                    (1, resolution.1 as usize, resolution.0 as usize),
+                    DType::F32,
+                    &DEVICE,
+                )?;
                 result.push(tensor);
             }
 
@@ -369,7 +273,6 @@ pub fn events_to_time_windows(
     // Process final window if not empty
     if !current_window.is_empty() {
         let tensor = match representation {
-            "voxel" => events_to_voxel_grid(&current_window, resolution, 5, "count")?,
             "count" => events_to_count_image(&current_window, resolution, false)?,
             _ => events_to_frame(&current_window, resolution, "polarity", false)?,
         };
@@ -387,117 +290,7 @@ pub mod python {
     use numpy::{IntoPyArray, PyReadonlyArray1};
     use pyo3::prelude::*;
 
-    /// Python binding for voxel grid conversion
-    #[pyfunction]
-    #[pyo3(name = "events_to_voxel_grid")]
-    #[allow(clippy::too_many_arguments)]
-    pub fn events_to_voxel_grid_py(
-        py: Python<'_>,
-        xs: PyReadonlyArray1<i64>,
-        ys: PyReadonlyArray1<i64>,
-        ts: PyReadonlyArray1<f64>,
-        ps: PyReadonlyArray1<i64>,
-        num_bins: usize,
-        resolution: Option<(i64, i64)>,
-        voxel_method: Option<&str>,
-    ) -> PyResult<(PyObject, (usize, usize, usize))> {
-        // Convert to our internal types
-        let events = from_numpy_arrays(xs, ys, ts, ps);
+    // Voxel grid Python binding has been removed
 
-        // Determine resolution
-        let res = match resolution {
-            Some((w, h)) => (w as u16, h as u16),
-            None => {
-                let max_x = events.iter().map(|e| e.x).max().unwrap_or(0) + 1;
-                let max_y = events.iter().map(|e| e.y).max().unwrap_or(0) + 1;
-                (max_x, max_y)
-            }
-        };
-
-        // Use default method if not specified
-        let method = voxel_method.unwrap_or("count");
-
-        // Create voxel grid
-        let voxel_tensor = events_to_voxel_grid(&events, res, num_bins as u32, method)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
-
-        // Convert to numpy array
-        let shape = voxel_tensor.shape();
-        let data: Vec<f32> = voxel_tensor
-            .flatten_all()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?
-            .to_vec1()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
-
-        // Get dimensions
-        let dims = shape.dims();
-        let shape_tuple = (dims[0], dims[1], dims[2]);
-
-        // Create 1D flat array
-        let flat_array = numpy::ndarray::Array::from_vec(data);
-
-        // Return flat array and shape tuple
-        Ok((flat_array.into_pyarray(py).to_object(py), shape_tuple))
-    }
-
-    /// Python binding for smooth voxel grid conversion
-    #[pyfunction]
-    #[pyo3(name = "events_to_smooth_voxel_grid")]
-    #[allow(clippy::too_many_arguments)]
-    pub fn events_to_smooth_voxel_grid_py(
-        py: Python<'_>,
-        xs: PyReadonlyArray1<i64>,
-        ys: PyReadonlyArray1<i64>,
-        ts: PyReadonlyArray1<f64>,
-        ps: PyReadonlyArray1<i64>,
-        num_bins: usize,
-        resolution: Option<(i64, i64)>,
-        interpolation: Option<&str>,
-    ) -> PyResult<(PyObject, (usize, usize, usize))> {
-        use crate::ev_representations::smooth_voxel_grid::events_to_smooth_voxel_grid;
-
-        // Convert to our internal types
-        let events = from_numpy_arrays(xs, ys, ts, ps);
-
-        // Determine resolution
-        let res = match resolution {
-            Some((w, h)) => (w as u16, h as u16),
-            None => {
-                let max_x = events.iter().map(|e| e.x).max().unwrap_or(0) + 1;
-                let max_y = events.iter().map(|e| e.y).max().unwrap_or(0) + 1;
-                (max_x, max_y)
-            }
-        };
-
-        // Convert interpolation method
-        let interp_method = interpolation.map(|s| s.to_string());
-
-        // Create smooth voxel grid
-        let voxel_tensor = events_to_smooth_voxel_grid(
-            &events,
-            num_bins,
-            res.0 as usize,
-            res.1 as usize,
-            interp_method,
-        )
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
-
-        // Convert to numpy array
-        let shape = voxel_tensor.shape();
-        let data: Vec<f32> = voxel_tensor
-            .flatten_all()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?
-            .to_vec1()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
-
-        // Get dimensions
-        let dims = shape.dims();
-        let shape_tuple = (dims[0], dims[1], dims[2]);
-
-        // Create 1D flat array
-        let flat_array = numpy::ndarray::Array::from_vec(data);
-
-        // Return flat array and shape tuple
-        Ok((flat_array.into_pyarray(py).to_object(py), shape_tuple))
-    }
+    // Smooth voxel grid Python binding has been removed
 }
