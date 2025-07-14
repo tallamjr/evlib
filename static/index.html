@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Camera Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #header {
+            padding: 20px;
+            text-align: center;
+        }
+
+        #canvas-container {
+            position: relative;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #eventCanvas {
+            background-color: #000000;
+            display: block;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0052a3;
+        }
+
+        button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+        }
+
+        #connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .connected {
+            background-color: #28a745;
+        }
+
+        .disconnected {
+            background-color: #dc3545;
+        }
+
+        .connecting {
+            background-color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Event Camera Visualization</h1>
+        <p>Real-time webcam-to-events conversion</p>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="eventCanvas" width="640" height="480"></canvas>
+        <div id="stats">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Events/s: <span id="eventRate">0</span></div>
+            <div>Total Events: <span id="totalEvents">0</span></div>
+            <div>GPU Mode: <span id="gpuMode">Unknown</span></div>
+            <div>GPU Updates/s: <span id="gpuUpdates">0</span></div>
+            <div>Buffer Usage: <span id="bufferUsage">0%</span></div>
+        </div>
+        <div id="connection-status" class="disconnected">Disconnected</div>
+    </div>
+
+    <div id="controls">
+        <button id="connectBtn">Connect</button>
+        <button id="playPauseBtn" disabled>Pause</button>
+        <div class="slider-container">
+            <label for="decaySlider">Decay Time:</label>
+            <input type="range" id="decaySlider" min="10" max="1000" value="100">
+            <span id="decayValue">100ms</span>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - connect to WebSocket server
+        const WS_URL = 'ws://127.0.0.1:3030/ws';
+        const CANVAS_WIDTH = 640;
+        const CANVAS_HEIGHT = 480;
+
+        // Global state
+        let ws = null;
+        let isConnected = false;
+        let isPaused = false;
+        let eventBuffer = [];
+        let totalEventCount = 0;
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let lastStatsUpdate = performance.now();
+        let eventsPerSecond = 0;
+        let decayTime = 100; // milliseconds
+
+        // Canvas setup - WebGL globals and functions must be defined first
+        let canvas = document.getElementById('eventCanvas');
+        let gl, ctx;
+        let use2D = false;
+        
+        // WebGL globals - optimized for high-performance GPU rendering
+        let webglProgram, vertexBuffer, positionLocation, timeLocation, polarityLocation;
+        let currentTimeLocation, resolutionLocation, decayTimeLocation;
+        
+        // Efficient circular buffer for GPU data
+        const MAX_EVENTS = 100000; // Increased capacity
+        let eventVertexData = new Float32Array(MAX_EVENTS * 4); // Pre-allocated typed array
+        let eventWriteIndex = 0;
+        let totalEventCount = 0;
+        let gpuBufferNeedsUpdate = false;
+        
+        // Performance tracking
+        let lastGpuUpdate = performance.now();
+        let gpuUpdateCount = 0;
+
+        // WebGL helper functions
+        function createShader(gl, type, source) {
+            console.log('Compiling shader type:', type);
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            console.log('Shader compiled successfully');
+            return shader;
+        }
+        
+        function createProgram(gl, vertexShader, fragmentShader) {
+            console.log('Linking WebGL program');
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program linking error:', gl.getProgramInfoLog(program));
+                gl.deleteProgram(program);
+                return null;
+            }
+            console.log('Program linked successfully');
+            return program;
+        }
+
+        function setupWebGL() {
+            console.log('Setting up WebGL...');
+            
+            // Vertex shader source
+            const vertexShaderSource = `
+                attribute vec2 a_position;
+                attribute float a_timestamp;
+                attribute float a_polarity;
+                
+                uniform float u_currentTime;
+                uniform vec2 u_resolution;
+                uniform float u_decayTime;
+                
+                varying float v_alpha;
+                varying float v_polarity;
+                
+                void main() {
+                    // Convert to clip space coordinates
+                    vec2 clipSpace = ((a_position / u_resolution) * 2.0) - 1.0;
+                    gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+                    
+                    // Calculate age and alpha for temporal decay
+                    float age = u_currentTime - a_timestamp;
+                    v_alpha = max(0.0, 1.0 - (age / u_decayTime));
+                    v_polarity = a_polarity;
+                    
+                    // Point size based on age (newer events are larger)
+                    gl_PointSize = mix(4.0, 2.0, age / u_decayTime);
+                }
+            `;
+            
+            // Fragment shader source
+            const fragmentShaderSource = `
+                precision mediump float;
+                
+                varying float v_alpha;
+                varying float v_polarity;
+                
+                void main() {
+                    // Create circular points
+                    vec2 coord = gl_PointCoord - vec2(0.5);
+                    float distance = length(coord);
+                    if (distance > 0.5) {
+                        discard; // Outside circle
+                    }
+                    
+                    // Color based on polarity
+                    vec3 color = v_polarity > 0.5 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+                    
+                    // Smooth edges and apply temporal fade
+                    float edge = smoothstep(0.5, 0.3, distance);
+                    gl_FragColor = vec4(color, v_alpha * edge);
+                }
+            `;
+            
+            // Compile shaders
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            
+            if (!vertexShader || !fragmentShader) {
+                console.error('Failed to compile shaders, falling back to 2D');
+                return false;
+            }
+            
+            // Create program
+            webglProgram = createProgram(gl, vertexShader, fragmentShader);
+            if (!webglProgram) {
+                console.error('Failed to create WebGL program, falling back to 2D');
+                return false;
+            }
+            
+            gl.useProgram(webglProgram);
+            
+            // Get attribute and uniform locations
+            positionLocation = gl.getAttribLocation(webglProgram, 'a_position');
+            timeLocation = gl.getAttribLocation(webglProgram, 'a_timestamp');
+            polarityLocation = gl.getAttribLocation(webglProgram, 'a_polarity');
+            
+            currentTimeLocation = gl.getUniformLocation(webglProgram, 'u_currentTime');
+            resolutionLocation = gl.getUniformLocation(webglProgram, 'u_resolution');
+            decayTimeLocation = gl.getUniformLocation(webglProgram, 'u_decayTime');
+            
+            console.log('Attribute locations:', {positionLocation, timeLocation, polarityLocation});
+            console.log('Uniform locations:', {currentTimeLocation, resolutionLocation, decayTimeLocation});
+            
+            // Create vertex buffer
+            vertexBuffer = gl.createBuffer();
+            
+            // Enable blending for smooth temporal effects
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            
+            // Set up vertex attributes
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.enableVertexAttribArray(timeLocation);
+            gl.enableVertexAttribArray(polarityLocation);
+            
+            console.log('WebGL setup complete successfully!');
+            return true;
+        }
+
+        // Try to initialize WebGL with enhanced debugging
+        gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (gl) {
+            console.log('WebGL context obtained');
+            console.log('WebGL Renderer:', gl.getParameter(gl.RENDERER));
+            console.log('WebGL Vendor:', gl.getParameter(gl.VENDOR));
+            console.log('WebGL Version:', gl.getParameter(gl.VERSION));
+            
+            if (setupWebGL()) {
+                console.log('Using WebGL GPU acceleration');
+                gpuModeDisplay.textContent = 'WebGL (GPU)';
+                use2D = false;
+            } else {
+                console.log('WebGL setup failed, falling back to 2D');
+                gpuModeDisplay.textContent = '2D Canvas (CPU - WebGL Failed)';
+                use2D = true;
+                gl = null;
+                ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = false;
+            }
+        } else {
+            console.log('WebGL not available, falling back to 2D canvas');
+            gpuModeDisplay.textContent = '2D Canvas (CPU - No WebGL)';
+            use2D = true;
+            ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+        }
+
+        // Create image data for efficient pixel manipulation (2D fallback)
+        let imageData, pixelData;
+        if (use2D) {
+            imageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
+            pixelData = imageData.data;
+        }
+
+        // Event decay tracking - use typed array for better performance
+        const eventTimestamps = new Float32Array(CANVAS_WIDTH * CANVAS_HEIGHT);
+        
+        // Event buffer optimization - use larger capacity, clear periodically  
+        let eventRenderQueue = [];
+
+        // UI elements
+        const connectBtn = document.getElementById('connectBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const decaySlider = document.getElementById('decaySlider');
+        const decayValue = document.getElementById('decayValue');
+        const connectionStatus = document.getElementById('connection-status');
+        const fpsDisplay = document.getElementById('fps');
+        const eventRateDisplay = document.getElementById('eventRate');
+        const totalEventsDisplay = document.getElementById('totalEvents');
+        const gpuModeDisplay = document.getElementById('gpuMode');
+        const gpuUpdatesDisplay = document.getElementById('gpuUpdates');
+        const bufferUsageDisplay = document.getElementById('bufferUsage');
+        
+        // Debug element availability
+        console.log('Connect button found:', !!connectBtn);
+        if (!connectBtn) {
+            console.error('Connect button not found! Check HTML.');
+            // Try to find it again after a delay
+            setTimeout(() => {
+                const btn = document.getElementById('connectBtn');
+                console.log('Retry finding button:', !!btn);
+            }, 1000);
+        } else {
+            console.log('Button element:', connectBtn);
+            console.log('Button disabled:', connectBtn.disabled);
+            console.log('Button text:', connectBtn.textContent);
+        }
+        
+        // Performance tracking
+        let eventsReceivedThisSecond = 0;
+        let lastEventRateReset = performance.now();
+
+        // Event handling
+        connectBtn.addEventListener('click', (e) => {
+            console.log('Connect button clicked');
+            e.preventDefault();
+            toggleConnection();
+        });
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        decaySlider.addEventListener('input', (e) => {
+            decayTime = parseInt(e.target.value);
+            decayValue.textContent = `${decayTime}ms`;
+            console.log('Decay time updated to:', decayTime);
+        });
+
+        function toggleConnection() {
+            if (isConnected) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+
+        function connect() {
+            console.log('Attempting to connect to:', WS_URL);
+            updateConnectionStatus('connecting');
+            connectBtn.textContent = 'Connecting...';
+            connectBtn.disabled = true;
+
+            try {
+                ws = new WebSocket(WS_URL);
+                ws.binaryType = 'arraybuffer';
+            } catch (e) {
+                console.error('WebSocket creation failed:', e);
+                alert('Failed to create WebSocket connection. Check browser console.');
+                connectBtn.textContent = 'Connect';
+                connectBtn.disabled = false;
+                updateConnectionStatus('disconnected');
+                return;
+            }
+
+            ws.onopen = () => {
+                isConnected = true;
+                updateConnectionStatus('connected');
+                connectBtn.textContent = 'Disconnect';
+                connectBtn.disabled = false;
+                playPauseBtn.disabled = false;
+                console.log('Connected to WebSocket server at:', WS_URL);
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+                updateConnectionStatus('disconnected');
+                connectBtn.textContent = 'Connect';
+                connectBtn.disabled = false;
+                playPauseBtn.disabled = true;
+                console.log('Disconnected from WebSocket server');
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                console.error('Failed to connect to:', WS_URL);
+                console.error('Make sure you are accessing this page from http://127.0.0.1:3030');
+                updateConnectionStatus('disconnected');
+                connectBtn.textContent = 'Connect';
+                connectBtn.disabled = false;
+                alert('Connection failed! Make sure:\n1. The server is running\n2. You are accessing this page from http://127.0.0.1:3030\n3. Not from file:// URL');
+            };
+
+            ws.onmessage = (event) => {
+                console.log('Received WebSocket message:', event.data.byteLength, 'bytes');
+                if (!isPaused) {
+                    handleEventData(event.data);
+                } else {
+                    console.log('Ignoring message - paused');
+                }
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function togglePlayPause() {
+            isPaused = !isPaused;
+            playPauseBtn.textContent = isPaused ? 'Play' : 'Pause';
+        }
+
+        function updateConnectionStatus(status) {
+            connectionStatus.className = status;
+            connectionStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function handleEventData(data) {
+            try {
+                // data is already an ArrayBuffer from WebSocket
+                const view = new DataView(data);
+                
+                console.log('Parsing message buffer of', data.byteLength, 'bytes');
+                
+                // Parse header
+                const messageType = view.getUint8(0);
+                const timestamp = Number(view.getBigUint64(1, true));
+                const eventCount = view.getUint32(9, true);
+
+                console.log('Header - Type:', messageType, 'Timestamp:', timestamp, 'Events:', eventCount);
+
+                // Parse events
+                const currentTime = performance.now();
+                let offset = 13; // Header size
+                let parsedEvents = 0;
+
+                for (let i = 0; i < eventCount; i++) {
+                    if (offset + 13 > data.byteLength) {
+                        console.warn('Not enough data for event', i, 'at offset', offset);
+                        break;
+                    }
+
+                    const x = view.getUint16(offset, true);
+                    const y = view.getUint16(offset + 2, true);
+                    const t = Number(view.getBigUint64(offset + 4, true));
+                    const polarity = view.getUint8(offset + 12);
+
+                    offset += 13;
+
+                    // Add to render queue for batch processing
+                    eventRenderQueue.push({
+                        x: x,
+                        y: y,
+                        t: currentTime,
+                        polarity: polarity
+                    });
+
+                    totalEventCount++;
+                    parsedEvents++;
+                }
+
+                console.log('Parsed', parsedEvents, 'events, total render queue size:', eventRenderQueue.length);
+                
+                // Update event rate
+                eventsReceivedThisSecond += eventCount;
+                
+                // Calculate real-time event rate
+                const now = performance.now();
+                if (now - lastEventRateReset > 1000) {
+                    eventsPerSecond = eventsReceivedThisSecond;
+                    eventsReceivedThisSecond = 0;
+                    lastEventRateReset = now;
+                }
+            } catch (error) {
+                console.error('Error parsing event data:', error);
+            }
+        }
+
+        function renderFrame() {
+            const currentTime = performance.now();
+            
+            if (use2D) {
+                renderFrame2D(currentTime);
+            } else {
+                renderFrameWebGL(currentTime);
+            }
+
+            // Update stats
+            frameCount++;
+            if (currentTime - lastStatsUpdate > 1000) {
+                const fps = frameCount / ((currentTime - lastStatsUpdate) / 1000);
+                fpsDisplay.textContent = fps.toFixed(1);
+                eventRateDisplay.textContent = eventsPerSecond.toLocaleString();
+                totalEventsDisplay.textContent = totalEventCount.toLocaleString();
+                
+                // Update GPU-specific stats
+                if (!use2D) {
+                    const gpuUpdatesPerSec = gpuUpdateCount / ((currentTime - lastStatsUpdate) / 1000);
+                    gpuUpdatesDisplay.textContent = gpuUpdatesPerSec.toFixed(1);
+                    
+                    const bufferUsage = (totalEventCount / MAX_EVENTS * 100).toFixed(1);
+                    bufferUsageDisplay.textContent = bufferUsage + '%';
+                    
+                    // Reset GPU counter
+                    gpuUpdateCount = 0;
+                } else {
+                    gpuUpdatesDisplay.textContent = 'N/A';
+                    bufferUsageDisplay.textContent = 'N/A';
+                }
+                
+                frameCount = 0;
+                lastStatsUpdate = currentTime;
+            }
+
+            // Continue animation loop
+            requestAnimationFrame(renderFrame);
+        }
+
+        function renderFrame2D(currentTime) {
+            const eventsToRender = eventRenderQueue.splice(0, eventRenderQueue.length);
+            
+            if (eventsToRender.length === 0) return;
+
+            // Gentle fade instead of harsh clearing
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.globalAlpha = 1.0;
+
+            // Debug polarity distribution
+            let positiveCount = 0, negativeCount = 0;
+            for (const event of eventsToRender) {
+                if (event.polarity > 0) positiveCount++;
+                else negativeCount++;
+            }
+            
+            if (frameCount % 60 === 0) { // Log every second
+                console.log(`Polarity distribution: +${positiveCount} -${negativeCount}`);
+            }
+
+            // Render positive events (red)
+            ctx.fillStyle = '#ff0000';
+            for (const event of eventsToRender) {
+                if (event.x < CANVAS_WIDTH && event.y < CANVAS_HEIGHT && event.polarity > 0) {
+                    ctx.fillRect(event.x, event.y, 2, 2);
+                }
+            }
+
+            // Render negative events (blue)
+            ctx.fillStyle = '#0000ff';
+            for (const event of eventsToRender) {
+                if (event.x < CANVAS_WIDTH && event.y < CANVAS_HEIGHT && event.polarity <= 0) {
+                    ctx.fillRect(event.x, event.y, 2, 2);
+                }
+            }
+        }
+
+        function renderFrameWebGL(currentTime) {
+            // Clear canvas
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            const eventsToRender = eventRenderQueue.splice(0, eventRenderQueue.length);
+            if (eventsToRender.length === 0) return;
+
+            // Efficiently add new events using circular buffer approach
+            let eventsAdded = 0;
+            for (const event of eventsToRender) {
+                // Use circular buffer - overwrite old events when full
+                const baseIndex = (eventWriteIndex % MAX_EVENTS) * 4;
+                
+                eventVertexData[baseIndex] = event.x;
+                eventVertexData[baseIndex + 1] = event.y;
+                eventVertexData[baseIndex + 2] = currentTime;
+                eventVertexData[baseIndex + 3] = event.polarity > 0 ? 1.0 : 0.0;
+                
+                eventWriteIndex++;
+                eventsAdded++;
+                gpuBufferNeedsUpdate = true;
+            }
+            
+            totalEventCount = Math.min(totalEventCount + eventsAdded, MAX_EVENTS);
+            
+            if (!gpuBufferNeedsUpdate || totalEventCount === 0) return;
+            
+            // Batch GPU buffer updates for better performance
+            const timeSinceLastUpdate = currentTime - lastGpuUpdate;
+            if (timeSinceLastUpdate > 8 || totalEventCount > MAX_EVENTS * 0.8) { // Update at ~120fps max or when buffer is 80% full
+                // Update vertex buffer - only upload the portion we're using
+                gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, eventVertexData.subarray(0, totalEventCount * 4), gl.DYNAMIC_DRAW);
+                
+                // Set up vertex attributes (interleaved: x, y, timestamp, polarity)
+                const stride = 4 * 4; // 4 floats * 4 bytes each
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, stride, 0);
+                gl.vertexAttribPointer(timeLocation, 1, gl.FLOAT, false, stride, 8);
+                gl.vertexAttribPointer(polarityLocation, 1, gl.FLOAT, false, stride, 12);
+                
+                gpuBufferNeedsUpdate = false;
+                lastGpuUpdate = currentTime;
+                gpuUpdateCount++;
+            }
+            
+            // Set uniforms
+            gl.uniform1f(currentTimeLocation, currentTime);
+            gl.uniform2f(resolutionLocation, CANVAS_WIDTH, CANVAS_HEIGHT);
+            gl.uniform1f(decayTimeLocation, decayTime);
+            
+            // Render all events in buffer
+            gl.drawArrays(gl.POINTS, 0, totalEventCount);
+            
+            // Enhanced debug output with GPU performance metrics
+            if (frameCount % 120 === 0) { // Every 2 seconds at 60fps
+                const gpuUpdatesPerSec = gpuUpdateCount / 2;
+                console.log(`WebGL: ${totalEventCount} events, ${eventsAdded} added, GPU updates: ${gpuUpdatesPerSec}/s`);
+                gpuUpdateCount = 0;
+            }
+        }
+
+        // Start render loop
+        renderFrame();
+        
+        // Note: Manual connection only - click the Connect button to start
+    </script>
+</body>
+</html>

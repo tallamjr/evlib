@@ -497,6 +497,8 @@ pub mod realtime;
 #[cfg(feature = "terminal")]
 pub mod terminal;
 
+pub mod web_server;
+
 /// Python bindings for the visualization module
 #[cfg(feature = "python")]
 pub mod python {
