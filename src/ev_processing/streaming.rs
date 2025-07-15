@@ -214,10 +214,14 @@ impl StreamingProcessor {
         //     self.config.num_bins,
         //     &self.config.voxel_method,
         // )?;
-        
+
         // Return empty tensor as placeholder
         let representation = candle_core::Tensor::zeros(
-            (self.config.num_bins as usize, self.config.resolution.1 as usize, self.config.resolution.0 as usize),
+            (
+                self.config.num_bins as usize,
+                self.config.resolution.1 as usize,
+                self.config.resolution.0 as usize,
+            ),
             candle_core::DType::F32,
             &candle_core::Device::Cpu,
         )?;

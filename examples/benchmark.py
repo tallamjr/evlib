@@ -8,7 +8,7 @@ This example demonstrates:
 2. Measuring performance of basic operations
 3. Comparing single-core vs multi-core performance
 
-Note: Currently only includes pure Python implementations as 
+Note: Currently only includes pure Python implementations as
 the Rust backend functions are not yet integrated.
 """
 import time
@@ -18,7 +18,6 @@ from functools import partial
 
 import numpy as np
 
-import evlib
 
 
 def python_events_to_block(xs, ys, ts, ps):
@@ -357,22 +356,16 @@ def main():
 
     # Summary table
     print("\n=== Summary ===")
-    print(
-        "Operation\t| Python (1 core)\t| Python (10 cores)\t| Speedup (Multi vs Single)"
-    )
+    print("Operation\t| Python (1 core)\t| Python (10 cores)\t| Speedup (Multi vs Single)")
     print("-" * 80)
 
     # Print summary table
     for op, (py_single, py_multi, rust_single) in benchmark_results.items():
         if py_multi is not None:
             speedup = py_single / py_multi
-            print(
-                f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {speedup:.2f}x"
-            )
+            print(f"{op}\t| {py_single:.6f} s\t| {py_multi:.6f} s\t| {speedup:.2f}x")
         else:
-            print(
-                f"{op}\t| {py_single:.6f} s\t| N/A\t\t| N/A"
-            )
+            print(f"{op}\t| {py_single:.6f} s\t| N/A\t\t| N/A")
 
 
 if __name__ == "__main__":
