@@ -31,7 +31,7 @@ use pyo3::wrap_pyfunction;
 fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, py)?)?;
-    
+
     // Voxel grid functions have been removed
 
     // Register ev_core module as "core" in Python
