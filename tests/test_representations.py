@@ -4,6 +4,7 @@ import evlib
 
 # Voxel grid functionality has been removed - placeholder tests
 
+
 def test_voxel_grid_removal():
     """Test that voxel grid functions work with actual implementation"""
     # Create sample event data
@@ -32,6 +33,7 @@ def test_voxel_grid_removal():
         print("✅ smooth_voxel works")
     except Exception as e:
         pytest.skip(f"smooth_voxel not available: {e}")
+
 
 def test_voxel_grid_removal_empty():
     """Test that voxel grid functions handle empty input correctly"""

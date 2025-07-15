@@ -22,6 +22,7 @@ try:
 except ImportError:
     pass
 
+
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")
 def test_evlib_simulation_integration():
     """Test integration with evlib simulation module."""
@@ -33,9 +34,9 @@ def test_evlib_simulation_integration():
     intensity_new = np.ones((height, width), dtype=np.float32) * 0.7
 
     # Skip if simulation module is not available
-    if not hasattr(evlib, 'simulation'):
+    if not hasattr(evlib, "simulation"):
         pytest.skip("simulation module not available")
-    
+
     # Call the ESIM simulation function
     xs, ys, ts, ps = evlib.simulation.esim_simulate_py(intensity_old, intensity_new, threshold=0.2)
 

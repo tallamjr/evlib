@@ -532,10 +532,7 @@ impl AedatReader {
             buffer.extend_from_slice(&temp_buffer[..bytes_read]);
 
             // Look for header end - either double newline or end of file
-            if let Some(pos) = buffer
-                .windows(2)
-                .position(|w| w == b"\n\n")
-            {
+            if let Some(pos) = buffer.windows(2).position(|w| w == b"\n\n") {
                 header_size = pos as u64 + 2; // +2 to skip the double newline
                 break;
             }
@@ -610,7 +607,6 @@ impl AedatReader {
             // Parse big-endian 32-bit timestamp and address
             let timestamp = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
             let address = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-            
 
             // Extract coordinates and polarity from address
             // AEDAT 2.0 format typically uses standard AER encoding:
@@ -697,10 +693,7 @@ impl AedatReader {
             buffer.extend_from_slice(&temp_buffer[..bytes_read]);
 
             // Look for header end - either double newline or end of file
-            if let Some(pos) = buffer
-                .windows(2)
-                .position(|w| w == b"\n\n")
-            {
+            if let Some(pos) = buffer.windows(2).position(|w| w == b"\n\n") {
                 header_size = pos as u64 + 2; // +2 to skip the double newline
                 break;
             }

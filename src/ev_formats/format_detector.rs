@@ -423,20 +423,20 @@ impl FormatDetector {
         if Self::starts_with(buffer, EVT2_MAGIC) || Self::starts_with(buffer, EVT3_MAGIC) {
             return false;
         }
-        
+
         // Check for other binary format indicators
         let content = String::from_utf8_lossy(buffer);
-        
+
         // Explicitly exclude EVT format files
         if content.contains("% evt ") || content.contains("% format EVT") {
             return false; // This is likely a binary format with ASCII header
         }
-        
+
         // Exclude files that contain the "% end" marker (typical of binary formats)
         if content.contains("% end") {
             return false;
         }
-        
+
         // Check if most bytes are ASCII printable or whitespace
         let printable_count = buffer
             .iter()
@@ -444,7 +444,7 @@ impl FormatDetector {
             .count();
 
         let ratio = printable_count as f64 / buffer.len() as f64;
-        
+
         // Use a higher threshold for files that might be binary formats
         // This prevents EVT3 files from being detected as text
         ratio > 0.98
@@ -694,20 +694,20 @@ impl FormatDetector {
         if buffer.len() >= EVT3_MAGIC.len() && Self::starts_with(buffer, EVT3_MAGIC) {
             return true;
         }
-        
+
         // Also check for EVT3 format string in the content
         let content = String::from_utf8_lossy(buffer);
-        
+
         // Check for the version string
         if content.contains("% evt 3.0") {
             return true;
         }
-        
+
         // Check for the format declaration
         if content.contains("% format EVT3") {
             return true;
         }
-        
+
         false
     }
 

@@ -7,9 +7,9 @@ import evlib
 def test_version():
     """Test the version function"""
     # Skip if version function is not available
-    if not hasattr(evlib, 'version'):
+    if not hasattr(evlib, "version"):
         pytest.skip("version function not available")
-    
+
     # Call the function
     result = evlib.version()
 
@@ -139,25 +139,25 @@ def test_module_attributes():
     """Test module attributes and structure"""
     # Check that available modules are present
     available_modules = []
-    
+
     if hasattr(evlib, "representations"):
         available_modules.append("representations")
     if hasattr(evlib, "formats"):
         available_modules.append("formats")
     if hasattr(evlib, "models"):
         available_modules.append("models")
-    
+
     print(f"Available modules: {available_modules}")
-    
+
     # Test that basic functions are available
     basic_functions = ["create_voxel_grid", "load_events", "smooth_voxel"]
     available_functions = []
-    
+
     for func_name in basic_functions:
         if hasattr(evlib, func_name):
             available_functions.append(func_name)
-    
+
     print(f"Available functions: {available_functions}")
-    
+
     # At least some basic functionality should be available
     assert len(available_functions) > 0, "No basic functions available"

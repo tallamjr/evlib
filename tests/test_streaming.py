@@ -28,9 +28,9 @@ def test_evlib_streaming_integration():
     import numpy as np
 
     # Skip if streaming module is not available
-    if not hasattr(evlib, 'streaming'):
+    if not hasattr(evlib, "streaming"):
         pytest.skip("streaming module not available")
-    
+
     # Create streaming configuration
     config = evlib.streaming.create_streaming_config()
     assert config is not None
