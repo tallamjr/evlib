@@ -36,6 +36,8 @@ pub enum EventFormat {
     AEDAT4,
     /// EVT2 format (Prophesee): Header + binary events
     EVT2,
+    /// EVT2.1 format (Prophesee): Header + binary events (64-bit vectorized)
+    EVT21,
     /// EVT3 format (Prophesee): Header + binary events (16-bit vectorized)
     EVT3,
     /// Raw binary format
@@ -55,6 +57,7 @@ impl std::fmt::Display for EventFormat {
             EventFormat::AEDAT3 => write!(f, "AEDAT 3.1"),
             EventFormat::AEDAT4 => write!(f, "AEDAT 4.0"),
             EventFormat::EVT2 => write!(f, "EVT2"),
+            EventFormat::EVT21 => write!(f, "EVT2.1"),
             EventFormat::EVT3 => write!(f, "EVT3"),
             EventFormat::Binary => write!(f, "Binary"),
             EventFormat::Unknown => write!(f, "Unknown"),
@@ -136,6 +139,7 @@ const AEDAT3_MAGIC: &[u8] = b"#!AER-DAT";
 const AEDAT2_MAGIC: &[u8] = b"#!AER-DAT2.0";
 const AEDAT1_MAGIC: &[u8] = b"#!AER-DAT1.0";
 const EVT2_MAGIC: &[u8] = b"% evt 2.0";
+const EVT21_MAGIC: &[u8] = b"% evt 2.1";
 const EVT3_MAGIC: &[u8] = b"% evt 3.0";
 
 /// Main format detector struct
@@ -253,6 +257,11 @@ impl FormatDetector {
 
         if Self::starts_with(&buffer, AEDAT1_MAGIC) {
             return Self::analyze_aedat1_format(path, metadata);
+        }
+
+        // Check for EVT2.1 format first (more specific)
+        if Self::contains_evt21_header(&buffer[..bytes_read]) {
+            return Self::analyze_evt21_format(path, metadata);
         }
 
         // Check for EVT2 format
@@ -420,7 +429,7 @@ impl FormatDetector {
     fn is_text_format(buffer: &[u8]) -> bool {
         // Don't treat files with binary format headers as text
         // Check for binary format headers first
-        if Self::starts_with(buffer, EVT2_MAGIC) || Self::starts_with(buffer, EVT3_MAGIC) {
+        if Self::starts_with(buffer, EVT2_MAGIC) || Self::starts_with(buffer, EVT21_MAGIC) || Self::starts_with(buffer, EVT3_MAGIC) {
             return false;
         }
 
@@ -685,7 +694,41 @@ impl FormatDetector {
     /// Check if buffer contains EVT2 header
     fn contains_evt2_header(buffer: &[u8]) -> bool {
         let content = String::from_utf8_lossy(buffer);
-        content.contains("% evt 2.0") || content.contains("% format EVT2")
+        
+        // Check for EVT2.0 specifically, not EVT2.1
+        if content.contains("% evt 2.0") && !content.contains("% evt 2.1") {
+            return true;
+        }
+        
+        // Check for EVT2 format (but not EVT21)
+        if content.contains("% format EVT2") && !content.contains("% format EVT21") {
+            return true;
+        }
+        
+        false
+    }
+
+    /// Check if buffer contains EVT2.1 header
+    fn contains_evt21_header(buffer: &[u8]) -> bool {
+        // Check for EVT2.1 magic bytes first - this is the most reliable method
+        if buffer.len() >= EVT21_MAGIC.len() && Self::starts_with(buffer, EVT21_MAGIC) {
+            return true;
+        }
+
+        // Also check for EVT2.1 format string in the content
+        let content = String::from_utf8_lossy(buffer);
+
+        // Check for the version string
+        if content.contains("% evt 2.1") {
+            return true;
+        }
+
+        // Check for the format declaration
+        if content.contains("% format EVT21") {
+            return true;
+        }
+
+        false
     }
 
     /// Check if buffer contains EVT3 header
@@ -750,6 +793,50 @@ impl FormatDetector {
 
         Ok(FormatDetectionResult {
             format: EventFormat::EVT2,
+            confidence: 0.95,
+            metadata,
+        })
+    }
+
+    /// Analyze EVT2.1 format (Prophesee)
+    fn analyze_evt21_format(
+        path: &Path,
+        mut metadata: FormatMetadata,
+    ) -> Result<FormatDetectionResult, FormatDetectionError> {
+        let mut file = File::open(path)?;
+        let mut header_buffer = [0u8; 2048]; // EVT2.1 headers can be similar to EVT2
+        let bytes_read = file.read(&mut header_buffer)?;
+
+        metadata.magic_bytes = Some(EVT21_MAGIC.to_vec());
+        metadata
+            .properties
+            .insert("detection_method".to_string(), "evt21_header".to_string());
+
+        let header_str = String::from_utf8_lossy(&header_buffer[..bytes_read]);
+
+        // Extract header information
+        let header_end = header_str.find("% end").unwrap_or(header_str.len());
+        let header_lines: Vec<&str> = header_str[..header_end].lines().collect();
+        metadata.header_info = Some(header_lines.join("\n"));
+
+        // Extract resolution from format line
+        for line in header_lines {
+            if line.contains("% format EVT21") {
+                if let Some(width) = Self::extract_evt2_parameter(line, "width") {
+                    if let Some(height) = Self::extract_evt2_parameter(line, "height") {
+                        metadata.sensor_resolution = Some((width, height));
+                    }
+                }
+            }
+        }
+
+        // Estimate event count based on remaining data
+        let header_size = header_str.find("% end").map(|pos| pos + 5).unwrap_or(0); // +5 for "% end"
+        let data_size = metadata.file_size - header_size as u64;
+        metadata.estimated_event_count = Some(data_size / 8); // EVT2.1 uses 8 bytes per event (64-bit words)
+
+        Ok(FormatDetectionResult {
+            format: EventFormat::EVT21,
             confidence: 0.95,
             metadata,
         })
@@ -828,6 +915,7 @@ impl FormatDetector {
             EventFormat::AEDAT3 => "AEDAT 3.1 format (signed little-endian)",
             EventFormat::AEDAT4 => "AEDAT 4.0 format (DV framework)",
             EventFormat::EVT2 => "EVT2 format (Prophesee binary events)",
+            EventFormat::EVT21 => "EVT2.1 format (Prophesee 64-bit vectorized binary events)",
             EventFormat::EVT3 => "EVT3 format (Prophesee vectorized binary events)",
             EventFormat::Binary => "Raw binary event data",
             EventFormat::Unknown => "Unknown or unsupported format",

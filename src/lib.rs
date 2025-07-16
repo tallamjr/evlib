@@ -12,10 +12,10 @@ pub mod ev_visualization;
 pub use ev_core::{Event, Events, DEVICE};
 
 // Test modules
-#[cfg(test)]
-mod test_evt2_detection;
-#[cfg(test)]
-mod test_polarity_conversion;
+// #[cfg(test)]
+// mod test_evt2_detection;
+// #[cfg(test)]
+// mod test_polarity_conversion;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

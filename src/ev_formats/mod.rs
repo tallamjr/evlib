@@ -26,6 +26,10 @@ pub use aer_reader::{AerConfig, AerError, AerMetadata, AerReader, TimestampMode}
 pub mod evt2_reader;
 pub use evt2_reader::{Evt2Config, Evt2Error, Evt2Metadata, Evt2Reader};
 
+// EVT2.1 format reader module
+pub mod evt21_reader;
+pub use evt21_reader::{Evt21Config, Evt21Error, Evt21Metadata, Evt21Reader};
+
 // EVT3 format reader module
 pub mod evt3_reader;
 pub use evt3_reader::{Evt3Config, Evt3Error, Evt3Metadata, Evt3Reader};
@@ -518,6 +522,23 @@ pub fn load_events_with_config(
                 polarity_encoding: config.polarity_encoding.clone(),
             };
             let reader = Evt2Reader::with_config(evt2_config);
+            let events = reader
+                .read_with_config(path, config)
+                .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+            Ok(events)
+        }
+        EventFormat::EVT21 => {
+            // Use EVT2.1 reader
+            let evt21_config = Evt21Config {
+                validate_coordinates: false,
+                skip_invalid_events: false,
+                max_events: None,
+                sensor_resolution: detection_result.metadata.sensor_resolution,
+                chunk_size: 500_000,
+                polarity_encoding: config.polarity_encoding.clone(),
+                decode_vectorized: true,
+            };
+            let reader = Evt21Reader::with_config(evt21_config);
             let events = reader
                 .read_with_config(path, config)
                 .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
@@ -1064,6 +1085,7 @@ pub mod python {
             "AEDAT 3.1" => EventFormat::AEDAT3,
             "AEDAT 4.0" => EventFormat::AEDAT4,
             "EVT2" => EventFormat::EVT2,
+            "EVT2.1" => EventFormat::EVT21,
             "EVT3" => EventFormat::EVT3,
             "Binary" => EventFormat::Binary,
             _ => EventFormat::Unknown,
