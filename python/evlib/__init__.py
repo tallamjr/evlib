@@ -1,22 +1,20 @@
 # This file is required for Python to recognize this directory as a package
 
-import numpy as np
-
 # Import submodules (with graceful fallback)
 try:
-    from . import models
+    from . import models  # noqa: F401
 
     _models_available = True
 except ImportError:
     _models_available = False
 
 try:
-    from . import representations
+    from . import representations  # noqa: F401
 
     _representations_available = True
 
     # Import key representation functions directly
-    from .representations import (
+    from .representations import (  # noqa: F401
         stacked_histogram,
         create_voxel_grid,
         create_time_surface,

@@ -95,7 +95,7 @@ def demonstrate_stacked_histogram():
     for i in range(max_bins_to_show):
         ax = axes[0, i]
         pos_slice = stacked_hist[i, :, :]
-        im = ax.imshow(pos_slice, cmap="Reds", vmin=0, vmax=stacked_hist.max())
+        ax.imshow(pos_slice, cmap="Reds", vmin=0, vmax=stacked_hist.max())
         ax.set_title(f"Positive Events\nTime Bin {i}")
         ax.axis("off")
 
@@ -103,7 +103,7 @@ def demonstrate_stacked_histogram():
     for i in range(max_bins_to_show):
         ax = axes[1, i]
         neg_slice = stacked_hist[bins + i, :, :]
-        im = ax.imshow(neg_slice, cmap="Blues", vmin=0, vmax=stacked_hist.max())
+        ax.imshow(neg_slice, cmap="Blues", vmin=0, vmax=stacked_hist.max())
         ax.set_title(f"Negative Events\nTime Bin {i}")
         ax.axis("off")
 

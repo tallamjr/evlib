@@ -6,7 +6,7 @@ available in evlib.
 """
 
 try:
-    from .config import ModelConfig
+    from .config import ModelConfig  # noqa: F401
 
     _config_available = True
 except ImportError:

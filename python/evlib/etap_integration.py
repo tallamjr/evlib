@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import warnings
 
 import numpy as np
+import evlib
 
 
 def find_etap_installation():
@@ -48,7 +49,6 @@ else:
 
 try:
     import torch
-    import torch.nn.functional as F
 
     TORCH_AVAILABLE = True
 except ImportError:
@@ -68,8 +68,6 @@ except ImportError:
     ETAP_AVAILABLE = False
     if TORCH_AVAILABLE:
         warnings.warn("ETAP model not found. Please ensure ETAP repository is available.")
-
-import evlib
 
 
 class ETAPTracker:

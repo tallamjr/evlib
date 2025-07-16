@@ -116,7 +116,7 @@ impl E2Vid {
     fn create_empty_tensor(&self, _events: &Events) -> CandleResult<Tensor> {
         let (width, height) = (self.image_shape.0, self.image_shape.1);
         Tensor::zeros(
-            (self.config.num_bins as usize, height, width),
+            (self.config.num_bins, height, width),
             DType::F32,
             &self.device,
         )

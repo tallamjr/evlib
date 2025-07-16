@@ -8,7 +8,7 @@ import time
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    import torch
+    import torch  # noqa: F401
 
     TORCH_AVAILABLE = True
 except ImportError:
@@ -16,7 +16,7 @@ except ImportError:
 
 EVLIB_AVAILABLE = False
 try:
-    import evlib
+    import evlib  # noqa: F401
 
     EVLIB_AVAILABLE = True
 except ImportError:
@@ -153,12 +153,12 @@ def test_device_optimization_strategies():
         },
     }
 
-    # Additional configuration parameters
-    optimization_params = {
-        "cpu": {"memory_alignment": 32},  # bytes
-        "cuda": {"max_threads_per_block": 1024},
-        "metal": {"threadgroup_size": 64},
-    }
+    # Additional configuration parameters would be defined here
+    # optimization_params = {
+    #     "cpu": {"memory_alignment": 32},  # bytes
+    #     "cuda": {"max_threads_per_block": 1024},
+    #     "metal": {"threadgroup_size": 64},
+    # }
 
     for device, strategies in optimization_strategies.items():
         # Validate strategy options (all should be boolean)

@@ -162,7 +162,7 @@ impl RawEvt2Event {
         }
 
         Ok(TimeHighEvent {
-            timestamp: ((self.data >> 4) & 0x0FFFFFFF) as u32,
+            timestamp: (self.data >> 4) & 0x0FFFFFFF,
         })
     }
 
@@ -365,7 +365,7 @@ impl Evt2Reader {
         let (metadata, header_size) = self.parse_header(&mut file)?;
 
         // Read binary data
-        let mut events = self.read_binary_data(&mut file, header_size, &metadata)?;
+        let events = self.read_binary_data(&mut file, header_size, &metadata)?;
 
         // Apply polarity encoding if configured
         if let Some(ref _handler) = self.polarity_handler {

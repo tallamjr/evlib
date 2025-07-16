@@ -19,7 +19,6 @@ from functools import partial
 import numpy as np
 
 
-
 def python_events_to_block(xs, ys, ts, ps):
     """Pure Python implementation of events_to_block"""
     n = len(xs)

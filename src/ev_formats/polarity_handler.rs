@@ -10,9 +10,10 @@
 use std::collections::HashMap;
 
 /// Supported polarity encoding schemes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PolarityEncoding {
     /// 0=negative, 1=positive (most common in real data)
+    #[default]
     ZeroOne,
     /// -1=negative, 1=positive (evlib internal representation)
     MinusOnePlusOne,
@@ -20,12 +21,6 @@ pub enum PolarityEncoding {
     TrueFalse,
     /// Auto-detect based on data analysis
     Auto,
-}
-
-impl Default for PolarityEncoding {
-    fn default() -> Self {
-        PolarityEncoding::ZeroOne
-    }
 }
 
 /// Polarity conversion configuration

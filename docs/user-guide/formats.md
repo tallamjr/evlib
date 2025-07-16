@@ -310,7 +310,7 @@ import h5py
 with h5py.File("data/file.h5", "r") as f:
     print("HDF5 structure:")
     f.visititems(print)
-    
+
     # Check dataset organization
     if "events" in f:
         print("Standard evlib format")
@@ -375,21 +375,21 @@ def convert_to_hdf5(input_file, output_file):
     """Convert any format to HDF5 for performance"""
     # Load with automatic format detection
     xs, ys, ts, ps = evlib.formats.load_events(input_file)
-    
+
     # Validate data
     assert len(xs) > 0, "No events loaded"
     assert np.all(np.isin(ps, [-1, 1])), "Invalid polarities"
-    
+
     # Save as HDF5
     evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_file)
-    
+
     # Verify round-trip
     xs2, ys2, ts2, ps2 = evlib.formats.load_events(output_file)
     np.testing.assert_array_equal(xs, xs2)
     np.testing.assert_array_equal(ys, ys2)
     np.testing.assert_array_equal(ts, ts2)
     np.testing.assert_array_equal(ps, ps2)
-    
+
     print(f"✅ Converted {len(xs)} events to HDF5")
 ```
 
@@ -402,10 +402,10 @@ def load_events_robust(file_path):
         # Try automatic format detection
         format_name, confidence, metadata = evlib.detect_format(file_path)
         print(f"Detected: {format_name} (confidence: {confidence:.2f})")
-        
+
         if confidence < 0.7:
             raise ValueError(f"Low confidence format detection: {confidence:.2f}")
-        
+
         # Load with appropriate configuration
         if format_name in ["Text", "HDF5", "EVT3"]:
             xs, ys, ts, ps = evlib.formats.load_events(file_path)
@@ -416,13 +416,13 @@ def load_events_robust(file_path):
             xs, ys, ts, ps = evlib.formats.load_events_with_config(file_path, config)
         else:
             raise ValueError(f"Unsupported format: {format_name}")
-        
+
         # Validate results
         if len(xs) == 0:
             raise ValueError("No events loaded")
-        
+
         return xs, ys, ts, ps
-        
+
     except Exception as e:
         print(f"❌ Failed to load {file_path}: {e}")
         return None
@@ -435,7 +435,7 @@ def process_large_file(file_path, time_window=1.0):
     """Process large files in time windows"""
     # Get file info without loading all data
     format_name, confidence, metadata = evlib.detect_format(file_path)
-    
+
     if "duration" in metadata:
         duration = metadata["duration"]
     else:
@@ -444,20 +444,20 @@ def process_large_file(file_path, time_window=1.0):
             file_path, t_start=0.0, t_end=1.0
         )
         duration = sample_ts.max() * 10  # Rough estimate
-    
+
     # Process in time windows
     results = []
     for t_start in np.arange(0, duration, time_window):
         t_end = min(t_start + time_window, duration)
-        
+
         xs, ys, ts, ps = evlib.formats.load_events_filtered(
             file_path, t_start=t_start, t_end=t_end
         )
-        
+
         if len(xs) > 0:
             result = process_time_window(xs, ys, ts, ps)
             results.append(result)
-    
+
     return results
 ```
 

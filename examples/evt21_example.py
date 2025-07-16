@@ -27,7 +27,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import evlib
+import evlib  # noqa: E402
 
 
 def create_synthetic_evt21_file(
@@ -77,7 +77,6 @@ def create_synthetic_evt21_file(
 
         # Generate binary data
         current_time_base = 0
-        time_base_increment = 1024  # 10-bit time increment
 
         events_written = 0
         i = 0
@@ -531,7 +530,6 @@ def example_6_real_world_usage():
             print(f"    Chunk {chunk_count}: {current_time:.3f}s → {chunk_size:,} events")
 
             # Simulate processing time
-            processing_rate = chunk_size / chunk_duration if chunk_duration > 0 else 0
 
             current_time = chunk_end
             chunk_count += 1

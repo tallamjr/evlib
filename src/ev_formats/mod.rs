@@ -433,13 +433,6 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
     Ok(events)
 }
 
-/// Memory-map a binary event file and return events
-///
-/// This is useful for large files that would not fit in memory.
-/// The binary format should be a sequence of Event structures.
-///
-/// # Arguments
-/// * `path` - Path to the binary file
 // Binary format (mmap_events) removed due to safety and reliability issues:
 // 1. Unsafe memory operations with no validation
 // 2. Assumes files contain raw Event structs (almost never true)
@@ -519,7 +512,7 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding.clone(),
+                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt2Reader::with_config(evt2_config);
             let events = reader
@@ -535,7 +528,7 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 500_000,
-                polarity_encoding: config.polarity_encoding.clone(),
+                polarity_encoding: config.polarity_encoding,
                 decode_vectorized: true,
             };
             let reader = Evt21Reader::with_config(evt21_config);
@@ -552,7 +545,7 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding.clone(),
+                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt3Reader::with_config(evt3_config);
             let events = reader
@@ -747,7 +740,48 @@ pub mod python {
         ),
         name = "load_events"
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn load_events_py(
+        py: Python<'_>,
+        path: &str,
+        t_start: Option<f64>,
+        t_end: Option<f64>,
+        min_x: Option<u16>,
+        max_x: Option<u16>,
+        min_y: Option<u16>,
+        max_y: Option<u16>,
+        polarity: Option<i8>,
+        sort: bool,
+        chunk_size: Option<usize>,
+        x_col: Option<usize>,
+        y_col: Option<usize>,
+        t_col: Option<usize>,
+        p_col: Option<usize>,
+        header_lines: usize,
+    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
+        load_events_py_impl(
+            py,
+            path,
+            t_start,
+            t_end,
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            polarity,
+            sort,
+            chunk_size,
+            x_col,
+            y_col,
+            t_col,
+            p_col,
+            header_lines,
+        )
+    }
+
+    /// Internal implementation split to reduce argument count in clippy
+    #[allow(clippy::too_many_arguments)]
+    fn load_events_py_impl(
         py: Python<'_>,
         path: &str,
         t_start: Option<f64>,
@@ -841,7 +875,48 @@ pub mod python {
         ),
         name = "load_events_filtered"
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn load_events_filtered_py(
+        py: Python<'_>,
+        path: &str,
+        t_start: Option<f64>,
+        t_end: Option<f64>,
+        min_x: Option<u16>,
+        max_x: Option<u16>,
+        min_y: Option<u16>,
+        max_y: Option<u16>,
+        polarity: Option<i8>,
+        sort: bool,
+        chunk_size: Option<usize>,
+        x_col: Option<usize>,
+        y_col: Option<usize>,
+        t_col: Option<usize>,
+        p_col: Option<usize>,
+        header_lines: usize,
+    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
+        load_events_filtered_py_impl(
+            py,
+            path,
+            t_start,
+            t_end,
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            polarity,
+            sort,
+            chunk_size,
+            x_col,
+            y_col,
+            t_col,
+            p_col,
+            header_lines,
+        )
+    }
+
+    /// Internal implementation split to reduce argument count in clippy
+    #[allow(clippy::too_many_arguments)]
+    fn load_events_filtered_py_impl(
         py: Python<'_>,
         path: &str,
         t_start: Option<f64>,

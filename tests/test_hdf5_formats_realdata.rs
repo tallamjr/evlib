@@ -536,8 +536,8 @@ fn test_hdf5_performance_large_files() {
                     let duration = start.elapsed();
                     let rate = events.len() as f64 / duration.as_secs_f64();
 
-                    println!("Performance test: Loaded {} events from {} MB file in {:.2}s ({:.0} events/sec)", 
-                             events.len(), 
+                    println!("Performance test: Loaded {} events from {} MB file in {:.2}s ({:.0} events/sec)",
+                             events.len(),
                              largest_size / 1_000_000,
                              duration.as_secs_f64(),
                              rate);

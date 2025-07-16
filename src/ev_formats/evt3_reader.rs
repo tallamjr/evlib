@@ -87,7 +87,7 @@ impl RawEvt3Event {
         }
 
         Ok(YAddrEvent {
-            y: ((self.data >> 4) & 0x7FF) as u16,
+            y: (self.data >> 4) & 0x7FF,
             orig: ((self.data >> 15) & 0x1) != 0,
         })
     }
@@ -102,7 +102,7 @@ impl RawEvt3Event {
         }
 
         Ok(XAddrEvent {
-            x: ((self.data >> 4) & 0x7FF) as u16,
+            x: (self.data >> 4) & 0x7FF,
             polarity: ((self.data >> 15) & 0x1) != 0,
         })
     }
@@ -117,7 +117,7 @@ impl RawEvt3Event {
         }
 
         Ok(VectBaseXEvent {
-            x: ((self.data >> 4) & 0x7FF) as u16,
+            x: (self.data >> 4) & 0x7FF,
             polarity: ((self.data >> 15) & 0x1) != 0,
         })
     }
@@ -132,7 +132,7 @@ impl RawEvt3Event {
         }
 
         Ok(Vect12Event {
-            valid: ((self.data >> 4) & 0xFFF) as u16,
+            valid: (self.data >> 4) & 0xFFF,
         })
     }
 
@@ -161,7 +161,7 @@ impl RawEvt3Event {
         }
 
         Ok(TimeEvent {
-            time: ((self.data >> 4) & 0xFFF) as u16,
+            time: (self.data >> 4) & 0xFFF,
             is_high: event_type == Evt3EventType::TimeHigh,
         })
     }
@@ -353,13 +353,14 @@ pub struct Evt3Metadata {
 }
 
 /// Decoder state for EVT3 events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct DecoderState {
     /// Current timestamp (24-bit)
     current_timestamp: u32,
     /// Current Y coordinate
     current_y: u16,
     /// Current polarity
+    #[allow(dead_code)]
     current_polarity: bool,
     /// Current vector base X coordinate
     vect_base_x: u16,
@@ -369,20 +370,6 @@ struct DecoderState {
     has_y: bool,
     /// Whether we have a valid timestamp
     has_timestamp: bool,
-}
-
-impl Default for DecoderState {
-    fn default() -> Self {
-        Self {
-            current_timestamp: 0,
-            current_y: 0,
-            current_polarity: false,
-            vect_base_x: 0,
-            vect_base_polarity: false,
-            has_y: false,
-            has_timestamp: false,
-        }
-    }
 }
 
 /// EVT3 reader implementation
@@ -423,7 +410,7 @@ impl Evt3Reader {
         let (metadata, header_size) = self.parse_header(&mut file)?;
 
         // Read binary data
-        let mut events = self.read_binary_data(&mut file, header_size, &metadata)?;
+        let events = self.read_binary_data(&mut file, header_size, &metadata)?;
 
         // Apply polarity encoding if configured
         if let Some(ref _handler) = self.polarity_handler {

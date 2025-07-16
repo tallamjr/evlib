@@ -285,10 +285,7 @@ pub fn events_to_time_windows(
 /// Python bindings for the representations module
 #[cfg(feature = "python")]
 pub mod python {
-    use super::*;
-    use crate::ev_core::from_numpy_arrays;
-    use numpy::{IntoPyArray, PyReadonlyArray1};
-    use pyo3::prelude::*;
+    // All Python bindings have been removed due to cleanup
 
     // Voxel grid Python binding has been removed
 

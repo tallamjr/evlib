@@ -118,7 +118,7 @@ def process_events_data(events, description=""):
         print(f"Data type: {type(events)}")
         try:
             print(f"Length: {len(events)}")
-        except:
+        except (TypeError, AttributeError):
             print("Cannot determine length")
 
     return events

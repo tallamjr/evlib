@@ -468,8 +468,8 @@ impl AedatReader {
 
             let event = Event {
                 t: timestamp as f64,
-                x: x as u16,
-                y: y as u16,
+                x,
+                y,
                 polarity,
             };
 
@@ -549,12 +549,12 @@ impl AedatReader {
             if line.starts_with('#') {
                 // Parse header information
                 if line.contains("sizeX") {
-                    if let Some(width) = self.extract_number_from_line(&line) {
+                    if let Some(width) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((width, metadata.sensor_resolution.unwrap_or((0, 0)).1));
                     }
                 } else if line.contains("sizeY") {
-                    if let Some(height) = self.extract_number_from_line(&line) {
+                    if let Some(height) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((metadata.sensor_resolution.unwrap_or((0, 0)).0, height));
                     }
@@ -710,12 +710,12 @@ impl AedatReader {
             if line.starts_with('#') {
                 // Parse header information
                 if line.contains("sizeX") {
-                    if let Some(width) = self.extract_number_from_line(&line) {
+                    if let Some(width) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((width, metadata.sensor_resolution.unwrap_or((0, 0)).1));
                     }
                 } else if line.contains("sizeY") {
-                    if let Some(height) = self.extract_number_from_line(&line) {
+                    if let Some(height) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((metadata.sensor_resolution.unwrap_or((0, 0)).0, height));
                     }
@@ -909,12 +909,12 @@ impl AedatReader {
             if line.starts_with('#') {
                 // Parse DV framework header information
                 if line.contains("sizeX") {
-                    if let Some(width) = self.extract_number_from_line(&line) {
+                    if let Some(width) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((width, metadata.sensor_resolution.unwrap_or((0, 0)).1));
                     }
                 } else if line.contains("sizeY") {
-                    if let Some(height) = self.extract_number_from_line(&line) {
+                    if let Some(height) = self.extract_number_from_line(line) {
                         metadata.sensor_resolution =
                             Some((metadata.sensor_resolution.unwrap_or((0, 0)).0, height));
                     }
@@ -1089,13 +1089,11 @@ impl AedatReader {
         }
 
         // Validate polarity
-        if self.config.validate_polarity {
-            if event.polarity != -1 && event.polarity != 1 {
-                return Err(AedatError::InvalidPolarity {
-                    event_index,
-                    polarity: event.polarity,
-                });
-            }
+        if self.config.validate_polarity && event.polarity != -1 && event.polarity != 1 {
+            return Err(AedatError::InvalidPolarity {
+                event_index,
+                polarity: event.polarity,
+            });
         }
 
         // Additional bounds checking for unreasonable coordinates

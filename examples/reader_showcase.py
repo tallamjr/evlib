@@ -14,7 +14,7 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import evlib
+import evlib  # noqa: E402
 
 
 def read_large_hdf5_file():
@@ -287,10 +287,10 @@ def read_temporal_chunks():
                 )
 
                 # Example: Extract chunk data
-                chunk_timestamps = timestamps[chunk_mask]
-                chunk_x = x_coords[chunk_mask]
-                chunk_y = y_coords[chunk_mask]
-                chunk_pol = polarities[chunk_mask]
+                _chunk_timestamps = timestamps[chunk_mask]
+                _chunk_x = x_coords[chunk_mask]
+                _chunk_y = y_coords[chunk_mask]
+                _chunk_pol = polarities[chunk_mask]
 
                 # Could process this chunk separately...
 

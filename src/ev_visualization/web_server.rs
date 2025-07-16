@@ -41,6 +41,12 @@ pub struct EventBroadcaster {
     event_buffer: Vec<Event>,
 }
 
+impl Default for EventBroadcaster {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventBroadcaster {
     pub fn new() -> Self {
         Self {
@@ -102,7 +108,7 @@ impl EventBroadcaster {
             }
         } else {
             // Only log buffering for significant accumulations
-            if self.event_buffer.len() % 100 == 0 && self.event_buffer.len() > 0 {
+            if self.event_buffer.len() % 100 == 0 && !self.event_buffer.is_empty() {
                 println!(
                     "Buffering {} events (total: {}, clients: {})",
                     event_count,

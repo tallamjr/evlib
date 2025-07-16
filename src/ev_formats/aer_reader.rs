@@ -384,15 +384,13 @@ impl AerReader {
         let polarity = if polarity_bit == 1 { 1i8 } else { -1i8 };
 
         // Validate coordinates if requested
-        if self.config.validate_coordinates {
-            if x > self.config.max_x || y > self.config.max_y {
-                return Err(AerError::InvalidCoordinate(
-                    x,
-                    y,
-                    self.config.max_x,
-                    self.config.max_y,
-                ));
-            }
+        if self.config.validate_coordinates && (x > self.config.max_x || y > self.config.max_y) {
+            return Err(AerError::InvalidCoordinate(
+                x,
+                y,
+                self.config.max_x,
+                self.config.max_y,
+            ));
         }
 
         // Create event with placeholder timestamp (will be generated later if needed)

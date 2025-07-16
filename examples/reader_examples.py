@@ -14,7 +14,7 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import evlib
+import evlib  # noqa: E402
 
 
 def example_1_large_hdf5():
@@ -164,10 +164,10 @@ def example_6_temporal_slicing():
             )
 
             # Extract slice data
-            slice_timestamps = timestamps[mask]
-            slice_x = x_coords[mask]
-            slice_y = y_coords[mask]
-            slice_pol = polarities[mask]
+            _slice_timestamps = timestamps[mask]
+            _slice_x = x_coords[mask]
+            _slice_y = y_coords[mask]
+            _slice_pol = polarities[mask]
 
             # Could process this slice separately...
 
@@ -225,9 +225,9 @@ def example_8_memory_efficient():
             end_idx = min((i + 1) * chunk_size, len(timestamps))
 
             chunk_timestamps = timestamps[start_idx:end_idx]
-            chunk_x = x_coords[start_idx:end_idx]
-            chunk_y = y_coords[start_idx:end_idx]
-            chunk_pol = polarities[start_idx:end_idx]
+            _chunk_x = x_coords[start_idx:end_idx]
+            _chunk_y = y_coords[start_idx:end_idx]
+            _chunk_pol = polarities[start_idx:end_idx]
 
             chunk_duration = chunk_timestamps.max() - chunk_timestamps.min()
             chunk_rate = len(chunk_timestamps) / chunk_duration if chunk_duration > 0 else 0
