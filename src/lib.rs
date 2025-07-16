@@ -177,7 +177,6 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     streaming_submodule.add_class::<ev_processing::streaming::python::PyEventStream>()?;
     m.add_submodule(streaming_submodule)?;
 
-
     // Register ev_simulation module as "simulation" in Python
     let simulation_submodule = PyModule::new(py, "simulation")?;
     simulation_submodule.add_function(wrap_pyfunction!(

@@ -429,7 +429,10 @@ impl FormatDetector {
     fn is_text_format(buffer: &[u8]) -> bool {
         // Don't treat files with binary format headers as text
         // Check for binary format headers first
-        if Self::starts_with(buffer, EVT2_MAGIC) || Self::starts_with(buffer, EVT21_MAGIC) || Self::starts_with(buffer, EVT3_MAGIC) {
+        if Self::starts_with(buffer, EVT2_MAGIC)
+            || Self::starts_with(buffer, EVT21_MAGIC)
+            || Self::starts_with(buffer, EVT3_MAGIC)
+        {
             return false;
         }
 
@@ -694,17 +697,17 @@ impl FormatDetector {
     /// Check if buffer contains EVT2 header
     fn contains_evt2_header(buffer: &[u8]) -> bool {
         let content = String::from_utf8_lossy(buffer);
-        
+
         // Check for EVT2.0 specifically, not EVT2.1
         if content.contains("% evt 2.0") && !content.contains("% evt 2.1") {
             return true;
         }
-        
+
         // Check for EVT2 format (but not EVT21)
         if content.contains("% format EVT2") && !content.contains("% format EVT21") {
             return true;
         }
-        
+
         false
     }
 

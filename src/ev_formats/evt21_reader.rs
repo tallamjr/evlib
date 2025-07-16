@@ -123,13 +123,13 @@ impl RawEvt21Event {
         // Extract fields from 64-bit word
         // Bits 63-32: 32-bit validity mask (1 bit per pixel)
         let validity_mask = ((self.data >> 32) & 0xFFFFFFFF) as u32;
-        
+
         // Bits 31-26: Y coordinate (need more bits for values like 200)
         let y = ((self.data >> 26) & 0x3FF) as u16;
-        
+
         // Bits 25-14: X coordinate base (12 bits)
         let x_base = ((self.data >> 14) & 0xFFF) as u16;
-        
+
         // Bits 13-4: Timestamp (10 bits - lower portion)
         let timestamp = ((self.data >> 4) & 0x3FF) as u16;
 
@@ -204,11 +204,11 @@ impl RawEvt21Event {
 /// Vectorized event structure for EVT_NEG and EVT_POS
 #[derive(Debug, Clone, Copy)]
 pub struct VectorizedEvent {
-    pub x_base: u16,         // Base X coordinate (12 bits)
-    pub y: u16,              // Y coordinate (12 bits)
-    pub timestamp: u16,      // Timestamp lower bits (10 bits)
-    pub polarity: bool,      // Event polarity (true for EVT_POS, false for EVT_NEG)
-    pub validity_mask: u32,  // 32-bit mask indicating valid pixels
+    pub x_base: u16,        // Base X coordinate (12 bits)
+    pub y: u16,             // Y coordinate (12 bits)
+    pub timestamp: u16,     // Timestamp lower bits (10 bits)
+    pub polarity: bool,     // Event polarity (true for EVT_POS, false for EVT_NEG)
+    pub validity_mask: u32, // 32-bit mask indicating valid pixels
 }
 
 /// Time High event structure for 64-bit timestamps
@@ -220,16 +220,16 @@ pub struct TimeHighEvent {
 /// External Trigger event structure
 #[derive(Debug, Clone, Copy)]
 pub struct ExtTriggerEvent {
-    pub value: bool,      // Trigger edge polarity
-    pub id: u8,           // Trigger channel ID (5 bits)
-    pub timestamp: u16,   // 10-bit timestamp (LSB of full timestamp)
+    pub value: bool,    // Trigger edge polarity
+    pub id: u8,         // Trigger channel ID (5 bits)
+    pub timestamp: u16, // 10-bit timestamp (LSB of full timestamp)
 }
 
 /// Vendor-specific event structure
 #[derive(Debug, Clone, Copy)]
 pub struct VendorEvent {
     pub event_type: Evt21EventType,
-    pub data: u64,        // 60-bit vendor-specific data
+    pub data: u64, // 60-bit vendor-specific data
 }
 
 /// Errors that can occur during EVT2.1 reading
@@ -287,7 +287,9 @@ impl std::fmt::Display for Evt21Error {
             }
             Evt21Error::TimestampError(msg) => write!(f, "Timestamp error: {}", msg),
             Evt21Error::PolarityError(e) => write!(f, "Polarity error: {}", e),
-            Evt21Error::VectorizedDecodingError(msg) => write!(f, "Vectorized decoding error: {}", msg),
+            Evt21Error::VectorizedDecodingError(msg) => {
+                write!(f, "Vectorized decoding error: {}", msg)
+            }
         }
     }
 }
@@ -387,7 +389,10 @@ impl Evt21Reader {
     }
 
     /// Read EVT2.1 file and return events with metadata
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<(Events, Evt21Metadata), Evt21Error> {
+    pub fn read_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(Events, Evt21Metadata), Evt21Error> {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
@@ -496,7 +501,11 @@ impl Evt21Reader {
     }
 
     /// Parse format line (e.g., "EVT21;height=720;width=1280")
-    fn parse_format_line(&self, line: &str, metadata: &mut Evt21Metadata) -> Result<(), Evt21Error> {
+    fn parse_format_line(
+        &self,
+        line: &str,
+        metadata: &mut Evt21Metadata,
+    ) -> Result<(), Evt21Error> {
         let parts: Vec<&str> = line.split(';').collect();
 
         if parts.is_empty() || !parts[0].starts_with("EVT2") {
@@ -605,8 +614,14 @@ impl Evt21Reader {
 
                 // Parse raw event (little-endian)
                 let raw_data = u64::from_le_bytes([
-                    raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3],
-                    raw_bytes[4], raw_bytes[5], raw_bytes[6], raw_bytes[7],
+                    raw_bytes[0],
+                    raw_bytes[1],
+                    raw_bytes[2],
+                    raw_bytes[3],
+                    raw_bytes[4],
+                    raw_bytes[5],
+                    raw_bytes[6],
+                    raw_bytes[7],
                 ]);
 
                 let raw_event = RawEvt21Event { data: raw_data };
@@ -617,7 +632,8 @@ impl Evt21Reader {
                             Evt21EventType::TimeHigh => {
                                 let time_event =
                                     raw_event.as_time_high_event().map_err(|mut e| {
-                                        if let Evt21Error::InvalidEventType { offset, .. } = &mut e {
+                                        if let Evt21Error::InvalidEventType { offset, .. } = &mut e
+                                        {
                                             *offset = word_offset;
                                         }
                                         e
@@ -647,12 +663,14 @@ impl Evt21Reader {
                                     continue;
                                 }
 
-                                let vectorized_event = raw_event.as_vectorized_event().map_err(|mut e| {
-                                    if let Evt21Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = word_offset;
-                                    }
-                                    e
-                                })?;
+                                let vectorized_event =
+                                    raw_event.as_vectorized_event().map_err(|mut e| {
+                                        if let Evt21Error::InvalidEventType { offset, .. } = &mut e
+                                        {
+                                            *offset = word_offset;
+                                        }
+                                        e
+                                    })?;
 
                                 // Decode vectorized event into individual events
                                 if self.config.decode_vectorized {
@@ -735,12 +753,7 @@ impl Evt21Reader {
                 if self.config.validate_coordinates {
                     if let Some((max_x, max_y)) = metadata.sensor_resolution {
                         if x >= max_x || y >= max_y {
-                            let error = Evt21Error::CoordinateOutOfBounds {
-                                x,
-                                y,
-                                max_x,
-                                max_y,
-                            };
+                            let error = Evt21Error::CoordinateOutOfBounds { x, y, max_x, max_y };
 
                             if self.config.skip_invalid_events {
                                 continue;
@@ -783,30 +796,41 @@ mod tests {
     #[test]
     fn test_evt21_event_type_parsing() {
         // Test EVT_NEG event
-        let raw_event = RawEvt21Event { data: 0x0000000000000000 };
+        let raw_event = RawEvt21Event {
+            data: 0x0000000000000000,
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtNeg);
 
         // Test EVT_POS event
-        let raw_event = RawEvt21Event { data: 0x0000000000000001 };
+        let raw_event = RawEvt21Event {
+            data: 0x0000000000000001,
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtPos);
 
         // Test Time High event
-        let raw_event = RawEvt21Event { data: 0x0000000000000008 };
+        let raw_event = RawEvt21Event {
+            data: 0x0000000000000008,
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::TimeHigh);
 
         // Test External Trigger event
-        let raw_event = RawEvt21Event { data: 0x000000000000000A };
+        let raw_event = RawEvt21Event {
+            data: 0x000000000000000A,
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::ExtTrigger);
 
         // Test invalid event type (0x10 is not a valid event type)
-        let raw_event = RawEvt21Event { data: 0x0000000000000010 };
+        let raw_event = RawEvt21Event {
+            data: 0x0000000000000010,
+        };
         assert!(raw_event.event_type().is_err());
     }
 
     #[test]
     fn test_vectorized_event_parsing() {
         // Test EVT_POS event at (100, 200) with timestamp 30 and validity mask 0x0000000F
-        let raw_data = (0x0000000Fu64 << 32) | (200u64 << 26) | (100u64 << 14) | (30u64 << 4) | 0x01;
+        let raw_data =
+            (0x0000000Fu64 << 32) | (200u64 << 26) | (100u64 << 14) | (30u64 << 4) | 0x01;
         let raw_event = RawEvt21Event { data: raw_data };
 
         let vec_event = raw_event.as_vectorized_event().unwrap();
@@ -885,7 +909,9 @@ mod tests {
             validity_mask: 0x0000000F, // First 4 bits set
         };
 
-        let events = reader.decode_vectorized_event(&vectorized_event, 1000000, &metadata).unwrap();
+        let events = reader
+            .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
+            .unwrap();
         assert_eq!(events.len(), 4); // 4 bits set in validity mask
 
         // Check first event
@@ -923,7 +949,10 @@ mod tests {
 
         let result = reader.decode_vectorized_event(&vectorized_event, 1000000, &metadata);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Evt21Error::CoordinateOutOfBounds { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            Evt21Error::CoordinateOutOfBounds { .. }
+        ));
     }
 
     #[test]
@@ -947,7 +976,9 @@ mod tests {
             validity_mask: 0x00000001,
         };
 
-        let events = reader.decode_vectorized_event(&vectorized_event, 1000000, &metadata).unwrap();
+        let events = reader
+            .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
+            .unwrap();
         assert_eq!(events.len(), 0); // Event should be skipped
     }
 }
