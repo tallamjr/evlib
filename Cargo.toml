@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.2.0"
+version         = "0.2.2"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -54,10 +54,10 @@ name = "standalone_benchmark"
 harness = false
 
 [dependencies]
-# Python bindings
-numpy          = "0.18.0"
-pyo3           = { version = "0.18.3", features = ["extension-module"] }
-pyo3-ffi       = "0.18.3"
+# Python bindings (optional)
+numpy          = { version = "0.18.0", optional = true }
+pyo3           = { version = "0.18.3", features = ["extension-module"], optional = true }
+pyo3-ffi       = { version = "0.18.3", optional = true }
 
 # Core data processing
 ndarray        = "0.15.6"
@@ -114,8 +114,8 @@ tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
-default        = ["python", "polars"]
-python         = []
+default        = ["polars"]
+python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy"]
 cuda           = ["candle-core/cuda"]
 metal          = ["candle-core/metal"]
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]

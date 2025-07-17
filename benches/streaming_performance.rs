@@ -348,7 +348,7 @@ fn benchmark_streaming_configuration(c: &mut Criterion) {
             "high_memory",
             StreamingConfig {
                 chunk_size: 2_000_000,
-                memory_limit_mb: 1024,
+                _memory_limit_mb: 1024,
                 progress_interval: 5_000_000,
             },
         ),
@@ -356,7 +356,7 @@ fn benchmark_streaming_configuration(c: &mut Criterion) {
             "low_memory",
             StreamingConfig {
                 chunk_size: 250_000,
-                memory_limit_mb: 128,
+                _memory_limit_mb: 128,
                 progress_interval: 1_000_000,
             },
         ),
@@ -364,7 +364,7 @@ fn benchmark_streaming_configuration(c: &mut Criterion) {
             "optimized",
             StreamingConfig {
                 chunk_size: 1_000_000,
-                memory_limit_mb: 512,
+                _memory_limit_mb: 512,
                 progress_interval: 10_000_000,
             },
         ),

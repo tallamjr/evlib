@@ -9,8 +9,8 @@ use polars::prelude::*;
 pub struct StreamingConfig {
     /// Number of events to process per chunk
     pub chunk_size: usize,
-    /// Maximum memory usage in MB
-    pub memory_limit_mb: usize,
+    /// Maximum memory usage in MB (reserved for future use)
+    pub _memory_limit_mb: usize,
     /// Progress reporting interval (in events)
     pub progress_interval: usize,
 }
@@ -19,7 +19,7 @@ impl Default for StreamingConfig {
     fn default() -> Self {
         Self {
             chunk_size: 1_000_000,
-            memory_limit_mb: 512,
+            _memory_limit_mb: 512,
             progress_interval: 10_000_000,
         }
     }
@@ -32,7 +32,7 @@ impl Default for StreamingConfig {
 pub struct PolarsEventStreamer {
     chunk_size: usize,
     format: EventFormat,
-    memory_limit_mb: usize,
+    _memory_limit_mb: usize,
     progress_interval: usize,
 }
 
@@ -49,7 +49,7 @@ impl PolarsEventStreamer {
         Self {
             chunk_size,
             format,
-            memory_limit_mb: 512,
+            _memory_limit_mb: 512,
             progress_interval: 10_000_000,
         }
     }
@@ -66,7 +66,7 @@ impl PolarsEventStreamer {
         Self {
             chunk_size: config.chunk_size,
             format,
-            memory_limit_mb: config.memory_limit_mb,
+            _memory_limit_mb: config._memory_limit_mb,
             progress_interval: config.progress_interval,
         }
     }
@@ -90,11 +90,19 @@ impl PolarsEventStreamer {
         // Clamp to reasonable bounds
         let chunk_size = memory_based_chunk_size.clamp(100_000, 10_000_000);
 
-        // For very large files, prefer smaller chunks for better memory control
-        if total_events > 100_000_000 {
-            chunk_size.min(1_000_000)
+        // Optimize chunk size based on file size
+        if total_events > 500_000_000 {
+            // Very large files (500M+): Use larger chunks for efficiency
+            chunk_size.clamp(5_000_000, 10_000_000)
+        } else if total_events > 100_000_000 {
+            // Large files (100M+): Use medium-large chunks
+            chunk_size.clamp(2_000_000, 5_000_000)
+        } else if total_events > 10_000_000 {
+            // Medium files (10M+): Use medium chunks
+            chunk_size.clamp(1_000_000, 2_000_000)
         } else {
-            chunk_size
+            // Smaller files: Use smaller chunks
+            chunk_size.clamp(100_000, 1_000_000)
         }
     }
 

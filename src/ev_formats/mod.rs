@@ -279,7 +279,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
     }
 
     // Check if we have a compound dataset at root level (less common)
-    if let Ok(dataset) = file.dataset(dataset_name) {
+    if let Ok(_dataset) = file.dataset(dataset_name) {
         // For compound datasets, we'll skip this for now since the separate field approach
         // works better with different HDF5 layouts and hdf5-metno
         eprintln!("Found compound dataset at root level - this layout is not yet supported with hdf5-metno");
@@ -775,27 +775,8 @@ pub mod python {
     use pyo3::prelude::*;
     use std::io::Write;
 
-    /// Convert event polarity based on format-specific encoding requirements
-    fn convert_polarity(polarity: bool, format: &EventFormat) -> i8 {
-        match format {
-            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family uses -1/1 encoding
-                if polarity {
-                    1i8
-                } else {
-                    -1i8
-                }
-            }
-            _ => {
-                // HDF5, Text, and other formats use 0/1 encoding
-                if polarity {
-                    1i8
-                } else {
-                    0i8
-                }
-            }
-        }
-    }
+    // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
+    // in build_polars_dataframe() for better performance
 
     /// Convert timestamp to microseconds for Polars Duration type
     fn convert_timestamp(timestamp: f64) -> i64 {
@@ -860,7 +841,7 @@ pub mod python {
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
 
         // Create initial DataFrame with raw polarity
-        let mut df = DataFrame::new(vec![
+        let df = DataFrame::new(vec![
             x_series,
             y_series,
             timestamp_series,

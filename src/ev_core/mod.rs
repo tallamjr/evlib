@@ -5,7 +5,8 @@ use candle_core::{DType, Device, Result, Tensor};
 use lazy_static::lazy_static;
 // Remove unused import
 
-// Python bindings module
+// Python bindings module (optional)
+#[cfg(feature = "python")]
 pub mod python;
 
 lazy_static! {
@@ -63,6 +64,7 @@ pub fn events_to_tensor(events: &Events) -> Result<Tensor> {
 }
 
 /// Convert Python event arrays into our internal Events type
+#[cfg(feature = "python")]
 pub fn from_numpy_arrays(
     xs: numpy::PyReadonlyArray1<i64>,
     ys: numpy::PyReadonlyArray1<i64>,
