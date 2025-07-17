@@ -1,9 +1,9 @@
 [package]
 name            = "evlib"
-version         = "0.1.51"
+version         = "0.2.0"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
-description     = "High-performance event-camera utilities with Python bindings via PyO3"
+description     = "Event Camera Data Processing Library"
 readme          = "README.md"
 license         = "MIT"
 repository      = "https://github.com/tallamjr/evlib"
@@ -32,6 +32,26 @@ required-features = ["terminal", "gstreamer"]
 [[bin]]
 name           = "evlib-web"
 required-features = ["gstreamer", "terminal"]
+
+[[bench]]
+name = "memory_efficiency"
+harness = false
+
+[[bench]]
+name = "streaming_performance"
+harness = false
+
+[[bench]]
+name = "format_comparison"
+harness = false
+
+[[bench]]
+name = "basic_performance"
+harness = false
+
+[[bench]]
+name = "standalone_benchmark"
+harness = false
 
 [dependencies]
 # Python bindings
@@ -91,6 +111,7 @@ clap           = { version = "4.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tempfile       = "3.8"
+criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
 default        = ["python", "polars"]

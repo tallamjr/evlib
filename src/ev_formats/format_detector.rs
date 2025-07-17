@@ -18,7 +18,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 
 /// Supported event data formats
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EventFormat {
     /// Plain text format with space-separated values
     Text,

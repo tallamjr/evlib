@@ -40,6 +40,10 @@ pub use polarity_handler::{
     PolarityConfig, PolarityEncoding, PolarityError, PolarityHandler, PolarityStats,
 };
 
+// Streaming module for large file processing
+pub mod streaming;
+pub use streaming::{PolarsEventStreamer, StreamingConfig, should_use_streaming, estimate_memory_usage};
+
 // Polars support integrated directly into file readers
 
 /// Configuration for loading events with filtering options
@@ -769,6 +773,128 @@ pub mod python {
     use pyo3::prelude::*;
     use std::io::Write;
 
+    /// Convert event polarity based on format-specific encoding requirements
+    fn convert_polarity(polarity: bool, format: &EventFormat) -> i8 {
+        match format {
+            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
+                // EVT2 family uses -1/1 encoding
+                if polarity { 1i8 } else { -1i8 }
+            },
+            _ => {
+                // HDF5, Text, and other formats use 0/1 encoding
+                if polarity { 1i8 } else { 0i8 }
+            }
+        }
+    }
+
+    /// Convert timestamp to microseconds for Polars Duration type
+    fn convert_timestamp(timestamp: f64) -> i64 {
+        if timestamp > 1_000_000.0 {
+            // Already in microseconds
+            timestamp as i64
+        } else {
+            // Convert seconds to microseconds
+            (timestamp * 1_000_000.0) as i64
+        }
+    }
+
+    /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency
+    #[cfg(feature = "polars")]
+    fn build_polars_dataframe(events: &[Event], format: EventFormat) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
+        use polars::prelude::*;
+        
+        let len = events.len();
+        
+        if len == 0 {
+            // Create empty DataFrame with proper schema
+            let empty_x = Series::new("x", Vec::<i16>::new());
+            let empty_y = Series::new("y", Vec::<i16>::new());
+            let empty_timestamp = Series::new("timestamp", Vec::<i64>::new())
+                .cast(&DataType::Duration(TimeUnit::Microseconds))?;
+            let empty_polarity = Series::new("polarity", Vec::<i8>::new());
+            
+            return DataFrame::new(vec![empty_x, empty_y, empty_timestamp, empty_polarity]);
+        }
+        
+        // Use optimal data types for memory efficiency
+        // x, y: Int16 (sufficient for coordinates, saves 50% memory vs Int32)
+        // timestamp: Int64 (required for microsecond precision)
+        // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
+        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);
+        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y", len);
+        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", len);
+        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
+        
+        // Single iteration with direct population - zero intermediate copies
+        for event in events {
+            x_builder.append_value(event.x as i16);
+            y_builder.append_value(event.y as i16);
+            timestamp_builder.append_value(convert_timestamp(event.t));
+            polarity_builder.append_value(convert_polarity(event.polarity, &format));
+        }
+        
+        // Build Series from builders
+        let x_series = x_builder.finish().into_series();
+        let y_series = y_builder.finish().into_series();
+        let polarity_series = polarity_builder.finish().into_series();
+        
+        // Convert timestamp to Duration type
+        let timestamp_series = timestamp_builder
+            .finish()
+            .into_series()
+            .cast(&DataType::Duration(TimeUnit::Microseconds))?;
+        
+        // Create DataFrame with all series
+        DataFrame::new(vec![x_series, y_series, timestamp_series, polarity_series])
+    }
+
+    /// Convert Polars DataFrame to Python dictionary for LazyFrame creation
+    #[cfg(feature = "polars")]
+    fn polars_dataframe_to_python_dict(py: Python<'_>, df: polars::prelude::DataFrame) -> PyResult<PyObject> {
+        use polars::prelude::*;
+        
+        let mut data_dict = std::collections::HashMap::new();
+        
+        for column in df.get_columns() {
+            let column_name = column.name();
+            let column_data = match column.dtype() {
+                DataType::Int16 => {
+                    let values: Vec<i16> = column.i16()
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                            format!("Failed to extract i16 column: {}", e)
+                        ))?
+                        .into_no_null_iter()
+                        .collect();
+                    values.into_py(py)
+                }
+                DataType::Int8 => {
+                    let values: Vec<i8> = column.i8()
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                            format!("Failed to extract i8 column: {}", e)
+                        ))?
+                        .into_no_null_iter()
+                        .collect();
+                    values.into_py(py)
+                }
+                DataType::Duration(TimeUnit::Microseconds) => {
+                    let values: Vec<i64> = column.duration()
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                            format!("Failed to extract duration column: {}", e)
+                        ))?
+                        .into_no_null_iter()
+                        .collect();
+                    values.into_py(py)
+                }
+                _ => return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    format!("Unsupported column type: {:?}", column.dtype())
+                ))
+            };
+            data_dict.insert(column_name.to_string(), column_data);
+        }
+        
+        Ok(data_dict.into_py(py))
+    }
+
     /// Load events from a file with filtering support (using Polars backend)
     ///
     /// Automatically detects the format based on file extension
@@ -844,41 +970,44 @@ pub mod python {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {}", e))
         })?;
 
-        // Extract and convert data efficiently in Rust for Polars
-        let x: Vec<i16> = events.iter().map(|e| e.x as i16).collect();
-        let y: Vec<i16> = events.iter().map(|e| e.y as i16).collect();
-        
-        // Format-specific polarity encoding
-        let polarity: Vec<i8> = match format_result.format {
-            EventFormat::EVT2 => {
-                // EVT2 expects -1/1 encoding
-                events.iter().map(|e| if e.polarity { 1i8 } else { -1i8 }).collect()
-            },
-            _ => {
-                // HDF5, Text, and other formats expect 0/1 encoding
-                events.iter().map(|e| if e.polarity { 1i8 } else { 0i8 }).collect()
-            }
-        };
-
-        // Handle timestamp conversion to microseconds in Rust
-        let timestamps_us: Vec<i64> = events.iter().map(|e| {
-            if e.t > 1_000_000.0 {
-                // Already in microseconds
-                e.t as i64
+        // NEW: Direct Polars DataFrame construction with automatic streaming for large files
+        #[cfg(feature = "polars")]
+        {
+            use crate::ev_formats::streaming::should_use_streaming;
+            
+            // Check if we should use streaming based on event count
+            let event_count = events.len();
+            let default_threshold = 5_000_000; // 5M events
+            let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
+            
+            let df = if should_use_streaming(event_count, Some(streaming_threshold)) {
+                // Use streaming for large datasets
+                let chunk_size = PolarsEventStreamer::calculate_optimal_chunk_size(event_count, 512);
+                let streamer = PolarsEventStreamer::new(chunk_size, format_result.format);
+                
+                eprintln!("Using streaming mode for {} events (chunk size: {})", event_count, chunk_size);
+                
+                streamer.stream_to_polars(events.into_iter()).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to stream Polars DataFrame: {}", e))
+                })?
             } else {
-                // Convert seconds to microseconds
-                (e.t * 1_000_000.0) as i64
-            }
-        }).collect();
-
-        // Return as Python dict for Polars LazyFrame creation
-        let mut data_dict = std::collections::HashMap::new();
-        data_dict.insert("x".to_string(), x.into_py(py));
-        data_dict.insert("y".to_string(), y.into_py(py));
-        data_dict.insert("timestamp".to_string(), timestamps_us.into_py(py));
-        data_dict.insert("polarity".to_string(), polarity.into_py(py));
-
-        Ok(data_dict.into_py(py))
+                // Direct construction for smaller datasets
+                build_polars_dataframe(&events, format_result.format).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to build Polars DataFrame: {}", e))
+                })?
+            };
+            
+            // Convert to Python dict for LazyFrame creation
+            polars_dataframe_to_python_dict(py, df)
+        }
+        
+        #[cfg(not(feature = "polars"))]
+        {
+            // Fallback: should not happen since polars is default feature
+            Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Polars feature not enabled - this should not happen with default build"
+            ))
+        }
     }
 
 
