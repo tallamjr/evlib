@@ -454,7 +454,7 @@ impl AedatReader {
             // Coordinate system: (0,0) in lower left corner
 
             // Extract polarity from bit 0
-            let polarity = if (address & 1) == 1 { 1 } else { -1 };
+            let polarity = (address & 1) == 1;
 
             // Extract x coordinate from bits 7-1 (7 bits)
             let x = (address >> 1) & 0x7F; // 7 bits: 0x7F = 0111 1111
@@ -619,7 +619,7 @@ impl AedatReader {
             // - Bit 31: Reserved/unused
 
             // Extract polarity from bit 0
-            let polarity = if (address & 1) == 1 { 1 } else { -1 };
+            let polarity = (address & 1) == 1;
 
             // Extract x coordinate from bits 1-15 (up to 15 bits)
             let x = (address >> 1) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
@@ -794,7 +794,7 @@ impl AedatReader {
             }
 
             // Extract polarity from bit 1
-            let polarity = if ((address >> 1) & 1) == 1 { 1 } else { -1 };
+            let polarity = ((address >> 1) & 1) == 1;
 
             // Extract y coordinate from bits 2-16 (up to 15 bits)
             let y = (address >> 2) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
@@ -1033,7 +1033,7 @@ impl AedatReader {
             //   - Bits 0-14: Y coordinate (0-32767)
 
             // Extract polarity from MSB of y
-            let polarity = if (y & 0x8000) != 0 { 1 } else { -1 };
+            let polarity = (y & 0x8000) != 0;
 
             // Extract y coordinate by masking out polarity bit
             let y_clean = y & 0x7FFF; // Remove polarity bit (bit 15)
@@ -1088,13 +1088,7 @@ impl AedatReader {
             }
         }
 
-        // Validate polarity
-        if self.config.validate_polarity && event.polarity != -1 && event.polarity != 1 {
-            return Err(AedatError::InvalidPolarity {
-                event_index,
-                polarity: event.polarity,
-            });
-        }
+        // Validate polarity - bool is always valid, so this check is removed
 
         // Additional bounds checking for unreasonable coordinates
         if event.x > 8192 || event.y > 8192 {

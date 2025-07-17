@@ -56,12 +56,15 @@ tch            = { version = "0.16", optional = true }
 # ONNX Runtime for model inference
 ort            = { version = "2.0.0-rc.9", default-features = false, features = ["download-binaries", "copy-dylibs"] }
 
+# Polars for efficient event data processing (optional)
+polars         = { version = "0.45.1", default-features = false, features = ["temporal", "dtype-u16", "dtype-i8", "lazy"], optional = true }
+
 # I/O & utilities
 memmap2        = "0.5"
 image          = "0.24"
 async-channel  = "1.6"
 lazy_static    = "1.4"
-hdf5           = "0.8.1"
+hdf5-metno     = { version = "0.10.1", features = ["blosc-all"] }
 
 # GStreamer for video processing
 gstreamer      = { version = "0.22", optional = true }
@@ -96,4 +99,5 @@ cuda           = ["candle-core/cuda"]
 metal          = ["candle-core/metal"]
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 pytorch        = ["dep:tch"]
+polars         = ["dep:polars"]
 terminal       = ["dep:ratatui", "dep:crossterm", "dep:clap"]

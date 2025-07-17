@@ -2,7 +2,7 @@
 // Handles reading and writing events from various file formats
 
 use crate::ev_core::{Event, Events};
-use hdf5::File as H5File;
+use hdf5_metno::File as H5File;
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -40,6 +40,11 @@ pub use polarity_handler::{
     PolarityConfig, PolarityEncoding, PolarityError, PolarityHandler, PolarityStats,
 };
 
+// Polars DataFrame conversion module removed - using minimal approach
+
+// Polars support will be handled through simple dictionary conversion in Python
+
+
 /// Configuration for loading events with filtering options
 #[derive(Debug, Clone, Default)]
 pub struct LoadConfig {
@@ -55,8 +60,8 @@ pub struct LoadConfig {
     pub min_y: Option<u16>,
     /// Maximum y coordinate (inclusive)
     pub max_y: Option<u16>,
-    /// Polarity filter (1 for positive, -1 for negative, None for both)
-    pub polarity: Option<i8>,
+    /// Polarity filter (true for positive, false for negative, None for both)
+    pub polarity: Option<bool>,
     /// Sort events by timestamp after loading
     pub sort: bool,
     /// Chunk size for memory management (not used for filtering, but affects performance)
@@ -104,7 +109,7 @@ impl LoadConfig {
     }
 
     /// Set polarity filter
-    pub fn with_polarity(mut self, polarity: Option<i8>) -> Self {
+    pub fn with_polarity(mut self, polarity: Option<bool>) -> Self {
         self.polarity = polarity;
         self
     }
@@ -191,32 +196,83 @@ impl LoadConfig {
 
 /// Load events from an HDF5 file
 ///
-/// Expects a dataset "events" or similar with fields t, x, y, polarity.
+/// Handles various HDF5 layouts including compound datasets and separate field datasets.
+/// Supports both root-level datasets and datasets within groups.
 ///
 /// # Arguments
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
-pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5::Result<Events> {
+pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_metno::Result<Events> {
+    // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
+    
     let file = H5File::open(path)?;
     let dataset_name = dataset_name.unwrap_or("events");
 
-    // Check if we have a compound dataset
+    // First, check for datasets inside an "events" group (most common for modern files)
+    if let Ok(events_group) = file.group("events") {
+        // Try common field name combinations for separate datasets
+        let field_combinations = [
+            ("t", "x", "y", "p"),
+            ("ts", "xs", "ys", "ps"),
+            ("timestamps", "x_pos", "y_pos", "polarity"),
+            ("time", "x_coord", "y_coord", "pol"),
+        ];
+
+        for (t_name, x_name, y_name, p_name) in field_combinations {
+            if let (Ok(t_dataset), Ok(x_dataset), Ok(y_dataset), Ok(p_dataset)) = (
+                events_group.dataset(t_name),
+                events_group.dataset(x_name),
+                events_group.dataset(y_name),
+                events_group.dataset(p_name),
+            ) {
+                // Get dataset dimensions
+                let shape = t_dataset.shape();
+                let total_events = shape[0];
+                
+                // For very large files, read in chunks to avoid memory issues
+                let chunk_size = if total_events > 100_000_000 { 10_000_000 } else { total_events };
+                
+                let mut events = Vec::with_capacity(total_events);
+                
+                for start_idx in (0..total_events).step_by(chunk_size) {
+                    let end_idx = std::cmp::min(start_idx + chunk_size, total_events);
+                    let chunk_len = end_idx - start_idx;
+                    
+                    // Read chunk of data with proper type handling
+                    let t_chunk: Vec<u32> = t_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let x_chunk: Vec<i32> = x_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let y_chunk: Vec<i32> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let p_chunk: Vec<i32> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    
+                    // Convert chunk to events
+                    for i in 0..chunk_len {
+                        events.push(Event {
+                            t: t_chunk[i] as f64 / 1_000_000.0, // Convert uint32 microseconds to seconds
+                            x: x_chunk[i] as u16, // Convert i32 to u16
+                            y: y_chunk[i] as u16,
+                            polarity: p_chunk[i] != 0, // Convert i32 to bool
+                        });
+                    }
+                    
+                    // Print progress for large files
+                    if total_events > 10_000_000 {
+                        let progress = (end_idx as f64 / total_events as f64) * 100.0;
+                        if end_idx % 50_000_000 == 0 || end_idx == total_events {
+                            eprintln!("Loading HDF5: {:.1}% ({}/{})", progress, end_idx, total_events);
+                        }
+                    }
+                }
+
+                return Ok(events);
+            }
+        }
+    }
+
+    // Check if we have a compound dataset at root level (less common)
     if let Ok(dataset) = file.dataset(dataset_name) {
-        // Try reading as an array of tuples (t,x,y,p)
-        let data: Vec<(f64, u16, u16, i8)> = dataset.read_raw()?.to_vec();
-
-        // Convert into our Event struct
-        let events: Events = data
-            .into_iter()
-            .map(|(t, x, y, p)| Event {
-                t,
-                x,
-                y,
-                polarity: p,
-            })
-            .collect();
-
-        return Ok(events);
+        // For compound datasets, we'll skip this for now since the separate field approach
+        // works better with different HDF5 layouts and hdf5-metno
+        eprintln!("Found compound dataset at root level - this layout is not yet supported with hdf5-metno");
     }
 
     // Fallback: check for separate datasets
@@ -243,10 +299,10 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5::Re
 
             for i in 0..n {
                 events.push(Event {
-                    t: t_arr[i],
+                    t: t_arr[i] / 1_000_000.0, // Convert microseconds to seconds
                     x: x_arr[i],
                     y: y_arr[i],
-                    polarity: p_arr[i],
+                    polarity: p_arr[i] != 0, // Convert i8 to bool
                 });
             }
 
@@ -273,10 +329,10 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5::Re
 
                 for i in 0..n {
                     events.push(Event {
-                        t: t_arr[i],
+                        t: t_arr[i] / 1_000_000.0, // Convert microseconds to seconds
                         x: x_arr[i],
                         y: y_arr[i],
-                        polarity: p_arr[i],
+                        polarity: p_arr[i] != 0, // Convert i8 to bool
                     });
                 }
 
@@ -286,7 +342,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5::Re
     }
 
     // If we get here, we couldn't find the data in any expected format
-    Err(hdf5::Error::Internal(format!(
+    Err(hdf5_metno::Error::Internal(format!(
         "Could not find event data in HDF5 file {}",
         path
     )))
@@ -398,7 +454,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
                 ),
             )
         })?;
-        let polarity = parts[p_col].parse::<i8>().map_err(|e| {
+        let polarity_raw = parts[p_col].parse::<i8>().map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
@@ -409,6 +465,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
                 ),
             )
         })?;
+        
+        // Convert polarity to boolean: 0 -> false, non-zero -> true
+        let polarity = polarity_raw != 0;
 
         let event = Event { t, x, y, polarity };
 
@@ -448,25 +507,6 @@ pub fn load_events_from_text_simple(path: &str) -> IoResult<Events> {
     load_events_from_text(path, &LoadConfig::new())
 }
 
-/// Load events from HDF5 with filtering support
-pub fn load_events_from_hdf5_filtered(
-    path: &str,
-    dataset_name: Option<&str>,
-    config: &LoadConfig,
-) -> hdf5::Result<Events> {
-    let mut events = load_events_from_hdf5(path, dataset_name)?;
-
-    // Apply filters to the loaded events
-    events.retain(|event| config.passes_filters(event));
-
-    // Sort if requested
-    if config.sort {
-        events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
-    Ok(events)
-}
-
 /// Generic load function with automatic format detection and filtering
 pub fn load_events_with_config(
     path: &str,
@@ -476,7 +516,16 @@ pub fn load_events_with_config(
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
-        EventFormat::HDF5 => Ok(load_events_from_hdf5_filtered(path, None, config)?),
+        EventFormat::HDF5 => {
+            let mut events = load_events_from_hdf5(path, None)?;
+            // Apply filters to the loaded events
+            events.retain(|event| config.passes_filters(event));
+            // Sort if requested
+            if config.sort {
+                events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+            }
+            Ok(events)
+        }
         EventFormat::Text => Ok(load_events_from_text(path, config)?),
         EventFormat::AEDAT1 | EventFormat::AEDAT2 | EventFormat::AEDAT3 | EventFormat::AEDAT4 => {
             // Use comprehensive AEDAT reader
@@ -639,7 +688,7 @@ impl Iterator for EventFileIterator {
                     t,
                     x,
                     y,
-                    polarity: p,
+                    polarity: p > 0,
                 }))
             }
             Err(e) => Some(Err(e)),
@@ -716,9 +765,22 @@ pub mod python {
     use pyo3::prelude::*;
     use std::io::Write;
 
-    /// Load events from a file (text, HDF5, or binary)
+    /// Load events from a file with filtering support
     ///
     /// Automatically detects the format based on file extension
+    ///
+    /// Args:
+    ///     path: Path to the event file
+    ///     t_start: Start time filter (inclusive)
+    ///     t_end: End time filter (inclusive)
+    ///     min_x, max_x, min_y, max_y: Spatial bounds filters
+    ///     polarity: Polarity filter (1 for positive, -1 for negative, None for both)
+    ///     sort: Sort events by timestamp after loading
+    ///     x_col, y_col, t_col, p_col: Custom column indices for text files
+    ///     header_lines: Number of header lines to skip in text files
+    ///
+    /// Returns:
+    ///     Tuple of (x, y, timestamp, polarity) numpy arrays
     #[pyfunction]
     #[pyo3(
         signature = (
@@ -731,7 +793,6 @@ pub mod python {
             max_y=None,
             polarity=None,
             sort=false,
-            chunk_size=None,
             x_col=None,
             y_col=None,
             t_col=None,
@@ -752,90 +813,59 @@ pub mod python {
         max_y: Option<u16>,
         polarity: Option<i8>,
         sort: bool,
-        chunk_size: Option<usize>,
         x_col: Option<usize>,
         y_col: Option<usize>,
         t_col: Option<usize>,
         p_col: Option<usize>,
         header_lines: usize,
     ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
-        load_events_py_impl(
-            py,
-            path,
-            t_start,
-            t_end,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            polarity,
-            sort,
-            chunk_size,
-            x_col,
-            y_col,
-            t_col,
-            p_col,
-            header_lines,
-        )
-    }
+        // Convert i8 polarity filter to bool
+        let polarity_bool = polarity.map(|p| p > 0);
+        
+        let config = LoadConfig::new()
+            .with_time_window(t_start, t_end)
+            .with_spatial_bounds(min_x, max_x, min_y, max_y)
+            .with_polarity(polarity_bool)
+            .with_sorting(sort)
+            .with_custom_columns(t_col, x_col, y_col, p_col)
+            .with_header_lines(header_lines);
 
-    /// Internal implementation split to reduce argument count in clippy
-    #[allow(clippy::too_many_arguments)]
-    fn load_events_py_impl(
-        py: Python<'_>,
-        path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
-        sort: bool,
-        chunk_size: Option<usize>,
-        x_col: Option<usize>,
-        y_col: Option<usize>,
-        t_col: Option<usize>,
-        p_col: Option<usize>,
-        header_lines: usize,
-    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
-        // Create LoadConfig from parameters
-        let config = LoadConfig {
-            t_start,
-            t_end,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            polarity,
-            sort,
-            chunk_size,
-            x_col,
-            y_col,
-            t_col,
-            p_col,
-            header_lines,
-            polarity_encoding: None,
-        };
-
-        // Load events with filtering
-        let events = load_events_with_config(path, &config).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Error loading events: {}", e))
+        // Detect format for polarity encoding
+        let detection_result = format_detector::detect_event_format(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Format detection failed: {}",
+                e
+            ))
         })?;
 
-        // Separate event fields into arrays
-        let n = events.len();
+        let events = load_events_with_config(path, &config).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to load events: {}",
+                e
+            ))
+        })?;
 
+        // Convert to separate arrays
+        let n = events.len();
         let mut timestamps = Vec::with_capacity(n);
         let mut xs = Vec::with_capacity(n);
         let mut ys = Vec::with_capacity(n);
         let mut polarities = Vec::with_capacity(n);
 
+        // Convert bool polarities to format-specific encoding
+        let use_negative_one = matches!(detection_result.format, EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3);
+        
         for ev in events {
             timestamps.push(ev.t);
             xs.push(ev.x as i64);
             ys.push(ev.y as i64);
-            polarities.push(ev.polarity as i64);
+            if use_negative_one {
+                // EVT2/EVT21 formats use -1/1 encoding
+                polarities.push(if ev.polarity { 1i64 } else { -1i64 });
+            } else {
+                // HDF5/Text formats use 0/1 encoding
+                polarities.push(if ev.polarity { 1i64 } else { 0i64 });
+            }
         }
 
         // Convert to numpy arrays
@@ -852,140 +882,7 @@ pub mod python {
         ))
     }
 
-    /// Load events with filtering support
-    /// Automatically detects the format based on file extension and applies filters
-    #[pyfunction]
-    #[pyo3(
-        signature = (
-            path,
-            t_start=None,
-            t_end=None,
-            min_x=None,
-            max_x=None,
-            min_y=None,
-            max_y=None,
-            polarity=None,
-            sort=false,
-            chunk_size=None,
-            x_col=None,
-            y_col=None,
-            t_col=None,
-            p_col=None,
-            header_lines=0
-        ),
-        name = "load_events_filtered"
-    )]
-    #[allow(clippy::too_many_arguments)]
-    pub fn load_events_filtered_py(
-        py: Python<'_>,
-        path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
-        sort: bool,
-        chunk_size: Option<usize>,
-        x_col: Option<usize>,
-        y_col: Option<usize>,
-        t_col: Option<usize>,
-        p_col: Option<usize>,
-        header_lines: usize,
-    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
-        load_events_filtered_py_impl(
-            py,
-            path,
-            t_start,
-            t_end,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            polarity,
-            sort,
-            chunk_size,
-            x_col,
-            y_col,
-            t_col,
-            p_col,
-            header_lines,
-        )
-    }
 
-    /// Internal implementation split to reduce argument count in clippy
-    #[allow(clippy::too_many_arguments)]
-    fn load_events_filtered_py_impl(
-        py: Python<'_>,
-        path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
-        sort: bool,
-        chunk_size: Option<usize>,
-        x_col: Option<usize>,
-        y_col: Option<usize>,
-        t_col: Option<usize>,
-        p_col: Option<usize>,
-        header_lines: usize,
-    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
-        // Create LoadConfig from parameters
-        let config = LoadConfig {
-            t_start,
-            t_end,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            polarity,
-            sort,
-            chunk_size,
-            x_col,
-            y_col,
-            t_col,
-            p_col,
-            header_lines,
-            polarity_encoding: None,
-        };
-
-        // Load events with filtering
-        let events = load_events_with_config(path, &config).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Error loading events: {}", e))
-        })?;
-
-        // Separate event fields into arrays
-        let n = events.len();
-
-        let mut timestamps = Vec::with_capacity(n);
-        let mut xs = Vec::with_capacity(n);
-        let mut ys = Vec::with_capacity(n);
-        let mut polarities = Vec::with_capacity(n);
-
-        for ev in events {
-            timestamps.push(ev.t);
-            xs.push(ev.x as i64);
-            ys.push(ev.y as i64);
-            polarities.push(ev.polarity as i64);
-        }
-
-        // Convert to numpy arrays
-        let ts_array = PyArray1::from_vec(py, timestamps);
-        let xs_array = PyArray1::from_vec(py, xs);
-        let ys_array = PyArray1::from_vec(py, ys);
-        let ps_array = PyArray1::from_vec(py, polarities);
-
-        Ok((
-            xs_array.to_object(py),
-            ys_array.to_object(py),
-            ts_array.to_object(py),
-            ps_array.to_object(py),
-        ))
-    }
 
     /// Save events to an HDF5 file
     #[pyfunction]
@@ -1022,7 +919,7 @@ pub mod python {
         let xs_vec: Vec<u16> = xs.as_array().iter().map(|&x| x as u16).collect();
         let ys_vec: Vec<u16> = ys.as_array().iter().map(|&y| y as u16).collect();
         let ts_vec: Vec<f64> = ts.as_slice().unwrap().to_vec();
-        let ps_vec: Vec<i8> = ps.as_array().iter().map(|&p| p as i8).collect();
+        let ps_vec: Vec<i8> = ps.as_array().iter().map(|&p| if p == 0 { 0i8 } else { 1i8 }).collect();
 
         // Create datasets for each component
         let xs_shape = [n];
@@ -1169,158 +1066,12 @@ pub mod python {
         Ok(FormatDetector::get_format_description(&event_format).to_string())
     }
 
-    // Python wrapper for EventFileIterator
-    #[pyclass]
-    pub struct PyEventFileIterator {
-        path: String,
-        reader: Option<EventFileIterator>,
-    }
 
-    #[pymethods]
-    impl PyEventFileIterator {
-        #[new]
-        fn new(path: String) -> Self {
-            PyEventFileIterator { path, reader: None }
-        }
 
-        fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-            slf
-        }
 
-        fn __next__(&mut self, _py: Python<'_>) -> PyResult<Option<(f64, i64, i64, i64)>> {
-            // Initialize reader if needed
-            if self.reader.is_none() {
-                self.reader = Some(EventFileIterator::new(&self.path).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                        "Failed to open file: {}",
-                        e
-                    ))
-                })?);
-            }
 
-            // Read next event
-            if let Some(ref mut reader) = self.reader {
-                match reader.next() {
-                    Some(Ok(event)) => Ok(Some((
-                        event.t,
-                        event.x as i64,
-                        event.y as i64,
-                        event.polarity as i64,
-                    ))),
-                    Some(Err(e)) => Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                        "Error reading event: {}",
-                        e
-                    ))),
-                    None => Ok(None),
-                }
-            } else {
-                // This shouldn't happen, but just in case
-                Ok(None)
-            }
-        }
-    }
 
-    // Python wrapper for TimeWindowIter
-    #[pyclass]
-    pub struct PyTimeWindowIter {
-        events_xs: Vec<i64>,
-        events_ys: Vec<i64>,
-        events_ts: Vec<f64>,
-        events_ps: Vec<i64>,
-        window_duration: f64,
-        current_idx: usize,
-        start_time: f64,
-        end_time: f64,
-    }
 
-    #[pymethods]
-    impl PyTimeWindowIter {
-        #[new]
-        fn new(
-            xs: PyReadonlyArray1<i64>,
-            ys: PyReadonlyArray1<i64>,
-            ts: PyReadonlyArray1<f64>,
-            ps: PyReadonlyArray1<i64>,
-            window_duration: f64,
-        ) -> PyResult<Self> {
-            // Convert to Rust vectors
-            let xs_vec = xs.as_slice().unwrap().to_vec();
-            let ys_vec = ys.as_slice().unwrap().to_vec();
-            let ts_vec = ts.as_slice().unwrap().to_vec();
-            let ps_vec = ps.as_slice().unwrap().to_vec();
 
-            // Validate
-            let n = ts_vec.len();
-            if xs_vec.len() != n || ys_vec.len() != n || ps_vec.len() != n {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Arrays must have the same length",
-                ));
-            }
 
-            let start_time = if !ts_vec.is_empty() { ts_vec[0] } else { 0.0 };
-            let end_time = start_time + window_duration;
-
-            Ok(PyTimeWindowIter {
-                events_xs: xs_vec,
-                events_ys: ys_vec,
-                events_ts: ts_vec,
-                events_ps: ps_vec,
-                window_duration,
-                current_idx: 0,
-                start_time,
-                end_time,
-            })
-        }
-
-        fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-            slf
-        }
-
-        fn __next__(
-            &mut self,
-            py: Python<'_>,
-        ) -> PyResult<Option<(PyObject, PyObject, PyObject, PyObject)>> {
-            if self.current_idx >= self.events_ts.len() {
-                return Ok(None);
-            }
-
-            let mut xs_window = Vec::new();
-            let mut ys_window = Vec::new();
-            let mut ts_window = Vec::new();
-            let mut ps_window = Vec::new();
-            let mut idx = self.current_idx;
-
-            // Collect events within current time window
-            while idx < self.events_ts.len() && self.events_ts[idx] < self.end_time {
-                xs_window.push(self.events_xs[idx]);
-                ys_window.push(self.events_ys[idx]);
-                ts_window.push(self.events_ts[idx]);
-                ps_window.push(self.events_ps[idx]);
-                idx += 1;
-            }
-
-            // Update state for next iteration
-            self.current_idx = idx;
-            self.start_time = self.end_time;
-            self.end_time += self.window_duration;
-
-            // If no events in this window, move to the next one
-            if xs_window.is_empty() {
-                return self.__next__(py);
-            }
-
-            // Convert to numpy arrays
-            let xs_array = PyArray1::from_vec(py, xs_window);
-            let ys_array = PyArray1::from_vec(py, ys_window);
-            let ts_array = PyArray1::from_vec(py, ts_window);
-            let ps_array = PyArray1::from_vec(py, ps_window);
-
-            Ok(Some((
-                xs_array.to_object(py),
-                ys_array.to_object(py),
-                ts_array.to_object(py),
-                ps_array.to_object(py),
-            )))
-        }
-    }
 }

@@ -822,7 +822,7 @@ impl Evt3Reader {
             t: timestamp as f64 / 1_000_000.0, // Convert μs to seconds
             x,
             y,
-            polarity: if polarity { 1 } else { -1 },
+            polarity,
         };
 
         Ok(Some(event))

@@ -660,7 +660,7 @@ impl Evt2Reader {
                                     t: timestamp as f64 / 1_000_000.0, // Convert μs to seconds
                                     x: cd_event.x,
                                     y: cd_event.y,
-                                    polarity: if cd_event.polarity { 1 } else { -1 },
+                                    polarity: cd_event.polarity,
                                 };
 
                                 events.push(event);

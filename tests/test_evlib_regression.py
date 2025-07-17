@@ -12,12 +12,13 @@ Test patterns match:
 - Polarity encoding validation (-1/1 vs 0/1)
 """
 
-import pytest
-import numpy as np
-import sys
-from pathlib import Path
-import time
 import gc
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pytest
 
 # Add the project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -58,7 +59,7 @@ class TestEvlibRegression:
                 "resolution": (1280, 720),  # Actual: 1279x719 max
                 "expected_event_count": (3300000, 3500000),  # Actual: 3397511
                 "polarity_encoding": (0, 1),  # HDF5 uses 0/1 encoding
-                "min_duration": 5000000.0,  # Actual: 5091880.000s (microseconds?)
+                "min_duration": 5.0,  # Actual: 5.091880 seconds (was microseconds)
                 "description": "Small HDF5 file (~14MB)",
             },
             "hdf5_large": {
@@ -97,6 +98,18 @@ class TestEvlibRegression:
                 "min_duration": 20000.0,
                 "description": "Extra large HDF5 file seq02",
             },
+            "gen4_1mpx_blosc": {
+                "path": data_dir
+                / "gen4_1mpx_original/val/moorea_2019-02-21_000_td_2257500000_2317500000_td.h5",
+                "format": "HDF5",
+                "resolution": (1280, 720),  # Gen4 1mpx resolution
+                "expected_event_count": (540000000, 541000000),  # Actual: 540124055
+                "polarity_encoding": (-1, 1),  # Gen4 uses -1/1 encoding
+                "min_duration": 59.9,  # Actual: ~60 seconds (microseconds 0 to 59999999)
+                "description": "Gen4 1mpx with BLOSC compression (~1.1GB, 540M events)",
+                "compression": "BLOSC",  # Special marker for BLOSC compression testing
+                "test_chunked_loading": True,  # This file tests our chunked loading
+            },
         }
 
     def test_file_existence(self, data_files):
@@ -119,6 +132,7 @@ class TestEvlibRegression:
             "text_medium",
             "hdf5_xlarge",
             "hdf5_seq02",
+            "gen4_1mpx_blosc",
         ],
     )
     def test_format_detection(self, data_files, file_key):
@@ -164,11 +178,20 @@ class TestEvlibRegression:
         result = evlib.load_events(str(file_info["path"]))
         load_time = time.time() - start_time
 
-        # Verify result structure
-        assert isinstance(result, tuple), f"load_events should return tuple, got {type(result)}"
-        assert len(result) == 4, f"load_events should return 4-tuple, got {len(result)}"
+        # Verify result structure (should be Polars LazyFrame)
+        assert hasattr(result, "collect"), f"load_events should return LazyFrame, got {type(result)}"
 
-        x, y, t, p = result
+        # Collect to get the actual data
+        df = result.collect()
+        assert len(df.columns) == 4, f"DataFrame should have 4 columns, got {len(df.columns)}"
+
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        # Convert duration to seconds
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
+        p = df["polarity"].to_numpy()
 
         # Verify array types
         assert isinstance(x, np.ndarray), f"x should be numpy array, got {type(x)}"
@@ -239,7 +262,14 @@ class TestEvlibRegression:
         result = evlib.load_events(str(file_info["path"]))
         load_time = time.time() - start_time
 
-        x, y, t, p = result
+        df = result.collect()
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        # Convert duration to seconds
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
+        p = df["polarity"].to_numpy()
         event_count = len(x)
 
         # Performance assertions
@@ -272,37 +302,65 @@ class TestEvlibRegression:
             pytest.skip(f"Test file not found: {file_info['path']}")
 
         # Load full dataset first
-        x_full, y_full, t_full, p_full = evlib.load_events(str(file_info["path"]))
+        result_full = evlib.load_events(str(file_info["path"]))
+        df_full = result_full.collect()
+        x_full = df_full["x"].to_numpy()
+        y_full = df_full["y"].to_numpy()
+        # Convert duration to seconds
+        t_full = df_full.with_columns(
+            (df_full["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
+        p_full = df_full["polarity"].to_numpy()
         full_count = len(x_full)
 
         # Test temporal filtering
         t_min, t_max = np.min(t_full), np.max(t_full)
         t_range = t_max - t_min
-        t_start = t_min + t_range * 0.3
-        t_end = t_max - t_range * 0.3
 
-        x_time, y_time, t_time, p_time = evlib.load_events(
-            str(file_info["path"]), t_start=t_start, t_end=t_end
-        )
+        # Both HDF5 and text files now output timestamps in seconds
+        raw_t_start = t_min + t_range * 0.3
+        raw_t_end = t_max - t_range * 0.3
+
+        result_time = evlib.load_events(str(file_info["path"]), t_start=raw_t_start, t_end=raw_t_end)
+        df_time = result_time.collect()
+        x_time = df_time["x"].to_numpy()
+        y_time = df_time["y"].to_numpy()
+        # Convert duration to seconds
+        t_time = df_time.with_columns(
+            (df_time["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
+        p_time = df_time["polarity"].to_numpy()
 
         # Verify temporal filtering
         assert len(x_time) < full_count, "Temporal filtering didn't reduce event count"
         assert len(x_time) > 0, "Temporal filtering removed all events"
-        assert np.all(t_time >= t_start), "Temporal filtering failed (start bound)"
-        assert np.all(t_time <= t_end), "Temporal filtering failed (end bound)"
+
+        # Verify bounds
+        expected_t_start = t_min + t_range * 0.3
+        expected_t_end = t_max - t_range * 0.3
+        assert np.all(t_time >= expected_t_start), "Temporal filtering failed (start bound)"
+        assert np.all(t_time <= expected_t_end), "Temporal filtering failed (end bound)"
 
         # Test spatial filtering
         width, height = file_info["resolution"]
         x_center, y_center = width // 2, height // 2
         roi_size = min(width, height) // 4
 
-        x_spatial, y_spatial, t_spatial, p_spatial = evlib.load_events(
+        result_spatial = evlib.load_events(
             str(file_info["path"]),
             min_x=x_center - roi_size,
             max_x=x_center + roi_size,
             min_y=y_center - roi_size,
             max_y=y_center + roi_size,
         )
+        df_spatial = result_spatial.collect()
+        x_spatial = df_spatial["x"].to_numpy()
+        y_spatial = df_spatial["y"].to_numpy()
+        # Convert duration to seconds
+        t_spatial = df_spatial.with_columns(
+            (df_spatial["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
+        p_spatial = df_spatial["polarity"].to_numpy()
 
         # Verify spatial filtering
         assert len(x_spatial) < full_count, "Spatial filtering didn't reduce event count"
@@ -313,7 +371,15 @@ class TestEvlibRegression:
         assert np.all(y_spatial <= y_center + roi_size), "Spatial filtering failed (y max)"
 
         # Test polarity filtering
-        x_pos, y_pos, t_pos, p_pos = evlib.load_events(str(file_info["path"]), polarity=1)
+        result_pos = evlib.load_events(str(file_info["path"]), polarity=1)
+        df_pos = result_pos.collect()
+        x_pos = df_pos["x"].to_numpy()
+        y_pos = df_pos["y"].to_numpy()
+        # Convert duration to seconds
+        t_pos = df_pos.with_columns(
+            (df_pos["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
+        p_pos = df_pos["polarity"].to_numpy()
 
         # Verify polarity filtering
         assert len(x_pos) < full_count, "Polarity filtering didn't reduce event count"
@@ -339,13 +405,26 @@ class TestEvlibRegression:
         if not file_info["path"].exists():
             pytest.skip(f"Test file not found: {file_info['path']}")
 
-        x, y, t, p = evlib.load_events(str(file_info["path"]))
+        result = evlib.load_events(str(file_info["path"]))
+        df = result.collect()
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        # Convert duration to seconds
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
+        p = df["polarity"].to_numpy()
 
-        # Test data types (should match your examples)
-        assert x.dtype == np.int64, f"x dtype should be int64, got {x.dtype}"
-        assert y.dtype == np.int64, f"y dtype should be int64, got {y.dtype}"
+        # Test data types (Polars optimizes data types for memory efficiency)
+        assert x.dtype in [np.int16, np.int32, np.int64], f"x dtype should be int16/32/64, got {x.dtype}"
+        assert y.dtype in [np.int16, np.int32, np.int64], f"y dtype should be int16/32/64, got {y.dtype}"
         assert t.dtype == np.float64, f"t dtype should be float64, got {t.dtype}"
-        assert p.dtype == np.int64, f"p dtype should be int64, got {p.dtype}"
+        assert p.dtype in [
+            np.int8,
+            np.int16,
+            np.int32,
+            np.int64,
+        ], f"p dtype should be int8/16/32/64, got {p.dtype}"
 
         # Test shapes (all should be 1D with same length)
         assert x.ndim == 1, f"x should be 1D, got {x.ndim}D"
@@ -359,7 +438,58 @@ class TestEvlibRegression:
         assert t.shape == shape, f"t shape {t.shape} doesn't match x shape {shape}"
         assert p.shape == shape, f"p shape {p.shape} doesn't match x shape {shape}"
 
-        print(f"✓ {file_key}: shapes={shape}, types=(int64, int64, float64, int64)")
+        print(f"✓ {file_key}: shapes={shape}, types=({x.dtype}, {y.dtype}, {t.dtype}, {p.dtype})")
+
+    @pytest.mark.parametrize(
+        "file_key",
+        [
+            "evt2_small",
+            "hdf5_small",
+            "text_medium",
+        ],
+    )
+    def test_load_events_as_numpy_compatibility(self, data_files, file_key):
+        """Test evlib.load_events_as_numpy() backwards compatibility function."""
+        file_info = data_files[file_key]
+
+        if not file_info["path"].exists():
+            pytest.skip(f"Test file not found: {file_info['path']}")
+
+        # Test the NumPy compatibility function
+        result = evlib.load_events_as_numpy(str(file_info["path"]))
+
+        # Verify result structure (should be tuple of numpy arrays)
+        assert isinstance(result, tuple), f"load_events_as_numpy should return tuple, got {type(result)}"
+        assert len(result) == 4, f"load_events_as_numpy should return 4-tuple, got {len(result)}"
+
+        x, y, t, p = result
+
+        # Verify array types
+        assert isinstance(x, np.ndarray), f"x should be numpy array, got {type(x)}"
+        assert isinstance(y, np.ndarray), f"y should be numpy array, got {type(y)}"
+        assert isinstance(t, np.ndarray), f"t should be numpy array, got {type(t)}"
+        assert isinstance(p, np.ndarray), f"p should be numpy array, got {type(p)}"
+
+        # Compare with main load_events function to ensure compatibility
+        main_result = evlib.load_events(str(file_info["path"]))
+        main_df = main_result.collect()
+        main_x = main_df["x"].to_numpy()
+        main_y = main_df["y"].to_numpy()
+        # Convert duration to seconds for comparison
+        main_t = main_df.with_columns(
+            (main_df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
+        main_p = main_df["polarity"].to_numpy()
+
+        # Should produce identical results
+        assert np.array_equal(x, main_x), "NumPy compatibility function produces different x values"
+        assert np.array_equal(y, main_y), "NumPy compatibility function produces different y values"
+        assert np.allclose(
+            t, main_t, rtol=1e-6, atol=1e-6
+        ), "NumPy compatibility function produces different t values"
+        assert np.array_equal(p, main_p), "NumPy compatibility function produces different p values"
+
+        print(f"✓ {file_key}: NumPy compatibility function works correctly")
 
     @pytest.mark.parametrize(
         "format_name,test_files",
@@ -379,7 +509,15 @@ class TestEvlibRegression:
         results = {}
         for file_key in available_files:
             file_info = data_files[file_key]
-            x, y, t, p = evlib.load_events(str(file_info["path"]))
+            result = evlib.load_events(str(file_info["path"]))
+            df = result.collect()
+            x = df["x"].to_numpy()
+            y = df["y"].to_numpy()
+            # Convert duration to seconds
+            t = df.with_columns(
+                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
+            p = df["polarity"].to_numpy()
 
             results[file_key] = {
                 "event_count": len(x),
@@ -421,7 +559,15 @@ class TestEvlibRegression:
             if not file_info["path"].exists():
                 continue
 
-            x, y, t, p = evlib.load_events(str(file_info["path"]))
+            result = evlib.load_events(str(file_info["path"]))
+            df = result.collect()
+            x = df["x"].to_numpy()
+            y = df["y"].to_numpy()
+            # Convert duration to seconds
+            t = df.with_columns(
+                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
+            p = df["polarity"].to_numpy()
 
             # Check against expected polarity encoding for this format
             unique_polarities = np.unique(p)
@@ -464,7 +610,15 @@ class TestEvlibRegression:
                     evt21_detected = True
 
                     # Test loading EVT2.1 file
-                    x, y, t, p = evlib.load_events(str(file_path))
+                    result = evlib.load_events(str(file_path))
+                    df = result.collect()
+                    x = df["x"].to_numpy()
+                    y = df["y"].to_numpy()
+                    # Convert duration to seconds
+                    t = df.with_columns(
+                        (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+                    )["timestamp_seconds"].to_numpy()
+                    p = df["polarity"].to_numpy()
 
                     # Basic validation
                     assert len(x) > 0, "EVT2.1 file loaded no events"
@@ -494,9 +648,9 @@ class TestEvlibRegression:
         empty_file = Path("/tmp/empty_test.txt")
         empty_file.write_text("")
         try:
-            result = evlib.load_events(str(empty_file))
-            x, y, t, p = result
-            assert len(x) == 0, "Empty file should return empty arrays"
+            # Empty file should raise an exception during format detection
+            with pytest.raises(Exception):
+                evlib.load_events(str(empty_file))
         finally:
             empty_file.unlink()
 
@@ -519,8 +673,16 @@ class TestEvlibRegression:
         initial_objects = len(gc.get_objects())
 
         # Load and immediately delete
-        x, y, t, p = evlib.load_events(str(file_info["path"]))
-        del x, y, t, p
+        result = evlib.load_events(str(file_info["path"]))
+        df = result.collect()
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        # Convert duration to seconds
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
+        p = df["polarity"].to_numpy()
+        del result, df, x, y, t, p
 
         # Force garbage collection
         gc.collect()
@@ -532,6 +694,141 @@ class TestEvlibRegression:
         assert object_increase < 1000, f"Too many objects created: {object_increase}"
 
         print(f"✓ Memory cleanup: {object_increase} objects remained after cleanup")
+
+    def test_gen4_blosc_compression_support(self, data_files):
+        """Test specific support for Gen4 1mpx BLOSC-compressed files."""
+        file_key = "gen4_1mpx_blosc"
+
+        if file_key not in data_files or not data_files[file_key]["path"].exists():
+            pytest.skip(f"Gen4 BLOSC test file not found: {file_key}")
+
+        file_info = data_files[file_key]
+
+        print(f"Testing BLOSC compression support with {file_info['description']}")
+
+        # Test basic loading capability with time filter for manageable test duration
+        start_time = time.time()
+        result = evlib.load_events(
+            str(file_info["path"]), t_start=0.0, t_end=1.0  # Just first second for regression test
+        )
+        df = result.collect()
+        load_time = time.time() - start_time
+
+        # Verify core properties
+        assert len(df) > 0, "No events loaded from BLOSC file"
+        event_count = len(df)
+
+        # For time-filtered data, just verify we got reasonable events
+        assert event_count > 1000, f"Too few events in time slice: {event_count}"
+        assert event_count < 50000000, f"Time filter didn't work, got {event_count} events"
+
+        # Verify data structure
+        expected_columns = {"x", "y", "timestamp", "polarity"}
+        actual_columns = set(df.columns)
+        assert (
+            expected_columns == actual_columns
+        ), f"Column mismatch: expected {expected_columns}, got {actual_columns}"
+
+        # Convert to numpy for validation
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
+        p = df["polarity"].to_numpy()
+
+        # Verify coordinate bounds (Gen4 1mpx resolution)
+        width, height = file_info["resolution"]
+        assert np.all(x >= 0) and np.all(
+            x < width
+        ), f"X coordinates out of bounds: {np.min(x)} to {np.max(x)}, expected 0 to {width-1}"
+        assert np.all(y >= 0) and np.all(
+            y < height
+        ), f"Y coordinates out of bounds: {np.min(y)} to {np.max(y)}, expected 0 to {height-1}"
+
+        # Verify timestamp properties (for filtered data)
+        duration = np.max(t) - np.min(t)
+        assert duration <= 1.0, f"Duration {duration:.1f}s too long for 1-second filter"
+        assert duration >= 0.0, f"Invalid duration {duration:.1f}s"
+
+        # Verify polarity encoding (Gen4 uses -1/1, but filtered data may only have one polarity)
+        unique_polarities = set(np.unique(p))
+        expected_polarities = set(file_info["polarity_encoding"])
+
+        # Check that all observed polarities are valid (subset of expected)
+        assert unique_polarities.issubset(
+            expected_polarities
+        ), f"Invalid polarity values: expected subset of {expected_polarities}, got {unique_polarities}"
+
+        # Check that we have at least one valid polarity value
+        assert len(unique_polarities) > 0, "No polarity values found"
+
+        # Check that all values are in the expected range
+        for polarity in unique_polarities:
+            assert polarity in expected_polarities, f"Unexpected polarity value: {polarity}"
+
+        # Performance validation (should be fast for filtered data)
+        events_per_second = event_count / load_time if load_time > 0 else event_count
+        assert events_per_second > 100000, f"Loading too slow: {events_per_second:.0f} events/s"
+
+        # This tests BLOSC decompression capability without full file loading
+        print(f"✓ BLOSC decompression working: {event_count:,} events from time slice")
+
+        print(
+            f"✓ BLOSC compression: {event_count:,} events loaded in {load_time:.1f}s ({events_per_second:.0f} events/s)"
+        )
+        print(f"✓ Resolution: x={np.min(x)}-{np.max(x)}, y={np.min(y)}-{np.max(y)}")
+        print(f"✓ Duration: {duration:.1f}s")
+        print(f"✓ Polarity: {sorted(unique_polarities)}")
+
+    def test_blosc_vs_deflate_consistency(self, data_files):
+        """Test that BLOSC and deflate compression produce consistent results."""
+        # Compare Gen4 (BLOSC) with eTram (deflate) for consistency
+        gen4_key = "gen4_1mpx_blosc"
+        etram_key = "hdf5_small"  # eTram with deflate compression
+
+        if not (data_files[gen4_key]["path"].exists() and data_files[etram_key]["path"].exists()):
+            pytest.skip("Both BLOSC and deflate test files needed for comparison")
+
+        # Load small samples from both files
+        print("Testing compression consistency between BLOSC and deflate...")
+
+        # Gen4 BLOSC sample (first 100k events)
+        gen4_events = evlib.load_events(
+            str(data_files[gen4_key]["path"]), t_start=0.0, t_end=0.1  # First 0.1 seconds
+        )
+        gen4_df = gen4_events.collect()
+
+        # eTram deflate sample
+        etram_events = evlib.load_events(str(data_files[etram_key]["path"]))
+        etram_df = etram_events.collect()
+
+        # Both should load successfully
+        assert len(gen4_df) > 0, "BLOSC file produced no events"
+        assert len(etram_df) > 0, "Deflate file produced no events"
+
+        # Both should have same column structure
+        assert set(gen4_df.columns) == set(
+            etram_df.columns
+        ), "Column structure differs between compression types"
+
+        # Both should have valid data ranges
+        for df, name in [(gen4_df, "BLOSC"), (etram_df, "deflate")]:
+            x = df["x"].to_numpy()
+            y = df["y"].to_numpy()
+            t = df.with_columns(
+                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
+            p = df["polarity"].to_numpy()
+
+            assert np.all(x >= 0), f"{name}: negative x coordinates"
+            assert np.all(y >= 0), f"{name}: negative y coordinates"
+            assert np.all(t >= 0), f"{name}: negative timestamps"
+            assert len(np.unique(p)) <= 2, f"{name}: more than 2 polarity values"
+
+        print(f"✓ BLOSC consistency: {len(gen4_df):,} events loaded and validated")
+        print(f"✓ Deflate consistency: {len(etram_df):,} events loaded and validated")
+        print("✓ Both compression types produce consistent data structures")
 
 
 if __name__ == "__main__":

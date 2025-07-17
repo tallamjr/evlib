@@ -70,10 +70,6 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     let formats_submodule = PyModule::new(py, "formats")?;
     formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, py)?)?;
     formats_submodule.add_function(wrap_pyfunction!(
-        ev_formats::python::load_events_filtered_py,
-        py
-    )?)?;
-    formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
         py
     )?)?;
@@ -88,10 +84,6 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
         ev_formats::python::get_format_description_py,
         py
     )?)?;
-
-    // Add the iterator classes
-    formats_submodule.add_class::<ev_formats::python::PyEventFileIterator>()?;
-    formats_submodule.add_class::<ev_formats::python::PyTimeWindowIter>()?;
 
     m.add_submodule(formats_submodule)?;
 
@@ -175,6 +167,10 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     streaming_submodule.add_class::<ev_processing::streaming::python::PyStreamingStats>()?;
     streaming_submodule.add_class::<ev_processing::streaming::python::PyStreamingProcessor>()?;
     streaming_submodule.add_class::<ev_processing::streaming::python::PyEventStream>()?;
+
+    // Enhanced streaming functions will be available through Python utilities
+    // TODO: Add Rust streaming functions once compilation issues are resolved
+
     m.add_submodule(streaming_submodule)?;
 
     // Register ev_simulation module as "simulation" in Python

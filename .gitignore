@@ -721,9 +721,7 @@ tests/*.png
 # Temporary Cargo config for Python linking
 .cargo/config.toml
 
-data/original/
-data/gen4/
-data/eTram/
+data/
 models/
 
 inspo/

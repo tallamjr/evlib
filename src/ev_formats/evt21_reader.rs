@@ -769,7 +769,7 @@ impl Evt21Reader {
                     t: full_timestamp as f64 / 1_000_000.0, // Convert μs to seconds
                     x,
                     y,
-                    polarity: if vectorized_event.polarity { 1 } else { -1 },
+                    polarity: vectorized_event.polarity,
                 };
 
                 events.push(event);

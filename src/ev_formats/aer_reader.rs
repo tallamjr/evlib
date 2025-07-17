@@ -292,7 +292,7 @@ impl AerReader {
                     max_x = max_x.max(event.x);
                     max_y = max_y.max(event.y);
 
-                    if event.polarity > 0 {
+                    if event.polarity {
                         positive_count += 1;
                     } else {
                         negative_count += 1;
@@ -380,8 +380,8 @@ impl AerReader {
         let x = ((raw_event >> 1) & 0x1FF) as u16; // 9 bits for x coordinate
         let y = ((raw_event >> 10) & 0x1FF) as u16; // 9 bits for y coordinate
 
-        // Convert polarity bit to signed polarity
-        let polarity = if polarity_bit == 1 { 1i8 } else { -1i8 };
+        // Convert polarity bit to boolean
+        let polarity = polarity_bit == 1;
 
         // Validate coordinates if requested
         if self.config.validate_coordinates && (x > self.config.max_x || y > self.config.max_y) {
