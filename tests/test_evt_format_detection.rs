@@ -143,7 +143,7 @@ mod evt_format_detection_tests {
             assert!(event.t >= 0.0);
             assert!(event.x < 1280);
             assert!(event.y < 720);
-            assert!(event.polarity == 1 || event.polarity == -1);
+            // Polarity is bool, so always valid
         }
     }
 
@@ -195,7 +195,7 @@ mod evt_format_detection_tests {
             assert!(event.t >= 0.0);
             assert!(event.x < 640);
             assert!(event.y < 480);
-            assert!(event.polarity == 1 || event.polarity == -1);
+            // Polarity is bool, so always valid
         }
     }
 

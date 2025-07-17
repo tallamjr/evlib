@@ -75,7 +75,7 @@ fn validate_events(events: &Events, expected_resolution: (u16, u16)) -> DataInte
         .iter()
         .all(|e| e.x < expected_resolution.0 && e.y < expected_resolution.1);
 
-    let valid_polarities = events.iter().all(|e| e.polarity == -1 || e.polarity == 1);
+    let valid_polarities = true; // Bool polarity is always valid
 
     DataIntegrity {
         has_nan,
@@ -111,8 +111,8 @@ fn analyze_events(
     let t_max = events.iter().map(|e| e.t).fold(f64::NEG_INFINITY, f64::max);
     let duration = t_max - t_min;
 
-    let positive_count = events.iter().filter(|e| e.polarity == 1).count();
-    let negative_count = events.iter().filter(|e| e.polarity == -1).count();
+    let positive_count = events.iter().filter(|e| e.polarity == true).count();
+    let negative_count = events.iter().filter(|e| e.polarity == false).count();
 
     ValidationResults {
         event_count: events.len(),
@@ -276,7 +276,7 @@ fn test_evt2_reader_comprehensive() {
             "Filtering didn't reduce event count"
         );
         assert!(
-            filtered_events.iter().all(|e| e.polarity == 1),
+            filtered_events.iter().all(|e| e.polarity == true),
             "Polarity filtering failed"
         );
 
@@ -458,7 +458,7 @@ fn test_text_reader_comprehensive() {
         "Filtering didn't reduce event count"
     );
     assert!(
-        filtered_events.iter().all(|e| e.polarity == 1),
+        filtered_events.iter().all(|e| e.polarity == true),
         "Polarity filtering failed"
     );
     assert!(

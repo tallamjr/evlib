@@ -18,9 +18,9 @@ lazy_static! {
 /// Represents a single event from an event camera.
 #[derive(Clone, Copy, Debug)]
 pub struct Event {
-    pub t: f64,       // timestamp (in seconds or microseconds, depending on dataset)
-    pub x: u16,       // x coordinate (pixel column)
-    pub y: u16,       // y coordinate (pixel row)
+    pub t: f64,         // timestamp (in seconds or microseconds, depending on dataset)
+    pub x: u16,         // x coordinate (pixel column)
+    pub y: u16,         // y coordinate (pixel row)
     pub polarity: bool, // true for positive (ON event), false for negative (OFF event)
 }
 

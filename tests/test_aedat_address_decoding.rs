@@ -433,8 +433,8 @@ fn test_polarity_validation() {
     let (events, _) = reader.read_file(&file_path).unwrap();
 
     assert_eq!(events.len(), 2);
-    assert_eq!(events[0].polarity, 1); // ON polarity
-    assert_eq!(events[1].polarity, -1); // OFF polarity converted to -1
+    assert_eq!(events[0].polarity, true); // ON polarity
+    assert_eq!(events[1].polarity, false); // OFF polarity converted to false
 }
 
 /// Test endianness handling
@@ -480,6 +480,6 @@ fn test_endianness_handling() {
     assert_eq!(events1[0].y, 10);
     assert_eq!(events2[0].x, 20);
     assert_eq!(events2[0].y, 10);
-    assert_eq!(events1[0].polarity, 1);
-    assert_eq!(events2[0].polarity, 1);
+    assert_eq!(events1[0].polarity, true);
+    assert_eq!(events2[0].polarity, true);
 }

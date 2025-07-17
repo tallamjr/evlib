@@ -26,7 +26,7 @@ impl Default for StreamingConfig {
 }
 
 /// High-performance event streamer for large datasets with chunked processing
-/// 
+///
 /// This streamer processes events in chunks to handle files >100M events efficiently
 /// while maintaining memory constraints and producing identical results to direct loading.
 pub struct PolarsEventStreamer {
@@ -38,11 +38,11 @@ pub struct PolarsEventStreamer {
 
 impl PolarsEventStreamer {
     /// Create a new PolarsEventStreamer with specified parameters
-    /// 
+    ///
     /// # Arguments
     /// * `chunk_size` - Number of events to process per chunk
     /// * `format` - Event format for proper polarity encoding
-    /// 
+    ///
     /// # Returns
     /// A new PolarsEventStreamer instance
     pub fn new(chunk_size: usize, format: EventFormat) -> Self {
@@ -55,11 +55,11 @@ impl PolarsEventStreamer {
     }
 
     /// Create a new PolarsEventStreamer with full configuration
-    /// 
+    ///
     /// # Arguments
     /// * `config` - Streaming configuration
     /// * `format` - Event format for proper polarity encoding
-    /// 
+    ///
     /// # Returns
     /// A new PolarsEventStreamer instance
     pub fn with_config(config: StreamingConfig, format: EventFormat) -> Self {
@@ -72,24 +72,24 @@ impl PolarsEventStreamer {
     }
 
     /// Calculate optimal chunk size based on available memory and event count
-    /// 
+    ///
     /// # Arguments
     /// * `total_events` - Total number of events to process
     /// * `available_memory_mb` - Available memory in MB
-    /// 
+    ///
     /// # Returns
     /// Optimal chunk size for memory efficiency
     pub fn calculate_optimal_chunk_size(total_events: usize, available_memory_mb: usize) -> usize {
         // Conservative estimate: 15 bytes per event in memory
         const BYTES_PER_EVENT: usize = 15;
-        
+
         // Use 25% of available memory for chunk processing
         let target_memory_bytes = (available_memory_mb * 1024 * 1024) / 4;
         let memory_based_chunk_size = target_memory_bytes / BYTES_PER_EVENT;
-        
+
         // Clamp to reasonable bounds
         let chunk_size = memory_based_chunk_size.clamp(100_000, 10_000_000);
-        
+
         // For very large files, prefer smaller chunks for better memory control
         if total_events > 100_000_000 {
             chunk_size.min(1_000_000)
@@ -99,10 +99,10 @@ impl PolarsEventStreamer {
     }
 
     /// Main streaming function that processes events in chunks and returns a Polars DataFrame
-    /// 
+    ///
     /// # Arguments
     /// * `events` - Iterator of Event objects to process
-    /// 
+    ///
     /// # Returns
     /// Result containing a Polars DataFrame with all events
     #[cfg(feature = "polars")]
@@ -117,22 +117,25 @@ impl PolarsEventStreamer {
 
         for event in events {
             chunk_buffer.push(event);
-            
+
             // Process chunk when it's full
             if chunk_buffer.len() >= self.chunk_size {
                 let chunk_df = self.build_chunk(&chunk_buffer)?;
                 if !chunk_df.is_empty() {
                     dataframes.push(chunk_df);
                 }
-                
+
                 total_processed += chunk_buffer.len();
                 chunk_count += 1;
-                
+
                 // Progress reporting
                 if total_processed % self.progress_interval == 0 {
-                    eprintln!("Processed {} events in {} chunks", total_processed, chunk_count);
+                    eprintln!(
+                        "Processed {} events in {} chunks",
+                        total_processed, chunk_count
+                    );
                 }
-                
+
                 chunk_buffer.clear();
             }
         }
@@ -161,36 +164,39 @@ impl PolarsEventStreamer {
             concat(&lazy_frames, UnionArgs::default())?.collect()?
         };
 
-        eprintln!("Streaming complete: {} events processed in {} chunks", total_processed, chunk_count);
+        eprintln!(
+            "Streaming complete: {} events processed in {} chunks",
+            total_processed, chunk_count
+        );
         Ok(final_df)
     }
 
     /// Build a Polars DataFrame from a chunk of events
-    /// 
+    ///
     /// This method reuses the existing optimized DataFrame construction logic
     /// to ensure consistency with direct loading.
-    /// 
+    ///
     /// # Arguments
     /// * `events` - Slice of Event objects to process
-    /// 
+    ///
     /// # Returns
     /// Result containing a Polars DataFrame for this chunk
     #[cfg(feature = "polars")]
     pub fn build_chunk(&self, events: &[Event]) -> PolarsResult<DataFrame> {
         use polars::prelude::*;
-        
+
         let len = events.len();
-        
+
         if len == 0 {
             return self.create_empty_dataframe();
         }
-        
+
         // Use optimal data types for memory efficiency
         let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);
         let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y", len);
         let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", len);
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
-        
+
         // Single iteration with direct population - zero intermediate copies
         for event in events {
             x_builder.append_value(event.x as i16);
@@ -198,18 +204,18 @@ impl PolarsEventStreamer {
             timestamp_builder.append_value(self.convert_timestamp(event.t));
             polarity_builder.append_value(self.convert_polarity(event.polarity));
         }
-        
+
         // Build Series from builders
         let x_series = x_builder.finish().into_series();
         let y_series = y_builder.finish().into_series();
         let polarity_series = polarity_builder.finish().into_series();
-        
+
         // Convert timestamp to Duration type
         let timestamp_series = timestamp_builder
             .finish()
             .into_series()
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-        
+
         // Create DataFrame with all series
         DataFrame::new(vec![x_series, y_series, timestamp_series, polarity_series])
     }
@@ -222,28 +228,36 @@ impl PolarsEventStreamer {
         let empty_timestamp = Series::new("timestamp", Vec::<i64>::new())
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
         let empty_polarity = Series::new("polarity", Vec::<i8>::new());
-        
+
         DataFrame::new(vec![empty_x, empty_y, empty_timestamp, empty_polarity])
     }
 
     /// Convert event polarity based on format-specific encoding requirements
-    /// 
+    ///
     /// Reuses the existing polarity conversion logic to ensure consistency
     pub fn convert_polarity(&self, polarity: bool) -> i8 {
         match self.format {
             EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
                 // EVT2 family uses -1/1 encoding
-                if polarity { 1i8 } else { -1i8 }
-            },
+                if polarity {
+                    1i8
+                } else {
+                    -1i8
+                }
+            }
             _ => {
                 // HDF5, Text, and other formats use 0/1 encoding
-                if polarity { 1i8 } else { 0i8 }
+                if polarity {
+                    1i8
+                } else {
+                    0i8
+                }
             }
         }
     }
 
     /// Convert timestamp to microseconds for Polars Duration type
-    /// 
+    ///
     /// Reuses the existing timestamp conversion logic to ensure consistency
     pub fn convert_timestamp(&self, timestamp: f64) -> i64 {
         if timestamp > 1_000_000.0 {
@@ -257,11 +271,11 @@ impl PolarsEventStreamer {
 }
 
 /// Helper function to determine if streaming should be used based on event count
-/// 
+///
 /// # Arguments
 /// * `event_count` - Number of events to process
 /// * `threshold` - Threshold for switching to streaming mode
-/// 
+///
 /// # Returns
 /// True if streaming should be used, false for direct loading
 pub fn should_use_streaming(event_count: usize, threshold: Option<usize>) -> bool {
@@ -271,10 +285,10 @@ pub fn should_use_streaming(event_count: usize, threshold: Option<usize>) -> boo
 }
 
 /// Memory usage estimation for event processing
-/// 
+///
 /// # Arguments
 /// * `event_count` - Number of events
-/// 
+///
 /// # Returns
 /// Estimated memory usage in bytes
 pub fn estimate_memory_usage(event_count: usize) -> usize {
@@ -294,7 +308,7 @@ mod tests {
         // Test with different memory sizes
         let chunk_size_256mb = PolarsEventStreamer::calculate_optimal_chunk_size(10_000_000, 256);
         let chunk_size_1gb = PolarsEventStreamer::calculate_optimal_chunk_size(10_000_000, 1024);
-        
+
         assert!(chunk_size_256mb >= 100_000);
         assert!(chunk_size_256mb <= 10_000_000);
         assert!(chunk_size_1gb >= chunk_size_256mb);
@@ -312,7 +326,7 @@ mod tests {
     fn test_estimate_memory_usage() {
         let usage_1m = estimate_memory_usage(1_000_000);
         let usage_10m = estimate_memory_usage(10_000_000);
-        
+
         assert_eq!(usage_10m, usage_1m * 10);
         assert!(usage_1m > 0);
     }
@@ -323,7 +337,7 @@ mod tests {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
         let empty_events = Vec::<Event>::new();
         let result = streamer.stream_to_polars(empty_events.into_iter());
-        
+
         assert!(result.is_ok());
         let df = result.unwrap();
         assert_eq!(df.height(), 0);
@@ -335,18 +349,33 @@ mod tests {
     fn test_polars_event_streamer_small_chunk() {
         let streamer = PolarsEventStreamer::new(2, EventFormat::HDF5);
         let events = vec![
-            Event { t: 0.001, x: 100, y: 200, polarity: true },
-            Event { t: 0.002, x: 101, y: 201, polarity: false },
-            Event { t: 0.003, x: 102, y: 202, polarity: true },
+            Event {
+                t: 0.001,
+                x: 100,
+                y: 200,
+                polarity: true,
+            },
+            Event {
+                t: 0.002,
+                x: 101,
+                y: 201,
+                polarity: false,
+            },
+            Event {
+                t: 0.003,
+                x: 102,
+                y: 202,
+                polarity: true,
+            },
         ];
-        
+
         let result = streamer.stream_to_polars(events.into_iter());
         assert!(result.is_ok());
-        
+
         let df = result.unwrap();
         assert_eq!(df.height(), 3);
         assert_eq!(df.width(), 4);
-        
+
         // Verify column names
         let columns: Vec<&str> = df.get_column_names();
         assert_eq!(columns, vec!["x", "y", "timestamp", "polarity"]);
@@ -357,10 +386,10 @@ mod tests {
     fn test_polarity_conversion() {
         let streamer_evt2 = PolarsEventStreamer::new(1000, EventFormat::EVT2);
         let streamer_hdf5 = PolarsEventStreamer::new(1000, EventFormat::HDF5);
-        
+
         assert_eq!(streamer_evt2.convert_polarity(true), 1i8);
         assert_eq!(streamer_evt2.convert_polarity(false), -1i8);
-        
+
         assert_eq!(streamer_hdf5.convert_polarity(true), 1i8);
         assert_eq!(streamer_hdf5.convert_polarity(false), 0i8);
     }
@@ -369,11 +398,11 @@ mod tests {
     #[test]
     fn test_timestamp_conversion() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
-        
+
         // Test seconds to microseconds conversion
         assert_eq!(streamer.convert_timestamp(1.0), 1_000_000);
         assert_eq!(streamer.convert_timestamp(0.001), 1_000);
-        
+
         // Test microseconds passthrough
         assert_eq!(streamer.convert_timestamp(1_000_000.0), 1_000_000);
         assert_eq!(streamer.convert_timestamp(2_000_000.0), 2_000_000);

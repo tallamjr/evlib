@@ -194,10 +194,7 @@ fn test_hdf5_loading_auto_detection() {
                 assert!(first_event.t >= 0.0, "Timestamp should be non-negative");
                 assert!(first_event.x < 10000, "X coordinate should be reasonable");
                 assert!(first_event.y < 10000, "Y coordinate should be reasonable");
-                assert!(
-                    first_event.polarity >= -1 && first_event.polarity <= 1,
-                    "Polarity should be in valid range"
-                );
+                // Polarity is bool, so always valid
 
                 let last_event = &events[events.len() - 1];
                 assert!(
@@ -456,10 +453,7 @@ fn test_hdf5_generic_loader() {
                     assert!(event.t >= 0.0, "Invalid timestamp");
                     assert!(event.x < 10000, "Invalid X coordinate");
                     assert!(event.y < 10000, "Invalid Y coordinate");
-                    assert!(
-                        event.polarity >= -1 && event.polarity <= 1,
-                        "Invalid polarity"
-                    );
+                    // Polarity is bool, so always valid
                 }
 
                 println!(

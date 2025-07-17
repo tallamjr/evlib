@@ -594,7 +594,7 @@ mod tests {
 
         assert_eq!(event.x, 100);
         assert_eq!(event.y, 200);
-        assert_eq!(event.polarity, 1);
+        assert_eq!(event.polarity, true);
     }
 
     #[test]
@@ -611,7 +611,7 @@ mod tests {
 
         assert_eq!(event.x, 50);
         assert_eq!(event.y, 75);
-        assert_eq!(event.polarity, -1);
+        assert_eq!(event.polarity, false);
     }
 
     #[test]
@@ -731,7 +731,7 @@ mod tests {
 
         assert_eq!(event.x, 100);
         assert_eq!(event.y, 200);
-        assert_eq!(event.polarity, 1);
+        assert_eq!(event.polarity, true);
     }
 
     #[test]
@@ -748,7 +748,7 @@ mod tests {
         let event = reader.parse_single_event(&data, 0).unwrap();
 
         // With 16-bit format, coordinates will be different due to bit layout
-        assert_eq!(event.polarity, 1);
+        assert_eq!(event.polarity, true);
     }
 
     #[test]
@@ -780,7 +780,7 @@ mod tests {
         // Check first event
         assert_eq!(events[0].x, 50);
         assert_eq!(events[0].y, 100);
-        assert_eq!(events[0].polarity, 1);
+        assert_eq!(events[0].polarity, true);
 
         // Check metadata
         assert!(metadata.coordinate_bounds.is_some());

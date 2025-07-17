@@ -101,7 +101,7 @@ mod evt2_tests {
             assert!(event.t >= 0.0);
             assert!(event.x < 1280);
             assert!(event.y < 720);
-            assert!(event.polarity == 1 || event.polarity == -1);
+            // Polarity is bool, so always valid
         }
 
         // Check timestamp monotonicity (should be approximately sorted)
@@ -160,7 +160,7 @@ mod evt2_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 100);
             assert!(event.y <= 200);
-            assert_eq!(event.polarity, 1);
+            assert_eq!(event.polarity, true);
         }
 
         // Check if events are sorted

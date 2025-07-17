@@ -255,7 +255,7 @@ mod evt3_tests {
             let first_event = &events[0];
             assert_eq!(first_event.x, 200);
             assert_eq!(first_event.y, 100);
-            assert_eq!(first_event.polarity, 1);
+            assert_eq!(first_event.polarity, true);
 
             // Check timestamp reconstruction (0x100 << 12 | 0x200 = 0x100200)
             let expected_timestamp = 0x100200_u32 as f64 / 1_000_000.0;
@@ -328,7 +328,7 @@ mod evt3_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 140);
             assert!(event.y <= 160);
-            assert_eq!(event.polarity, 1);
+            assert_eq!(event.polarity, true);
         }
     }
 

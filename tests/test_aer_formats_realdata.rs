@@ -148,10 +148,7 @@ fn test_load_text_events_basic() {
     );
     assert!(first_event.x <= 1024, "X coordinate should be reasonable");
     assert!(first_event.y <= 1024, "Y coordinate should be reasonable");
-    assert!(
-        first_event.polarity == 1 || first_event.polarity == -1 || first_event.polarity == 0,
-        "Polarity should be -1, 0, or 1"
-    );
+    // Polarity is bool, so always valid
 
     println!("Loaded {} events from {}", events.len(), events_chunk_txt);
     println!(
@@ -423,7 +420,7 @@ fn test_load_with_polarity_filtering() {
 
     // Verify all events have positive polarity
     for event in &events_pos {
-        assert_eq!(event.polarity, 1, "Found non-positive polarity event");
+        assert_eq!(event.polarity, true, "Found non-positive polarity event");
     }
 
     // Load only negative polarity events
@@ -434,7 +431,7 @@ fn test_load_with_polarity_filtering() {
     // Verify all events have negative polarity
     for event in &events_neg {
         assert!(
-            event.polarity == -1 || event.polarity == 0,
+            event.polarity == false,
             "Found non-negative polarity event: {}",
             event.polarity
         );
@@ -524,11 +521,7 @@ fn test_generic_load_function() {
                     assert!(event.t >= 0.0, "Invalid timestamp at event {}", i);
                     assert!(event.x < 2048, "Invalid X coordinate at event {}", i);
                     assert!(event.y < 2048, "Invalid Y coordinate at event {}", i);
-                    assert!(
-                        event.polarity >= -1 && event.polarity <= 1,
-                        "Invalid polarity at event {}",
-                        i
-                    );
+                    // Polarity is bool, so always valid
                 }
 
                 println!(
@@ -578,11 +571,11 @@ fn test_aer_binary_format_synthetic() {
             // Verify event data
             assert_eq!(events[0].x, 100);
             assert_eq!(events[0].y, 150);
-            assert_eq!(events[0].polarity, 1);
+            assert_eq!(events[0].polarity, true);
 
             assert_eq!(events[1].x, 200);
             assert_eq!(events[1].y, 250);
-            assert_eq!(events[1].polarity, -1); // polarity 0 -> -1
+            assert_eq!(events[1].polarity, false); // polarity 0 -> false
 
             println!("Successfully tested AER binary format with synthetic data");
         }

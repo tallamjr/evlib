@@ -1185,19 +1185,19 @@ mod tests {
         // Verify first event
         assert_eq!(events[0].x, 1);
         assert_eq!(events[0].y, 1);
-        assert_eq!(events[0].polarity, 1);
+        assert_eq!(events[0].polarity, true);
         assert_eq!(events[0].t, 1000.0);
 
         // Verify second event
         assert_eq!(events[1].x, 2);
         assert_eq!(events[1].y, 2);
-        assert_eq!(events[1].polarity, 1);
+        assert_eq!(events[1].polarity, true);
         assert_eq!(events[1].t, 2000.0);
 
         // Verify third event
         assert_eq!(events[2].x, 3);
         assert_eq!(events[2].y, 3);
-        assert_eq!(events[2].polarity, -1); // polarity 0 -> -1
+        assert_eq!(events[2].polarity, false); // polarity 0 -> false
         assert_eq!(events[2].t, 3000.0);
     }
 
@@ -1252,7 +1252,7 @@ mod tests {
             // Basic validation that we have a valid event structure
             assert!(events[0].x < 1024);
             assert!(events[0].y < 1024);
-            assert!(events[0].polarity == 1 || events[0].polarity == -1);
+            // Polarity is bool, so always valid
             assert!(events[0].t > 0.0);
         }
     }
@@ -1350,7 +1350,7 @@ mod tests {
         // Verify first event
         assert_eq!(events[0].x, 100);
         assert_eq!(events[0].y, 200);
-        assert_eq!(events[0].polarity, 1);
+        assert_eq!(events[0].polarity, true);
         assert_eq!(events[0].t, 1000.0);
     }
 
