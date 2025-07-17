@@ -13,7 +13,7 @@ The term "zero-copy" in evlib refers to **eliminating intermediate data structur
 ```rust
 // OLD APPROACH - Multiple copies and conversions
 let events: Vec<Event> = load_from_file()?;           // Copy 1: File → Event structs
-let arrays = events_to_numpy_arrays(&events)?;       // Copy 2: Event → NumPy arrays  
+let arrays = events_to_numpy_arrays(&events)?;       // Copy 2: Event → NumPy arrays
 let dict = numpy_to_python_dict(arrays)?;            // Copy 3: NumPy → Python dict
 let dataframe = polars_from_dict(dict)?;             // Copy 4: Dict → Polars DataFrame
 ```
@@ -30,13 +30,13 @@ let dataframe = polars_from_dict(dict)?;             // Copy 4: Dict → Polars 
 // NEW APPROACH - Single iteration, direct construction
 fn build_polars_dataframe(events: &[Event], format: EventFormat) -> Result<DataFrame, PolarsError> {
     let len = events.len();
-    
+
     // Pre-allocate builders with exact capacity
     let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);
     let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y", len);
     let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", len);
     let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
-    
+
     // SINGLE ITERATION - Direct population, no intermediate structures
     for event in events {
         x_builder.append_value(event.x as i16);
@@ -44,7 +44,7 @@ fn build_polars_dataframe(events: &[Event], format: EventFormat) -> Result<DataF
         timestamp_builder.append_value(convert_timestamp(event.t));
         polarity_builder.append_value(convert_polarity(event.polarity, &format));
     }
-    
+
     // Build final DataFrame directly from builders
     DataFrame::new(vec![
         x_builder.finish().into_series(),
@@ -80,7 +80,7 @@ Traditional Row Format (what we avoided):
 
 Arrow Columnar Format (what we build directly):
 X Column: [x1,x2,x3,x4,x5,...]  <- Contiguous memory
-Y Column: [y1,y2,y3,y4,y5,...]  <- Contiguous memory  
+Y Column: [y1,y2,y3,y4,y5,...]  <- Contiguous memory
 T Column: [t1,t2,t3,t4,t5,...]  <- Contiguous memory
 P Column: [p1,p2,p3,p4,p5,...]  <- Contiguous memory
 ```
@@ -96,7 +96,7 @@ Arrow Array Structure:
 
 For 1M Int16 values:
 - Metadata: ~100 bytes
-- Null bitmap: 125KB (1 bit per value)  
+- Null bitmap: 125KB (1 bit per value)
 - Data: 2MB (2 bytes × 1M values)
 - Total: ~2.125MB = ~2.2 bytes per value overhead
 ```
@@ -131,7 +131,7 @@ let mut builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);  // Pre-a
 ```rust
 // Memory-efficient types chosen specifically
 Int16Type  // x, y coordinates (was Int64 - 4x smaller)
-Int8Type   // polarity (was Int64 - 8x smaller)  
+Int8Type   // polarity (was Int64 - 8x smaller)
 Int64Type  // timestamp (appropriate size)
 ```
 
@@ -143,7 +143,7 @@ Int64Type  // timestamp (appropriate size)
 // ONE iteration over data, populate ALL columns simultaneously
 for event in events {
     x_builder.append_value(event.x as i16);      // Direct write
-    y_builder.append_value(event.y as i16);      // Direct write  
+    y_builder.append_value(event.y as i16);      // Direct write
     timestamp_builder.append_value(event.t);     // Direct write
     polarity_builder.append_value(event.p);      // Direct write
 }
@@ -159,12 +159,12 @@ for event in events {
 // Old approach (all Int64)
 struct EventOld {
     x: i64,        // 8 bytes
-    y: i64,        // 8 bytes  
+    y: i64,        // 8 bytes
     t: i64,        // 8 bytes
     p: i64,        // 8 bytes
 }               // Total: 32 bytes per event
 
-// New approach (optimized types)  
+// New approach (optimized types)
 struct EventNew {
     x: i16,        // 2 bytes
     y: i16,        // 2 bytes
@@ -179,7 +179,7 @@ struct EventNew {
 OLD: Event → NumPy → Dict → Polars
      [32B]   [32B]   [64B]  [32B] = 160 bytes/event peak
 
-NEW: Event → Polars (direct)  
+NEW: Event → Polars (direct)
      [32B]   [13B] = 45 bytes/event peak (3.5x improvement)
 ```
 
@@ -190,7 +190,7 @@ Arrow Columnar (Cache-Friendly):
 When filtering by polarity, only touch polarity column:
 [p1][p2][p3][p4]... <- Sequential access, stays in CPU cache
 
-Row Format (Cache-Unfriendly):  
+Row Format (Cache-Unfriendly):
 [x1,y1,t1,p1][x2,y2,t2,p2]... <- Skip x,y,t to get p, cache misses
 ```
 
@@ -234,12 +234,12 @@ let filtered = x_array.filter(&polarity_mask);    // Vectorized filtering
 ```
 Arrow overhead per column:
 - Array metadata: ~100 bytes
-- Null bitmap: len/8 bytes  
+- Null bitmap: len/8 bytes
 - Data buffer: len × sizeof(type)
 
 For 1M events with 4 columns:
 - Metadata: 4 × 100 = 400 bytes ≈ 0 bytes/event
-- Null bitmaps: 4 × 125KB = 500KB ≈ 0.5 bytes/event  
+- Null bitmaps: 4 × 125KB = 500KB ≈ 0.5 bytes/event
 - Data: 2+2+8+1 = 13 bytes/event
 - Arrow overhead: ~0.5 bytes/event
 - Total: ~13.5 bytes/event for pure data
@@ -247,7 +247,7 @@ For 1M events with 4 columns:
 Our measured 35 bytes/event includes:
 - Arrow data: ~13.5 bytes
 - Rust Vec overhead: ~8 bytes
-- Python object overhead: ~10 bytes  
+- Python object overhead: ~10 bytes
 - Memory fragmentation: ~3.5 bytes
 ```
 
@@ -283,7 +283,7 @@ let df = DataFrame::new(vec![x_series, y_series, t_series, p_series])?;
 pub fn load_events_py(file_path: &str) -> PyResult<PyObject> {
     let events = load_events(file_path)?;
     let df = build_polars_dataframe(&events, format)?;  // Direct DataFrame
-    
+
     // Convert to Python LazyFrame directly
     let py_dict = df.lazy().to_python_dict()?;  // Single conversion step
     Ok(py_dict)

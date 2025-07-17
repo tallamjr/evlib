@@ -306,12 +306,12 @@ class TestEvlibRegression:
         result_full = evlib.load_events(str(file_info["path"]))
         df_full = result_full.collect()
         x_full = df_full["x"].to_numpy()
-        y_full = df_full["y"].to_numpy()
+        _y_full = df_full["y"].to_numpy()
         # Convert duration to seconds
         t_full = df_full.with_columns(
             (df_full["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
         )["timestamp_seconds"].to_numpy()
-        p_full = df_full["polarity"].to_numpy()
+        _p_full = df_full["polarity"].to_numpy()
         full_count = len(x_full)
 
         # Test temporal filtering
@@ -325,12 +325,12 @@ class TestEvlibRegression:
         result_time = evlib.load_events(str(file_info["path"]), t_start=raw_t_start, t_end=raw_t_end)
         df_time = result_time.collect()
         x_time = df_time["x"].to_numpy()
-        y_time = df_time["y"].to_numpy()
+        _y_time = df_time["y"].to_numpy()
         # Convert duration to seconds
         t_time = df_time.with_columns(
             (df_time["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
         )["timestamp_seconds"].to_numpy()
-        p_time = df_time["polarity"].to_numpy()
+        _p_time = df_time["polarity"].to_numpy()
 
         # Verify temporal filtering
         assert len(x_time) < full_count, "Temporal filtering didn't reduce event count"
@@ -358,10 +358,10 @@ class TestEvlibRegression:
         x_spatial = df_spatial["x"].to_numpy()
         y_spatial = df_spatial["y"].to_numpy()
         # Convert duration to seconds
-        t_spatial = df_spatial.with_columns(
+        _t_spatial = df_spatial.with_columns(
             (df_spatial["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
         )["timestamp_seconds"].to_numpy()
-        p_spatial = df_spatial["polarity"].to_numpy()
+        _p_spatial = df_spatial["polarity"].to_numpy()
 
         # Verify spatial filtering
         assert len(x_spatial) < full_count, "Spatial filtering didn't reduce event count"
@@ -375,9 +375,9 @@ class TestEvlibRegression:
         result_pos = evlib.load_events(str(file_info["path"]), polarity=1)
         df_pos = result_pos.collect()
         x_pos = df_pos["x"].to_numpy()
-        y_pos = df_pos["y"].to_numpy()
+        _y_pos = df_pos["y"].to_numpy()
         # Convert duration to seconds
-        t_pos = df_pos.with_columns(
+        _t_pos = df_pos.with_columns(
             (df_pos["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
         )["timestamp_seconds"].to_numpy()
         p_pos = df_pos["polarity"].to_numpy()
@@ -458,14 +458,14 @@ class TestEvlibRegression:
 
         # Test converting LazyFrame to DataFrame and extracting NumPy arrays
         df = evlib.load_events(str(file_info["path"])).collect()
-        
+
         # Extract individual arrays from DataFrame
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds for comparison
-        t = df.with_columns(
-            (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-        )["timestamp_seconds"].to_numpy()
+        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+            "timestamp_seconds"
+        ].to_numpy()
         p = df["polarity"].to_numpy()
 
         # Compare with main load_events function to ensure compatibility
@@ -482,9 +482,7 @@ class TestEvlibRegression:
         # Should produce identical results (comparing with itself for consistency)
         assert np.array_equal(x, main_x), "DataFrames should produce identical x values"
         assert np.array_equal(y, main_y), "DataFrames should produce identical y values"
-        assert np.allclose(
-            t, main_t, rtol=1e-6, atol=1e-6
-        ), "DataFrames should produce identical t values"
+        assert np.allclose(t, main_t, rtol=1e-6, atol=1e-6), "DataFrames should produce identical t values"
         assert np.array_equal(p, main_p), "DataFrames should produce identical p values"
 
         print(f"✓ {file_key}: NumPy compatibility function works correctly")
@@ -559,10 +557,10 @@ class TestEvlibRegression:
 
             result = evlib.load_events(str(file_info["path"]))
             df = result.collect()
-            x = df["x"].to_numpy()
-            y = df["y"].to_numpy()
+            _x = df["x"].to_numpy()
+            _y = df["y"].to_numpy()
             # Convert duration to seconds
-            t = df.with_columns(
+            _t = df.with_columns(
                 (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
             )["timestamp_seconds"].to_numpy()
             p = df["polarity"].to_numpy()
@@ -571,14 +569,16 @@ class TestEvlibRegression:
             unique_polarities = np.unique(p)
             expected_polarity_values = set(file_info["polarity_encoding"])
             actual_polarity_values = set(unique_polarities)
-            
+
             # For single-polarity files, allow subset of expected polarities
             if file_info.get("allow_single_polarity", False):
-                assert actual_polarity_values.issubset(expected_polarity_values), \
-                    f"{file_key}: Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
+                assert actual_polarity_values.issubset(
+                    expected_polarity_values
+                ), f"{file_key}: Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
             else:
-                assert actual_polarity_values == expected_polarity_values, \
-                    f"{file_key}: Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
+                assert (
+                    actual_polarity_values == expected_polarity_values
+                ), f"{file_key}: Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
 
             # Check distribution
             polarity_values = list(file_info["polarity_encoding"])
@@ -591,14 +591,16 @@ class TestEvlibRegression:
             # Basic validation
             assert pos_count + neg_count == total, f"{file_key}: Polarity counts don't sum to total"
             assert pos_count > 0, f"{file_key}: No positive polarity events"
-            
+
             # Check for negative polarity events (allow single-polarity files for specific datasets)
             if file_info.get("allow_single_polarity", False):
                 # Some files (like gen4) may only contain positive events
                 if neg_count == 0:
                     print(f"ℹ️  {file_key}: Single-polarity file (only positive events)")
                 else:
-                    assert neg_count > 0, f"{file_key}: Expected both polarities but found neg_count={neg_count}"
+                    assert (
+                        neg_count > 0
+                    ), f"{file_key}: Expected both polarities but found neg_count={neg_count}"
             else:
                 assert neg_count > 0, f"{file_key}: No negative polarity events"
 

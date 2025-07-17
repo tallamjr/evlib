@@ -131,16 +131,16 @@ use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Through
 // Sample benchmark configuration
 fn configure_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_name");
-    
+
     // Configure throughput measurement
     group.throughput(Throughput::Elements(event_count as u64));
-    
+
     // Configure sample size for large operations
     group.sample_size(10);
-    
+
     // Configure measurement time
     group.measurement_time(Duration::from_secs(30));
-    
+
     // Configure warm-up time
     group.warm_up_time(Duration::from_secs(3));
 }
@@ -216,7 +216,7 @@ The benchmarks can be integrated into CI/CD pipelines:
 - name: Run Benchmarks
   run: |
     cargo bench --bench standalone_benchmark -- --output-format json > bench_results.json
-    
+
 - name: Check Performance Regression
   run: |
     # Compare against baseline results

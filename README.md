@@ -64,7 +64,7 @@ lf = evlib.load_events("path/to/your/data.h5")
 
 # Fast filtering and analysis with LazyFrames
 filtered = lf.filter(
-    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 0.1) & 
+    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 0.1) &
     (pl.col("timestamp").dt.total_microseconds() / 1_000_000 < 0.2) &
     (pl.col("polarity") == 1)
 )
@@ -184,7 +184,7 @@ result = lf.filter(pl.col("polarity") == 1).with_columns([
 
 # Memory-efficient temporal analysis
 temporal_stats = lf.group_by_dynamic(
-    "timestamp", 
+    "timestamp",
     every="1s"
 ).agg([
     pl.len().alias("event_count"),
@@ -291,7 +291,7 @@ lf_large = evlib.load_events("large_file.h5")
 
 # Memory-efficient filtering on large datasets
 filtered = lf_large.filter(
-    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) & 
+    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) &
     (pl.col("polarity") == 1)
 ).collect()
 ```
@@ -370,7 +370,7 @@ print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
 
 **Verified Performance Claims:**
 - ✅ Loading speed: 2.2M events/s (exceeds 600k target)
-- ✅ Filter speed: 467M events/s (exceeds 400M target)  
+- ✅ Filter speed: 467M events/s (exceeds 400M target)
 - ✅ Memory efficiency: 35 bytes/event (well under 110 target)
 - ✅ Large file support: Successfully tested with 200M+ events
 

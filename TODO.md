@@ -17,8 +17,8 @@
 ### **2.1 IMMEDIATE TASKS**
 
 #### **Task 2.1.1: Implement PolarsEventStreamer Struct**
-**Priority**: HIGH  
-**Estimated Time**: 2-3 hours  
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
 **Description**: Create streaming infrastructure for large files (>100M events)
 
 **Detailed Steps**:
@@ -46,8 +46,8 @@
 - [ ] All existing functionality preserved
 
 #### **Task 2.1.2: Integrate Streaming into load_events_py**
-**Priority**: HIGH  
-**Estimated Time**: 1-2 hours  
+**Priority**: HIGH
+**Estimated Time**: 1-2 hours
 **Description**: Add automatic streaming detection to main API
 
 **Detailed Steps**:
@@ -74,8 +74,8 @@
 - [ ] Performance maintained or improved
 
 #### **Task 2.1.3: Memory Management & Adaptive Chunking**
-**Priority**: MEDIUM  
-**Estimated Time**: 2 hours  
+**Priority**: MEDIUM
+**Estimated Time**: 2 hours
 **Description**: Implement intelligent memory management
 
 **Detailed Steps**:
@@ -110,8 +110,8 @@
 ### **3.1 AUTOMATED BENCHMARKING SYSTEM**
 
 #### **Task 3.1.1: Create Comprehensive Benchmark Suite**
-**Priority**: MEDIUM  
-**Estimated Time**: 3-4 hours  
+**Priority**: MEDIUM
+**Estimated Time**: 3-4 hours
 **Description**: Automated performance regression detection
 
 **Detailed Steps**:
@@ -120,14 +120,14 @@
    ```rust
    // benches/memory_efficiency.rs
    use criterion::{black_box, criterion_group, criterion_main, Criterion};
-   
+
    fn benchmark_memory_usage(c: &mut Criterion) {
        let events = generate_test_events(1_000_000);
-       
+
        c.bench_function("load_events_direct", |b| {
            b.iter(|| build_polars_dataframe(black_box(&events), EventFormat::HDF5))
        });
-       
+
        c.bench_function("load_events_streaming", |b| {
            b.iter(|| {
                let streamer = PolarsEventStreamer::new(100_000, EventFormat::HDF5);
@@ -147,8 +147,8 @@
 - [ ] Integration with CI/CD pipeline
 
 #### **Task 3.1.2: Real-World Performance Testing**
-**Priority**: MEDIUM  
-**Estimated Time**: 2 hours  
+**Priority**: MEDIUM
+**Estimated Time**: 2 hours
 **Description**: Test with actual large datasets
 
 **Detailed Steps**:
@@ -176,21 +176,21 @@
 ### **4.1 DOCUMENTATION UPDATES**
 
 #### **Task 4.1.1: Update README with Performance Metrics**
-**Priority**: MEDIUM  
-**Estimated Time**: 1 hour  
+**Priority**: MEDIUM
+**Estimated Time**: 1 hour
 **Description**: Showcase optimization achievements
 
 **Detailed Steps**:
 1. Add performance section to README.md:
    ```markdown
    ## Performance Optimizations
-   
+
    ### Memory Efficiency
    - **Direct Polars Integration**: Zero-copy architecture
    - **Memory Usage**: ~110 bytes/event (includes overhead)
    - **Streaming Support**: Files >100M events automatically streamed
-   
-   ### Processing Speed  
+
+   ### Processing Speed
    - **Load Speed**: 600k+ events/s
    - **Filter Speed**: 400M+ events/s (LazyFrame operations)
    - **Format Support**: All formats optimized
@@ -200,8 +200,8 @@
 4. Add troubleshooting section for large files
 
 #### **Task 4.1.2: Create Performance Monitoring Tools**
-**Priority**: LOW  
-**Estimated Time**: 2 hours  
+**Priority**: LOW
+**Estimated Time**: 2 hours
 **Description**: User-facing performance analysis tools
 
 **Detailed Steps**:
@@ -210,7 +210,7 @@
    def profile_loading_performance(file_path, streaming_threshold=5_000_000):
        """Compare direct vs streaming performance"""
        # Memory usage profiling
-       # Loading speed comparison  
+       # Loading speed comparison
        # Streaming threshold optimization
    ```
 2. Memory monitoring dashboard
@@ -224,8 +224,8 @@
 ### **5.1 MEMORY MAPPING INTEGRATION**
 
 #### **Task 5.1.1: Direct File-to-Polars Pipeline**
-**Priority**: LOW  
-**Estimated Time**: 1-2 days  
+**Priority**: LOW
+**Estimated Time**: 1-2 days
 **Description**: Ultimate zero-copy file loading
 
 **Technical Approach**:
@@ -237,8 +237,8 @@
 ### **5.2 PARALLEL PROCESSING**
 
 #### **Task 5.2.1: Multi-threaded Chunk Processing**
-**Priority**: LOW  
-**Estimated Time**: 2-3 days  
+**Priority**: LOW
+**Estimated Time**: 2-3 days
 **Description**: Parallel streaming for massive files
 
 **Technical Approach**:
@@ -333,7 +333,7 @@ pub struct LoadConfig {
 
 ### **Technical Risks**
 - **Memory Fragmentation**: Use pre-allocated chunk sizes
-- **Concatenation Overhead**: Benchmark chunk concatenation performance  
+- **Concatenation Overhead**: Benchmark chunk concatenation performance
 - **Type Consistency**: Ensure streaming produces identical types to direct loading
 - **Error Propagation**: Robust error handling in streaming pipeline
 

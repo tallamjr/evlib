@@ -506,4 +506,3 @@ if __name__ == "__main__":
     print()
     print("To benchmark against RVT:")
     print("  results = evr.benchmark_vs_rvt('your_events.h5')")
-

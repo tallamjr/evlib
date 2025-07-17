@@ -80,10 +80,10 @@ try:
     # Import key representation functions directly
     from .representations import benchmark_vs_rvt  # noqa: F401
     from .representations import (
-        create_mixed_density_stack,
-        create_stacked_histogram,
-        create_voxel_grid,
-        preprocess_for_detection,
+        create_mixed_density_stack,  # noqa: F401
+        create_stacked_histogram,  # noqa: F401
+        create_voxel_grid,  # noqa: F401
+        preprocess_for_detection,  # noqa: F401
     )
 except ImportError:
     _representations_available = False
@@ -186,5 +186,3 @@ def load_events(path, **kwargs):
     else:
         # Empty case
         return pl.DataFrame(data_dict).lazy()
-
-
