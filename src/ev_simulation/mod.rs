@@ -289,7 +289,7 @@ impl EventSimulator {
                     t: event_time / 1_000_000.0, // Convert μs to seconds
                     x: x as u16,
                     y: y as u16,
-                    polarity: 1, // Positive event
+                    polarity: true, // Positive event
                 });
 
                 pixel_state.intensity_buffer -= self.config.contrast_threshold_pos;
@@ -309,7 +309,7 @@ impl EventSimulator {
                     t: event_time / 1_000_000.0, // Convert μs to seconds
                     x: x as u16,
                     y: y as u16,
-                    polarity: -1, // Negative event
+                    polarity: false, // Negative event
                 });
 
                 pixel_state.intensity_buffer += self.config.contrast_threshold_neg;
@@ -392,7 +392,7 @@ impl EventSimulator {
                 t: (timestamp_us + time_offset) / 1_000_000.0,
                 x,
                 y,
-                polarity,
+                polarity: polarity > 0,
             });
         }
 

@@ -69,6 +69,8 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register ev_formats module as "formats" in Python
     let formats_submodule = PyModule::new(py, "formats")?;
     formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, py)?)?;
+    
+
     formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
         py

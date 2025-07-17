@@ -724,4 +724,4 @@ tests/*.png
 data/
 models/
 
-inspo/
+libs/

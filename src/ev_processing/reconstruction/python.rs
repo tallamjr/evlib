@@ -34,7 +34,7 @@ pub fn events_to_video_py(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 
@@ -112,7 +112,7 @@ pub fn reconstruct_events_to_frames_py(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 
@@ -222,7 +222,7 @@ pub fn events_to_video_advanced_py(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 

@@ -328,7 +328,7 @@ impl PyStreamingProcessor {
                 x: xs_array[i] as u16,
                 y: ys_array[i] as u16,
                 t: ts_array[i],
-                polarity: ps_array[i] as i8,
+                polarity: ps_array[i] > 0,
             });
         }
 
@@ -530,7 +530,7 @@ impl PyEventStream {
                 x: xs_array[i] as u16,
                 y: ys_array[i] as u16,
                 t: ts_array[i],
-                polarity: ps_array[i] as i8,
+                polarity: ps_array[i] > 0,
             });
         }
 
@@ -598,7 +598,7 @@ pub fn process_events_streaming(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 

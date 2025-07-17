@@ -361,7 +361,7 @@ impl NoiseModel {
                 t: (timestamp_us + time_offset) / 1_000_000.0,
                 x,
                 y,
-                polarity,
+                polarity: polarity > 0,
             });
         }
 

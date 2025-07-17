@@ -69,7 +69,7 @@ pub fn draw_events_to_image(events: &Events, resolution: (u16, u16), color_mode:
                     255
                 };
 
-                let color = if e.polarity > 0 {
+                let color = if e.polarity {
                     Rgb([t_norm, 0, 0]) // Red for positive, brightness by time
                 } else {
                     Rgb([0, 0, t_norm]) // Blue for negative, brightness by time
@@ -86,7 +86,7 @@ pub fn draw_events_to_image(events: &Events, resolution: (u16, u16), color_mode:
                     continue; // Skip events outside image bounds
                 }
 
-                let color = if e.polarity > 0 {
+                let color = if e.polarity {
                     Rgb([255, 0, 0]) // Red for positive
                 } else {
                     Rgb([0, 0, 255]) // Blue for negative
@@ -143,7 +143,7 @@ pub fn overlay_events_on_frame(
         let base_color = [pixel[0], pixel[1], pixel[2]];
 
         // Blend the event color with the existing pixel
-        let new_color = if e.polarity > 0 {
+        let new_color = if e.polarity {
             blend(&base_color, &pos_color, alpha)
         } else {
             blend(&base_color, &neg_color, alpha)
@@ -291,7 +291,7 @@ pub fn visualize_temporal_histogram(events: &Events, num_bins: usize) -> CandleR
         };
 
         if bin < num_bins {
-            if e.polarity > 0 {
+            if e.polarity {
                 histogram_pos[bin] += 1;
             } else {
                 histogram_neg[bin] += 1;

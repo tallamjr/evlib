@@ -449,29 +449,17 @@ class TestEvlibRegression:
         ],
     )
     def test_load_events_as_numpy_compatibility(self, data_files, file_key):
-        """Test evlib.load_events_as_numpy() backwards compatibility function."""
+        """Test evlib.load_events."""
         file_info = data_files[file_key]
 
         if not file_info["path"].exists():
             pytest.skip(f"Test file not found: {file_info['path']}")
 
         # Test the NumPy compatibility function
-        result = evlib.load_events_as_numpy(str(file_info["path"]))
-
-        # Verify result structure (should be tuple of numpy arrays)
-        assert isinstance(result, tuple), f"load_events_as_numpy should return tuple, got {type(result)}"
-        assert len(result) == 4, f"load_events_as_numpy should return 4-tuple, got {len(result)}"
-
-        x, y, t, p = result
-
-        # Verify array types
-        assert isinstance(x, np.ndarray), f"x should be numpy array, got {type(x)}"
-        assert isinstance(y, np.ndarray), f"y should be numpy array, got {type(y)}"
-        assert isinstance(t, np.ndarray), f"t should be numpy array, got {type(t)}"
-        assert isinstance(p, np.ndarray), f"p should be numpy array, got {type(p)}"
+        result = evlib.load_events(str(file_info["path"])).collect().to_numpy()
 
         # Compare with main load_events function to ensure compatibility
-        main_result = evlib.load_events(str(file_info["path"]))
+        main_result = evlib.load_events(str(file_info["path"])).collect()
         main_df = main_result.collect()
         main_x = main_df["x"].to_numpy()
         main_y = main_df["y"].to_numpy()

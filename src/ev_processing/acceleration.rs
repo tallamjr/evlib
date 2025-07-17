@@ -252,7 +252,7 @@ pub mod simd {
             for event in events {
                 if event.x < width as u16 && event.y < height as u16 {
                     let idx = bin * (width * height) + event.y as usize * width + event.x as usize;
-                    voxel_grid[idx] += if event.polarity > 0 { 1.0 } else { -1.0 };
+                    voxel_grid[idx] += if event.polarity { 1.0 } else { -1.0 };
                 }
             }
             return Ok(voxel_grid);
@@ -302,7 +302,7 @@ pub mod simd {
                 let bin = bin.min(num_bins - 1);
 
                 let idx = bin * (width * height) + event.y as usize * width + event.x as usize;
-                voxel_grid[idx] += if event.polarity > 0 { 1.0 } else { -1.0 };
+                voxel_grid[idx] += if event.polarity { 1.0 } else { -1.0 };
             }
         }
         Ok(voxel_grid.to_vec())

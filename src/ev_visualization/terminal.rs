@@ -396,7 +396,7 @@ fn render_canvas_static(
                     let x = canvas_bounds.2 - event.x as f64;
                     let y = canvas_bounds.3 - event.y as f64;
 
-                    if event.polarity > 0 {
+                    if event.polarity {
                         positive_events.push((x, y));
                     } else {
                         negative_events.push((x, y));

@@ -65,7 +65,7 @@ pub fn events_to_timestamp_image(
         };
 
         // Update the appropriate timestamp image
-        if ev.polarity > 0 {
+        if ev.polarity {
             timestamps_pos[idx] = t_value;
         } else {
             timestamps_neg[idx] = t_value;
@@ -110,7 +110,7 @@ pub fn events_to_count_image(
     // Count events at each pixel
     for ev in events {
         let idx = ev.y as usize * width + ev.x as usize;
-        if ev.polarity > 0 {
+        if ev.polarity {
             counts_pos[idx] += 1;
         } else {
             counts_neg[idx] += 1;
@@ -164,7 +164,7 @@ pub fn events_to_frame(
             // Sum polarities
             for ev in events {
                 let idx = ev.y as usize * width + ev.x as usize;
-                frame[idx] += ev.polarity as f32;
+                frame[idx] += ev.polarity as u8 as f32;
             }
         }
         "times" => {

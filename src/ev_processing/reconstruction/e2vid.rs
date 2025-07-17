@@ -398,7 +398,7 @@ impl E2Vid {
                 x: xs[i] as u16,
                 y: ys[i] as u16,
                 t: ts[i],
-                polarity: ps[i] as i8,
+                polarity: ps[i] > 0,
             });
         }
 

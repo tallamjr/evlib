@@ -241,5 +241,8 @@ pub mod model_zoo;
 /// Module for real-time streaming processing
 pub mod streaming;
 
+/// Module for enhanced streaming processing for large datasets
+// pub mod streaming_enhanced; // removed - using minimal approach
+
 /// Module for hardware acceleration optimizations
 pub mod acceleration;

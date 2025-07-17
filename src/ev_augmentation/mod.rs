@@ -19,7 +19,7 @@ pub fn add_random_events(
         let x = rng.gen_range(0..width);
         let y = rng.gen_range(0..height);
         let t = rng.gen_range(t_min..t_max);
-        let polarity = if rng.gen_bool(0.5) { 1 } else { -1 };
+        let polarity = rng.gen_bool(0.5);
         events.push(Event { t, x, y, polarity });
     }
 }
@@ -273,7 +273,7 @@ pub mod python {
             xs_vec.push(ev.x as i64);
             ys_vec.push(ev.y as i64);
             ts_vec.push(ev.t);
-            ps_vec.push(ev.polarity as i64);
+            ps_vec.push(ev.polarity as u8 as i64);
         }
 
         // Create numpy arrays

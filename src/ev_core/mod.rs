@@ -21,7 +21,7 @@ pub struct Event {
     pub t: f64,       // timestamp (in seconds or microseconds, depending on dataset)
     pub x: u16,       // x coordinate (pixel column)
     pub y: u16,       // y coordinate (pixel row)
-    pub polarity: i8, // +1 for positive (ON event), -1 for negative (OFF event)
+    pub polarity: bool, // true for positive (ON event), false for negative (OFF event)
 }
 
 /// A collection of events
@@ -50,7 +50,7 @@ pub fn events_to_tensor(events: &Events) -> Result<Tensor> {
         xs.push(ev.x as f32);
         ys.push(ev.y as f32);
         ts.push(ev.t as f32);
-        ps.push(ev.polarity as f32);
+        ps.push(if ev.polarity { 1.0 } else { 0.0 });
     }
 
     // Stack the arrays into a Nx4 tensor
@@ -82,7 +82,7 @@ pub fn from_numpy_arrays(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 
@@ -95,7 +95,7 @@ pub fn split_by_polarity(events: &Events) -> (Events, Events) {
     let mut neg_events = Vec::new();
 
     for &ev in events {
-        if ev.polarity >= 0 {
+        if ev.polarity {
             pos_events.push(ev);
         } else {
             neg_events.push(ev);

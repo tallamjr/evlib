@@ -365,7 +365,7 @@ pub fn esim_simulate_py(
                     x: x as u16,
                     y: y as u16,
                     t: 0.0,
-                    polarity: 1,
+                    polarity: true,
                 });
             }
             // Generate negative events
@@ -374,7 +374,7 @@ pub fn esim_simulate_py(
                     x: x as u16,
                     y: y as u16,
                     t: 0.0,
-                    polarity: -1,
+                    polarity: false,
                 });
             }
         }

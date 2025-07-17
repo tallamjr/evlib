@@ -28,7 +28,7 @@ pub fn events_to_block_py(
         block[[i, 0]] = ev.x as f64;
         block[[i, 1]] = ev.y as f64;
         block[[i, 2]] = ev.t;
-        block[[i, 3]] = ev.polarity as f64;
+        block[[i, 3]] = if ev.polarity { 1.0 } else { 0.0 };
     }
 
     Ok(block.into_pyarray(py).to_object(py))

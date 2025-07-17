@@ -38,7 +38,7 @@ pub fn events_to_video_temporal_py(
             x: xs_array[i] as u16,
             y: ys_array[i] as u16,
             t: ts_array[i],
-            polarity: ps_array[i] as i8,
+            polarity: ps_array[i] > 0,
         });
     }
 
@@ -73,7 +73,7 @@ pub fn events_to_video_temporal_py(
             let idx = bin_idx * height * width + (event.y as usize) * width + (event.x as usize);
 
             if idx < voxel_grid.len() {
-                voxel_grid[idx] += if event.polarity > 0 { 1.0 } else { -1.0 };
+                voxel_grid[idx] += if event.polarity { 1.0 } else { -1.0 };
             }
         }
 

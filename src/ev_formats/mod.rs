@@ -40,10 +40,7 @@ pub use polarity_handler::{
     PolarityConfig, PolarityEncoding, PolarityError, PolarityHandler, PolarityStats,
 };
 
-// Polars DataFrame conversion module removed - using minimal approach
-
-// Polars support will be handled through simple dictionary conversion in Python
-
+// Polars support integrated directly into file readers
 
 /// Configuration for loading events with filtering options
 #[derive(Debug, Clone, Default)]
@@ -204,7 +201,7 @@ impl LoadConfig {
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
 pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_metno::Result<Events> {
     // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
-    
+
     let file = H5File::open(path)?;
     let dataset_name = dataset_name.unwrap_or("events");
 
@@ -228,37 +225,44 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 // Get dataset dimensions
                 let shape = t_dataset.shape();
                 let total_events = shape[0];
-                
+
                 // For very large files, read in chunks to avoid memory issues
-                let chunk_size = if total_events > 100_000_000 { 10_000_000 } else { total_events };
-                
+                let chunk_size = if total_events > 100_000_000 {
+                    10_000_000
+                } else {
+                    total_events
+                };
+
                 let mut events = Vec::with_capacity(total_events);
-                
+
                 for start_idx in (0..total_events).step_by(chunk_size) {
                     let end_idx = std::cmp::min(start_idx + chunk_size, total_events);
                     let chunk_len = end_idx - start_idx;
-                    
+
                     // Read chunk of data with proper type handling
                     let t_chunk: Vec<u32> = t_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
                     let x_chunk: Vec<i32> = x_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
                     let y_chunk: Vec<i32> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
                     let p_chunk: Vec<i32> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    
+
                     // Convert chunk to events
                     for i in 0..chunk_len {
                         events.push(Event {
                             t: t_chunk[i] as f64 / 1_000_000.0, // Convert uint32 microseconds to seconds
-                            x: x_chunk[i] as u16, // Convert i32 to u16
+                            x: x_chunk[i] as u16,               // Convert i32 to u16
                             y: y_chunk[i] as u16,
                             polarity: p_chunk[i] != 0, // Convert i32 to bool
                         });
                     }
-                    
+
                     // Print progress for large files
                     if total_events > 10_000_000 {
                         let progress = (end_idx as f64 / total_events as f64) * 100.0;
                         if end_idx % 50_000_000 == 0 || end_idx == total_events {
-                            eprintln!("Loading HDF5: {:.1}% ({}/{})", progress, end_idx, total_events);
+                            eprintln!(
+                                "Loading HDF5: {:.1}% ({}/{})",
+                                progress, end_idx, total_events
+                            );
                         }
                     }
                 }
@@ -465,7 +469,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
                 ),
             )
         })?;
-        
+
         // Convert polarity to boolean: 0 -> false, non-zero -> true
         let polarity = polarity_raw != 0;
 
@@ -761,11 +765,11 @@ impl Iterator for TimeWindowIter<'_> {
 #[cfg(feature = "python")]
 pub mod python {
     use super::*;
-    use numpy::{PyArray1, PyReadonlyArray1};
+    use numpy::PyReadonlyArray1;
     use pyo3::prelude::*;
     use std::io::Write;
 
-    /// Load events from a file with filtering support
+    /// Load events from a file with filtering support (using Polars backend)
     ///
     /// Automatically detects the format based on file extension
     ///
@@ -780,7 +784,7 @@ pub mod python {
     ///     header_lines: Number of header lines to skip in text files
     ///
     /// Returns:
-    ///     Tuple of (x, y, timestamp, polarity) numpy arrays
+    ///     Python dictionary with event data for Polars LazyFrame creation
     #[pyfunction]
     #[pyo3(
         signature = (
@@ -818,10 +822,10 @@ pub mod python {
         t_col: Option<usize>,
         p_col: Option<usize>,
         header_lines: usize,
-    ) -> PyResult<(PyObject, PyObject, PyObject, PyObject)> {
+    ) -> PyResult<PyObject> {
         // Convert i8 polarity filter to bool
         let polarity_bool = polarity.map(|p| p > 0);
-        
+
         let config = LoadConfig::new()
             .with_time_window(t_start, t_end)
             .with_spatial_bounds(min_x, max_x, min_y, max_y)
@@ -830,58 +834,52 @@ pub mod python {
             .with_custom_columns(t_col, x_col, y_col, p_col)
             .with_header_lines(header_lines);
 
-        // Detect format for polarity encoding
-        let detection_result = format_detector::detect_event_format(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                "Format detection failed: {}",
-                e
-            ))
+        // Detect format for proper polarity encoding
+        let format_result = detect_event_format(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {}", e))
         })?;
-
-        let events = load_events_with_config(path, &config).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                "Failed to load events: {}",
-                e
-            ))
-        })?;
-
-        // Convert to separate arrays
-        let n = events.len();
-        let mut timestamps = Vec::with_capacity(n);
-        let mut xs = Vec::with_capacity(n);
-        let mut ys = Vec::with_capacity(n);
-        let mut polarities = Vec::with_capacity(n);
-
-        // Convert bool polarities to format-specific encoding
-        let use_negative_one = matches!(detection_result.format, EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3);
         
-        for ev in events {
-            timestamps.push(ev.t);
-            xs.push(ev.x as i64);
-            ys.push(ev.y as i64);
-            if use_negative_one {
-                // EVT2/EVT21 formats use -1/1 encoding
-                polarities.push(if ev.polarity { 1i64 } else { -1i64 });
-            } else {
-                // HDF5/Text formats use 0/1 encoding
-                polarities.push(if ev.polarity { 1i64 } else { 0i64 });
+        // Load events using existing Rust logic
+        let events = load_events_with_config(path, &config).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {}", e))
+        })?;
+
+        // Extract and convert data efficiently in Rust for Polars
+        let x: Vec<i16> = events.iter().map(|e| e.x as i16).collect();
+        let y: Vec<i16> = events.iter().map(|e| e.y as i16).collect();
+        
+        // Format-specific polarity encoding
+        let polarity: Vec<i8> = match format_result.format {
+            EventFormat::EVT2 => {
+                // EVT2 expects -1/1 encoding
+                events.iter().map(|e| if e.polarity { 1i8 } else { -1i8 }).collect()
+            },
+            _ => {
+                // HDF5, Text, and other formats expect 0/1 encoding
+                events.iter().map(|e| if e.polarity { 1i8 } else { 0i8 }).collect()
             }
-        }
+        };
 
-        // Convert to numpy arrays
-        let ts_array = PyArray1::from_vec(py, timestamps);
-        let xs_array = PyArray1::from_vec(py, xs);
-        let ys_array = PyArray1::from_vec(py, ys);
-        let ps_array = PyArray1::from_vec(py, polarities);
+        // Handle timestamp conversion to microseconds in Rust
+        let timestamps_us: Vec<i64> = events.iter().map(|e| {
+            if e.t > 1_000_000.0 {
+                // Already in microseconds
+                e.t as i64
+            } else {
+                // Convert seconds to microseconds
+                (e.t * 1_000_000.0) as i64
+            }
+        }).collect();
 
-        Ok((
-            xs_array.to_object(py),
-            ys_array.to_object(py),
-            ts_array.to_object(py),
-            ps_array.to_object(py),
-        ))
+        // Return as Python dict for Polars LazyFrame creation
+        let mut data_dict = std::collections::HashMap::new();
+        data_dict.insert("x".to_string(), x.into_py(py));
+        data_dict.insert("y".to_string(), y.into_py(py));
+        data_dict.insert("timestamp".to_string(), timestamps_us.into_py(py));
+        data_dict.insert("polarity".to_string(), polarity.into_py(py));
+
+        Ok(data_dict.into_py(py))
     }
-
 
 
     /// Save events to an HDF5 file
@@ -919,7 +917,11 @@ pub mod python {
         let xs_vec: Vec<u16> = xs.as_array().iter().map(|&x| x as u16).collect();
         let ys_vec: Vec<u16> = ys.as_array().iter().map(|&y| y as u16).collect();
         let ts_vec: Vec<f64> = ts.as_slice().unwrap().to_vec();
-        let ps_vec: Vec<i8> = ps.as_array().iter().map(|&p| if p == 0 { 0i8 } else { 1i8 }).collect();
+        let ps_vec: Vec<i8> = ps
+            .as_array()
+            .iter()
+            .map(|&p| if p == 0 { 0i8 } else { 1i8 })
+            .collect();
 
         // Create datasets for each component
         let xs_shape = [n];
@@ -1065,13 +1067,4 @@ pub mod python {
 
         Ok(FormatDetector::get_format_description(&event_format).to_string())
     }
-
-
-
-
-
-
-
-
-
 }
