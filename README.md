@@ -38,22 +38,6 @@ A robust event camera processing library with Rust backend and Python bindings, 
 
 ## Quick Start
 
-### NumPy Arrays (Traditional)
-```python
-import evlib
-
-# Load events as NumPy arrays
-x, y, t, p = evlib.load_events("path/to/your/data.h5")
-
-# Create stacked histogram representation
-histogram = evlib.create_event_histogram(x, y, t, p, height=480, width=640)
-
-# Filter events by time range
-filtered_x, filtered_y, filtered_t, filtered_p = evlib.filter_events_by_time(
-    x, y, t, p, start_time=0.1, end_time=0.2
-)
-```
-
 ### Polars DataFrames (High-Performance)
 ```python
 import evlib
@@ -162,15 +146,13 @@ evlib provides comprehensive Polars DataFrame support for high-performance event
 
 #### Loading Data
 ```python
-# Method 1: Load as LazyFrame (recommended)
+# Load as LazyFrame (recommended)
 lf = evlib.load_events("data.h5")
 df = lf.collect()  # Collect to DataFrame when needed
 
-# Method 2: Load as NumPy arrays (traditional)
-x, y, t, p = evlib.load_events("data.h5")
-
-# Method 3: Auto-detection with format-specific optimizations
-lf = evlib.load_events("data.evt2")  # Automatically detects EVT2 format
+# Automatic format detection and optimization
+lf = evlib.load_events("data.evt2")  # EVT2 format automatically detected
+print(f"Format: {evlib.detect_format('data.evt2')}")
 ```
 
 #### Advanced Features
@@ -191,9 +173,6 @@ temporal_stats = lf.group_by_dynamic(
     pl.col("polarity").mean().alias("avg_polarity")
 ]).collect()
 
-# Automatic format detection and optimization
-lf = evlib.load_events("data.evt2")  # EVT2 format automatically detected
-print(f"Format: {evlib.detect_format('data.evt2')}")
 ```
 
 #### Utility Functions
@@ -255,10 +234,10 @@ Run performance benchmarks to verify optimizations:
 
 ```bash
 # Verify README performance claims
-python benchmark_performance_readme.py
+python benches/benchmark_performance_readme.py
 
 # Memory efficiency benchmark
-python benchmark_memory.py
+python benches/benchmark_memory.py
 
 # General performance benchmark
 python examples/benchmark.py
@@ -337,7 +316,7 @@ print(f"Memory per event: {(peak_mem - initial_mem) * 1024 * 1024 / len(df):.1f}
 # Solution: Verify streaming is enabled
 lf = evlib.load_events("large_file.h5")
 # Streaming activates automatically for files >5M events
-df = lf.collect()  # Only collect when needed
+df = lf.collect()  # Only collect when needed ideally after some filtering or 'sink_parquet' to streaming write to disk'
 ```
 
 **Issue**: Slow loading performance
@@ -369,10 +348,10 @@ print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
 *Performance measured on Apple M1 with 16GB RAM using real-world datasets*
 
 **Verified Performance Claims:**
-- ✅ Loading speed: 2.2M events/s (exceeds 600k target)
-- ✅ Filter speed: 467M events/s (exceeds 400M target)
-- ✅ Memory efficiency: 35 bytes/event (well under 110 target)
-- ✅ Large file support: Successfully tested with 200M+ events
+- Loading speed: 2.2M events/s (exceeds 600k target)
+- Filter speed: 467M events/s (exceeds 400M target)
+- Memory efficiency: 35 bytes/event (well under 110 target)
+- Large file support: Successfully tested with 200M+ events
 
 ## Examples
 
@@ -384,23 +363,10 @@ The `examples/` directory contains comprehensive notebooks demonstrating:
 - **Gen4 Data**: Processing modern event camera formats
 - **Data Visualization**: Creating event representations and plots
 
-### Polars-Specific Examples
-- **`polars_integration_example.ipynb`**: Complete Polars API overview
-- **`polars_utility_functions_demo.ipynb`**: Advanced utility functions
-- **`polars_integration_demo.py`**: Python script demonstrating core features
-- **`streaming_large_datasets_demo.ipynb`**: Memory-efficient processing
-
 Run examples:
 ```bash
 # Test all notebooks
 pytest --nbmake examples/
-
-# Run Polars-specific examples
-jupyter notebook examples/polars_integration_example.ipynb
-python examples/polars_integration_demo.py
-
-# Test streaming with large datasets
-jupyter notebook examples/streaming_large_datasets_demo.ipynb
 ```
 
 ## Development
