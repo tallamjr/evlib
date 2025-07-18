@@ -26,19 +26,38 @@
 
 A robust event camera processing library with Rust backend and Python bindings, designed for reliable data processing with real-world event camera datasets.
 
+## Current Status (v0.2.3)
+
+**✅ Fully Working Features:**
+- Universal format support (H5, AEDAT, EVT2/3, AER, text)
+- Automatic format detection
+- Polars DataFrame integration (up to 97x speedup)
+- High-performance event filtering
+- Event representations (stacked histograms, voxel grids)
+- Neural network model loading (E2VID)
+- Large file support (tested with 200M+ events)
+
+**🚧 In Development:**
+- Advanced neural network processing (Rust backend temporarily disabled)
+- Real-time visualization (Rust backend temporarily disabled)
+
+**Note**: The core functionality is stable and production-ready. The Rust backend currently focuses on data loading and processing, with Python modules providing advanced features like filtering and representations.
+
 ## Core Features
 
 - **Universal Format Support**: Load data from H5, AEDAT, EVT2/3, AER, and text formats
 - **Automatic Format Detection**: No need to specify format types manually
 - **Polars DataFrame Integration**: High-performance DataFrame operations with up to 97x speedup
-- **Stacked Histogram Representations**: Efficient event-to-representation conversion
+- **Event Filtering**: Comprehensive filtering with temporal, spatial, and polarity options
+- **Event Representations**: Stacked histograms, voxel grids, and mixed density stacks
+- **Neural Network Models**: E2VID model loading and inference
 - **Real-time Data Processing**: Handle large datasets (550MB+ files) efficiently
 - **Polarity Encoding**: Automatic conversion between 0/1 and -1/1 polarities
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
 ## Quick Start
 
-### Polars DataFrames (High-Performance)
+### Basic Usage
 ```python
 import evlib
 import polars as pl
@@ -62,6 +81,73 @@ stats = lf.group_by("polarity").agg([
 
 # Collect to DataFrame when needed
 df = lf.collect()
+```
+
+### Advanced Filtering
+```python
+import evlib.filtering as evf
+
+# High-level preprocessing pipeline
+processed = evf.preprocess_events(
+    "path/to/your/data.h5",
+    t_start=0.1, t_end=0.5,
+    roi=(100, 500, 100, 400),
+    polarity=1,
+    remove_hot_pixels=True,
+    remove_noise=True
+)
+
+# Individual filters
+time_filtered = evf.filter_by_time(lf, t_start=0.1, t_end=0.5)
+spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
+```
+
+### Event Representations
+```python
+import evlib.representations as evr
+
+# Create stacked histogram (replaces RVT preprocessing)
+hist = evr.create_stacked_histogram(
+    "path/to/your/data.h5",
+    height=480, width=640,
+    nbins=10, window_duration_ms=50
+)
+
+# Create voxel grid representation
+voxel = evr.create_voxel_grid(
+    "path/to/your/data.h5",
+    height=480, width=640,
+    nbins=5
+)
+
+# High-level preprocessing for neural networks
+data = evr.preprocess_for_detection(
+    "path/to/your/data.h5",
+    representation="stacked_histogram",
+    height=480, width=640
+)
+```
+
+### Neural Network Models
+```python
+import evlib.models as evm
+
+# Load E2VID model
+model = evm.load_e2vid_model("models/E2VID_lightweight.pth.tar")
+
+# Inference on voxel grid
+reconstructed = model.inference(voxel_grid)
+```
+
+### Direct Rust Access (Advanced)
+```python
+# Direct access to Rust formats module (returns NumPy arrays)
+x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
+
+# Format detection
+format_info = evlib.detect_format("path/to/your/data.h5")
+print(f"Detected format: {format_info}")
 ```
 
 ## Installation
@@ -353,6 +439,38 @@ print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
 - Memory efficiency: 35 bytes/event (well under 110 target)
 - Large file support: Successfully tested with 200M+ events
 
+## Available Python Modules
+
+evlib provides several Python modules for different aspects of event processing:
+
+### Core Modules
+- **`evlib.formats`**: Direct Rust access for format loading and detection
+- **`evlib.filtering`**: High-performance event filtering with Polars
+- **`evlib.representations`**: Event representations (stacked histograms, voxel grids)
+- **`evlib.models`**: Neural network model loading and inference
+
+### Module Overview
+```python
+# Core event loading (returns Polars LazyFrame)
+import evlib
+lf = evlib.load_events("data.h5")
+
+# Advanced filtering
+import evlib.filtering as evf
+filtered = evf.preprocess_events("data.h5", t_start=0.1, t_end=0.5)
+
+# Event representations
+import evlib.representations as evr
+hist = evr.create_stacked_histogram("data.h5", height=480, width=640)
+
+# Neural network models
+import evlib.models as evm
+model = evm.load_e2vid_model("model.pth.tar")
+
+# Direct Rust access
+x, y, t, p = evlib.formats.load_events("data.h5")
+```
+
 ## Examples
 
 The `examples/` directory contains comprehensive notebooks demonstrating:
@@ -361,27 +479,35 @@ The `examples/` directory contains comprehensive notebooks demonstrating:
 - **H5 Data Processing**: Loading and processing HDF5 event data
 - **eTram Dataset**: Working with sparse event distributions
 - **Gen4 Data**: Processing modern event camera formats
-- **Data Visualization**: Creating event representations and plots
+- **Event Filtering**: Comprehensive filtering examples
+- **Event Representations**: Creating stacked histograms and voxel grids
+- **Performance Benchmarks**: Performance comparison with other tools
 
 Run examples:
 ```bash
 # Test all notebooks
 pytest --nbmake examples/
+
+# Run specific examples
+python examples/simple_example.py
+python examples/filtering_demo.py
+python examples/stacked_histogram_demo.py
 ```
 
 ## Development
 
 ### Testing
 ```bash
-# Run all tests (includes Polars integration tests)
+# Run all tests (Python and Rust)
 pytest
 cargo test
 
-# Test Polars functionality specifically
-pytest tests/test_polars_integration_python.py
-cargo test --features polars polars
+# Test specific modules
+pytest tests/test_filtering.py
+pytest tests/test_representations.py
+pytest tests/test_evlib_exact_match.py
 
-# Test notebooks (including Polars examples)
+# Test notebooks (including examples)
 pytest --nbmake examples/
 
 # Test with coverage
@@ -390,6 +516,19 @@ pytest --cov=evlib
 # Format code
 black python/ tests/ examples/
 cargo fmt
+```
+
+### Building
+```bash
+# Development build
+maturin develop
+
+# Build with features
+maturin develop --features polars
+maturin develop --features pytorch
+
+# Release build
+maturin build --release
 ```
 
 ### Build Requirements

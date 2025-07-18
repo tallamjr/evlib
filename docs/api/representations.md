@@ -1,53 +1,143 @@
 # Representations API Reference
 
-The representations module provides efficient implementations for converting event data into various spatial-temporal representations.
+The representations module provides efficient implementations for converting event data into various spatial-temporal representations using high-performance Polars processing.
 
 ## Overview
 
 ```python
-import evlib.representations
+import evlib.representations as evr
 ```
 
 Event representations are crucial for:
 - **Neural network input**: Converting events to tensor-like formats
 - **Visualization**: Creating images from sparse event data
 - **Analysis**: Temporal and spatial aggregation of events
+- **RVT Replacement**: High-performance alternatives to PyTorch preprocessing
 
 ## Core Functions
 
-### create_voxel_grid
+### create_stacked_histogram
 
-::: evlib.representations.events_to_voxel_grid
-
-Creates a quantized voxel grid representation of events.
+Creates stacked histogram representation with temporal binning.
 
 **Example Usage:**
 ```python
-# Basic voxel grid
-voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 5, (640, 480))
-# Output shape: (5, 480, 640)
+# Create stacked histogram (replaces RVT preprocessing)
+hist = evr.create_stacked_histogram(
+    "events.h5",
+    height=480, width=640,
+    nbins=10, window_duration_ms=50
+)
+# Output shape: (num_windows, 2*nbins, height, width)
+```
 
-# Normalize event counts
-voxel_grid_normalized_data, voxel_grid_normalized_shape = evlib.representations.events_to_voxel_grid(
-    xs, ys, ts, ps,
-    width=640,
-    height=480,
-    bins=5,
-    normalize=True
+**Parameters:**
+- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
+- `height` (int): Output image height
+- `width` (int): Output image width
+- `nbins` (int): Number of temporal bins per window
+- `window_duration_ms` (float): Duration of each window in milliseconds
+- `stride_ms` (float): Stride between windows (optional)
+- `count_cutoff` (int): Maximum count per bin (optional)
+
+**Returns:**
+- `numpy.ndarray`: Stacked histogram of shape (num_windows, 2*nbins, height, width)
+
+### create_voxel_grid
+
+Creates traditional voxel grid representation.
+
+**Example Usage:**
+```python
+# Create voxel grid
+voxel = evr.create_voxel_grid(
+    "events.h5",
+    height=480, width=640,
+    nbins=5
+)
+# Output shape: (5, 480, 640)
+```
+
+**Parameters:**
+- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
+- `height` (int): Output image height
+- `width` (int): Output image width
+- `nbins` (int): Number of temporal bins
+
+**Returns:**
+- `numpy.ndarray`: Voxel grid of shape (nbins, height, width)
+
+### create_mixed_density_stack
+
+Creates mixed density event stack representation.
+
+**Example Usage:**
+```python
+# Create mixed density stack
+stack = evr.create_mixed_density_stack(
+    "events.h5",
+    height=480, width=640,
+    nbins=10, window_duration_ms=50
+)
+# Output shape: (num_windows, nbins, height, width)
+```
+
+**Parameters:**
+- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
+- `height` (int): Output image height
+- `width` (int): Output image width
+- `nbins` (int): Number of temporal bins
+- `window_duration_ms` (float): Duration of each window in milliseconds
+- `count_cutoff` (int): Maximum absolute value per bin (optional)
+
+**Returns:**
+- `numpy.ndarray`: Mixed density stack of shape (num_windows, nbins, height, width)
+
+## High-Level API
+
+### preprocess_for_detection
+
+High-level preprocessing function to replace RVT's preprocessing pipeline.
+
+**Example Usage:**
+```python
+# Replace RVT preprocessing
+data = evr.preprocess_for_detection(
+    "events.h5",
+    representation="stacked_histogram",
+    height=480, width=640,
+    nbins=10, window_duration_ms=50
 )
 ```
 
 **Parameters:**
-- `xs` (array): X coordinates of events
-- `ys` (array): Y coordinates of events
-- `ts` (array): Timestamps of events
-- `ps` (array): Polarities of events (+1 or -1)
-- `width` (int): Output image width
+- `events_path` (str): Path to event file
+- `representation` (str): Type of representation ("stacked_histogram", "mixed_density", "voxel_grid")
 - `height` (int): Output image height
-- `bins` (int): Number of temporal bins
-- `normalize` (bool): Whether to normalize the output
+- `width` (int): Output image width
+- `**kwargs`: Representation-specific parameters
 
 **Returns:**
+- `numpy.ndarray`: Preprocessed representation ready for neural networks
+
+### benchmark_vs_rvt
+
+Benchmark the Polars-based implementation against RVT's approach.
+
+**Example Usage:**
+```python
+# Benchmark performance
+results = evr.benchmark_vs_rvt("events.h5", height=480, width=640)
+print(f"Speedup: {results['speedup']:.1f}x")
+```
+
+**Parameters:**
+- `events_path` (str): Path to test event file
+- `height` (int): Sensor height
+- `width` (int): Sensor width
+
+**Returns:**
+- `dict`: Performance comparison results
 - `ndarray`: Voxel grid with shape (bins, height, width)
 
 ### create_smooth_voxel_grid

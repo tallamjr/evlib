@@ -1,5 +1,7 @@
 # Visualization API Reference
 
+> **⚠️ Status Note**: The Rust backend visualization module is temporarily disabled in the current version. Visualization functionality is available through standard Python libraries (matplotlib, seaborn) and the examples in the `examples/` directory show how to create visualizations using the loaded event data.
+
 Functions for visualizing event camera data.
 
 ## Basic Plotting

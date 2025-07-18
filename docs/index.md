@@ -12,31 +12,47 @@ evlib prioritizes **reliable functionality** over maximum feature count. Every f
 
 ## Current Status
 
-**All Core Features Verified (January 2025)**
+**Core Features Verified (January 2025)**
 
-- **Event Data I/O**: Text and HDF5 formats with comprehensive filtering
-- **Event Representations**: Voxel grids and smooth voxel grids with interpolation
-- **Event Augmentation**: Spatial transformations, noise addition, and filtering
-- **Event Visualization**: Real-time terminal visualization and plotting
-- **Neural Networks**: E2VID UNet for event-to-video reconstruction
+**✅ Fully Working:**
+- **Event Data I/O**: Universal format support (HDF5, EVT2/3, AEDAT, AER, Text)
+- **Event Filtering**: Comprehensive filtering with Polars integration
+- **Event Representations**: Stacked histograms, voxel grids, and mixed density stacks
+- **Neural Networks**: E2VID model loading and inference (Python)
+- **Performance**: High-performance DataFrame operations with Polars
+
+**🚧 In Development:**
+- **Advanced Processing**: Rust-based neural network processing (temporarily disabled)
+- **Visualization**: Real-time terminal visualization (temporarily disabled)
 
 ## Quick Start
 
 ```python
 import evlib
+import evlib.filtering as evf
+import evlib.representations as evr
 
-# Load events with time filtering
-xs, ys, ts, ps = evlib.formats.load_events(
-    'events.txt',
-    t_start=0.0,
-    t_end=1.0
+# Load events as Polars LazyFrame
+lf = evlib.load_events("events.h5")
+
+# High-performance filtering
+filtered = evf.filter_by_time(lf, t_start=0.1, t_end=0.5)
+processed = evf.preprocess_events(
+    "events.h5",
+    t_start=0.1, t_end=0.5,
+    roi=(100, 500, 100, 400),
+    remove_hot_pixels=True
 )
 
-# Create voxel grid representation
-voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 5, (640, 480))
+# Create event representations
+hist = evr.create_stacked_histogram(
+    "events.h5",
+    height=480, width=640,
+    nbins=10
+)
 
-# Visualize events
-# evlib.visualization.plot_events  # Not available in current version(xs, ys, ts, ps)
+# Direct Rust access (returns NumPy arrays)
+x, y, t, p = evlib.formats.load_events("events.h5")
 ```
 
 ## Performance Philosophy
@@ -61,30 +77,35 @@ See **[Zero-Copy Architecture](development/zero-copy-architecture.md)** for tech
 ## Key Features
 
 ### Comprehensive File Format Support
-- **Text files**: Space-separated event data with flexible column mapping
-- **HDF5 files**: Hierarchical data format with perfect round-trip compatibility
+- **Universal formats**: HDF5, EVT2/3, AEDAT, AER, and text files
+- **Automatic detection**: No need to specify format types manually
 - **Advanced filtering**: Time windows, spatial bounds, polarity selection
 
+### High-Performance Event Processing
+- **Polars integration**: Up to 97x speedup for filtering operations
+- **Event filtering**: Comprehensive filtering with temporal, spatial, and polarity options
+- **Hot pixel removal**: Statistical outlier detection and removal
+- **Noise filtering**: Refractory period and temporal noise removal
+
 ### Event Representations
-- **Voxel grids**: Quantized temporal representations
-- **Smooth voxel grids**: Bilinear interpolation for improved temporal resolution
-- **Memory efficient**: Optimized data structures and processing
+- **Stacked histograms**: Efficient temporal binning for neural networks
+- **Voxel grids**: Traditional quantized temporal representations
+- **Mixed density stacks**: Logarithmic time binning with polarity accumulation
+- **RVT replacement**: High-performance alternatives to PyTorch preprocessing
 
-### Reliable Neural Networks
-- **E2VID UNet**: Verified working model with downloadable weights
-- **Model verification**: All advertised models have verified download URLs
-- **No placeholders**: Only functional, tested implementations
-
-### Professional Visualization
-- **Terminal visualization**: Ultra-fast real-time event display
-- **Scientific plotting**: Integration with matplotlib
-- **Real-time streaming**: Live event visualization capabilities
+### Neural Network Integration
+- **E2VID models**: Model loading and inference capabilities
+- **ONNX support**: Runtime inference for deployment
+- **Preprocessing pipelines**: Ready-to-use neural network input preparation
 
 ## Documentation Structure
 
 - **[Getting Started](getting-started/installation.md)**: Installation and basic usage
 - **[User Guide](user-guide/loading-data.md)**: Comprehensive tutorials
 - **[API Reference](api/core.md)**: Detailed function documentation
+  - **[Filtering API](api/filtering.md)**: High-performance event filtering
+  - **[Representations API](api/representations.md)**: Event representations and preprocessing
+  - **[Formats API](api/formats.md)**: File format support and detection
 - **[Examples](examples/notebooks.md)**: Jupyter notebooks and scripts
 
 ## Quality Assurance
