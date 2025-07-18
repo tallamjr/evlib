@@ -232,6 +232,11 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 let shape = t_dataset.shape();
                 let total_events = shape[0];
 
+                // Handle empty datasets
+                if total_events == 0 {
+                    return Ok(Vec::new());
+                }
+
                 // For very large files, read in chunks to avoid memory issues
                 let chunk_size = if total_events > 100_000_000 {
                     10_000_000
@@ -246,18 +251,18 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     let chunk_len = end_idx - start_idx;
 
                     // Read chunk of data with proper type handling
-                    let t_chunk: Vec<u32> = t_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let x_chunk: Vec<i32> = x_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let y_chunk: Vec<i32> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let p_chunk: Vec<i32> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let t_chunk: Vec<i64> = t_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let x_chunk: Vec<u16> = x_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let y_chunk: Vec<u16> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
+                    let p_chunk: Vec<i8> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
 
                     // Convert chunk to events
                     for i in 0..chunk_len {
                         events.push(Event {
-                            t: t_chunk[i] as f64 / 1_000_000.0, // Convert uint32 microseconds to seconds
-                            x: x_chunk[i] as u16,               // Convert i32 to u16
-                            y: y_chunk[i] as u16,
-                            polarity: p_chunk[i] != 0, // Convert i32 to bool
+                            t: t_chunk[i] as f64 / 1_000_000.0, // Convert i64 microseconds to seconds
+                            x: x_chunk[i],                      // Already u16
+                            y: y_chunk[i],                      // Already u16
+                            polarity: p_chunk[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
                         });
                     }
 
@@ -329,21 +334,39 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 events_group.dataset(y_name),
                 events_group.dataset(p_name),
             ) {
-                let t_arr: Vec<f64> = t_dataset.read_raw()?.to_vec();
                 let x_arr: Vec<u16> = x_dataset.read_raw()?.to_vec();
                 let y_arr: Vec<u16> = y_dataset.read_raw()?.to_vec();
                 let p_arr: Vec<i8> = p_dataset.read_raw()?.to_vec();
 
-                let n = t_arr.len();
+                let n = x_arr.len();
                 let mut events = Vec::with_capacity(n);
 
-                for i in 0..n {
-                    events.push(Event {
-                        t: t_arr[i] / 1_000_000.0, // Convert microseconds to seconds
-                        x: x_arr[i],
-                        y: y_arr[i],
-                        polarity: p_arr[i] != 0, // Convert i8 to bool
-                    });
+                // Try to read timestamps as i64 first (new format), then fall back to f64 (old format)
+                if let Ok(t_arr) = t_dataset.read_raw::<i64>() {
+                    let t_arr: Vec<i64> = t_arr.to_vec();
+                    for i in 0..n {
+                        events.push(Event {
+                            t: t_arr[i] as f64 / 1_000_000.0, // Convert microseconds to seconds
+                            x: x_arr[i],
+                            y: y_arr[i],
+                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                        });
+                    }
+                } else if let Ok(t_arr) = t_dataset.read_raw::<f64>() {
+                    let t_arr: Vec<f64> = t_arr.to_vec();
+                    for i in 0..n {
+                        events.push(Event {
+                            t: t_arr[i], // Already in seconds for f64 format
+                            x: x_arr[i],
+                            y: y_arr[i],
+                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                        });
+                    }
+                } else {
+                    return Err(hdf5_metno::Error::Internal(format!(
+                        "Could not read timestamp data from dataset '{}' in HDF5 file {}",
+                        t_name, path
+                    )));
                 }
 
                 return Ok(events);
@@ -861,8 +884,19 @@ pub mod python {
                     )
                     .collect()?
             }
+            EventFormat::HDF5 => {
+                // HDF5: Convert 0/1 → -1/1 for proper polarity encoding
+                df.lazy()
+                    .with_column(
+                        when(col("polarity").eq(lit(0)))
+                            .then(lit(-1i8))
+                            .otherwise(lit(1i8))
+                            .alias("polarity"),
+                    )
+                    .collect()?
+            }
             _ => {
-                // HDF5, Text, and other formats: Keep 0/1 encoding as-is
+                // Text and other formats: Keep 0/1 encoding as-is
                 df
             }
         };
@@ -1098,7 +1132,15 @@ pub mod python {
         let ps_vec: Vec<i8> = ps
             .as_array()
             .iter()
-            .map(|&p| if p == 0 { 0i8 } else { 1i8 })
+            .map(|&p| {
+                if p == -1 {
+                    -1i8
+                } else if p == 1 {
+                    1i8
+                } else {
+                    0i8
+                }
+            })
             .collect();
 
         // Create datasets for each component

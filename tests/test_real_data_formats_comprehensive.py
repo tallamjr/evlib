@@ -152,7 +152,13 @@ class TestRealDataFormats:
 
         # Load events and measure performance
         def load_func():
-            return evlib.formats.load_events(str(self.test_files["evt2_small"]))
+            df = evlib.load_events(str(self.test_files["evt2_small"])).collect()
+            return (
+                df["x"].to_numpy(),
+                df["y"].to_numpy(),
+                df["timestamp"].cast(float).to_numpy(),
+                df["polarity"].to_numpy(),
+            )
 
         (x, y, t, p), execution_time, memory_usage = self.measure_performance(load_func)
 
@@ -187,7 +193,13 @@ class TestRealDataFormats:
 
         # Load events and measure performance
         def load_func():
-            return evlib.formats.load_events(str(self.test_files["evt2_large"]))
+            df = evlib.load_events(str(self.test_files["evt2_large"])).collect()
+            return (
+                df["x"].to_numpy(),
+                df["y"].to_numpy(),
+                df["timestamp"].cast(float).to_numpy(),
+                df["polarity"].to_numpy(),
+            )
 
         (x, y, t, p), execution_time, memory_usage = self.measure_performance(load_func)
 
@@ -232,7 +244,13 @@ class TestRealDataFormats:
 
         # Load events and measure performance
         def load_func():
-            return evlib.formats.load_events(str(self.test_files["hdf5_small"]))
+            df = evlib.load_events(str(self.test_files["hdf5_small"])).collect()
+            return (
+                df["x"].to_numpy(),
+                df["y"].to_numpy(),
+                df["timestamp"].cast(float).to_numpy(),
+                df["polarity"].to_numpy(),
+            )
 
         (x, y, t, p), execution_time, memory_usage = self.measure_performance(load_func)
 
@@ -265,7 +283,13 @@ class TestRealDataFormats:
 
         # Load events and measure performance
         def load_func():
-            return evlib.formats.load_events(str(self.test_files["hdf5_large"]))
+            df = evlib.load_events(str(self.test_files["hdf5_large"])).collect()
+            return (
+                df["x"].to_numpy(),
+                df["y"].to_numpy(),
+                df["timestamp"].cast(float).to_numpy(),
+                df["polarity"].to_numpy(),
+            )
 
         (x, y, t, p), execution_time, memory_usage = self.measure_performance(load_func)
 
@@ -310,7 +334,13 @@ class TestRealDataFormats:
 
         # Load events and measure performance
         def load_func():
-            return evlib.formats.load_events(str(self.test_files["text_medium"]))
+            df = evlib.load_events(str(self.test_files["text_medium"])).collect()
+            return (
+                df["x"].to_numpy(),
+                df["y"].to_numpy(),
+                df["timestamp"].cast(float).to_numpy(),
+                df["polarity"].to_numpy(),
+            )
 
         (x, y, t, p), execution_time, memory_usage = self.measure_performance(load_func)
 
@@ -342,7 +372,13 @@ class TestRealDataFormats:
             pytest.skip("Text test file not found")
 
         # Load with default polarity encoding (should handle 0/1 -> -1/1 conversion)
-        x, y, t, p = evlib.formats.load_events(str(self.test_files["text_medium"]))
+        df = evlib.load_events(str(self.test_files["text_medium"])).collect()
+        _x, _y, _t, p = (
+            df["x"].to_numpy(),
+            df["y"].to_numpy(),
+            df["timestamp"].cast(float).to_numpy(),
+            df["polarity"].to_numpy(),
+        )
 
         # Check that polarities are correctly encoded as -1/1
         unique_polarities = np.unique(p)
@@ -368,8 +404,20 @@ class TestRealDataFormats:
             pytest.skip("Both EVT2 and HDF5 files needed for comparison")
 
         # Load both files
-        x_evt2, y_evt2, t_evt2, p_evt2 = evlib.formats.load_events(str(evt2_file))
-        x_hdf5, y_hdf5, t_hdf5, p_hdf5 = evlib.formats.load_events(str(hdf5_file))
+        df_evt2 = evlib.load_events(str(evt2_file)).collect()
+        x_evt2, y_evt2, t_evt2, _p_evt2 = (
+            df_evt2["x"].to_numpy(),
+            df_evt2["y"].to_numpy(),
+            df_evt2["timestamp"].cast(float).to_numpy(),
+            df_evt2["polarity"].to_numpy(),
+        )
+        df_hdf5 = evlib.load_events(str(hdf5_file)).collect()
+        x_hdf5, y_hdf5, t_hdf5, _p_hdf5 = (
+            df_hdf5["x"].to_numpy(),
+            df_hdf5["y"].to_numpy(),
+            df_hdf5["timestamp"].cast(float).to_numpy(),
+            df_hdf5["polarity"].to_numpy(),
+        )
 
         # Basic comparison
         evt2_count = len(x_evt2)
@@ -406,13 +454,29 @@ class TestRealDataFormats:
             pytest.skip("Text test file not found")
 
         # Load full dataset
-        x_full, y_full, t_full, p_full = evlib.formats.load_events(str(self.test_files["text_medium"]))
+        df_full = evlib.load_events(str(self.test_files["text_medium"])).collect()
+        x_full, y_full, t_full, _p_full = (
+            df_full["x"].to_numpy(),
+            df_full["y"].to_numpy(),
+            df_full["timestamp"].cast(float).to_numpy(),
+            df_full["polarity"].to_numpy(),
+        )
 
         # Test time filtering
         t_start = np.min(t_full) + 0.1
         t_end = np.max(t_full) - 0.1
-        x_time, y_time, t_time, p_time = evlib.formats.load_events(
-            str(self.test_files["text_medium"]), t_start=t_start, t_end=t_end
+        import polars as pl
+
+        df_time = (
+            evlib.load_events(str(self.test_files["text_medium"]))
+            .filter((pl.col("timestamp").cast(float) >= t_start) & (pl.col("timestamp").cast(float) <= t_end))
+            .collect()
+        )
+        x_time, _y_time, t_time, _p_time = (
+            df_time["x"].to_numpy(),
+            df_time["y"].to_numpy(),
+            df_time["timestamp"].cast(float).to_numpy(),
+            df_time["polarity"].to_numpy(),
         )
 
         assert len(x_time) < len(x_full), "Time filtering didn't reduce event count"
@@ -422,12 +486,21 @@ class TestRealDataFormats:
         # Test spatial filtering
         x_center = (np.min(x_full) + np.max(x_full)) // 2
         y_center = (np.min(y_full) + np.max(y_full)) // 2
-        x_spatial, y_spatial, t_spatial, p_spatial = evlib.formats.load_events(
-            str(self.test_files["text_medium"]),
-            min_x=x_center - 50,
-            max_x=x_center + 50,
-            min_y=y_center - 50,
-            max_y=y_center + 50,
+        df_spatial = (
+            evlib.load_events(str(self.test_files["text_medium"]))
+            .filter(
+                (pl.col("x") >= x_center - 50)
+                & (pl.col("x") <= x_center + 50)
+                & (pl.col("y") >= y_center - 50)
+                & (pl.col("y") <= y_center + 50)
+            )
+            .collect()
+        )
+        x_spatial, y_spatial, _t_spatial, _p_spatial = (
+            df_spatial["x"].to_numpy(),
+            df_spatial["y"].to_numpy(),
+            df_spatial["timestamp"].cast(float).to_numpy(),
+            df_spatial["polarity"].to_numpy(),
         )
 
         assert len(x_spatial) < len(x_full), "Spatial filtering didn't reduce event count"
@@ -437,8 +510,14 @@ class TestRealDataFormats:
         assert np.all(y_spatial <= y_center + 50), "Spatial filtering failed (y max)"
 
         # Test polarity filtering
-        x_pos, y_pos, t_pos, p_pos = evlib.formats.load_events(
-            str(self.test_files["text_medium"]), polarity=1
+        df_pos = (
+            evlib.load_events(str(self.test_files["text_medium"])).filter(pl.col("polarity") == 1).collect()
+        )
+        x_pos, _y_pos, _t_pos, p_pos = (
+            df_pos["x"].to_numpy(),
+            df_pos["y"].to_numpy(),
+            df_pos["timestamp"].cast(float).to_numpy(),
+            df_pos["polarity"].to_numpy(),
         )
 
         assert len(x_pos) < len(x_full), "Polarity filtering didn't reduce event count"
@@ -457,7 +536,13 @@ class TestRealDataFormats:
         initial_memory = self.process.memory_info().rss / 1024 / 1024  # MB
 
         # Load large file
-        x, y, t, p = evlib.formats.load_events(str(self.test_files["evt2_large"]))
+        df_large = evlib.load_events(str(self.test_files["evt2_large"])).collect()
+        x, y, t, p = (
+            df_large["x"].to_numpy(),
+            df_large["y"].to_numpy(),
+            df_large["timestamp"].cast(float).to_numpy(),
+            df_large["polarity"].to_numpy(),
+        )
 
         # Get peak memory usage
         peak_memory = self.process.memory_info().rss / 1024 / 1024  # MB
@@ -483,13 +568,19 @@ class TestRealDataFormats:
         """Test error handling with malformed files."""
         # Test with non-existent file
         with pytest.raises(Exception):
-            evlib.formats.load_events("non_existent_file.txt")
+            evlib.load_events("non_existent_file.txt")
 
         # Test with empty file
         empty_file = self.data_dir / "empty_test.txt"
         empty_file.write_text("")
         try:
-            x, y, t, p = evlib.formats.load_events(str(empty_file))
+            df_empty = evlib.load_events(str(empty_file)).collect()
+            x, _y, _t, _p = (
+                df_empty["x"].to_numpy(),
+                df_empty["y"].to_numpy(),
+                df_empty["timestamp"].cast(float).to_numpy(),
+                df_empty["polarity"].to_numpy(),
+            )
             assert len(x) == 0, "Empty file should return empty arrays"
         finally:
             empty_file.unlink()
@@ -499,7 +590,7 @@ class TestRealDataFormats:
         malformed_file.write_text("not a valid event format\n")
         try:
             with pytest.raises(Exception):
-                evlib.formats.load_events(str(malformed_file))
+                evlib.load_events(str(malformed_file))
         finally:
             malformed_file.unlink()
 

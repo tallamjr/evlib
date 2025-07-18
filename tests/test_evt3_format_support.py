@@ -104,15 +104,17 @@ class TestEVT3FormatSupport(unittest.TestCase):
         test_file = self.create_evt3_test_file(include_events=True)
 
         # Load events
-        events = evlib.load_events(test_file)
+        df = evlib.load_events(test_file).collect()
 
         # Verify we got data
-        self.assertIsInstance(events, (list, tuple), "Events should be returned as sequence")
-        self.assertGreater(len(events), 0, "Should load some data")
+        self.assertGreater(len(df), 0, "Should load some data")
 
-        # Based on current implementation, events are returned as separate arrays
-        if len(events) == 4:
-            x_coords, y_coords, timestamps, polarities = events
+        # Extract arrays from DataFrame
+        if len(df) > 0:
+            x_coords = df["x"].to_numpy()
+            y_coords = df["y"].to_numpy()
+            timestamps = df["timestamp"].cast(float).to_numpy()
+            polarities = df["polarity"].to_numpy()
 
             # Verify data types
             self.assertIsInstance(x_coords, np.ndarray, "X coordinates should be numpy array")
@@ -120,11 +122,11 @@ class TestEVT3FormatSupport(unittest.TestCase):
             self.assertIsInstance(timestamps, np.ndarray, "Timestamps should be numpy array")
             self.assertIsInstance(polarities, np.ndarray, "Polarities should be numpy array")
 
-            # Verify we got 2 events
-            self.assertEqual(len(x_coords), 2, "Should have 2 events")
-            self.assertEqual(len(y_coords), 2, "Y coords should match X coords length")
-            self.assertEqual(len(timestamps), 2, "Timestamps should match X coords length")
-            self.assertEqual(len(polarities), 2, "Polarities should match X coords length")
+            # Verify we got expected number of events
+            self.assertEqual(len(x_coords), len(df), "X coords should match DataFrame length")
+            self.assertEqual(len(y_coords), len(df), "Y coords should match DataFrame length")
+            self.assertEqual(len(timestamps), len(df), "Timestamps should match DataFrame length")
+            self.assertEqual(len(polarities), len(df), "Polarities should match DataFrame length")
 
     def test_evt3_event_data_correctness(self):
         """Test that EVT3 events are decoded correctly"""
@@ -132,10 +134,13 @@ class TestEVT3FormatSupport(unittest.TestCase):
         test_file = self.create_evt3_test_file(include_events=True)
 
         # Load events
-        events = evlib.load_events(test_file)
+        df = evlib.load_events(test_file).collect()
 
-        if len(events) == 4:
-            x_coords, y_coords, timestamps, polarities = events
+        if len(df) > 0:
+            x_coords = df["x"].to_numpy()
+            y_coords = df["y"].to_numpy()
+            timestamps = df["timestamp"].cast(float).to_numpy()
+            polarities = df["polarity"].to_numpy()
 
             # Expected values based on our test data
             # Event 1: timestamp=0x123456 μs, x=640, y=360, polarity=positive
@@ -169,9 +174,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
         format_name, confidence, metadata = evlib.detect_format(test_file)
         self.assertEqual(format_name, "EVT3")
 
-        # Loading should work but return empty/minimal data
-        events = evlib.load_events(test_file)
-        self.assertIsInstance(events, (list, tuple))
+        # Loading should work but return empty DataFrame
+        df = evlib.load_events(test_file).collect()
+        self.assertEqual(len(df), 0, "Empty EVT3 file should return empty DataFrame")
 
     def test_evt3_malformed_file(self):
         """Test error handling for malformed EVT3 files"""

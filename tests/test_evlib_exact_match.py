@@ -27,13 +27,13 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events
-        events = evlib.load_events(file_path)
+        df = evlib.load_events(file_path).collect()
 
-        # Verify exact structure from example
-        assert isinstance(events, tuple), "Should return tuple"
-        assert len(events) == 4, "Should return 4-tuple"
-
-        x, y, t, p = events
+        # Extract arrays from DataFrame
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df["timestamp"].cast(float).to_numpy() / 1_000_000  # Convert microseconds to seconds
+        p = df["polarity"].to_numpy()
 
         # Test exact characteristics from the example
         # Expected: shape=(2774556,)
@@ -67,13 +67,13 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events
-        events = evlib.load_events(file_path)
+        df = evlib.load_events(file_path).collect()
 
-        # Verify exact structure from example
-        assert isinstance(events, tuple), "Should return tuple"
-        assert len(events) == 4, "Should return 4-tuple"
-
-        x, y, t, p = events
+        # Extract arrays from DataFrame
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df["timestamp"].cast(float).to_numpy()  # Keep in microseconds for HDF5
+        p = df["polarity"].to_numpy()
 
         # Test exact characteristics from the example
         # Expected: shape=(3397511,)
@@ -107,13 +107,13 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events
-        events = evlib.load_events(file_path)
+        df = evlib.load_events(file_path).collect()
 
-        # Verify exact structure from example
-        assert isinstance(events, tuple), "Should return tuple"
-        assert len(events) == 4, "Should return 4-tuple"
-
-        x, y, t, p = events
+        # Extract arrays from DataFrame
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df["timestamp"].cast(float).to_numpy() / 1_000_000  # Convert microseconds to seconds
+        p = df["polarity"].to_numpy()
 
         # Test exact characteristics from the example
         # Expected: shape=(1078541,)
@@ -147,13 +147,13 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events
-        events = evlib.load_events(file_path)
+        df = evlib.load_events(file_path).collect()
 
-        # Verify exact structure from example
-        assert isinstance(events, tuple), "Should return tuple"
-        assert len(events) == 4, "Should return 4-tuple"
-
-        x, y, t, p = events
+        # Extract arrays from DataFrame
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df["timestamp"].cast(float).to_numpy()  # Keep in microseconds for HDF5
+        p = df["polarity"].to_numpy()
 
         # Test exact characteristics from the example
         # Expected: shape=(287765086,)
@@ -212,8 +212,11 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events
-        events = evlib.load_events(file_path)
-        x, y, t, p = events
+        df = evlib.load_events(file_path).collect()
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        t = df["timestamp"].cast(float).to_numpy()
+        p = df["polarity"].to_numpy()
 
         # Test exact data types from the example
         # From the example: x and y are int64, t is float64, p is int64
@@ -232,11 +235,17 @@ class TestEvlibExactMatch:
             pytest.skip(f"Test file not found: {file_path}")
 
         # Load events twice
-        events1 = evlib.load_events(file_path)
-        events2 = evlib.load_events(file_path)
+        df1 = evlib.load_events(file_path).collect()
+        df2 = evlib.load_events(file_path).collect()
 
-        x1, y1, t1, p1 = events1
-        x2, y2, t2, p2 = events2
+        x1 = df1["x"].to_numpy()
+        y1 = df1["y"].to_numpy()
+        t1 = df1["timestamp"].cast(float).to_numpy()
+        p1 = df1["polarity"].to_numpy()
+        x2 = df2["x"].to_numpy()
+        y2 = df2["y"].to_numpy()
+        t2 = df2["timestamp"].cast(float).to_numpy()
+        p2 = df2["polarity"].to_numpy()
 
         # Test that first 1000 events are identical
         test_size = min(1000, len(x1))
@@ -259,10 +268,13 @@ class TestEvlibExactMatch:
 
         # Benchmark loading time
         start_time = time.time()
-        events = evlib.load_events(file_path)
+        df = evlib.load_events(file_path).collect()
         load_time = time.time() - start_time
 
-        x, y, t, p = events
+        x = df["x"].to_numpy()
+        df["y"].to_numpy()
+        df["timestamp"].cast(float).to_numpy()
+        df["polarity"].to_numpy()
         event_count = len(x)
 
         # Performance assertions (reasonable expectations)

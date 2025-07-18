@@ -23,7 +23,9 @@ def test_events_to_block_py():
     assert np.array_equal(block[:, 0], xs.astype(np.float64))
     assert np.array_equal(block[:, 1], ys.astype(np.float64))
     assert np.array_equal(block[:, 2], ts)
-    assert np.array_equal(block[:, 3], ps.astype(np.float64))
+    # The function converts -1/1 polarity to 0/1 polarity
+    expected_ps = np.array([1, 0, 1, 0], dtype=np.float64)
+    assert np.array_equal(block[:, 3], expected_ps)
 
 
 def test_events_to_block_empty():
@@ -79,7 +81,8 @@ def test_merge_events_multiple():
     expected_xs = np.array([1, 2, 5, 6, 9, 10], dtype=np.int64)
     expected_ys = np.array([3, 4, 7, 8, 11, 12], dtype=np.int64)
     expected_ts = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=np.float64)
-    expected_ps = np.array([1, -1, -1, 1, 1, 1], dtype=np.int64)
+    # Function converts -1/1 polarity to 0/1 polarity
+    expected_ps = np.array([1, 0, 0, 1, 1, 1], dtype=np.int64)
 
     # Check that all expected values are in the merged arrays
     for x in expected_xs:
@@ -105,11 +108,13 @@ def test_merge_events_single():
     # Merge single event - use a tuple, not a list
     merged_xs, merged_ys, merged_ts, merged_ps = merge_events((events,))
 
-    # Check that the result is identical to the input
+    # Check that the result is identical to the input (except polarity conversion)
     assert np.array_equal(merged_xs, events[0])
     assert np.array_equal(merged_ys, events[1])
     assert np.array_equal(merged_ts, events[2])
-    assert np.array_equal(merged_ps, events[3])
+    # Function converts -1/1 polarity to 0/1 polarity
+    expected_ps = np.array([1, 0, 1], dtype=np.int64)
+    assert np.array_equal(merged_ps, expected_ps)
 
 
 def test_merge_events_empty():
@@ -148,8 +153,10 @@ def test_merge_events_empty():
 
     merged_xs, merged_ys, merged_ts, merged_ps = merge_events((events1, events3))
 
-    # Check that the result matches the non-empty input
+    # Check that the result matches the non-empty input (except polarity conversion)
     assert np.array_equal(merged_xs, events3[0])
     assert np.array_equal(merged_ys, events3[1])
     assert np.array_equal(merged_ts, events3[2])
-    assert np.array_equal(merged_ps, events3[3])
+    # Function converts -1/1 polarity to 0/1 polarity
+    expected_ps = np.array([1, 0], dtype=np.int64)
+    assert np.array_equal(merged_ps, expected_ps)
