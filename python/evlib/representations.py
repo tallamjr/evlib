@@ -1,16 +1,15 @@
 """
-High-performance event representations using Polars for preprocessing.
+High-performance event representations using Polars LazyFrames.
 
 This module provides efficient implementations of common event camera representations,
 designed to replace slower PyTorch-based preprocessing pipelines like those in RVT.
-All functions return NumPy arrays but leverage Polars for efficient processing.
+All functions return Polars LazyFrames for maximum performance and memory efficiency.
 """
 
 import time
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
 import polars as pl
 
 
@@ -23,7 +22,7 @@ def create_stacked_histogram(
     stride_ms: Optional[float] = None,
     count_cutoff: Optional[int] = 10,
     **load_kwargs,
-) -> np.ndarray:
+) -> pl.LazyFrame:
     """
     Create stacked histogram representation with temporal binning.
 
@@ -40,7 +39,8 @@ def create_stacked_histogram(
         **load_kwargs: Additional arguments passed to evlib.load_events()
 
     Returns:
-        numpy array of shape (num_windows, 2*nbins, height, width)
+        Polars LazyFrame with columns: [window_id, channel, time_bin, y, x, count]
+        where channel: 0=negative polarity, 1=positive polarity
 
     Example:
         >>> import evlib.representations as evr
@@ -71,118 +71,63 @@ def create_stacked_histogram(
 
     start_time = time.time()
 
-    # Collect events for windowing
-    df = events_lazy.collect()
-
-    if len(df) == 0:
-        return np.zeros((1, 2 * nbins, height, width), dtype=np.uint8)
-
-    print(f"Loaded {len(df):,} events in {time.time() - start_time:.2f}s")
-
-    # Convert timestamps to microseconds
-    timestamps_us = df["timestamp"].dt.total_microseconds()
-    t_min = timestamps_us.min()
-    t_max = timestamps_us.max()
-
-    # Create time windows
-    window_starts = []
-    current_time = t_min
-    while current_time < t_max:
-        window_starts.append(current_time)
-        current_time += stride_us
-
-    window_starts = np.array(window_starts)
-    window_ends = window_starts + window_duration_us
-
-    print(f"Processing {len(window_starts)} windows from {t_min/1e6:.2f}s to {t_max/1e6:.2f}s")
-
-    # Add timestamp column for filtering
-    df_with_ts = df.with_columns([timestamps_us.alias("timestamp_us")])
-
-    histograms = []
-
-    for i, (start, end) in enumerate(zip(window_starts, window_ends)):
-        # Filter events in this window
-        window_events = df_with_ts.filter((pl.col("timestamp_us") >= start) & (pl.col("timestamp_us") < end))
-
-        if len(window_events) == 0:
-            # Empty window
-            histogram = np.zeros((2 * nbins, height, width), dtype=np.uint8)
-        else:
-            histogram = _create_single_histogram(window_events, height, width, nbins, count_cutoff)
-
-        histograms.append(histogram)
-
-        if (i + 1) % max(1, len(window_starts) // 10) == 0:
-            elapsed = time.time() - start_time
-            progress = (i + 1) / len(window_starts)
-            eta = elapsed / progress - elapsed
-            print(f"Progress: {i+1}/{len(window_starts)} ({progress:.1%}) - ETA: {eta:.1f}s")
-
-    result = np.stack(histograms, axis=0)
-    total_time = time.time() - start_time
-    print(f"Success: Created stacked histogram in {total_time:.2f}s ({len(df)/total_time:.0f} events/s)")
-    print(f"Success: Output shape: {result.shape} ({result.nbytes/1024/1024:.1f} MB)")
-
-    return result
-
-
-def _create_single_histogram(
-    events: pl.DataFrame, height: int, width: int, nbins: int, count_cutoff: Optional[int]
-) -> np.ndarray:
-    """Create histogram for a single time window using Polars aggregation."""
-
-    if len(events) == 0:
-        return np.zeros((2 * nbins, height, width), dtype=np.uint8)
-
-    # Get timestamp range for temporal binning
-    timestamps_us = events["timestamp_us"]
-    t_min = timestamps_us.min()
-    t_max = timestamps_us.max()
-    t_range = max(t_max - t_min, 1)  # Avoid division by zero
-
-    # Create temporal and spatial bins
-    df_binned = events.with_columns(
-        [
-            # Temporal binning: normalize to [0, nbins)
-            (
-                ((pl.col("timestamp_us") - t_min) * nbins / t_range)
-                .floor()
+    # Create LazyFrame with temporal and spatial processing
+    result_lazy = (
+        events_lazy.with_columns(
+            [
+                # Convert timestamps to microseconds
+                pl.col("timestamp")
+                .dt.total_microseconds()
+                .alias("timestamp_us")
+            ]
+        )
+        .with_columns(
+            [
+                # Create window assignments
+                ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) // stride_us).alias("window_id"),
+                # Clip spatial coordinates
+                pl.col("x").clip(0, width - 1).cast(pl.Int32),
+                pl.col("y").clip(0, height - 1).cast(pl.Int32),
+                # Polarity channel (0 for negative/0, 1 for positive/1)
+                pl.col("polarity").cast(pl.Int32).alias("channel"),
+            ]
+        )
+        .filter(
+            # Only keep events within valid window bounds
+            (pl.col("timestamp_us") - pl.col("timestamp_us").min()) % stride_us
+            < window_duration_us
+        )
+        .with_columns(
+            [
+                # Temporal binning within each window
+                (
+                    ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) % stride_us)
+                    * nbins
+                    // window_duration_us
+                )
                 .clip(0, nbins - 1)
                 .cast(pl.Int32)
                 .alias("time_bin")
-            ),
-            # Spatial clipping
-            pl.col("x").clip(0, width - 1).cast(pl.Int32),
-            pl.col("y").clip(0, height - 1).cast(pl.Int32),
-            # Polarity channel (0 for negative/0, 1 for positive/1)
-            pl.col("polarity").cast(pl.Int32).alias("channel"),
-        ]
+            ]
+        )
+        .group_by(["window_id", "channel", "time_bin", "y", "x"])
+        .agg(pl.len().alias("count"))
     )
-
-    # Group by spatial-temporal-polarity coordinates and count
-    counts = df_binned.group_by(["x", "y", "time_bin", "channel"]).agg(pl.len().alias("count"))
 
     # Apply count cutoff if specified
     if count_cutoff is not None:
-        counts = counts.with_columns(pl.col("count").clip(0, count_cutoff))
+        result_lazy = result_lazy.with_columns(pl.col("count").clip(0, count_cutoff))
 
-    # Create output histogram: (2*nbins, height, width)
-    # Channel 0: negative polarity bins 0..nbins-1
-    # Channel 1: positive polarity bins nbins..2*nbins-1
-    histogram = np.zeros((2 * nbins, height, width), dtype=np.uint8)
+    # Add combined channel-time dimension for compatibility
+    result_lazy = result_lazy.with_columns(
+        [(pl.col("channel") * nbins + pl.col("time_bin")).alias("channel_time_bin")]
+    )
 
-    # Fill in the counts
-    for row in counts.iter_rows(named=True):
-        x, y, time_bin, channel, count = row["x"], row["y"], row["time_bin"], row["channel"], row["count"]
+    total_time = time.time() - start_time
+    print(f"Success: Created stacked histogram LazyFrame in {total_time:.2f}s")
+    print("Success: Lazy operations - will execute on collect/materialize")
 
-        # Map to output channel index
-        channel_idx = channel * nbins + time_bin
-
-        if 0 <= channel_idx < 2 * nbins and 0 <= x < width and 0 <= y < height:
-            histogram[channel_idx, y, x] = min(count, 255)  # Clip to uint8 range
-
-    return histogram
+    return result_lazy
 
 
 def create_mixed_density_stack(
@@ -193,7 +138,7 @@ def create_mixed_density_stack(
     window_duration_ms: float = 50.0,
     count_cutoff: Optional[int] = None,
     **load_kwargs,
-) -> np.ndarray:
+) -> pl.LazyFrame:
     """
     Create mixed density event stack representation.
 
@@ -209,7 +154,7 @@ def create_mixed_density_stack(
         **load_kwargs: Additional arguments passed to evlib.load_events()
 
     Returns:
-        numpy array of shape (num_windows, nbins, height, width) with int8 values
+        Polars LazyFrame with columns: [window_id, time_bin, y, x, polarity_sum]
     """
     import evlib
 
@@ -222,105 +167,69 @@ def create_mixed_density_stack(
     print(f"Creating mixed density stack: {nbins} bins, {height}x{width}")
 
     start_time = time.time()
-    df = events_lazy.collect()
-
-    if len(df) == 0:
-        return np.zeros((1, nbins, height, width), dtype=np.int8)
-
-    # Convert timestamps and create windows
-    timestamps_us = df["timestamp"].dt.total_microseconds()
-    t_min = timestamps_us.min()
-    t_max = timestamps_us.max()
-
     window_duration_us = int(window_duration_ms * 1000)
-    window_starts = np.arange(t_min, t_max, window_duration_us)
-    window_ends = window_starts + window_duration_us
 
-    print(f"Processing {len(window_starts)} windows")
-
-    df_with_ts = df.with_columns([timestamps_us.alias("timestamp_us")])
-    histograms = []
-
-    for start, end in zip(window_starts, window_ends):
-        window_events = df_with_ts.filter((pl.col("timestamp_us") >= start) & (pl.col("timestamp_us") < end))
-
-        if len(window_events) == 0:
-            histogram = np.zeros((nbins, height, width), dtype=np.int8)
-        else:
-            histogram = _create_mixed_density_window(window_events, height, width, nbins, count_cutoff)
-
-        histograms.append(histogram)
-
-    result = np.stack(histograms, axis=0)
-    total_time = time.time() - start_time
-    print(f"Success: Created mixed density stack in {total_time:.2f}s")
-
-    return result
-
-
-def _create_mixed_density_window(
-    events: pl.DataFrame, height: int, width: int, nbins: int, count_cutoff: Optional[int]
-) -> np.ndarray:
-    """Create mixed density representation for single window."""
-
-    if len(events) == 0:
-        return np.zeros((nbins, height, width), dtype=np.int8)
-
-    timestamps_us = events["timestamp_us"]
-    t_min = timestamps_us.min()
-    t_max = timestamps_us.max()
-    t_range = max(t_max - t_min, 1)
-
-    # Logarithmic time binning (as in RVT)
     import math
 
-    df_binned = events.with_columns(
-        [
-            # Normalize timestamps to [1e-6, 1-1e-6] to avoid log(0)
-            ((pl.col("timestamp_us") - t_min) / t_range * (1 - 2e-6) + 1e-6).alias("t_norm")
-        ]
-    ).with_columns(
-        [
-            # Logarithmic binning: bin = nbins - log(t_norm) / log(0.5)
-            (nbins - pl.col("t_norm").log() / math.log(0.5))
-            .clip(0, None)
-            .floor()
-            .cast(pl.Int32)
-            .alias("time_bin"),
-            pl.col("x").clip(0, width - 1).cast(pl.Int32),
-            pl.col("y").clip(0, height - 1).cast(pl.Int32),
-            # Convert polarity to -1/+1
-            (pl.col("polarity") * 2 - 1).alias("polarity_signed"),
-        ]
+    result_lazy = (
+        events_lazy.with_columns(
+            [
+                # Convert timestamps to microseconds
+                pl.col("timestamp")
+                .dt.total_microseconds()
+                .alias("timestamp_us")
+            ]
+        )
+        .with_columns(
+            [
+                # Create window assignments
+                ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) // window_duration_us).alias(
+                    "window_id"
+                ),
+                # Clip spatial coordinates
+                pl.col("x").clip(0, width - 1).cast(pl.Int32),
+                pl.col("y").clip(0, height - 1).cast(pl.Int32),
+                # Normalize timestamps within each window for log binning
+                ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) % window_duration_us).alias(
+                    "window_offset_us"
+                ),
+            ]
+        )
+        .with_columns(
+            [
+                # Normalize to [1e-6, 1-1e-6] to avoid log(0)
+                (pl.col("window_offset_us") / window_duration_us * (1 - 2e-6) + 1e-6).alias("t_norm")
+            ]
+        )
+        .with_columns(
+            [
+                # Logarithmic binning: bin = nbins - log(t_norm) / log(0.5)
+                (nbins - pl.col("t_norm").log() / math.log(0.5))
+                .clip(0, None)
+                .floor()
+                .cast(pl.Int32)
+                .alias("time_bin"),
+                # Convert polarity to -1/+1
+                (pl.col("polarity") * 2 - 1).alias("polarity_signed"),
+            ]
+        )
+        .group_by(["window_id", "time_bin", "y", "x"])
+        .agg(pl.col("polarity_signed").sum().alias("polarity_sum"))
     )
 
-    # Group and sum polarities
-    sums = df_binned.group_by(["x", "y", "time_bin"]).agg(
-        pl.col("polarity_signed").sum().alias("polarity_sum")
-    )
-
+    # Apply count cutoff if specified
     if count_cutoff is not None:
-        sums = sums.with_columns(pl.col("polarity_sum").clip(-count_cutoff, count_cutoff))
+        result_lazy = result_lazy.with_columns(pl.col("polarity_sum").clip(-count_cutoff, count_cutoff))
 
-    # Create output
-    histogram = np.zeros((nbins, height, width), dtype=np.int8)
+    total_time = time.time() - start_time
+    print(f"Success: Created mixed density stack LazyFrame in {total_time:.2f}s")
 
-    for row in sums.iter_rows(named=True):
-        x, y, time_bin, polarity_sum = row["x"], row["y"], row["time_bin"], row["polarity_sum"]
-
-        if 0 <= time_bin < nbins and 0 <= x < width and 0 <= y < height:
-            histogram[time_bin, y, x] = np.clip(polarity_sum, -128, 127)
-
-    # Apply cumulative sum as in RVT (newest to oldest)
-    for i in range(nbins - 2, -1, -1):
-        histogram[i] = np.clip(histogram[i] + histogram[i + 1], -128, 127)
-
-    return histogram
+    return result_lazy
 
 
 def create_voxel_grid(
     events: Union[str, Path, pl.LazyFrame], height: int, width: int, nbins: int = 5, **load_kwargs
-) -> np.ndarray:
+) -> pl.LazyFrame:
     """
     Create traditional voxel grid representation.
 
@@ -334,7 +243,7 @@ def create_voxel_grid(
         **load_kwargs: Additional arguments passed to evlib.load_events()
 
     Returns:
-        numpy array of shape (nbins, height, width)
+        Polars LazyFrame with columns: [time_bin, y, x, value]
     """
     import evlib
 
@@ -345,49 +254,46 @@ def create_voxel_grid(
 
     print(f"Creating voxel grid: {nbins} bins, {height}x{width}")
 
-    df = events_lazy.collect()
+    start_time = time.time()
 
-    if len(df) == 0:
-        return np.zeros((nbins, height, width), dtype=np.float32)
-
-    # Single window covering all events
-    timestamps_us = df["timestamp"].dt.total_microseconds()
-    t_min = timestamps_us.min()
-    t_max = timestamps_us.max()
-    t_range = max(t_max - t_min, 1)
-
-    # Temporal binning
-    df_binned = df.with_columns(
-        [
-            (
-                ((timestamps_us - t_min) * nbins / t_range)
-                .floor()
-                .clip(0, nbins - 1)
-                .cast(pl.Int32)
-                .alias("time_bin")
-            ),
-            pl.col("x").clip(0, width - 1).cast(pl.Int32),
-            pl.col("y").clip(0, height - 1).cast(pl.Int32),
-            # Convert polarity to -1/+1 for voxel grid
-            (pl.col("polarity") * 2 - 1).alias("polarity_signed"),
-        ]
+    result_lazy = (
+        events_lazy.with_columns(
+            [
+                # Convert timestamps to microseconds
+                pl.col("timestamp")
+                .dt.total_microseconds()
+                .alias("timestamp_us")
+            ]
+        )
+        .with_columns(
+            [
+                # Temporal binning across entire dataset
+                (
+                    (
+                        (pl.col("timestamp_us") - pl.col("timestamp_us").min())
+                        * nbins
+                        / (pl.col("timestamp_us").max() - pl.col("timestamp_us").min()).max(1)
+                    )
+                    .floor()
+                    .clip(0, nbins - 1)
+                    .cast(pl.Int32)
+                    .alias("time_bin")
+                ),
+                # Clip spatial coordinates
+                pl.col("x").clip(0, width - 1).cast(pl.Int32),
+                pl.col("y").clip(0, height - 1).cast(pl.Int32),
+                # Convert polarity to -1/+1 for voxel grid
+                (pl.col("polarity") * 2 - 1).alias("polarity_signed"),
+            ]
+        )
+        .group_by(["time_bin", "y", "x"])
+        .agg(pl.col("polarity_signed").sum().alias("value"))
     )
 
-    # Group and sum
-    sums = df_binned.group_by(["x", "y", "time_bin"]).agg(pl.col("polarity_signed").sum().alias("value"))
+    total_time = time.time() - start_time
+    print(f"Success: Created voxel grid LazyFrame in {total_time:.2f}s")
 
-    # Create output
-    voxel_grid = np.zeros((nbins, height, width), dtype=np.float32)
-
-    for row in sums.iter_rows(named=True):
-        x, y, time_bin, value = row["x"], row["y"], row["time_bin"], row["value"]
-
-        if 0 <= time_bin < nbins and 0 <= x < width and 0 <= y < height:
-            voxel_grid[time_bin, y, x] = value
-
-    print(f"Success: Created voxel grid with {np.count_nonzero(voxel_grid)} non-zero voxels")
-
-    return voxel_grid
+    return result_lazy
 
 
 # High-level API for easy RVT replacement
@@ -397,7 +303,7 @@ def preprocess_for_detection(
     height: int = 480,
     width: int = 640,
     **kwargs,
-) -> np.ndarray:
+) -> pl.LazyFrame:
     """
     High-level preprocessing function to replace RVT's preprocessing pipeline.
 
@@ -408,7 +314,7 @@ def preprocess_for_detection(
         **kwargs: Representation-specific parameters
 
     Returns:
-        Preprocessed representation ready for neural networks
+        Polars LazyFrame with preprocessed representation ready for neural networks
 
     Example:
         >>> # Replace RVT preprocessing
@@ -418,7 +324,8 @@ def preprocess_for_detection(
         ...     height=480, width=640,
         ...     nbins=10, window_duration_ms=50
         ... )
-        >>> print(f"Preprocessed shape: {data.shape}")
+        >>> print(f"Preprocessed LazyFrame: {data.schema}")
+        >>> # Convert to NumPy when needed: data.collect().to_numpy()
     """
 
     if representation == "stacked_histogram":
@@ -449,15 +356,17 @@ def benchmark_vs_rvt(events_path: str, height: int = 480, width: int = 640):
     print("Testing evlib Polars implementation...")
     start_time = time.time()
 
-    hist_polars = create_stacked_histogram(
+    hist_polars_lazy = create_stacked_histogram(
         events_path, height=height, width=width, nbins=10, window_duration_ms=50, count_cutoff=10
     )
 
+    # Collect for timing and stats
+    hist_polars = hist_polars_lazy.collect()
     polars_time = time.time() - start_time
 
     print(f"Success: evlib Polars: {polars_time:.2f}s")
-    print(f"Success: Output shape: {hist_polars.shape}")
-    print(f"Success: Memory usage: {hist_polars.nbytes / 1024 / 1024:.1f} MB")
+    print(f"Success: Output rows: {len(hist_polars)}")
+    print(f"Success: Output schema: {hist_polars.schema}")
     print()
 
     # Estimate RVT performance (based on typical PyTorch tensor operations)
@@ -479,8 +388,9 @@ def benchmark_vs_rvt(events_path: str, height: int = 480, width: int = 640):
         "polars_time": polars_time,
         "estimated_rvt_time": estimated_rvt_time,
         "speedup": estimated_rvt_time / polars_time,
-        "output_shape": hist_polars.shape,
-        "memory_mb": hist_polars.nbytes / 1024 / 1024,
+        "output_rows": len(hist_polars),
+        "output_schema": hist_polars.schema,
+        "lazy_frame": hist_polars_lazy,
     }
 
 
@@ -501,8 +411,10 @@ if __name__ == "__main__":
     print()
     print("Example usage:")
     print("  import evlib.representations as evr")
-    print("  hist = evr.create_stacked_histogram('events.h5', 480, 640)")
+    print("  hist_lazy = evr.create_stacked_histogram('events.h5', 480, 640)")
+    print("  hist_df = hist_lazy.collect()  # Materialize when needed")
     print("  data = evr.preprocess_for_detection('events.h5', 'stacked_histogram')")
     print()
     print("To benchmark against RVT:")
     print("  results = evr.benchmark_vs_rvt('your_events.h5')")
+    print("  print('LazyFrame schema:', results['lazy_frame'].schema)")
