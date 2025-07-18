@@ -19,12 +19,14 @@ The test creates binary events according to the EVT3 specification:
 - Vector 12/8 events (4-bit type + validity mask)
 """
 
-import struct
-import tempfile
 import os
+import struct
 import sys
+import tempfile
 import unittest
+
 import numpy as np
+import pytest
 
 # Add the evlib package to the path
 sys.path.insert(0, "/Users/tallam/github/tallamjr/origin/evlib/python")
@@ -162,20 +164,17 @@ def test_format_detection():
             assert format_info[1] > 0.9, f"Low confidence: {format_info[1]}"
 
             print("PASS: Format detection passed")
-            return True
         else:
             print("WARN: detect_format not available in current build")
 
     except ImportError as e:
         print(f"WARN: Could not import evlib: {e}")
-        return False
+        pytest.skip(f"Could not import evlib: {e}")
     except Exception as e:
         print(f"FAIL: Error in format detection: {e}")
-        return False
+        pytest.fail(f"Error in format detection: {e}")
     finally:
         os.unlink(test_file)
-
-    return False
 
 
 def test_evt3_loading():
@@ -223,20 +222,17 @@ def test_evt3_loading():
                 assert t[i] >= t[i - 1], f"Timestamps not ordered: {t[i]} < {t[i-1]}"
 
             print("PASS: Event loading passed")
-            return True
         else:
             print("WARN: load_events not available in current build")
 
     except ImportError as e:
         print(f"WARN: Could not import evlib: {e}")
-        return False
+        pytest.skip(f"Could not import evlib: {e}")
     except Exception as e:
         print(f"FAIL: Error loading events: {e}")
-        return False
+        pytest.fail(f"Error loading events: {e}")
     finally:
         os.unlink(test_file)
-
-    return False
 
 
 def test_evt3_metadata_extraction():
@@ -262,20 +258,17 @@ def test_evt3_metadata_extraction():
             # Note: This depends on the specific header parsing implementation
 
             print("PASS: Metadata extraction passed")
-            return True
         else:
             print("WARN: detect_format not available in current build")
 
     except ImportError as e:
         print(f"WARN: Could not import evlib: {e}")
-        return False
+        pytest.skip(f"Could not import evlib: {e}")
     except Exception as e:
         print(f"FAIL: Error extracting metadata: {e}")
-        return False
+        pytest.fail(f"Error extracting metadata: {e}")
     finally:
         os.unlink(test_file)
-
-    return False
 
 
 def test_evt3_error_handling():
@@ -311,11 +304,9 @@ def test_evt3_error_handling():
 
     except ImportError as e:
         print(f"WARN: Could not import evlib: {e}")
-        return False
+        pytest.skip(f"Could not import evlib: {e}")
     finally:
         os.unlink(malformed_file)
-
-    return True
 
 
 def test_evt3_coordinate_bounds():
@@ -371,11 +362,9 @@ def test_evt3_coordinate_bounds():
 
     except ImportError as e:
         print(f"WARN: Could not import evlib: {e}")
-        return False
+        pytest.skip(f"Could not import evlib: {e}")
     finally:
         os.unlink(bounds_test_file)
-
-    return True
 
 
 class TestEVT3FormatSupport(unittest.TestCase):
@@ -763,67 +752,6 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     print("INFO: load_events handled corrupted header gracefully")
                 except Exception as e:
                     print(f"INFO: load_events appropriately failed with: {e}")
-
-        except ImportError:
-            self.skipTest("Could not import evlib")
-
-
-class TestEVT3LegacyFunctions(unittest.TestCase):
-    """Test legacy function-based EVT3 loading"""
-
-    def setUp(self):
-        self.test_files = []
-
-    def tearDown(self):
-        for file_path in self.test_files:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-
-    def test_legacy_format_detection(self):
-        """Test format detection using legacy functions"""
-        # Use the original functional approach from the old tests
-        test_file = create_test_evt3_file()
-        self.test_files.append(test_file)
-
-        try:
-            import evlib
-
-            if hasattr(evlib, "detect_format"):
-                format_info = evlib.detect_format(test_file)
-                print(f"Detected format: {format_info[0]}")
-                print(f"Confidence: {format_info[1]:.2f}")
-                print(f"Metadata: {format_info[2]}")
-
-                # Verify format is detected as EVT3
-                self.assertEqual(format_info[0], "EVT3", f"Expected EVT3, got {format_info[0]}")
-                self.assertGreater(format_info[1], 0.9, f"Low confidence: {format_info[1]}")
-
-        except ImportError:
-            self.skipTest("Could not import evlib")
-
-    def test_legacy_event_loading(self):
-        """Test event loading using legacy tuple-based approach"""
-        test_file = create_test_evt3_file()
-        self.test_files.append(test_file)
-
-        try:
-            import evlib
-
-            if hasattr(evlib, "load_events"):
-                x, y, t, p = evlib.load_events(test_file)
-
-                print(f"Loaded {len(x)} events")
-                print(f"X coordinates: {x}")
-                print(f"Y coordinates: {y}")
-                print(f"Timestamps: {t}")
-                print(f"Polarities: {p}")
-
-                # Verify we got expected events
-                self.assertGreater(len(x), 0, "No events loaded")
-
-                # Verify timestamp ordering
-                for i in range(1, len(t)):
-                    self.assertGreaterEqual(t[i], t[i - 1], f"Timestamps not ordered: {t[i]} < {t[i-1]}")
 
         except ImportError:
             self.skipTest("Could not import evlib")

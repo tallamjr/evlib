@@ -29,7 +29,7 @@ def test_polarity_fix():
     p = df["polarity"].to_numpy()
 
     # Test configuration (simulating the fixed test)
-    expected_polarity_values = {0, 1}  # HDF5 format uses 0/1 encoding
+    expected_polarity_values = {-1, 1}  # HDF5 format converted to -1/1 encoding
     allow_single_polarity = True  # This file only contains positive events
 
     # Check polarity encoding
@@ -84,7 +84,7 @@ def test_polarity_fix():
     else:
         print("FAIL: POLARITY FIX NOT WORKING: Test would still fail")
 
-    return overall_pass
+    assert overall_pass, "POLARITY FIX NOT WORKING: Test would still fail"
 
 
 def test_other_files():
@@ -92,7 +92,7 @@ def test_other_files():
 
     test_files = [
         ("data/slider_depth/events.txt", {0, 1}, False, "Text format"),
-        ("data/eTram/h5/val_2/val_night_011_td.h5", {0, 1}, False, "HDF5 format"),
+        ("data/eTram/h5/val_2/val_night_011_td.h5", {-1, 1}, False, "HDF5 format"),
         ("data/eTram/raw/val_2/val_night_011.raw", {-1, 1}, False, "EVT2 format"),
     ]
 
@@ -122,7 +122,7 @@ def test_other_files():
         if not test_passed:
             all_passed = False
 
-    return all_passed
+    assert all_passed, "Some normal files failed polarity tests"
 
 
 if __name__ == "__main__":

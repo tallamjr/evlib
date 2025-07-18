@@ -253,8 +253,16 @@ impl PolarsEventStreamer {
                     -1i8
                 }
             }
+            EventFormat::HDF5 => {
+                // HDF5 format converts 0/1 to -1/1 for consistency
+                if polarity {
+                    1i8
+                } else {
+                    -1i8
+                }
+            }
             _ => {
-                // HDF5, Text, and other formats use 0/1 encoding
+                // Text and other formats use 0/1 encoding
                 if polarity {
                     1i8
                 } else {
@@ -399,7 +407,7 @@ mod tests {
         assert_eq!(streamer_evt2.convert_polarity(false), -1i8);
 
         assert_eq!(streamer_hdf5.convert_polarity(true), 1i8);
-        assert_eq!(streamer_hdf5.convert_polarity(false), 0i8);
+        assert_eq!(streamer_hdf5.convert_polarity(false), -1i8);
     }
 
     #[cfg(feature = "polars")]

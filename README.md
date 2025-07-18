@@ -60,27 +60,23 @@ A robust event camera processing library with Rust backend and Python bindings, 
 ### Basic Usage
 ```python
 import evlib
-import polars as pl
 
-# Load events as Polars LazyFrame (optimized, zero-copy)
+# Load events from any supported format (automatic detection)
+df = evlib.load_events("path/to/your/data.h5").collect()
+
+# Or load as LazyFrame for memory-efficient processing
 lf = evlib.load_events("path/to/your/data.h5")
 
-# Fast filtering and analysis with LazyFrames
-filtered = lf.filter(
-    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 0.1) &
-    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 < 0.2) &
-    (pl.col("polarity") == 1)
-)
+# Basic event information
+print(f"Loaded {len(df)} events")
+print(f"Resolution: {df['x'].max()} x {df['y'].max()}")
+print(f"Duration: {df['timestamp'].max() - df['timestamp'].min()}")
 
-# Advanced analysis with LazyFrames
-stats = lf.group_by("polarity").agg([
-    pl.len().alias("count"),
-    pl.col("x").mean().alias("mean_x"),
-    pl.col("y").mean().alias("mean_y")
-]).collect()
-
-# Collect to DataFrame when needed
-df = lf.collect()
+# Convert to NumPy arrays for compatibility
+x_coords = df['x'].to_numpy()
+y_coords = df['y'].to_numpy()
+timestamps = df['timestamp'].to_numpy()
+polarities = df['polarity'].to_numpy()
 ```
 
 ### Advanced Filtering
@@ -94,13 +90,17 @@ processed = evf.preprocess_events(
     roi=(100, 500, 100, 400),
     polarity=1,
     remove_hot_pixels=True,
-    remove_noise=True
+    remove_noise=True,
+    hot_pixel_threshold=99.9,
+    refractory_period_us=1000
 )
 
-# Individual filters
-time_filtered = evf.filter_by_time(lf, t_start=0.1, t_end=0.5)
+# Individual filters (work with LazyFrames)
+events = evlib.load_events("path/to/your/data.h5")
+time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
+denoised = evf.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
 ```
 
 ### Event Representations
@@ -111,7 +111,15 @@ import evlib.representations as evr
 hist = evr.create_stacked_histogram(
     "path/to/your/data.h5",
     height=480, width=640,
-    nbins=10, window_duration_ms=50
+    nbins=10, window_duration_ms=50.0,
+    count_cutoff=10
+)
+
+# Create mixed density stack representation
+density = evr.create_mixed_density_stack(
+    "path/to/your/data.h5",
+    height=480, width=640,
+    nbins=10, window_duration_ms=50.0
 )
 
 # Create voxel grid representation
@@ -125,8 +133,12 @@ voxel = evr.create_voxel_grid(
 data = evr.preprocess_for_detection(
     "path/to/your/data.h5",
     representation="stacked_histogram",
-    height=480, width=640
+    height=480, width=640,
+    nbins=10, window_duration_ms=50
 )
+
+# Performance benchmarking against RVT
+results = evr.benchmark_vs_rvt("path/to/your/data.h5", height=480, width=640)
 ```
 
 ## Installation
@@ -212,25 +224,31 @@ evlib provides comprehensive Polars DataFrame support for high-performance event
 #### Loading Data
 ```python
 # Load as LazyFrame (recommended)
-lf = evlib.load_events("data.h5")
-df = lf.collect()  # Collect to DataFrame when needed
+events = evlib.load_events("data.h5")
+df = events.collect()  # Collect to DataFrame when needed
 
 # Automatic format detection and optimization
-lf = evlib.load_events("data.evt2")  # EVT2 format automatically detected
+events = evlib.load_events("data.evt2")  # EVT2 format automatically detected
 print(f"Format: {evlib.detect_format('data.evt2')}")
+print(f"Description: {evlib.get_format_description('EVT2')}")
+
+# Direct Rust access (returns NumPy arrays)
+x, y, t, p = evlib.formats.load_events("data.h5")
 ```
 
 #### Advanced Features
 ```python
+import polars as pl
+
 # Chain operations with LazyFrames for optimal performance
-lf = evlib.load_events("data.h5")
-result = lf.filter(pl.col("polarity") == 1).with_columns([
+events = evlib.load_events("data.h5")
+result = events.filter(pl.col("polarity") == 1).with_columns([
     pl.col("timestamp").dt.total_microseconds().alias("time_us"),
     (pl.col("x") + pl.col("y")).alias("diagonal_pos")
 ]).collect()
 
 # Memory-efficient temporal analysis
-temporal_stats = lf.group_by_dynamic(
+temporal_stats = events.group_by_dynamic(
     "timestamp",
     every="1s"
 ).agg([
@@ -238,26 +256,43 @@ temporal_stats = lf.group_by_dynamic(
     pl.col("polarity").mean().alias("avg_polarity")
 ]).collect()
 
+# Combine with filtering module for complex operations
+import evlib.filtering as evf
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+analysis = filtered.with_columns([
+    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+]).collect()
 ```
 
 #### Utility Functions
 ```python
+import polars as pl
+import evlib.filtering as evf
+
 # Built-in format detection
 format_info = evlib.detect_format("data.h5")
 print(f"Detected format: {format_info}")
 
-# Spatial filtering using LazyFrame operations
-lf = evlib.load_events("data.h5")
-spatial_filtered = lf.filter(
+# Spatial filtering using dedicated filtering functions (preferred)
+events = evlib.load_events("data.h5")
+spatial_filtered = evf.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
+
+# Or using direct Polars operations
+manual_filtered = events.filter(
     (pl.col("x") >= 100) & (pl.col("x") <= 200) &
     (pl.col("y") >= 50) & (pl.col("y") <= 150)
 )
 
 # Temporal analysis with Polars operations
-rates = lf.group_by_dynamic("timestamp", every="10ms").agg([
+rates = events.group_by_dynamic("timestamp", every="10ms").agg([
     pl.len().alias("event_rate"),
     pl.col("polarity").mean().alias("avg_polarity")
 ]).collect()
+
+# Save processed data
+processed = evf.preprocess_events("data.h5", t_start=0.1, t_end=0.5)
+x, y, t, p = processed.select(["x", "y", "timestamp", "polarity"]).collect().to_numpy().T
+evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 ```
 
 ### Performance Benchmarks
@@ -309,9 +344,11 @@ python -c "
 import evlib
 import time
 start = time.time()
-lf = evlib.load_events('your_file.h5')
-df = lf.collect()
+events = evlib.load_events('your_file.h5')
+df = events.collect()
 print(f'Loaded {len(df):,} events in {time.time()-start:.2f}s')
+print(f'Format: {evlib.detect_format("your_file.h5")}')
+print(f'Memory per event: {df.estimated_size() / len(df):.1f} bytes')
 "
 ```
 
@@ -320,18 +357,23 @@ print(f'Loaded {len(df):,} events in {time.time()-start:.2f}s')
 #### Optimal Loading for Different File Sizes
 ```python
 import evlib
+import evlib.filtering as evf
 import polars as pl
 
 # Small files (<5M events) - Direct loading
-lf_small = evlib.load_events("small_file.h5")
-df_small = lf_small.collect()
+events_small = evlib.load_events("small_file.h5")
+df_small = events_small.collect()
 
 # Large files (>5M events) - Automatic streaming
-lf_large = evlib.load_events("large_file.h5")
+events_large = evlib.load_events("large_file.h5")
 # Same API, but uses streaming internally for memory efficiency
 
-# Memory-efficient filtering on large datasets
-filtered = lf_large.filter(
+# Memory-efficient filtering on large datasets using filtering module
+filtered = evf.filter_by_time(events_large, t_start=1.0, t_end=2.0)
+positive_events = evf.filter_by_polarity(filtered, polarity=1)
+
+# Or using direct Polars operations
+manual_filtered = events_large.filter(
     (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) &
     (pl.col("polarity") == 1)
 ).collect()
@@ -349,12 +391,13 @@ def monitor_memory():
 
 # Monitor memory usage during loading
 initial_mem = monitor_memory()
-lf = evlib.load_events("data.h5")
-df = lf.collect()
+events = evlib.load_events("data.h5")
+df = events.collect()
 peak_mem = monitor_memory()
 
 print(f"Memory used: {peak_mem - initial_mem:.1f} MB")
 print(f"Memory per event: {(peak_mem - initial_mem) * 1024 * 1024 / len(df):.1f} bytes")
+print(f"Polars DataFrame size: {df.estimated_size() / 1024 / 1024:.1f} MB")
 ```
 
 ### Troubleshooting Large Files
@@ -375,26 +418,46 @@ print(f"Memory per event: {(peak_mem - initial_mem) * 1024 * 1024 / len(df):.1f}
 
 **Issue**: Out of memory errors
 ```python
-# Solution: Verify streaming is enabled
-lf = evlib.load_events("large_file.h5")
+# Solution: Use filtering before collecting and verify streaming is enabled
+events = evlib.load_events("large_file.h5")
 # Streaming activates automatically for files >5M events
-df = lf.collect()  # Only collect when needed ideally after some filtering or 'sink_parquet' to streaming write to disk'
+
+# Apply filtering before collecting to reduce memory usage
+import evlib.filtering as evf
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+df = filtered.collect()  # Only collect when needed
+
+# Or stream to disk using Polars
+filtered.sink_parquet("filtered_events.parquet")
 ```
 
 **Issue**: Slow loading performance
 ```python
-# Solution: Use LazyFrame for complex operations
-lf = evlib.load_events("file.h5")
-result = lf.filter(conditions).select(columns).collect()
+# Solution: Use LazyFrame for complex operations and filtering module
+events = evlib.load_events("file.h5")
+
+# Use filtering module for optimized operations
+import evlib.filtering as evf
+result = evf.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
+df = result.collect()
+
+# Or chain Polars operations
+result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).collect()
 ```
 
 **Issue**: Memory usage higher than expected
 ```python
 # Solution: Monitor and verify optimization
 import evlib
-lf = evlib.load_events("file.h5")
-df = lf.collect()
+events = evlib.load_events("file.h5")
+df = events.collect()
 print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
+print(f"DataFrame schema: {df.schema}")
+print(f"Number of events: {len(df):,}")
+
+# Check format detection
+format_info = evlib.detect_format("file.h5")
+print(f"Format: {format_info}")
 ```
 
 ### Performance Metrics Summary
@@ -429,22 +492,31 @@ evlib provides several Python modules for different aspects of event processing:
 ```python
 # Core event loading (returns Polars LazyFrame)
 import evlib
-lf = evlib.load_events("data.h5")
+events = evlib.load_events("data.h5")
+
+# Format detection and description
+format_info = evlib.detect_format("data.h5")
+description = evlib.get_format_description("HDF5")
 
 # Advanced filtering
 import evlib.filtering as evf
 filtered = evf.preprocess_events("data.h5", t_start=0.1, t_end=0.5)
+time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 
 # Event representations
 import evlib.representations as evr
-hist = evr.create_stacked_histogram("data.h5", height=480, width=640)
+hist = evr.create_stacked_histogram("data.h5", height=480, width=640, nbins=10)
+voxel = evr.create_voxel_grid("data.h5", height=480, width=640, nbins=5)
 
-# Neural network models
-import evlib.models as evm
-model = evm.load_e2vid_model("model.pth.tar")
+# Neural network models (limited functionality)
+from evlib.models import ModelConfig  # If available
 
-# Direct Rust access
+# Direct Rust access (returns NumPy arrays)
 x, y, t, p = evlib.formats.load_events("data.h5")
+
+# Data saving
+evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
+evlib.save_events_to_text(x, y, t, p, "output.txt")
 ```
 
 ## Examples

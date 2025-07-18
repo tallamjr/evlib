@@ -58,7 +58,7 @@ class TestEvlibRegression:
                 "format": "HDF5",
                 "resolution": (1280, 720),  # Actual: 1279x719 max
                 "expected_event_count": (3300000, 3500000),  # Actual: 3397511
-                "polarity_encoding": (0, 1),  # HDF5 uses 0/1 encoding
+                "polarity_encoding": (-1, 1),  # HDF5 converted to -1/1 encoding
                 "min_duration": 5.0,  # Actual: 5.091880 seconds (was microseconds)
                 "description": "Small HDF5 file (~14MB)",
             },
@@ -67,7 +67,7 @@ class TestEvlibRegression:
                 "format": "HDF5",
                 "resolution": (1280, 720),
                 "expected_event_count": (25000000, 35000000),
-                "polarity_encoding": (0, 1),
+                "polarity_encoding": (-1, 1),
                 "min_duration": 200.0,
                 "description": "Large HDF5 file (~456MB)",
             },
@@ -85,7 +85,7 @@ class TestEvlibRegression:
                 "format": "HDF5",
                 "resolution": (346, 240),
                 "expected_event_count": (200000000, 300000000),
-                "polarity_encoding": (0, 1),
+                "polarity_encoding": (-1, 1),
                 "min_duration": 20000.0,
                 "description": "Extra large HDF5 file (~1.6GB)",
             },
@@ -94,7 +94,7 @@ class TestEvlibRegression:
                 "format": "HDF5",
                 "resolution": (346, 240),
                 "expected_event_count": (280000000, 290000000),
-                "polarity_encoding": (0, 1),
+                "polarity_encoding": (-1, 1),
                 "min_duration": 20000.0,
                 "description": "Extra large HDF5 file seq02",
             },
@@ -104,7 +104,7 @@ class TestEvlibRegression:
                 "format": "HDF5",
                 "resolution": (1280, 720),  # Gen4 1mpx resolution
                 "expected_event_count": (540000000, 541000000),  # Actual: 540124055
-                "polarity_encoding": (0, 1),  # HDF5 format uses 0/1 encoding (corrected)
+                "polarity_encoding": (-1, 1),  # HDF5 format converted to -1/1 encoding
                 "min_duration": 59.9,  # Actual: ~60 seconds (microseconds 0 to 59999999)
                 "description": "Gen4 1mpx with BLOSC compression (~1.1GB, 540M events)",
                 "compression": "BLOSC",  # Special marker for BLOSC compression testing
