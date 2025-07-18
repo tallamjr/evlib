@@ -1,5 +1,3 @@
-# evlib: Event Camera Data Processing Library
-
 <table align="center">
   <tr>
     <td>
@@ -7,7 +5,7 @@
     </td>
     <td>
       <h1 style="margin: 0;">
-        <code>evlib</code>: Event Camera Utilities in Rust
+        <code>evlib</code>: Event Camera Data Processing Library
       </h1>
     </td>
   </tr>
@@ -510,9 +508,6 @@ voxel = evr.create_voxel_grid("data.h5", height=480, width=640, nbins=5)
 
 # Neural network models (limited functionality)
 from evlib.models import ModelConfig  # If available
-
-# Direct Rust access (returns NumPy arrays)
-x, y, t, p = evlib.formats.load_events("data.h5")
 
 # Data saving
 evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
