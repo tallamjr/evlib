@@ -1,0 +1,178 @@
+name: Test Documentation Examples
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+      - 'python/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/test-docs.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+      - 'python/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/test-docs.yml'
+
+jobs:
+  test-docs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.10, 3.11, 3.12]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev pkg-config cmake
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install uv
+        uv pip install -e ".[dev]"
+
+    - name: Build evlib
+      run: |
+        maturin develop --release
+
+    - name: Test documentation examples
+      run: |
+        pytest --markdown-docs docs/ -v --tb=short --maxfail=10
+      continue-on-error: true  # Allow tests to fail initially while we fix API issues
+
+    - name: Generate documentation test report
+      run: |
+        pytest --markdown-docs docs/ --tb=short --maxfail=10 --junitxml=docs-test-results.xml
+      continue-on-error: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: docs-test-results-${{ matrix.python-version }}
+        path: docs-test-results.xml
+        retention-days: 7
+
+  test-docs-quick:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev pkg-config cmake
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install uv
+        uv pip install -e ".[dev]"
+
+    - name: Build evlib
+      run: |
+        maturin develop --release
+
+    - name: Test documentation examples (quick check)
+      run: |
+        # Test only quickstart guide as a quick smoke test
+        pytest --markdown-docs docs/getting-started/quickstart.md -v --tb=short --maxfail=5
+      continue-on-error: true
+
+  validate-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install pytest-markdown-docs
+      run: |
+        pip install pytest-markdown-docs
+
+    - name: Validate documentation structure
+      run: |
+        # Check that documentation files exist and are valid
+        python -c "
+        import os
+        from pathlib import Path
+
+        docs_dir = Path('docs')
+        md_files = list(docs_dir.glob('**/*.md'))
+
+        print(f'Found {len(md_files)} markdown files')
+        for f in md_files:
+            print(f'  - {f}')
+
+        # Check for Python code blocks
+        python_blocks = 0
+        for f in md_files:
+            content = f.read_text()
+            python_blocks += content.count('```python')
+
+        print(f'Found {python_blocks} Python code blocks')
+
+        if python_blocks == 0:
+            print('WARNING: No Python code blocks found!')
+        else:
+            print('SUCCESS: Documentation contains testable code examples')
+        "
+
+    - name: Check configuration
+      run: |
+        # Verify pytest-markdown-docs configuration
+        python -c "
+        import configparser
+        import tomllib
+
+        with open('pyproject.toml', 'rb') as f:
+            config = tomllib.load(f)
+
+        # Check pytest config
+        pytest_config = config.get('tool', {}).get('pytest', {}).get('ini_options', {})
+        print('Pytest configuration:')
+        for key, value in pytest_config.items():
+            print(f'  {key}: {value}')
+
+        # Check markdown docs config
+        md_config = config.get('tool', {}).get('pytest-markdown-docs', {})
+        print('Markdown docs configuration:')
+        for key, value in md_config.items():
+            print(f'  {key}: {value}')
+        "

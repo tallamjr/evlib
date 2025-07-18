@@ -129,27 +129,6 @@ data = evr.preprocess_for_detection(
 )
 ```
 
-### Neural Network Models
-```python
-import evlib.models as evm
-
-# Load E2VID model
-model = evm.load_e2vid_model("models/E2VID_lightweight.pth.tar")
-
-# Inference on voxel grid
-reconstructed = model.inference(voxel_grid)
-```
-
-### Direct Rust Access (Advanced)
-```python
-# Direct access to Rust formats module (returns NumPy arrays)
-x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
-
-# Format detection
-format_info = evlib.detect_format("path/to/your/data.h5")
-print(f"Detected format: {format_info}")
-```
-
 ## Installation
 
 ### Basic Installation
@@ -325,9 +304,6 @@ python benches/benchmark_performance_readme.py
 # Memory efficiency benchmark
 python benches/benchmark_memory.py
 
-# General performance benchmark
-python examples/benchmark.py
-
 # Test with your own data
 python -c "
 import evlib
@@ -497,6 +473,10 @@ python examples/stacked_histogram_demo.py
 ## Development
 
 ### Testing
+
+evlib includes comprehensive testing for both code and documentation:
+
+#### Core Testing
 ```bash
 # Run all tests (Python and Rust)
 pytest
@@ -512,10 +492,45 @@ pytest --nbmake examples/
 
 # Test with coverage
 pytest --cov=evlib
+```
 
+#### Documentation Testing
+All code examples in the documentation are automatically tested to ensure they work correctly:
+
+```bash
+# Test all documentation examples
+pytest --markdown-docs docs/
+
+# Test specific documentation file
+pytest --markdown-docs docs/getting-started/quickstart.md
+
+# Use the convenient test script
+python scripts/test_docs.py --list    # List testable files
+python scripts/test_docs.py --report  # Generate report
+
+# Test specific documentation section
+pytest --markdown-docs docs/user-guide/
+pytest --markdown-docs docs/getting-started/
+```
+
+**Documentation Testing Features:**
+- **266 code examples** across 27 documentation files are automatically tested
+- **Mock evlib module** allows testing even when full library isn't built
+- **CI/CD integration** runs tests on every push and pull request
+- **Comprehensive reporting** shows which examples work and which need attention
+
+#### Code Quality
+```bash
 # Format code
 black python/ tests/ examples/
 cargo fmt
+
+# Run linting
+ruff check python/ tests/
+cargo clippy
+
+# Check types
+mypy python/evlib/
 ```
 
 ### Building

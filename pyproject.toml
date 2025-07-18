@@ -45,6 +45,7 @@ dev = [
     "twine",
     "tqdm>=4.67.1",
     "h5py>=3.8.0",
+    "pytest-markdown-docs>=0.9.0",
 ]
 polars = ["polars >= 1.30.0"]
 plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0", "seaborn>=0.13.2",]
@@ -66,7 +67,27 @@ strip = true
 include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", format = ["sdist", "wheel"]} ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "docs"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "benchmark: marks tests as benchmarks",
+    "docs: marks tests as documentation tests",
+]
+addopts = [
+    "--markdown-docs",
+    "--markdown-docs-dir=docs",
+]
 
 [tool.black]
 line-length = 110
+
+[tool.pytest-markdown-docs]
+# Configuration for pytest-markdown-docs
+docs_dir = "docs"
+ignore_glob = [
+    "index.md",
+    "development/releases.md",
+    "development/contributing.md",
+    "development/testing.md",
+]
