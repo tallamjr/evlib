@@ -276,7 +276,7 @@ impl PolarsEventStreamer {
     ///
     /// Reuses the existing timestamp conversion logic to ensure consistency
     pub fn convert_timestamp(&self, timestamp: f64) -> i64 {
-        if timestamp > 1_000_000.0 {
+        if timestamp >= 1_000_000.0 {
             // Already in microseconds
             timestamp as i64
         } else {

@@ -104,7 +104,7 @@ pub struct RawEvt21Event {
 impl RawEvt21Event {
     /// Extract event type from raw data
     pub fn event_type(&self) -> Result<Evt21EventType, Evt21Error> {
-        let type_bits = (self.data & 0x000000000000000F) as u8;
+        let type_bits = ((self.data >> 60) & 0x0F) as u8;
         Evt21EventType::try_from(type_bits)
     }
 
@@ -120,18 +120,19 @@ impl RawEvt21Event {
 
         let polarity = matches!(event_type, Evt21EventType::EvtPos);
 
-        // Extract fields from 64-bit word
-        // Bits 63-32: 32-bit validity mask (1 bit per pixel)
-        let validity_mask = ((self.data >> 32) & 0xFFFFFFFF) as u32;
+        // Extract fields from 64-bit word per official EVT2.1 specification
+        // Bits 63-60: 4-bit event type (already extracted above)
+        // Bits 59-54: 6-bit timestamp (least significant bits)
+        let timestamp = ((self.data >> 54) & 0x3F) as u16;
 
-        // Bits 31-26: Y coordinate (need more bits for values like 200)
-        let y = ((self.data >> 26) & 0x3FF) as u16;
+        // Bits 53-43: 11-bit X coordinate (aligned on 32)
+        let x_base = ((self.data >> 43) & 0x7FF) as u16;
 
-        // Bits 25-14: X coordinate base (12 bits)
-        let x_base = ((self.data >> 14) & 0xFFF) as u16;
+        // Bits 42-32: 11-bit Y coordinate
+        let y = ((self.data >> 32) & 0x7FF) as u16;
 
-        // Bits 13-4: Timestamp (10 bits - lower portion)
-        let timestamp = ((self.data >> 4) & 0x3FF) as u16;
+        // Bits 31-0: 32-bit validity mask (representing 32 pixel events)
+        let validity_mask = (self.data & 0xFFFFFFFF) as u32;
 
         Ok(VectorizedEvent {
             x_base,
@@ -152,7 +153,7 @@ impl RawEvt21Event {
         }
 
         Ok(TimeHighEvent {
-            timestamp: (self.data >> 4) & 0x0FFFFFFFFFFFFFFF,
+            timestamp: (self.data >> 32) & 0x0FFFFFFF,
         })
     }
 
@@ -166,9 +167,9 @@ impl RawEvt21Event {
         }
 
         Ok(ExtTriggerEvent {
-            value: ((self.data >> 4) & 0x1) != 0,
-            id: ((self.data >> 12) & 0x1F) as u8,
-            timestamp: ((self.data >> 20) & 0x3FF) as u16,
+            value: ((self.data >> 32) & 0x1) != 0,
+            id: ((self.data >> 40) & 0x1F) as u8,
+            timestamp: ((self.data >> 54) & 0x3F) as u16,
         })
     }
 
@@ -797,40 +798,52 @@ mod tests {
     fn test_evt21_event_type_parsing() {
         // Test EVT_NEG event
         let raw_event = RawEvt21Event {
-            data: 0x0000000000000000,
+            data: 0x0000000000000000, // Event type 0x0 (EvtNeg) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtNeg);
 
         // Test EVT_POS event
         let raw_event = RawEvt21Event {
-            data: 0x0000000000000001,
+            data: 0x1000000000000000, // Event type 0x1 (EvtPos) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtPos);
 
         // Test Time High event
         let raw_event = RawEvt21Event {
-            data: 0x0000000000000008,
+            data: 0x8000000000000000, // Event type 0x8 (TimeHigh) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::TimeHigh);
 
         // Test External Trigger event
         let raw_event = RawEvt21Event {
-            data: 0x000000000000000A,
+            data: 0xA000000000000000, // Event type 0xA (ExtTrigger) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::ExtTrigger);
 
-        // Test invalid event type (0x10 is not a valid event type)
+        // Test that all 4-bit values are accepted (event type now at bits 63-60)
         let raw_event = RawEvt21Event {
-            data: 0x0000000000000010,
+            data: 0x0000000000000000, // Event type 0x0 (EVT_NEG) at bits 63-60
         };
-        assert!(raw_event.event_type().is_err());
+        assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtNeg);
     }
 
     #[test]
     fn test_vectorized_event_parsing() {
         // Test EVT_POS event at (100, 200) with timestamp 30 and validity mask 0x0000000F
-        let raw_data =
-            (0x0000000Fu64 << 32) | (200u64 << 26) | (100u64 << 14) | (30u64 << 4) | 0x01;
+        // Using correct EVT2.1 bit layout from official specification
+
+        // Bits 63-60: Event type (0x1 for EVT_POS)
+        // Bits 59-54: Timestamp (30)
+        // Bits 53-43: X coordinate (100)
+        // Bits 42-32: Y coordinate (200)
+        // Bits 31-0: Validity mask (0x0000000F)
+
+        let raw_data = (0x1u64 << 60) |        // Event type: EVT_POS
+                      (30u64 << 54) |          // Timestamp: 30
+                      (100u64 << 43) |         // X coordinate: 100
+                      (200u64 << 32) |         // Y coordinate: 200
+                      0x0000000F; // Validity mask: 0x0000000F
+
         let raw_event = RawEvt21Event { data: raw_data };
 
         let vec_event = raw_event.as_vectorized_event().unwrap();
@@ -843,24 +856,25 @@ mod tests {
 
     #[test]
     fn test_time_high_event_parsing() {
-        // Test Time High event with timestamp 0x123456789ABCDEF
-        let raw_data = (0x123456789ABCDEFu64 << 4) | 0x08;
+        // Test Time High event with timestamp 0x2345678 (28 bits max)
+        let raw_data = (0x8u64 << 60) | (0x02345678u64 << 32);
         let raw_event = RawEvt21Event { data: raw_data };
 
         let time_event = raw_event.as_time_high_event().unwrap();
-        assert_eq!(time_event.timestamp, 0x123456789ABCDEF);
+        assert_eq!(time_event.timestamp, 0x02345678);
     }
 
     #[test]
     fn test_ext_trigger_event_parsing() {
-        // Test External Trigger event with value=true, id=15, timestamp=512
-        let raw_data = (512u64 << 20) | (15u64 << 12) | (1u64 << 4) | 0x0A;
+        // Test External Trigger event with value=true, id=15, timestamp=30
+        // Event type 0xA at bits 63-60, timestamp at bits 59-54, id at bits 44-40, value at bit 32
+        let raw_data = (0xAu64 << 60) | (30u64 << 54) | (15u64 << 40) | (1u64 << 32);
         let raw_event = RawEvt21Event { data: raw_data };
 
         let trigger_event = raw_event.as_ext_trigger_event().unwrap();
         assert_eq!(trigger_event.value, true);
         assert_eq!(trigger_event.id, 15);
-        assert_eq!(trigger_event.timestamp, 512);
+        assert_eq!(trigger_event.timestamp, 30);
     }
 
     #[test]

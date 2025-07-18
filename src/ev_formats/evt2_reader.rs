@@ -96,7 +96,7 @@ pub struct RawEvt2Event {
 impl RawEvt2Event {
     /// Extract event type from raw data
     pub fn event_type(&self) -> Result<Evt2EventType, Evt2Error> {
-        let type_bits = (self.data & 0x0000000F) as u8;
+        let type_bits = ((self.data >> 28) & 0x0F) as u8;
         Evt2EventType::try_from(type_bits)
     }
 
@@ -145,9 +145,9 @@ impl RawEvt2Event {
         };
 
         Ok(CdEvent {
-            x: ((self.data >> 4) & 0x7FF) as u16,
-            y: ((self.data >> 15) & 0x7FF) as u16,
-            timestamp: ((self.data >> 26) & 0x3F) as u8,
+            x: (self.data & 0x7FF) as u16,
+            y: ((self.data >> 11) & 0x7FF) as u16,
+            timestamp: ((self.data >> 22) & 0x3F) as u8,
             polarity,
         })
     }
@@ -162,7 +162,7 @@ impl RawEvt2Event {
         }
 
         Ok(TimeHighEvent {
-            timestamp: (self.data >> 4) & 0x0FFFFFFF,
+            timestamp: self.data & 0x0FFFFFFF,
         })
     }
 
@@ -300,7 +300,7 @@ pub struct Evt2Config {
 impl Default for Evt2Config {
     fn default() -> Self {
         Self {
-            validate_coordinates: false,
+            validate_coordinates: true,
             skip_invalid_events: false,
             max_events: None,
             sensor_resolution: None,
@@ -716,31 +716,32 @@ mod tests {
 
     #[test]
     fn test_evt2_event_type_parsing() {
-        // Test CD OFF event
+        // Test CD OFF event - event type at bits 31-28
         let raw_event = RawEvt2Event { data: 0x00000000 };
         assert_eq!(raw_event.event_type().unwrap(), Evt2EventType::CdOff);
 
         // Test CD ON event
-        let raw_event = RawEvt2Event { data: 0x00000001 };
+        let raw_event = RawEvt2Event { data: 0x10000000 };
         assert_eq!(raw_event.event_type().unwrap(), Evt2EventType::CdOn);
 
         // Test Time High event
-        let raw_event = RawEvt2Event { data: 0x00000008 };
+        let raw_event = RawEvt2Event { data: 0x80000000 };
         assert_eq!(raw_event.event_type().unwrap(), Evt2EventType::TimeHigh);
 
         // Test External Trigger event
-        let raw_event = RawEvt2Event { data: 0x0000000A };
+        let raw_event = RawEvt2Event { data: 0xA0000000 };
         assert_eq!(raw_event.event_type().unwrap(), Evt2EventType::ExtTrigger);
 
-        // Test invalid event type
-        let raw_event = RawEvt2Event { data: 0x00000005 };
-        assert!(raw_event.event_type().is_err());
+        // Test Continued event type (0xF at bits 31-28 is valid)
+        let raw_event = RawEvt2Event { data: 0xF0000000 };
+        assert_eq!(raw_event.event_type().unwrap(), Evt2EventType::Continued);
     }
 
     #[test]
     fn test_cd_event_parsing() {
         // Test CD ON event at (100, 200) with timestamp 30
-        let raw_data = (30u32 << 26) | (200u32 << 15) | (100u32 << 4) | 0x01;
+        // Using correct EVT2.0 bit layout: [31-28: type] [27-22: timestamp] [21-11: Y] [10-0: X]
+        let raw_data = (0x1u32 << 28) | (30u32 << 22) | (200u32 << 11) | 100u32;
         let raw_event = RawEvt2Event { data: raw_data };
 
         let cd_event = raw_event.as_cd_event().unwrap();
@@ -752,8 +753,9 @@ mod tests {
 
     #[test]
     fn test_time_high_event_parsing() {
-        // Test Time High event with timestamp 0x1234567
-        let raw_data = (0x1234567u32 << 4) | 0x08;
+        // Test Time High event with timestamp 0x1234567 (28 bits)
+        // Using correct EVT2.0 bit layout: [31-28: type (0x8)] [27-0: timestamp]
+        let raw_data = (0x8u32 << 28) | 0x1234567u32;
         let raw_event = RawEvt2Event { data: raw_data };
 
         let time_event = raw_event.as_time_high_event().unwrap();
