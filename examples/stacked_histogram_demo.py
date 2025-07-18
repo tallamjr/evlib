@@ -14,44 +14,25 @@ import evlib
 
 def load_sample_data():
     """Load sample event data from the slider_depth dataset."""
-    filename = "../data/slider_depth/events.txt"
+    filename = "data/slider_depth/events.txt"
 
     try:
-        with open(filename, "r") as f:
-            lines = f.readlines()
+        # Use evlib to load the data properly
+        df = evlib.load_events(filename).collect()
 
-        timestamp = []
-        x = []
-        y = []
-        pol = []
+        # Extract arrays from the DataFrame
+        x = df["x"].to_numpy()
+        y = df["y"].to_numpy()
+        pol = df["polarity"].to_numpy()
+        timestamp = df["timestamp"].cast(float).to_numpy() / 1_000_000  # Convert to seconds
 
-        for line in lines:
-            parts = line.strip().split()
-            if len(parts) == 4:
-                timestamp.append(float(parts[0]))
-                x.append(int(parts[1]))
-                y.append(int(parts[2]))
-                pol.append(int(parts[3]))
-
-        return np.array(x), np.array(y), np.array(pol), np.array(timestamp)
+        print(f"Successfully loaded {len(x)} events from {filename}")
+        return x, y, pol, timestamp
 
     except FileNotFoundError:
         print(f"Real data file not found: {filename}")
-        print("Using synthetic data instead")
-        return generate_synthetic_data()
-
-
-def generate_synthetic_data():
-    """Generate synthetic event data for demonstration."""
-    num_events = 1000
-
-    # Create random events
-    x = np.random.randint(0, 240, num_events)
-    y = np.random.randint(0, 180, num_events)
-    pol = np.random.choice([0, 1], num_events)
-    timestamp = np.sort(np.random.uniform(0, 1, num_events))
-
-    return x, y, pol, timestamp
+        print("Please ensure the data directory is available")
+        raise
 
 
 def demonstrate_stacked_histogram():
@@ -60,6 +41,7 @@ def demonstrate_stacked_histogram():
     print("=" * 40)
 
     # Load data
+    filename = "data/slider_depth/events.txt"
     x, y, pol, timestamp = load_sample_data()
 
     # Use subset of data for demonstration
@@ -75,11 +57,11 @@ def demonstrate_stacked_histogram():
 
     # Create stacked histogram
     bins = 8
-    height = 180
-    width = 240
+    height = 240
+    width = 346
 
-    stacked_hist = evlib.stacked_histogram(
-        x, y, pol, timestamp, bins=bins, height=height, width=width, count_cutoff=255, fastmode=True
+    stacked_hist = evlib.create_stacked_histogram(
+        filename, height=height, width=width, nbins=bins, window_duration_ms=50.0, count_cutoff=255
     )
 
     print(f"\nStacked histogram shape: {stacked_hist.shape}")
@@ -91,10 +73,13 @@ def demonstrate_stacked_histogram():
     fig, axes = plt.subplots(2, max_bins_to_show, figsize=(16, 8))
     fig.suptitle("Stacked Histogram Visualization", fontsize=16)
 
+    # Use the first window for visualization
+    window_idx = 0
+
     # Show positive events for each time bin
     for i in range(max_bins_to_show):
         ax = axes[0, i]
-        pos_slice = stacked_hist[i, :, :]
+        pos_slice = stacked_hist[window_idx, i, :, :]
         ax.imshow(pos_slice, cmap="Reds", vmin=0, vmax=stacked_hist.max())
         ax.set_title(f"Positive Events\nTime Bin {i}")
         ax.axis("off")
@@ -102,7 +87,7 @@ def demonstrate_stacked_histogram():
     # Show negative events for each time bin
     for i in range(max_bins_to_show):
         ax = axes[1, i]
-        neg_slice = stacked_hist[bins + i, :, :]
+        neg_slice = stacked_hist[window_idx, bins + i, :, :]
         ax.imshow(neg_slice, cmap="Blues", vmin=0, vmax=stacked_hist.max())
         ax.set_title(f"Negative Events\nTime Bin {i}")
         ax.axis("off")
@@ -115,23 +100,14 @@ def demonstrate_stacked_histogram():
     print("\nComparing with other representations:")
 
     # Voxel grid
-    voxel_grid = evlib.create_voxel_grid(
-        x, y, timestamp, pol, sensor_resolution=(width, height), num_bins=bins
-    )
+    voxel_grid = evlib.create_voxel_grid(filename, height=height, width=width, nbins=bins)
     print(f"Voxel grid shape: {voxel_grid.shape}")
     print(f"Voxel grid value range: [{voxel_grid.min():.3f}, {voxel_grid.max():.3f}]")
 
-    # Time surface
-    time_surface = evlib.create_time_surface(
-        x, y, timestamp, pol, sensor_resolution=(width, height), polarity_separate=True
-    )
-    print(f"Time surface shape: {time_surface.shape}")
-    print(f"Time surface value range: [{time_surface.min():.3f}, {time_surface.max():.3f}]")
-
-    # Event histogram
-    event_hist = evlib.create_event_histogram(
-        x, y, pol, sensor_resolution=(width, height), polarity_separate=True
-    )
+    # Simple event histogram (manual implementation since no evlib function exists)
+    event_hist = np.zeros((2, height, width), dtype=np.int32)
+    for i in range(num_events):
+        event_hist[pol[i], y[i], x[i]] += 1
     print(f"Event histogram shape: {event_hist.shape}")
     print(f"Event histogram value range: [{event_hist.min()}, {event_hist.max()}]")
 
@@ -139,19 +115,21 @@ def demonstrate_stacked_histogram():
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     fig.suptitle("Representation Comparison", fontsize=16)
 
-    # Stacked histogram middle bin
-    axes[0, 0].imshow(stacked_hist[bins // 2, :, :], cmap="Reds")
+    # Stacked histogram middle bin - First window, middle time bin
+    middle_window = 0
+    middle_time_bin = bins // 2
+    axes[0, 0].imshow(stacked_hist[middle_window, middle_time_bin, :, :], cmap="Reds")
     axes[0, 0].set_title("Stacked Histogram\n(Middle Time Bin, Positive)")
     axes[0, 0].axis("off")
 
     # Voxel grid middle bin
-    axes[0, 1].imshow(voxel_grid[:, :, bins // 2].T, cmap="RdBu_r")
+    axes[0, 1].imshow(voxel_grid[bins // 2, :, :].T, cmap="RdBu_r")
     axes[0, 1].set_title("Voxel Grid\n(Middle Time Bin)")
     axes[0, 1].axis("off")
 
-    # Time surface positive
-    axes[1, 0].imshow(time_surface[1], cmap="Reds")
-    axes[1, 0].set_title("Time Surface\n(Positive Events)")
+    # Stacked histogram negative events - First window, middle time bin + bins offset
+    axes[1, 0].imshow(stacked_hist[middle_window, bins + middle_time_bin, :, :], cmap="Blues")
+    axes[1, 0].set_title("Stacked Histogram\n(Middle Time Bin, Negative)")
     axes[1, 0].axis("off")
 
     # Event histogram positive

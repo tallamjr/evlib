@@ -721,7 +721,20 @@ tests/*.png
 # Temporary Cargo config for Python linking
 .cargo/config.toml
 
-data/
+data/eTram
+
+data/etap
+
+data/gen1_original
+data/gen1_processed_EVLIB
+data/gen1_processed_RVT
+
+data/gen4_1mpx_original
+data/gen4_1mpx_processed_EVLIB
+data/gen4_1mpx_processed_RVT
+
+data/slider_depth
+
 models/
 
 libs/
