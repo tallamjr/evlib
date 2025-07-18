@@ -293,18 +293,6 @@ x, y, t, p = processed.select(["x", "y", "timestamp", "polarity"]).collect().to_
 evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 ```
 
-### Performance Benchmarks
-
-| Operation | NumPy | Polars | Speedup |
-|-----------|-------|--------|---------|
-| Loading 1M events | 0.08s | 0.05s | 1.6x |
-| Filtering by polarity | 0.012s | 0.0001s | 97x |
-| Spatial filtering | 0.045s | 0.002s | 23x |
-| Group by polarity | 0.025s | 0.003s | 8x |
-| Temporal binning | 0.156s | 0.008s | 19x |
-
-*Benchmarks on Apple M1 with 16GB RAM*
-
 ## Performance Optimizations
 
 ### Memory Efficiency
