@@ -16,7 +16,7 @@ The module structure has been updated:
 
 ## Examples
 
-### 🚀 Polars DataFrame Integration (HIGH-PERFORMANCE)
+### FEATURE: Polars DataFrame Integration (HIGH-PERFORMANCE)
 
 #### Complete Polars API Overview
 ```bash
@@ -82,7 +82,7 @@ Rust-level Polars integration demonstration:
 - Memory-efficient conversions
 - Advanced DataFrame manipulations
 
-### 📊 Data Analysis and Visualization
+### DATA: Data Analysis and Visualization
 
 #### Event Data Exploration Notebooks
 ```bash
@@ -110,7 +110,7 @@ Demonstrates efficient event representation creation:
 - Performance optimization techniques
 - Integration with Polars DataFrames
 
-### 🔄 GStreamer Integration (NEW)
+### FEATURE: GStreamer Integration (NEW)
 
 #### Webcam Capture Demo
 ```bash
@@ -161,7 +161,7 @@ Interactive notebook demonstrating:
 - Comprehensive visualizations
 - Real-time analysis and statistics
 
-### 📁 Format Support and Data Loading
+### DOCUMENTATION: Format Support and Data Loading
 
 #### Format Reader Examples
 ```bash
@@ -193,7 +193,7 @@ Demonstrates modern EVT2.1 format support:
 - Efficient event extraction
 - Format-specific optimizations
 
-### 📈 Performance and Benchmarking
+### TREND: Performance and Benchmarking
 
 #### Comprehensive Benchmarks
 ```bash
@@ -205,7 +205,7 @@ Benchmarks the Rust-backed implementation:
 - Scalability testing
 - Operation-specific benchmarks
 
-### 🔧 Basic Usage and Utilities
+### TOOL: Basic Usage and Utilities
 
 #### Basic Functionality
 ```bash
@@ -372,24 +372,24 @@ Using Polars DataFrames provides significant performance improvements:
 
 ## Example Categories
 
-### 🚀 High-Performance (Polars)
+### FEATURE: High-Performance (Polars)
 - `polars_integration_example.ipynb` - Complete API overview
 - `polars_utility_functions_demo.ipynb` - Advanced utilities
 - `polars_integration_demo.py` - Performance demonstrations
 - `polars_realworld_analysis.py` - Practical applications
 - `streaming_large_datasets_demo.ipynb` - Memory-efficient processing
 
-### 📊 Data Analysis
+### DATA: Data Analysis
 - `eda_*_h5.ipynb` - Dataset exploration
 - `events_viz_*.ipynb` - Visualization techniques
 - `stacked_histogram_demo.py` - Representation creation
 
-### 📁 Format Support
+### DOCUMENTATION: Format Support
 - `reader_showcase.py` - Format compatibility
 - `etram_data_loading.py` - Large dataset handling
 - `evt21_example.py` - Modern format support
 
-### 🔄 Simulation and Processing
+### FEATURE: Simulation and Processing
 - `gstreamer_*` - Real-time processing
 - `synthetic_*` - Event simulation
 

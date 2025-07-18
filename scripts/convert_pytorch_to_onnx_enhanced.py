@@ -288,10 +288,10 @@ def verify_onnx_model(pytorch_model, onnx_path, input_shape):
         print(f"  Mean difference: {mean_diff:.6f}")
 
         if max_diff < 1e-5:
-            print("  ✓ Model outputs match!")
+            print("  SUCCESS: Model outputs match!")
             return True
         else:
-            print("  ✗ Model outputs differ significantly")
+            print("  ERROR: Model outputs differ significantly")
             return False
 
     except ImportError:

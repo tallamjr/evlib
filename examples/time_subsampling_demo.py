@@ -376,7 +376,7 @@ def combined_filtering_example():
     )
 
     print(f"Final histogram shape: {histogram.shape}")
-    print("✅ Combined filtering and Polars native subsampling complete!")
+    print("SUCCESS: Combined filtering and Polars native subsampling complete!")
 
 
 def main():

@@ -21,7 +21,7 @@ def test_voxel_grid_removal():
         voxel_grid = evlib.create_voxel_grid(xs, ys, ts, ps, num_bins, resolution, "count")
         assert voxel_grid.shape == (num_bins, resolution[1], resolution[0])
         assert voxel_grid.dtype == np.float32
-        print("✅ create_voxel_grid works")
+        print("PASS: create_voxel_grid works")
     except Exception as e:
         pytest.skip(f"create_voxel_grid not available: {e}")
 
@@ -30,7 +30,7 @@ def test_voxel_grid_removal():
         smooth_voxel_grid = evlib.smooth_voxel(xs, ys, ts, ps, num_bins, resolution)
         assert smooth_voxel_grid.shape == (num_bins, resolution[1], resolution[0])
         assert smooth_voxel_grid.dtype == np.float32
-        print("✅ smooth_voxel works")
+        print("PASS: smooth_voxel works")
     except Exception as e:
         pytest.skip(f"smooth_voxel not available: {e}")
 
@@ -52,7 +52,7 @@ def test_voxel_grid_removal_empty():
         assert voxel_grid.shape == (num_bins, resolution[1], resolution[0])
         assert voxel_grid.dtype == np.float32
         assert np.all(voxel_grid == 0)
-        print("✅ create_voxel_grid handles empty data")
+        print("PASS: create_voxel_grid handles empty data")
     except Exception as e:
         pytest.skip(f"create_voxel_grid not available: {e}")
 
@@ -62,6 +62,6 @@ def test_voxel_grid_removal_empty():
         assert smooth_voxel_grid.shape == (num_bins, resolution[1], resolution[0])
         assert smooth_voxel_grid.dtype == np.float32
         assert np.all(smooth_voxel_grid == 0)
-        print("✅ smooth_voxel handles empty data")
+        print("PASS: smooth_voxel handles empty data")
     except Exception as e:
         pytest.skip(f"smooth_voxel not available: {e}")

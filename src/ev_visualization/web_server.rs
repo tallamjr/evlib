@@ -91,11 +91,11 @@ impl EventBroadcaster {
                     .filter_map(|(id, client)| {
                         match client.tx.send(Message::binary(message.clone())) {
                             Ok(_) => {
-                                println!("  ✓ Sent to client {}", id);
+                                println!("  OK: Sent to client {}", id);
                                 None
                             }
                             Err(e) => {
-                                println!("  ✗ Failed to send to client {}: {}", id, e);
+                                println!("  FAIL: Failed to send to client {}: {}", id, e);
                                 Some(*id)
                             }
                         }

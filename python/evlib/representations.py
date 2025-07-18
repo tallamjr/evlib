@@ -121,8 +121,8 @@ def create_stacked_histogram(
 
     result = np.stack(histograms, axis=0)
     total_time = time.time() - start_time
-    print(f"✓ Created stacked histogram in {total_time:.2f}s ({len(df)/total_time:.0f} events/s)")
-    print(f"✓ Output shape: {result.shape} ({result.nbytes/1024/1024:.1f} MB)")
+    print(f"Success: Created stacked histogram in {total_time:.2f}s ({len(df)/total_time:.0f} events/s)")
+    print(f"Success: Output shape: {result.shape} ({result.nbytes/1024/1024:.1f} MB)")
 
     return result
 
@@ -253,7 +253,7 @@ def create_mixed_density_stack(
 
     result = np.stack(histograms, axis=0)
     total_time = time.time() - start_time
-    print(f"✓ Created mixed density stack in {total_time:.2f}s")
+    print(f"Success: Created mixed density stack in {total_time:.2f}s")
 
     return result
 
@@ -385,7 +385,7 @@ def create_voxel_grid(
         if 0 <= time_bin < nbins and 0 <= x < width and 0 <= y < height:
             voxel_grid[time_bin, y, x] = value
 
-    print(f"✓ Created voxel grid with {np.count_nonzero(voxel_grid)} non-zero voxels")
+    print(f"Success: Created voxel grid with {np.count_nonzero(voxel_grid)} non-zero voxels")
 
     return voxel_grid
 
@@ -455,17 +455,17 @@ def benchmark_vs_rvt(events_path: str, height: int = 480, width: int = 640):
 
     polars_time = time.time() - start_time
 
-    print(f"✓ evlib Polars: {polars_time:.2f}s")
-    print(f"✓ Output shape: {hist_polars.shape}")
-    print(f"✓ Memory usage: {hist_polars.nbytes / 1024 / 1024:.1f} MB")
+    print(f"Success: evlib Polars: {polars_time:.2f}s")
+    print(f"Success: Output shape: {hist_polars.shape}")
+    print(f"Success: Memory usage: {hist_polars.nbytes / 1024 / 1024:.1f} MB")
     print()
 
     # Estimate RVT performance (based on typical PyTorch tensor operations)
     estimated_rvt_time = polars_time * 3.5  # Conservative estimate
 
     print("Estimated RVT PyTorch performance:")
-    print(f"✗ RVT PyTorch: ~{estimated_rvt_time:.2f}s (estimated)")
-    print(f"✓ Speedup: ~{estimated_rvt_time/polars_time:.1f}x faster")
+    print(f"Warning: RVT PyTorch: ~{estimated_rvt_time:.2f}s (estimated)")
+    print(f"Performance: Speedup: ~{estimated_rvt_time/polars_time:.1f}x faster")
     print()
 
     print("Why evlib is faster:")

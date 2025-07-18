@@ -14,14 +14,14 @@ evlib prioritizes **reliable functionality** over maximum feature count. Every f
 
 **Core Features Verified (January 2025)**
 
-**✅ Fully Working:**
+**Fully Working:**
 - **Event Data I/O**: Universal format support (HDF5, EVT2/3, AEDAT, AER, Text)
 - **Event Filtering**: Comprehensive filtering with Polars integration
 - **Event Representations**: Stacked histograms, voxel grids, and mixed density stacks
 - **Neural Networks**: E2VID model loading and inference (Python)
 - **Performance**: High-performance DataFrame operations with Polars
 
-**🚧 In Development:**
+**In Development:**
 - **Advanced Processing**: Rust-based neural network processing (temporarily disabled)
 - **Visualization**: Real-time terminal visualization (temporarily disabled)
 

@@ -271,7 +271,7 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     assert len(h5_filtered_df) > 0, "H5 file should have events in filtered range"
     assert len(h5_filtered_df) < len(h5_df), "H5 filtering should remove some events"
 
-    print("✓ Temporal filtering with real data passed")
+    print("PASS: Temporal filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -332,7 +332,7 @@ def test_spatial_filtering_real_data(filtering_module, small_raw_events, small_h
     assert len(h5_center_df) > 0, "H5 center ROI should contain events"
     assert len(h5_center_df) < len(h5_df), "H5 ROI should filter out some events"
 
-    print("✓ Spatial filtering with real data passed")
+    print("PASS: Spatial filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -387,7 +387,7 @@ def test_polarity_filtering_real_data(filtering_module, small_raw_events, small_
         assert len(h5_filtered_df) > 0, f"H5 should have events with polarity {polarity}"
         assert all(h5_filtered_df["polarity"] == polarity), f"All H5 events should have polarity {polarity}"
 
-    print("✓ Polarity filtering with real data passed")
+    print("PASS: Polarity filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -433,7 +433,7 @@ def test_hot_pixel_filtering_real_data(filtering_module, small_raw_events, small
         assert x_range > ETRAM_WIDTH * 0.3, "Should preserve spatial distribution in x"
         assert y_range > ETRAM_HEIGHT * 0.3, "Should preserve spatial distribution in y"
 
-    print("✓ Hot pixel filtering with real data passed")
+    print("PASS: Hot pixel filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -481,7 +481,7 @@ def test_noise_filtering_real_data(filtering_module, small_raw_events, small_h5_
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"
 
-    print("✓ Noise filtering with real data passed")
+    print("PASS: Noise filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -530,7 +530,7 @@ def test_chained_filtering_real_data(filtering_module, small_raw_events, small_h
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"
 
-    print("✓ Chained filtering with real data passed")
+    print("PASS: Chained filtering with real data passed")
 
 
 @skip_if_no_evlib()
@@ -609,7 +609,7 @@ def test_preprocessing_pipeline_real_data(filtering_module, small_raw_events, sm
     h5_processed_df = h5_processed.collect()
     assert len(h5_processed_df) < len(h5_df), "H5 preprocessing should reduce event count"
 
-    print("✓ Preprocessing pipeline with real data passed")
+    print("PASS: Preprocessing pipeline with real data passed")
 
 
 @skip_if_no_evlib()
@@ -686,7 +686,7 @@ def test_performance_benchmarks_real_data(filtering_module, large_raw_events, la
             memory_used_gb < PERFORMANCE_THRESHOLDS["max_memory_gb"]
         ), f"Memory usage {memory_used_gb:.2f} GB exceeds threshold"
 
-    print("✓ Performance benchmarks with real data passed")
+    print("PASS: Performance benchmarks with real data passed")
 
 
 def test_edge_cases_real_data():
@@ -714,7 +714,7 @@ def test_edge_cases_real_data():
                 str(small_file), x_min=1000, x_max=100, y_min=100, y_max=400  # Invalid: x_min > x_max
             )
 
-    print("✓ Edge cases with real data passed")
+    print("PASS: Edge cases with real data passed")
 
 
 def test_data_integrity_real_data():
@@ -769,7 +769,7 @@ def test_data_integrity_real_data():
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"
 
-    print("✓ Data integrity with real data passed")
+    print("PASS: Data integrity with real data passed")
 
 
 if __name__ == "__main__":
@@ -795,7 +795,7 @@ if __name__ == "__main__":
     for file_key, file_path in TEST_FILES.items():
         exists = check_file_exists(file_path)
         size_mb = file_path.stat().st_size / 1024 / 1024 if file_path.exists() else 0
-        print(f"  {file_key}: {'✓' if exists else '✗'} ({size_mb:.1f} MB)")
+        print(f"  {file_key}: {'PASS:' if exists else 'FAIL:'} ({size_mb:.1f} MB)")
 
     print("\nRunning tests...")
     print("-" * 60)
@@ -805,18 +805,18 @@ if __name__ == "__main__":
         import evlib  # noqa: F401
         import evlib.filtering as filtering_module  # noqa: F401
 
-        print("✓ evlib modules loaded successfully")
+        print("PASS: evlib modules loaded successfully")
     except ImportError as e:
-        print(f"✗ Cannot load evlib modules: {e}")
+        print(f"FAIL: Cannot load evlib modules: {e}")
         exit(1)
 
     # Run tests that don't require fixtures
     for test_func in [test_edge_cases_real_data, test_data_integrity_real_data]:
         try:
             test_func()
-            print(f"✓ {test_func.__name__} passed")
+            print(f"PASS: {test_func.__name__} passed")
         except Exception as e:
-            print(f"✗ {test_func.__name__} failed: {e}")
+            print(f"FAIL: {test_func.__name__} failed: {e}")
 
     print("=" * 60)
     print("Real data tests completed!")

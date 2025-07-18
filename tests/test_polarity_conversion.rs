@@ -18,7 +18,7 @@ fn test_polarity_conversion_zero_one_to_minus_one_plus_one() {
     let expected = vec![-1, 1, -1, 1, -1, 1, 1, -1];
     assert_eq!(output, expected);
 
-    println!("✓ Basic polarity conversion test passed");
+    println!("OK: Basic polarity conversion test passed");
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn test_polarity_auto_detection() {
         PolarityHandler::auto_detect_encoding(&minus_one_plus_one_data).unwrap();
     assert_eq!(detected_encoding, PolarityEncoding::MinusOnePlusOne);
 
-    println!("✓ Polarity auto-detection test passed");
+    println!("OK: Polarity auto-detection test passed");
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn test_polarity_stats() {
     assert_eq!(stats.one_ratio(), 0.5);
     assert_eq!(stats.suggest_encoding(), PolarityEncoding::ZeroOne);
 
-    println!("✓ Polarity statistics test passed");
+    println!("OK: Polarity statistics test passed");
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn test_load_config_with_polarity_encoding() {
     assert_eq!(config.sort, true);
     assert_eq!(config.polarity, Some(1));
 
-    println!("✓ LoadConfig polarity encoding test passed");
+    println!("OK: LoadConfig polarity encoding test passed");
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn test_polarity_config_variations() {
     assert_eq!(handler_non_strict.convert_single(2).unwrap(), 1); // non-zero -> positive
     assert_eq!(handler_non_strict.convert_single(-5).unwrap(), 1); // non-zero -> positive
 
-    println!("✓ Polarity config variations test passed");
+    println!("OK: Polarity config variations test passed");
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn test_reverse_polarity_conversion() {
     let expected = vec![0, 1, 0, 1, 0, 1, 1, 0];
     assert_eq!(output, expected);
 
-    println!("✓ Reverse polarity conversion test passed");
+    println!("OK: Reverse polarity conversion test passed");
 }
 
 #[test]
@@ -155,5 +155,5 @@ fn test_polarity_error_handling() {
     assert!(handler.convert_single(0).is_ok());
     assert!(handler.convert_single(1).is_ok());
 
-    println!("✓ Polarity error handling test passed");
+    println!("OK: Polarity error handling test passed");
 }

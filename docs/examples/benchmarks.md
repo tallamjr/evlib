@@ -275,7 +275,7 @@ def benchmark_memory_usage():
 
 ### When to Use evlib
 
-✅ **Use evlib for:**
+SUCCESS: **Use evlib for:**
 - **Complex algorithms**: Voxel grids, smooth interpolation, model inference
 - **Large datasets**: >100k events where memory efficiency matters
 - **Production pipelines**: Need reliability and error handling
@@ -284,7 +284,7 @@ def benchmark_memory_usage():
 
 ### When to Use NumPy
 
-✅ **Use NumPy for:**
+SUCCESS: **Use NumPy for:**
 - **Simple operations**: Basic arithmetic, slicing, indexing
 - **Small datasets**: <10k events where setup overhead dominates
 - **Rapid prototyping**: Quick experiments and debugging

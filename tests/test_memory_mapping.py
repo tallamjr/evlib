@@ -14,7 +14,7 @@ def memory_mapped_load(file_path, chunk_size=100_000):
     Simulate memory-mapped loading by reading in chunks.
     This demonstrates what the Rust implementation would do.
     """
-    print(f"🗺️  Testing memory-mapped loading with {chunk_size:,} event chunks")
+    print(f"MAP: Testing memory-mapped loading with {chunk_size:,} event chunks")
 
     start_total = time.time()
 
@@ -33,12 +33,12 @@ def memory_mapped_load(file_path, chunk_size=100_000):
                     datasets[key] = f[key]
 
         if not datasets:
-            print("❌ Could not find event datasets")
+            print("FAIL: Could not find event datasets")
             return None
 
         # Get total length
         total_events = len(list(datasets.values())[0])
-        print(f"📊 Total events: {total_events:,}")
+        print(f"DATA: Total events: {total_events:,}")
 
         # Read in chunks and build Polars DataFrame
         chunks = []
@@ -62,32 +62,32 @@ def memory_mapped_load(file_path, chunk_size=100_000):
 
             chunk_time = time.time() - start_chunk
             chunk_speed = chunk_events / chunk_time
-            print(f"      ⏱️  Chunk time: {chunk_time:.3f}s ({chunk_speed:,.0f} events/s)")
+            print(f"      TIME: Chunk time: {chunk_time:.3f}s ({chunk_speed:,.0f} events/s)")
 
     # Combine chunks
-    print("🔗 Combining chunks...")
+    print("INFO: Combining chunks...")
     start_combine = time.time()
     final_df = pl.concat(chunks)
     combine_time = time.time() - start_combine
 
     total_time = time.time() - start_total
 
-    print("✅ Memory-mapped simulation complete!")
-    print(f"⏱️  Total time: {total_time:.2f}s")
-    print(f"⏱️  Combine time: {combine_time:.3f}s")
-    print(f"📊 Final events: {len(final_df):,}")
-    print(f"⚡ Overall speed: {len(final_df) / total_time:,.0f} events/s")
+    print("PASS: Memory-mapped simulation complete!")
+    print(f"TIME: Total time: {total_time:.2f}s")
+    print(f"TIME: Combine time: {combine_time:.3f}s")
+    print(f"DATA: Final events: {len(final_df):,}")
+    print(f"FAST: Overall speed: {len(final_df) / total_time:,.0f} events/s")
 
     return final_df
 
 
 def compare_approaches(file_path):
     """Compare current vs memory-mapped approach"""
-    print("🏁 COMPARISON: Current vs Memory-Mapped")
+    print("INFO: COMPARISON: Current vs Memory-Mapped")
     print("=" * 50)
 
     # Test current approach
-    print("\n1️⃣ Current evlib approach:")
+    print("\nSTEP1: Current evlib approach:")
     start = time.time()
     import evlib
 
@@ -95,32 +95,32 @@ def compare_approaches(file_path):
     df_current = lf.collect()
     current_time = time.time() - start
 
-    print(f"   ⏱️  Time: {current_time:.2f}s")
-    print(f"   📊 Events: {len(df_current):,}")
-    print(f"   ⚡ Speed: {len(df_current) / current_time:,.0f} events/s")
+    print(f"   TIME: Time: {current_time:.2f}s")
+    print(f"   DATA: Events: {len(df_current):,}")
+    print(f"   FAST: Speed: {len(df_current) / current_time:,.0f} events/s")
 
     # Test memory-mapped simulation
-    print("\n2️⃣ Memory-mapped simulation:")
+    print("\nSTEP2: Memory-mapped simulation:")
     df_mapped = memory_mapped_load(file_path, chunk_size=50_000)
 
     if df_mapped is not None:
         # Verify results are similar
-        print("\n🔍 Verification:")
+        print("\nINFO: Verification:")
         print(f"   Current events: {len(df_current):,}")
         print(f"   Mapped events:  {len(df_mapped):,}")
-        print(f"   Match: {'✅' if len(df_current) == len(df_mapped) else '❌'}")
+        print(f"   Match: {'PASS:' if len(df_current) == len(df_mapped) else 'FAIL:'}")
 
 
 def main():
     file_path = "data/eTram/h5/val_2/val_night_011_td.h5"
 
     if not Path(file_path).exists():
-        print(f"❌ File not found: {file_path}")
+        print(f"FAIL: File not found: {file_path}")
         return
 
     compare_approaches(file_path)
 
-    print("\n💡 MEMORY MAPPING BENEFITS:")
+    print("\nTIP: MEMORY MAPPING BENEFITS:")
     print("   • Reduced memory usage (no 456MB allocation)")
     print("   • Faster startup (begin processing immediately)")
     print("   • Better scalability (handle 1GB+ files)")

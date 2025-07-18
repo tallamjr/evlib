@@ -120,12 +120,12 @@ def validate_test_data():
     assert np.all(np.diff(ts) >= 0), "Timestamps not sorted"
     assert np.all(np.isin(ps, [-1, 1])), "Invalid polarities"
 
-    print(f"✅ Test data validated: {len(xs)} events")
+    print(f"SUCCESS: Test data validated: {len(xs)} events")
 ```
 
 ### Format Testing Results
 
-#### EVT3 Format Support ✅
+#### EVT3 Format Support SUCCESS:
 - **Status**: Production ready
 - **Tests**: 8/8 passing
 - **Coverage**: Complete specification compliance
@@ -133,7 +133,7 @@ def validate_test_data():
 - **Data structure**: Returns arrays rather than individual event objects
 - **Performance**: Memory efficient with NumPy arrays
 
-#### Real Data Format Compatibility ⚠️
+#### Real Data Format Compatibility WARNING:
 Comprehensive testing against real data files revealed important compatibility issues:
 
 1. **Polarity Encoding Mismatch**
@@ -151,7 +151,7 @@ Comprehensive testing against real data files revealed important compatibility i
    - **Error**: `Invalid polarities found`
    - **Recommendation**: Handle multiple polarity encoding schemes
 
-4. **Format Detection** ✅
+4. **Format Detection** SUCCESS:
    - **Status**: Works correctly
    - **Confidence**: >0.8 for all tested formats
    - **Coverage**: EVT2, HDF5, and text formats
@@ -616,9 +616,9 @@ class TestNotebooks:
             ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
             try:
                 ep.preprocess(notebook, {'metadata': {'path': str(notebook_dir)}})
-                print(f"✅ {notebook_path.name} executed successfully")
+                print(f"SUCCESS: {notebook_path.name} executed successfully")
             except Exception as e:
-                pytest.fail(f"❌ {notebook_path.name} failed: {e}")
+                pytest.fail(f"ERROR: {notebook_path.name} failed: {e}")
 ```
 
 ### Notebook Content Validation

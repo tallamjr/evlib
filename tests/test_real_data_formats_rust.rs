@@ -164,7 +164,7 @@ fn test_format_detection_comprehensive() {
         );
 
         println!(
-            "✓ Format detection passed: {} -> {:?} (confidence: {:.2})",
+            "OK: Format detection passed: {} -> {:?} (confidence: {:.2})",
             file_path, result.format, result.confidence
         );
     }
@@ -254,7 +254,7 @@ fn test_evt2_reader_comprehensive() {
         );
 
         println!(
-            "✓ EVT2 test passed: {} events in {:.2}s ({:.0} events/s)",
+            "OK: EVT2 test passed: {} events in {:.2}s ({:.0} events/s)",
             results.event_count,
             results.execution_time,
             results.event_count as f64 / results.execution_time
@@ -281,7 +281,7 @@ fn test_evt2_reader_comprehensive() {
         );
 
         println!(
-            "✓ EVT2 filtering passed: {} -> {} events",
+            "OK: EVT2 filtering passed: {} -> {} events",
             events.len(),
             filtered_events.len()
         );
@@ -359,7 +359,7 @@ fn test_hdf5_reader_comprehensive() {
         );
 
         println!(
-            "✓ HDF5 test passed: {} events in {:.2}s ({:.0} events/s)",
+            "OK: HDF5 test passed: {} events in {:.2}s ({:.0} events/s)",
             results.event_count,
             results.execution_time,
             results.event_count as f64 / results.execution_time
@@ -440,7 +440,7 @@ fn test_text_reader_comprehensive() {
     );
 
     println!(
-        "✓ Text test passed: {} events in {:.2}s ({:.0} events/s)",
+        "OK: Text test passed: {} events in {:.2}s ({:.0} events/s)",
         results.event_count,
         results.execution_time,
         results.event_count as f64 / results.execution_time
@@ -471,7 +471,7 @@ fn test_text_reader_comprehensive() {
     );
 
     println!(
-        "✓ Text filtering passed: {} -> {} events",
+        "OK: Text filtering passed: {} -> {} events",
         events.len(),
         filtered_events.len()
     );
@@ -527,7 +527,7 @@ fn test_data_consistency_evt2_vs_hdf5() {
     );
 
     println!(
-        "✓ Consistency test passed: EVT2 {} events, HDF5 {} events (diff: {})",
+        "OK: Consistency test passed: EVT2 {} events, HDF5 {} events (diff: {})",
         evt2_count, hdf5_count, count_diff
     );
 }
@@ -593,7 +593,7 @@ fn test_generic_load_function() {
         );
 
         println!(
-            "✓ Generic load passed: {} events in {:.2}s",
+            "OK: Generic load passed: {} events in {:.2}s",
             results.event_count, results.execution_time
         );
     }
@@ -685,5 +685,5 @@ fn test_memory_efficiency() {
         expected_memory_mb
     );
 
-    println!("✓ Memory efficiency test passed");
+    println!("OK: Memory efficiency test passed");
 }

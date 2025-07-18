@@ -175,7 +175,7 @@ def test_filter_by_time():
     end_timestamps = end_only_df["timestamp"].dt.total_microseconds() / 1_000_000
     assert end_timestamps.max() <= 0.5, "Should respect end bound"
 
-    print("✓ Time filtering tests passed")
+    print("PASS: Time filtering tests passed")
 
 
 def test_filter_by_roi():
@@ -212,7 +212,7 @@ def test_filter_by_roi():
     # Should have very few events (possibly zero)
     assert len(small_roi_df) >= 0, "Small ROI should not error"
 
-    print("✓ ROI filtering tests passed")
+    print("PASS: ROI filtering tests passed")
 
 
 def test_filter_by_polarity():
@@ -248,7 +248,7 @@ def test_filter_by_polarity():
     no_filter_df = no_filter.collect()
     assert len(no_filter_df) == 1000, "Should keep all events when polarity=None"
 
-    print("✓ Polarity filtering tests passed")
+    print("PASS: Polarity filtering tests passed")
 
 
 def test_filter_hot_pixels():
@@ -285,7 +285,7 @@ def test_filter_hot_pixels():
     no_hot_df = no_hot_filtered.collect()
     assert len(no_hot_df) == 100, "Should not remove events if no hot pixels"
 
-    print("✓ Hot pixel filtering tests passed")
+    print("PASS: Hot pixel filtering tests passed")
 
 
 def test_filter_noise():
@@ -324,7 +324,7 @@ def test_filter_noise():
     with pytest.raises(NotImplementedError):
         filter_noise(events, method="distance")
 
-    print("✓ Noise filtering tests passed")
+    print("PASS: Noise filtering tests passed")
 
 
 def test_preprocess_events():
@@ -377,7 +377,7 @@ def test_preprocess_events():
     minimal_df = minimal.collect()
     assert len(minimal_df) == 1000, "Should keep all events with minimal preprocessing"
 
-    print("✓ Preprocessing pipeline tests passed")
+    print("PASS: Preprocessing pipeline tests passed")
 
 
 def test_edge_cases():
@@ -415,7 +415,7 @@ def test_edge_cases():
     single_filtered = filter_by_time(single_event, t_start=0.1, t_end=0.9)
     assert len(single_filtered.collect()) == 1, "Should handle single event"
 
-    print("✓ Edge case tests passed")
+    print("PASS: Edge case tests passed")
 
 
 def test_input_validation():
@@ -437,7 +437,7 @@ def test_input_validation():
     with pytest.raises(ValueError):
         _validate_events_input([1, 2, 3])  # Invalid type
 
-    print("✓ Input validation tests passed")
+    print("PASS: Input validation tests passed")
 
 
 if __name__ == "__main__":
@@ -460,9 +460,9 @@ if __name__ == "__main__":
         try:
             test_func()
         except Exception as e:
-            print(f"✗ {test_func.__name__} failed: {e}")
+            print(f"FAIL: {test_func.__name__} failed: {e}")
         else:
-            print(f"✓ {test_func.__name__} passed")
+            print(f"PASS: {test_func.__name__} passed")
 
     print("=" * 50)
     print("All tests completed!")

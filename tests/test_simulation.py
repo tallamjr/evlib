@@ -53,7 +53,7 @@ def test_evlib_simulation_integration():
     if len(ps) > 0:
         assert np.all(ps == 1), "All events should be positive for uniform intensity increase"
 
-    print(f"✓ ESIM simulation generated {len(xs)} events")
+    print(f"PASS: ESIM simulation generated {len(xs)} events")
 
     # Test simulation config
     config = evlib.simulation.PySimulationConfig()
@@ -61,7 +61,7 @@ def test_evlib_simulation_integration():
     assert config.contrast_threshold_pos == 0.2  # Default threshold
     assert config.enable_noise  # Default noise enabled
 
-    print("✓ PySimulationConfig created successfully")
+    print("PASS: PySimulationConfig created successfully")
 
     # Test video-to-events converter
     converter = evlib.simulation.PyVideoToEventsConverter(config)
@@ -76,14 +76,14 @@ def test_evlib_simulation_integration():
     assert isinstance(ts2, np.ndarray)
     assert isinstance(ps2, np.ndarray)
 
-    print(f"✓ VideoToEventsConverter generated {len(xs2)} events from frame")
+    print(f"PASS: VideoToEventsConverter generated {len(xs2)} events from frame")
 
     # Test simulation statistics
     stats = converter.get_stats()
     assert stats.frames_processed >= 0
     assert stats.total_pixels > 0
 
-    print(f"✓ Simulation stats: {stats.frames_processed} frames, {stats.total_pixels} pixels")
+    print(f"PASS: Simulation stats: {stats.frames_processed} frames, {stats.total_pixels} pixels")
 
     # Test high-level video_to_events function
     small_frame = np.random.rand(100, 100).astype(np.float32)
@@ -103,8 +103,8 @@ def test_evlib_simulation_integration():
     assert isinstance(ps3, np.ndarray)
     assert len(xs3) == len(ys3) == len(ts3) == len(ps3)
 
-    print(f"✓ video_to_events_py generated {len(xs3)} events")
-    print("✓ All evlib simulation integration tests passed!")
+    print(f"PASS: video_to_events_py generated {len(xs3)} events")
+    print("PASS: All evlib simulation integration tests passed!")
 
 
 def test_webcam_simulation_readiness():
@@ -128,9 +128,9 @@ def test_webcam_simulation_readiness():
     real_time_capable = total_processing_time <= max_latency_ms
     efficiency = (max_latency_ms - total_processing_time) / max_latency_ms
 
-    print(f"✓ Total processing time: {total_processing_time:.1f}ms")
-    print(f"✓ Real-time capable: {real_time_capable}")
-    print(f"✓ Efficiency: {efficiency:.1%}")
+    print(f"PASS: Total processing time: {total_processing_time:.1f}ms")
+    print(f"PASS: Real-time capable: {real_time_capable}")
+    print(f"PASS: Efficiency: {efficiency:.1%}")
 
     assert total_processing_time > 0
 
@@ -147,7 +147,9 @@ def test_webcam_simulation_readiness():
 
         acceptable = total_latency <= 100  # 100ms max total latency
 
-        print(f"✓ {config['description']}: {total_latency:.1f}ms total latency, acceptable = {acceptable}")
+        print(
+            f"PASS: {config['description']}: {total_latency:.1f}ms total latency, acceptable = {acceptable}"
+        )
 
 
 if __name__ == "__main__":

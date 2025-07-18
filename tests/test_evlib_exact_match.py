@@ -57,7 +57,7 @@ class TestEvlibExactMatch:
         unique_polarities = np.unique(p)
         assert set(unique_polarities) == {-1, 1}, f"Expected {{-1, 1}}, got {set(unique_polarities)}"
 
-        print(f"✓ EVT2 raw file: {len(x):,} events loaded successfully")
+        print(f"PASS: EVT2 raw file: {len(x):,} events loaded successfully")
 
     def test_hdf5_exact_match(self):
         """Test HDF5 file matches the exact example output."""
@@ -97,7 +97,7 @@ class TestEvlibExactMatch:
         unique_polarities = np.unique(p)
         assert set(unique_polarities) == {0, 1}, f"Expected {{0, 1}}, got {set(unique_polarities)}"
 
-        print(f"✓ HDF5 file: {len(x):,} events loaded successfully")
+        print(f"PASS: HDF5 file: {len(x):,} events loaded successfully")
 
     def test_text_exact_match(self):
         """Test text file matches the exact example output."""
@@ -137,7 +137,7 @@ class TestEvlibExactMatch:
         unique_polarities = np.unique(p)
         assert set(unique_polarities) == {0, 1}, f"Expected {{0, 1}}, got {set(unique_polarities)}"
 
-        print(f"✓ Text file: {len(x):,} events loaded successfully")
+        print(f"PASS: Text file: {len(x):,} events loaded successfully")
 
     def test_seq02_exact_match(self):
         """Test seq02.h5 file matches the exact example output."""
@@ -177,7 +177,7 @@ class TestEvlibExactMatch:
         unique_polarities = np.unique(p)
         assert set(unique_polarities) == {0, 1}, f"Expected {{0, 1}}, got {set(unique_polarities)}"
 
-        print(f"✓ seq02.h5 file: {len(x):,} events loaded successfully")
+        print(f"PASS: seq02.h5 file: {len(x):,} events loaded successfully")
 
     def test_format_detection_exact_match(self):
         """Test format detection matches exact example output."""
@@ -202,7 +202,7 @@ class TestEvlibExactMatch:
         assert isinstance(metadata, dict), f"Metadata should be dict, got {type(metadata)}"
         assert "detection_method" in metadata, "Should have detection_method in metadata"
 
-        print(f"✓ Format detection: {format_name} (confidence: {confidence})")
+        print(f"PASS: Format detection: {format_name} (confidence: {confidence})")
 
     def test_data_types_exact_match(self):
         """Test that data types match the exact example output."""
@@ -222,7 +222,7 @@ class TestEvlibExactMatch:
         assert t.dtype == np.float64, f"T dtype should be float64, got {t.dtype}"
         assert p.dtype == np.int64, f"P dtype should be int64, got {p.dtype}"
 
-        print(f"✓ Data types: x={x.dtype}, y={y.dtype}, t={t.dtype}, p={p.dtype}")
+        print(f"PASS: Data types: x={x.dtype}, y={y.dtype}, t={t.dtype}, p={p.dtype}")
 
     def test_first_few_events_consistency(self):
         """Test that first few events are consistent across runs."""
@@ -246,7 +246,7 @@ class TestEvlibExactMatch:
         assert np.array_equal(t1[:test_size], t2[:test_size]), "Timestamps should be identical"
         assert np.array_equal(p1[:test_size], p2[:test_size]), "Polarities should be identical"
 
-        print(f"✓ First {test_size} events are consistent across runs")
+        print(f"PASS: First {test_size} events are consistent across runs")
 
     def test_performance_benchmark(self):
         """Test loading performance for regression testing."""
@@ -270,7 +270,9 @@ class TestEvlibExactMatch:
         assert events_per_second > 1000000, f"Loading too slow: {events_per_second:.0f} events/s"
         assert load_time < 30, f"Loading took too long: {load_time:.1f}s"
 
-        print(f"✓ Performance: {event_count:,} events in {load_time:.2f}s ({events_per_second:.0f} events/s)")
+        print(
+            f"PASS: Performance: {event_count:,} events in {load_time:.2f}s ({events_per_second:.0f} events/s)"
+        )
 
 
 if __name__ == "__main__":

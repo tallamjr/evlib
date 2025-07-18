@@ -125,7 +125,7 @@ impl E2Vid {
     /// Load neural network from PyTorch model file using proper architecture
     pub fn load_model_from_file(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
         println!(
-            "🔄 Loading PyTorch model with E2VID Recurrent architecture: {}",
+            "INFO: Loading PyTorch model with E2VID Recurrent architecture: {}",
             model_path.display()
         );
 

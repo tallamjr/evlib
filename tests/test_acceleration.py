@@ -40,7 +40,7 @@ def test_acceleration_config():
     assert default_config["memory_pool_size"] > 0
     assert default_config["batch_threshold"] > 0
 
-    print("✓ Default acceleration configuration valid")
+    print("PASS: Default acceleration configuration valid")
 
     # Test device-specific configurations
     device_configs = [
@@ -51,7 +51,7 @@ def test_acceleration_config():
 
     for config in device_configs:
         assert config["expected_speedup"] > 1.0
-        print(f"✓ {config['device']} configuration valid")
+        print(f"PASS: {config['device']} configuration valid")
 
 
 def test_simd_availability():
@@ -70,14 +70,14 @@ def test_simd_availability():
 
     if architecture in expected_simd:
         simd_features = expected_simd[architecture]
-        print(f"✓ Platform {architecture} supports SIMD: {simd_features}")
+        print(f"PASS: Platform {architecture} supports SIMD: {simd_features}")
     else:
-        print(f"✓ Platform {architecture} - SIMD support unknown")
+        print(f"PASS: Platform {architecture} - SIMD support unknown")
 
     # Simulate SIMD detection
     simd_available = architecture in ["x86_64", "amd64", "arm64", "aarch64"]
     assert isinstance(simd_available, bool)
-    print(f"✓ SIMD detection: {simd_available}")
+    print(f"PASS: SIMD detection: {simd_available}")
 
 
 def test_memory_pool_management():
@@ -127,7 +127,7 @@ def test_memory_pool_management():
     pool.free(50 * 1024 * 1024)  # Free 50MB
     assert pool.available() > 100 * 1024 * 1024
 
-    print(f"✓ Memory pool management: {pool.utilization():.1%} utilization")
+    print(f"PASS: Memory pool management: {pool.utilization():.1%} utilization")
 
 
 def test_device_optimization_strategies():
@@ -165,7 +165,7 @@ def test_device_optimization_strategies():
         for strategy, enabled in strategies.items():
             assert isinstance(enabled, bool)
 
-        print(f"✓ {device} optimization strategies: {len(strategies)} options")
+        print(f"PASS: {device} optimization strategies: {len(strategies)} options")
 
     # Test optimization selection logic
     def select_optimizations(device_type, workload_size):
@@ -189,7 +189,7 @@ def test_device_optimization_strategies():
     assert medium_opt["device"] == "cuda"
     assert len(large_opt["strategies"]) >= len(medium_opt["strategies"])
 
-    print("✓ Optimization strategy selection working")
+    print("PASS: Optimization strategy selection working")
 
 
 def test_batch_processing_optimization():
@@ -231,9 +231,9 @@ def test_batch_processing_optimization():
             break
 
     if optimal_batch:
-        print(f"✓ GPU becomes optimal at batch size: {optimal_batch}")
+        print(f"PASS: GPU becomes optimal at batch size: {optimal_batch}")
     else:
-        print("✓ CPU remains optimal for tested batch sizes")
+        print("PASS: CPU remains optimal for tested batch sizes")
 
 
 def test_tensor_fusion_operations():
@@ -257,7 +257,7 @@ def test_tensor_fusion_operations():
         speedup = separate_time / fused_time
         assert speedup >= 1.0  # Fusion should never be slower
 
-        print(f"✓ {num_ops} ops: {speedup:.1f}x speedup with fusion")
+        print(f"PASS: {num_ops} ops: {speedup:.1f}x speedup with fusion")
 
 
 def test_performance_profiling():
@@ -322,7 +322,7 @@ def test_performance_profiling():
     assert "fast_op" in report
     assert "slow_op" in report
 
-    print("✓ Performance profiling working correctly")
+    print("PASS: Performance profiling working correctly")
 
 
 def test_real_world_acceleration_scenario():
@@ -371,7 +371,9 @@ def test_real_world_acceleration_scenario():
         assert simd_time < cpu_time  # SIMD should be faster than plain CPU
         assert cuda_time < simd_time  # GPU should be faster than CPU+SIMD
 
-        print(f"✓ {num_events} events: CPU={cpu_time:.1f}ms, SIMD={simd_time:.1f}ms, CUDA={cuda_time:.1f}ms")
+        print(
+            f"PASS: {num_events} events: CPU={cpu_time:.1f}ms, SIMD={simd_time:.1f}ms, CUDA={cuda_time:.1f}ms"
+        )
 
 
 @pytest.mark.skipif(not EVLIB_AVAILABLE, reason="evlib not available")

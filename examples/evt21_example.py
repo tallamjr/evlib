@@ -147,7 +147,7 @@ def create_synthetic_evt21_file(
                 i += 1
                 events_written += 1
 
-    print("✓ Synthetic EVT2.1 file created successfully")
+    print("SUCCESS: Synthetic EVT2.1 file created successfully")
     print(f"  File size: {Path(output_path).stat().st_size:,} bytes")
     print(f"  Events written: {events_written:,}")
 
@@ -172,12 +172,12 @@ def example_1_format_detection():
         print(f"  Metadata: {metadata}")
 
         if format_name == "EVT2.1":
-            print("  ✓ EVT2.1 format correctly detected!")
+            print("  SUCCESS: EVT2.1 format correctly detected!")
         else:
-            print(f"  ⚠ Expected EVT2.1, got {format_name}")
+            print(f"  WARNING: Expected EVT2.1, got {format_name}")
 
     except Exception as e:
-        print(f"  ✗ Format detection failed: {e}")
+        print(f"  ERROR: Format detection failed: {e}")
 
     # Cleanup
     Path(synthetic_file).unlink(missing_ok=True)
@@ -200,7 +200,7 @@ def example_2_basic_loading():
         events = evlib.load_events(synthetic_file)
         x_coords, y_coords, timestamps, polarities = events
 
-        print(f"✓ Successfully loaded {len(timestamps):,} events")
+        print(f"SUCCESS: Successfully loaded {len(timestamps):,} events")
         print(f"  Time range: {timestamps.min():.3f} - {timestamps.max():.3f} seconds")
         print(
             f"  Spatial range: x=[{x_coords.min()}-{x_coords.max()}], y=[{y_coords.min()}-{y_coords.max()}]"
@@ -219,7 +219,7 @@ def example_2_basic_loading():
             )
 
     except Exception as e:
-        print(f"✗ Failed to load EVT2.1 data: {e}")
+        print(f"ERROR: Failed to load EVT2.1 data: {e}")
         import traceback
 
         traceback.print_exc()
@@ -263,7 +263,7 @@ def example_3_vectorized_capabilities():
             print(f"  Spatial clustering: {clustering_factor:.2f} events/position")
 
         except Exception as e:
-            print(f"  ✗ Failed to process {description}: {e}")
+            print(f"  ERROR: Failed to process {description}: {e}")
 
         # Cleanup
         Path(file_path).unlink(missing_ok=True)
@@ -338,7 +338,7 @@ def example_4_filtering_and_processing():
             print(f"  Window event rate std: {np.std(window_counts):.0f}")
 
     except Exception as e:
-        print(f"✗ Failed to process EVT2.1 filtering: {e}")
+        print(f"ERROR: Failed to process EVT2.1 filtering: {e}")
         import traceback
 
         traceback.print_exc()
@@ -419,7 +419,7 @@ def example_5_evt21_vs_evt2_comparison():
         print(f"  EVT2.0 spatial range: {evt2_x.max() - evt2_x.min()} x {evt2_y.max() - evt2_y.min()}")
 
     except Exception as e:
-        print(f"✗ Failed to compare formats: {e}")
+        print(f"ERROR: Failed to compare formats: {e}")
         import traceback
 
         traceback.print_exc()
@@ -575,7 +575,7 @@ def example_6_real_world_usage():
         print(f"  Compression efficiency: {total_events_count / (file_size / 8):.2f} events/word")
 
     except Exception as e:
-        print(f"✗ Failed to demonstrate real-world usage: {e}")
+        print(f"ERROR: Failed to demonstrate real-world usage: {e}")
         import traceback
 
         traceback.print_exc()
@@ -645,7 +645,7 @@ def example_7_performance_analysis():
             print(f"  Memory efficiency: {len(timestamps) / (file_size / 1024):.1f} events/KB")
 
         except Exception as e:
-            print(f"  ✗ Performance test failed: {e}")
+            print(f"  ERROR: Performance test failed: {e}")
 
         # Cleanup
         Path(test_file).unlink(missing_ok=True)
@@ -673,7 +673,7 @@ def main():
         example_7_performance_analysis()
 
         print("\n" + "=" * 70)
-        print("✓ All EVT2.1 examples completed successfully!")
+        print("SUCCESS: All EVT2.1 examples completed successfully!")
 
         print("\nKey Takeaways:")
         print("• EVT2.1 provides significant compression improvements over EVT2.0")
@@ -690,7 +690,7 @@ def main():
         print("• Explore real-time processing applications")
 
     except Exception as e:
-        print(f"\n✗ Example execution failed: {e}")
+        print(f"\nERROR: Example execution failed: {e}")
         import traceback
 
         traceback.print_exc()

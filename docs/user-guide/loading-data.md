@@ -180,11 +180,11 @@ Choose the right format for your needs:
 Apply filters during loading, not after:
 
 ```python
-# ✅ GOOD: Filter during loading
+# SUCCESS: GOOD: Filter during loading
 xs, ys, ts, ps = evlib.formats.load_events_filtered("data/slider_depth/events.txt", t_start=1.0, t_end=2.0
 )
 
-# ❌ AVOID: Load all then filter
+# ERROR: AVOID: Load all then filter
 xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
 mask = (ts >= 1.0) & (ts <= 2.0)
 xs, ys, ts, ps = xs[mask], ys[mask], ts[mask], ps[mask]
@@ -200,16 +200,16 @@ Always handle potential errors:
 def load_events_safely(file_path):
     try:
         xs, ys, ts, ps = evlib.formats.load_events(file_path)
-        print(f"✅ Successfully loaded {len(xs)} events")
+        print(f"SUCCESS: Successfully loaded {len(xs)} events")
         return xs, ys, ts, ps
     except FileNotFoundError:
-        print(f"❌ File not found: {file_path}")
+        print(f"ERROR: File not found: {file_path}")
         return None
     except OSError as e:
-        print(f"❌ Invalid file format: {e}")
+        print(f"ERROR: Invalid file format: {e}")
         return None
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        print(f"ERROR: Unexpected error: {e}")
         return None
 ```
 
@@ -225,7 +225,7 @@ def validate_events(xs, ys, ts, ps):
     assert np.all(xs >= 0) and np.all(ys >= 0), "Coordinates must be non-negative"
     assert np.all(np.diff(ts) >= 0), "Timestamps must be sorted"
     assert np.all((ps == 1) | (ps == -1)), "Polarities must be +1 or -1"
-    print(f"✅ Validation passed for {len(xs)} events")
+    print(f"SUCCESS: Validation passed for {len(xs)} events")
 ```
 
 ## Real-World Examples

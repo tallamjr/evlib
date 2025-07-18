@@ -299,7 +299,7 @@ def filter_hot_pixels(
     filtered_events = events_lazy.collect().join(hot_pixel_coords, on=["x", "y"], how="anti").lazy()
 
     elapsed_time = time.time() - start_time
-    print(f"✓ Hot pixel filtering completed in {elapsed_time:.2f}s")
+    print(f"Success: Hot pixel filtering completed in {elapsed_time:.2f}s")
 
     return filtered_events
 
@@ -392,8 +392,8 @@ def _apply_refractory_filter(events_lazy: pl.LazyFrame, refractory_period_us: in
     filtered_count = len(filtered_events)
     removed_count = original_count - filtered_count
 
-    print(f"✓ Refractory filtering completed in {elapsed_time:.2f}s")
-    print(f"✓ Removed {removed_count:,} events ({removed_count/original_count:.1%})")
+    print(f"Success: Refractory filtering completed in {elapsed_time:.2f}s")
+    print(f"Success: Removed {removed_count:,} events ({removed_count/original_count:.1%})")
 
     return result
 

@@ -54,19 +54,19 @@ done
 
 # Helper functions
 print_step() {
-    echo -e "${BLUE}📦 $1${NC}"
+    echo -e "${BLUE}CONFIG: $1${NC}"
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}SUCCESS: $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}WARNING: $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}ERROR: $1${NC}"
 }
 
 # Get version from Cargo.toml
@@ -216,7 +216,7 @@ publish_to_pypi() {
 main() {
     version=$(get_version)
 
-    echo "🚀 Publishing evlib v$version"
+    echo "LAUNCH: Publishing evlib v$version"
     echo "Target repositories:"
     if [ "$PYPI_ONLY" = true ]; then
         echo "  - PyPI only"
@@ -255,7 +255,7 @@ main() {
 
     # Success message
     echo ""
-    print_success "🎉 Publication complete!"
+    print_success "SUCCESS: Publication complete!"
 
     if [ "$TEST_MODE" = false ]; then
         echo ""

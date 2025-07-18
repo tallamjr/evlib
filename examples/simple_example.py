@@ -22,7 +22,7 @@ def simple_example():
         count_cutoff=10,  # RVT standard: count cutoff of 10
     )
 
-    print(f"✓ Created stacked histogram with shape: {stacked_hist.shape}")
+    print(f"SUCCESS: Created stacked histogram with shape: {stacked_hist.shape}")
     print(f"  - {stacked_hist.shape[0]} time windows")
     print(f"  - {stacked_hist.shape[1]} channels (20 = 10 bins × 2 polarities)")
     print(f"  - {stacked_hist.shape[2]}×{stacked_hist.shape[3]} spatial resolution")

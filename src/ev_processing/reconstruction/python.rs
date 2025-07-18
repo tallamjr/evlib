@@ -244,7 +244,7 @@ pub fn events_to_video_advanced_py(
     // If model_path is provided, load the model from file
     if let Some(path) = model_path {
         let model_path_buf = PathBuf::from(path);
-        println!("🔄 Attempting to load model from: {}", path);
+        println!("INFO: Attempting to load model from: {}", path);
 
         match e2vid.load_model_from_file(&model_path_buf) {
             Ok(()) => {

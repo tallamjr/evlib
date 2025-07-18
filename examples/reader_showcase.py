@@ -30,7 +30,7 @@ def read_large_hdf5_file():
     events = evlib.load_events(file_path)
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print(f"  Duration: {timestamps.max() - timestamps.min():.2f} seconds")
     print(f"  Event rate: {len(timestamps)/(timestamps.max() - timestamps.min()):,.0f} events/sec")
     print(f"  Spatial extent: {x_coords.max() - x_coords.min() + 1} x {y_coords.max() - y_coords.min() + 1}")
@@ -51,7 +51,7 @@ def read_etram_night_sequence():
     events = evlib.load_events(file_path)
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print(f"  Time span: {timestamps.min():.3f} to {timestamps.max():.3f} seconds")
     print(
         f"  Coordinate ranges: x=[{x_coords.min():.0f}-{x_coords.max():.0f}], y=[{y_coords.min():.0f}-{y_coords.max():.0f}]"
@@ -63,7 +63,7 @@ def read_etram_night_sequence():
     indices = np.random.choice(len(timestamps), sample_size, replace=False)
     sample_events = (timestamps[indices], x_coords[indices], y_coords[indices], polarities[indices])
 
-    print(f"✓ Created random sample of {sample_size:,} events")
+    print(f"SUCCESS: Created random sample of {sample_size:,} events")
     return sample_events
 
 
@@ -79,7 +79,7 @@ def read_prophesee_raw_file():
     events = evlib.load_events(file_path)
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events from raw binary")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events from raw binary")
     print("  File format: EVT2 (Prophesee)")
     print(f"  Recording duration: {timestamps.max() - timestamps.min():.2f} seconds")
     print(f"  Sensor resolution inferred: {x_coords.max() + 1} x {y_coords.max() + 1}")
@@ -100,7 +100,7 @@ def read_davis_text_format():
     events = evlib.load_events(file_path)
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events from text format")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events from text format")
     print("  Format: Space-separated text (timestamp x y polarity)")
     print("  Camera: DAVIS (346x240 resolution)")
     print("  Scene: Object motion with depth information")
@@ -240,7 +240,7 @@ def read_with_format_detection():
             events = evlib.load_events(file_path)
             timestamps, x_coords, y_coords, polarities = events
 
-            print(f"  ✓ Loaded {len(timestamps):,} events")
+            print(f"  SUCCESS: Loaded {len(timestamps):,} events")
             print(f"  Event rate: {len(timestamps)/(timestamps.max() - timestamps.min()):,.0f} events/sec")
         else:
             print(f"\nFile not found: {file_path}")
@@ -260,7 +260,7 @@ def read_temporal_chunks():
         events = evlib.load_events(file_path)
         timestamps, x_coords, y_coords, polarities = events
 
-        print(f"✓ Full dataset: {len(timestamps):,} events")
+        print(f"SUCCESS: Full dataset: {len(timestamps):,} events")
         print(f"  Time range: {timestamps.min():.3f} to {timestamps.max():.3f} seconds")
 
         # Create temporal chunks
@@ -318,7 +318,7 @@ def main():
         read_temporal_chunks()
 
         print("\n" + "=" * 60)
-        print("✓ All reader examples completed successfully!")
+        print("SUCCESS: All reader examples completed successfully!")
         print("\nKey takeaways:")
         print("• evlib can read HDF5, EVT2 raw, and text formats seamlessly")
         print("• All formats return the same tuple structure: (timestamps, x, y, polarity)")

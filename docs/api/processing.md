@@ -1,6 +1,6 @@
 # Processing API Reference
 
-> **⚠️ Status Note**: The Rust backend neural network processing module is temporarily disabled in the current version. Neural network functionality is available through the Python `evlib.models` module. See the [Models API](../user-guide/models.md) for currently available functionality.
+> **Status Note**: The Rust backend neural network processing module is temporarily disabled in the current version. Neural network functionality is available through the Python `evlib.models` module. See the [Models API](../user-guide/models.md) for currently available functionality.
 
 Neural network processing functions for event camera data.
 

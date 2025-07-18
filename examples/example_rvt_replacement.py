@@ -64,10 +64,10 @@ def example_rvt_replacement():
 
             processing_time = time.time() - start_time
 
-            print(f"    ✓ Shape: {stacked_hist.shape}")
-            print(f"    ✓ Data type: {stacked_hist.dtype}")
-            print(f"    ✓ Processing time: {processing_time:.2f}s")
-            print(f"    ✓ Memory usage: {stacked_hist.nbytes / 1024 / 1024:.1f} MB")
+            print(f"    SUCCESS: Shape: {stacked_hist.shape}")
+            print(f"    SUCCESS: Data type: {stacked_hist.dtype}")
+            print(f"    SUCCESS: Processing time: {processing_time:.2f}s")
+            print(f"    SUCCESS: Memory usage: {stacked_hist.nbytes / 1024 / 1024:.1f} MB")
             print()
 
             # === Method 2: High-level API (easiest RVT replacement) ===
@@ -80,8 +80,8 @@ def example_rvt_replacement():
 
             processing_time = time.time() - start_time
 
-            print(f"    ✓ Shape: {preprocessed_data.shape}")
-            print(f"    ✓ Processing time: {processing_time:.2f}s")
+            print(f"    SUCCESS: Shape: {preprocessed_data.shape}")
+            print(f"    SUCCESS: Processing time: {processing_time:.2f}s")
             print()
 
             # === Validation: Check RVT compatibility ===
@@ -99,13 +99,13 @@ def example_rvt_replacement():
             assert width == rvt_config["width"], f"Width mismatch: {width} != {rvt_config['width']}"
 
             print(
-                f"    ✓ Channel layout: {num_channels} channels ({rvt_config['nbins']} bins × 2 polarities)"
+                f"    SUCCESS: Channel layout: {num_channels} channels ({rvt_config['nbins']} bins × 2 polarities)"
             )
-            print(f"    ✓ Data type: {stacked_hist.dtype} (RVT fastmode compatible)")
-            print(f"    ✓ Value range: [{stacked_hist.min()}, {stacked_hist.max()}]")
-            print(f"    ✓ Non-zero voxels: {np.count_nonzero(stacked_hist):,}")
+            print(f"    SUCCESS: Data type: {stacked_hist.dtype} (RVT fastmode compatible)")
+            print(f"    SUCCESS: Value range: [{stacked_hist.min()}, {stacked_hist.max()}]")
+            print(f"    SUCCESS: Non-zero voxels: {np.count_nonzero(stacked_hist):,}")
 
-            print("    ✓ All RVT compatibility checks passed!")
+            print("    SUCCESS: All RVT compatibility checks passed!")
             print()
 
             # === Show actual RVT command equivalent ===
@@ -123,7 +123,7 @@ def example_rvt_replacement():
             print(f"  File not found: {events_path}")
             continue
         except Exception as e:
-            print(f"  ✗ Error processing {events_path}: {e}")
+            print(f"  ERROR: Error processing {events_path}: {e}")
             continue
 
     print("=== Performance Comparison ===")
@@ -131,11 +131,11 @@ def example_rvt_replacement():
     # Benchmark against RVT
     try:
         results = evr.benchmark_vs_rvt(events_path)
-        print(f"✓ evlib Polars: {results['polars_time']:.2f}s")
-        print(f"✓ Estimated RVT: {results['estimated_rvt_time']:.2f}s")
-        print(f"✓ Speedup: {results['speedup']:.1f}x faster")
-        print(f"✓ Output shape: {results['output_shape']}")
-        print(f"✓ Memory usage: {results['memory_mb']:.1f} MB")
+        print(f"SUCCESS: evlib Polars: {results['polars_time']:.2f}s")
+        print(f"SUCCESS: Estimated RVT: {results['estimated_rvt_time']:.2f}s")
+        print(f"SUCCESS: Speedup: {results['speedup']:.1f}x faster")
+        print(f"SUCCESS: Output shape: {results['output_shape']}")
+        print(f"SUCCESS: Memory usage: {results['memory_mb']:.1f} MB")
     except Exception as e:
         print(f"Benchmark failed: {e}")
 
@@ -199,8 +199,8 @@ def example_gen4_configuration():
 
             hist = evr.create_stacked_histogram(events_path, **gen4_config)
 
-            print(f"  ✓ Generated shape: {hist.shape}")
-            print("  ✓ Expected for Gen4: (num_windows, 20, 360, 640)")
+            print(f"  SUCCESS: Generated shape: {hist.shape}")
+            print("  SUCCESS: Expected for Gen4: (num_windows, 20, 360, 640)")
             print()
             break
 
@@ -208,7 +208,7 @@ def example_gen4_configuration():
             print(f"  Gen4 file not found: {events_path}")
             continue
         except Exception as e:
-            print(f"  ✗ Error with Gen4 data: {e}")
+            print(f"  ERROR: Error with Gen4 data: {e}")
             continue
 
 
@@ -222,4 +222,4 @@ if __name__ == "__main__":
     example_gen4_configuration()
 
     print("=" * 60)
-    print("✓ RVT replacement examples completed!")
+    print("SUCCESS: RVT replacement examples completed!")

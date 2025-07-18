@@ -157,7 +157,7 @@ class TestEvlibRegression:
         assert confidence >= 0.8, f"Low confidence for {file_key}: {confidence}"
         assert isinstance(metadata, dict), f"Metadata should be dict, got {type(metadata)}"
 
-        print(f"✓ {file_key}: {format_name} (confidence: {confidence:.2f})")
+        print(f"PASS: {file_key}: {format_name} (confidence: {confidence:.2f})")
 
     @pytest.mark.parametrize(
         "file_key",
@@ -242,7 +242,9 @@ class TestEvlibRegression:
         assert not np.any(np.isnan(y)), "NaN y coordinates found"
         assert not np.any(np.isnan(p)), "NaN polarities found"
 
-        print(f"✓ {file_key}: {event_count:,} events, {duration:.1f}s duration, loaded in {load_time:.2f}s")
+        print(
+            f"PASS: {file_key}: {event_count:,} events, {duration:.1f}s duration, loaded in {load_time:.2f}s"
+        )
 
     @pytest.mark.parametrize(
         "file_key",
@@ -286,7 +288,9 @@ class TestEvlibRegression:
         assert len(x) > 0, "No events loaded"
         assert x.shape == y.shape == t.shape == p.shape, "Array shapes don't match"
 
-        print(f"✓ {file_key}: {event_count:,} events in {load_time:.1f}s ({events_per_second:.0f} events/s)")
+        print(
+            f"PASS: {file_key}: {event_count:,} events in {load_time:.1f}s ({events_per_second:.0f} events/s)"
+        )
 
     @pytest.mark.parametrize(
         "file_key",
@@ -388,7 +392,7 @@ class TestEvlibRegression:
         assert np.all(p_pos == 1), "Polarity filtering failed"
 
         print(
-            f"✓ {file_key} filtering: full={full_count:,}, time={len(x_time):,}, spatial={len(x_spatial):,}, polarity={len(x_pos):,}"
+            f"PASS: {file_key} filtering: full={full_count:,}, time={len(x_time):,}, spatial={len(x_spatial):,}, polarity={len(x_pos):,}"
         )
 
     @pytest.mark.parametrize(
@@ -439,7 +443,7 @@ class TestEvlibRegression:
         assert t.shape == shape, f"t shape {t.shape} doesn't match x shape {shape}"
         assert p.shape == shape, f"p shape {p.shape} doesn't match x shape {shape}"
 
-        print(f"✓ {file_key}: shapes={shape}, types=({x.dtype}, {y.dtype}, {t.dtype}, {p.dtype})")
+        print(f"PASS: {file_key}: shapes={shape}, types=({x.dtype}, {y.dtype}, {t.dtype}, {p.dtype})")
 
     @pytest.mark.parametrize(
         "file_key",
@@ -485,7 +489,7 @@ class TestEvlibRegression:
         assert np.allclose(t, main_t, rtol=1e-6, atol=1e-6), "DataFrames should produce identical t values"
         assert np.array_equal(p, main_p), "DataFrames should produce identical p values"
 
-        print(f"✓ {file_key}: NumPy compatibility function works correctly")
+        print(f"PASS: {file_key}: NumPy compatibility function works correctly")
 
     @pytest.mark.parametrize(
         "format_name,test_files",
@@ -547,7 +551,7 @@ class TestEvlibRegression:
                 assert ref_bounds[1] == cur_bounds[1], f"X max differs: {ref_bounds[1]} vs {cur_bounds[1]}"
                 assert ref_bounds[3] == cur_bounds[3], f"Y max differs: {ref_bounds[3]} vs {cur_bounds[3]}"
 
-        print(f"✓ {format_name} consistency: {len(available_files)} files validated")
+        print(f"PASS: {format_name} consistency: {len(available_files)} files validated")
 
     def test_polarity_encoding_consistency(self, data_files):
         """Test that polarity values are consistent with expected encoding for each format."""
@@ -596,7 +600,7 @@ class TestEvlibRegression:
             if file_info.get("allow_single_polarity", False):
                 # Some files (like gen4) may only contain positive events
                 if neg_count == 0:
-                    print(f"ℹ️  {file_key}: Single-polarity file (only positive events)")
+                    print(f"INFO: {file_key}: Single-polarity file (only positive events)")
                 else:
                     assert (
                         neg_count > 0
@@ -606,7 +610,9 @@ class TestEvlibRegression:
 
             # Print distribution for debugging
             pos_ratio = pos_count / total
-            print(f"✓ {file_key}: {pos_count:,} pos ({pos_ratio:.1%}), {neg_count:,} neg ({1-pos_ratio:.1%})")
+            print(
+                f"PASS: {file_key}: {pos_count:,} pos ({pos_ratio:.1%}), {neg_count:,} neg ({1-pos_ratio:.1%})"
+            )
 
     def test_evt21_format_support(self):
         """Test EVT2.1 format support if available."""
@@ -641,7 +647,7 @@ class TestEvlibRegression:
                     assert x.shape == y.shape == t.shape == p.shape, "EVT2.1 array shapes don't match"
                     assert set(np.unique(p)) == {-1, 1}, "EVT2.1 polarity encoding incorrect"
 
-                    print(f"✓ EVT2.1 support: {file_path.name} - {len(x):,} events")
+                    print(f"PASS: EVT2.1 support: {file_path.name} - {len(x):,} events")
                     break
             except Exception:
                 # Skip files that can't be loaded
@@ -670,7 +676,7 @@ class TestEvlibRegression:
         finally:
             empty_file.unlink()
 
-        print("✓ Error handling tests passed")
+        print("PASS: Error handling tests passed")
 
     def test_memory_cleanup(self, data_files):
         """Test that memory is properly cleaned up after loading large files."""
@@ -709,7 +715,7 @@ class TestEvlibRegression:
         # Allow for some increase but not too much
         assert object_increase < 1000, f"Too many objects created: {object_increase}"
 
-        print(f"✓ Memory cleanup: {object_increase} objects remained after cleanup")
+        print(f"PASS: Memory cleanup: {object_increase} objects remained after cleanup")
 
     def test_gen4_blosc_compression_support(self, data_files):
         """Test specific support for Gen4 1mpx BLOSC-compressed files."""
@@ -788,14 +794,14 @@ class TestEvlibRegression:
         assert events_per_second > 100000, f"Loading too slow: {events_per_second:.0f} events/s"
 
         # This tests BLOSC decompression capability without full file loading
-        print(f"✓ BLOSC decompression working: {event_count:,} events from time slice")
+        print(f"PASS: BLOSC decompression working: {event_count:,} events from time slice")
 
         print(
-            f"✓ BLOSC compression: {event_count:,} events loaded in {load_time:.1f}s ({events_per_second:.0f} events/s)"
+            f"PASS: BLOSC compression: {event_count:,} events loaded in {load_time:.1f}s ({events_per_second:.0f} events/s)"
         )
-        print(f"✓ Resolution: x={np.min(x)}-{np.max(x)}, y={np.min(y)}-{np.max(y)}")
-        print(f"✓ Duration: {duration:.1f}s")
-        print(f"✓ Polarity: {sorted(unique_polarities)}")
+        print(f"PASS: Resolution: x={np.min(x)}-{np.max(x)}, y={np.min(y)}-{np.max(y)}")
+        print(f"PASS: Duration: {duration:.1f}s")
+        print(f"PASS: Polarity: {sorted(unique_polarities)}")
 
     def test_blosc_vs_deflate_consistency(self, data_files):
         """Test that BLOSC and deflate compression produce consistent results."""
@@ -842,9 +848,9 @@ class TestEvlibRegression:
             assert np.all(t >= 0), f"{name}: negative timestamps"
             assert len(np.unique(p)) <= 2, f"{name}: more than 2 polarity values"
 
-        print(f"✓ BLOSC consistency: {len(gen4_df):,} events loaded and validated")
-        print(f"✓ Deflate consistency: {len(etram_df):,} events loaded and validated")
-        print("✓ Both compression types produce consistent data structures")
+        print(f"PASS: BLOSC consistency: {len(gen4_df):,} events loaded and validated")
+        print(f"PASS: Deflate consistency: {len(etram_df):,} events loaded and validated")
+        print("PASS: Both compression types produce consistent data structures")
 
 
 if __name__ == "__main__":

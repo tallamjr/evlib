@@ -148,13 +148,13 @@ xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
 
 ### When to Use evlib vs NumPy
 
-✅ **Use evlib for:**
+SUCCESS: **Use evlib for:**
 - Large datasets (>100k events)
 - Complex event processing algorithms
 - Memory-efficient operations
 - Production event processing pipelines
 
-✅ **Use NumPy for:**
+SUCCESS: **Use NumPy for:**
 - Simple array operations
 - Small datasets (<10k events)
 - Rapid prototyping
@@ -195,7 +195,7 @@ except OSError as e:
 
 ## Next Steps
 
-- 📖 [Loading Data Guide](../user-guide/loading-data.md)
-- 🎨 [Visualization Guide](../user-guide/visualization.md)
-- 🧠 [Neural Networks Guide](../user-guide/models.md)
-- 📊 [Performance Guide](performance.md)
+- [Loading Data Guide](../user-guide/loading-data.md)
+- [Visualization Guide](../user-guide/visualization.md)
+- [Neural Networks Guide](../user-guide/models.md)
+- [Performance Guide](performance.md)

@@ -164,10 +164,10 @@ def batch_preprocess(input_pattern, output_dir):
                 height=480, width=640
             )
             np.save(output_file, data)
-            print(f"✓ Processed: {input_file} -> {output_file}")
+            print(f"SUCCESS: Processed: {input_file} -> {output_file}")
 
         except Exception as e:
-            print(f"✗ Failed: {input_file} - {e}")
+            print(f"ERROR: Failed: {input_file} - {e}")
 
 # Process all HDF5 files in a directory
 batch_preprocess("data/*.h5", "preprocessed/")
@@ -234,7 +234,7 @@ def validate_output(data_path, expected_shape=None):
     assert hist.min() >= 0, f"Negative values found: {hist.min()}"
     assert hist.max() <= 255, f"Values exceed uint8 range: {hist.max()}"
 
-    print("✓ All validation checks passed")
+    print("SUCCESS: All validation checks passed")
     return hist
 
 # Validate output format

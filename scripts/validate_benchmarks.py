@@ -21,17 +21,17 @@ def run_command(cmd, timeout=300):
 
 def validate_benchmark_compilation():
     """Validate that benchmarks can be compiled"""
-    print("🔨 Validating benchmark compilation...")
+    print("CONFIG: Validating benchmark compilation...")
 
     # Test compilation of standalone benchmark
     cmd = "cargo check --bench standalone_benchmark"
     returncode, stdout, stderr = run_command(cmd, timeout=180)
 
     if returncode == 0:
-        print("✅ Standalone benchmark compiles successfully")
+        print("SUCCESS: Standalone benchmark compiles successfully")
         return True
     else:
-        print("❌ Benchmark compilation failed:")
+        print("ERROR: Benchmark compilation failed:")
         print(f"   Return code: {returncode}")
         print(f"   Stderr: {stderr}")
         return False
@@ -39,17 +39,17 @@ def validate_benchmark_compilation():
 
 def validate_benchmark_execution():
     """Validate that benchmarks can be executed"""
-    print("🚀 Validating benchmark execution...")
+    print("LAUNCH: Validating benchmark execution...")
 
     # Try to run a quick benchmark test
     cmd = "cargo bench --bench standalone_benchmark -- --test"
     returncode, stdout, stderr = run_command(cmd, timeout=60)
 
     if returncode == 0:
-        print("✅ Benchmark execution successful")
+        print("SUCCESS: Benchmark execution successful")
         return True
     else:
-        print("⚠️  Benchmark execution failed (this may be expected due to library linking issues)")
+        print("WARNING: Benchmark execution failed (this may be expected due to library linking issues)")
         print(f"   Return code: {returncode}")
         print(f"   Stderr: {stderr}")
         return False
@@ -57,7 +57,7 @@ def validate_benchmark_execution():
 
 def validate_benchmark_structure():
     """Validate benchmark file structure"""
-    print("📁 Validating benchmark structure...")
+    print("CHECK: Validating benchmark structure...")
 
     project_root = Path(__file__).parent.parent
     benches_dir = project_root / "benches"
@@ -76,22 +76,22 @@ def validate_benchmark_structure():
             missing_files.append(file)
 
     if missing_files:
-        print(f"❌ Missing benchmark files: {missing_files}")
+        print(f"ERROR: Missing benchmark files: {missing_files}")
         return False
     else:
-        print("✅ All benchmark files present")
+        print("SUCCESS: All benchmark files present")
         return True
 
 
 def validate_cargo_configuration():
     """Validate Cargo.toml benchmark configuration"""
-    print("⚙️  Validating Cargo.toml configuration...")
+    print("CONFIG: Validating Cargo.toml configuration...")
 
     project_root = Path(__file__).parent.parent
     cargo_toml = project_root / "Cargo.toml"
 
     if not cargo_toml.exists():
-        print("❌ Cargo.toml not found")
+        print("ERROR: Cargo.toml not found")
         return False
 
     with open(cargo_toml, "r") as f:
@@ -106,23 +106,23 @@ def validate_cargo_configuration():
             missing_configs.append(config)
 
     if missing_configs:
-        print(f"❌ Missing Cargo.toml configurations: {missing_configs}")
+        print(f"ERROR: Missing Cargo.toml configurations: {missing_configs}")
         return False
     else:
-        print("✅ Cargo.toml properly configured for benchmarks")
+        print("SUCCESS: Cargo.toml properly configured for benchmarks")
         return True
 
 
 def validate_benchmark_dependencies():
     """Validate benchmark dependencies"""
-    print("📦 Validating benchmark dependencies...")
+    print("CHECK: Validating benchmark dependencies...")
 
     # Check if criterion is available
     cmd = "cargo metadata --format-version 1"
     returncode, stdout, stderr = run_command(cmd, timeout=30)
 
     if returncode != 0:
-        print(f"❌ Failed to get cargo metadata: {stderr}")
+        print(f"ERROR: Failed to get cargo metadata: {stderr}")
         return False
 
     try:
@@ -137,31 +137,31 @@ def validate_benchmark_dependencies():
                 break
 
         if criterion_found:
-            print("✅ Criterion dependency found")
+            print("SUCCESS: Criterion dependency found")
             return True
         else:
-            print("❌ Criterion dependency not found")
+            print("ERROR: Criterion dependency not found")
             return False
     except json.JSONDecodeError:
-        print("❌ Failed to parse cargo metadata")
+        print("ERROR: Failed to parse cargo metadata")
         return False
 
 
 def generate_benchmark_report():
     """Generate a summary report of benchmark capabilities"""
-    print("\n📊 Benchmark Capability Report")
+    print("\nDATA: Benchmark Capability Report")
     print("=" * 50)
 
     # Performance metrics that can be measured
     metrics = [
-        "✅ Event generation throughput",
-        "✅ Memory usage estimation",
-        "✅ Chunk size optimization",
-        "✅ Format comparison",
-        "✅ Streaming vs direct performance",
-        "✅ Data type efficiency",
-        "✅ Polarity encoding overhead",
-        "✅ Timestamp conversion speed",
+        "SUCCESS: Event generation throughput",
+        "SUCCESS: Memory usage estimation",
+        "SUCCESS: Chunk size optimization",
+        "SUCCESS: Format comparison",
+        "SUCCESS: Streaming vs direct performance",
+        "SUCCESS: Data type efficiency",
+        "SUCCESS: Polarity encoding overhead",
+        "SUCCESS: Timestamp conversion speed",
     ]
 
     print("Available Performance Metrics:")
@@ -197,7 +197,7 @@ def generate_benchmark_report():
 
 def main():
     """Main validation function"""
-    print("🔍 evlib Benchmark Validation")
+    print("CHECK: evlib Benchmark Validation")
     print("=" * 40)
 
     # Run all validation checks
@@ -216,24 +216,24 @@ def main():
         results.append((check_name, result))
 
     # Summary
-    print("\n📋 Validation Summary")
+    print("\nDATA: Validation Summary")
     print("=" * 25)
 
     passed = sum(1 for _, result in results if result)
     total = len(results)
 
     for check_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
+        status = "SUCCESS: PASS" if result else "ERROR: FAIL"
         print(f"   {status} {check_name}")
 
     print(f"\nOverall: {passed}/{total} checks passed")
 
     if passed == total:
-        print("🎉 All validations passed! Benchmarks are ready to use.")
+        print("SUCCESS: All validations passed! Benchmarks are ready to use.")
         generate_benchmark_report()
         return 0
     else:
-        print("⚠️  Some validations failed. Please check the issues above.")
+        print("WARNING: Some validations failed. Please check the issues above.")
         return 1
 
 

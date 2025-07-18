@@ -2,9 +2,9 @@
 
 Our collection of Jupyter notebooks demonstrates evlib functionality with real data and practical examples.
 
-## 📚 Available Notebooks
+## DOCUMENTATION: Available Notebooks
 
-### 🧪 **test_data_readers_comprehensive.ipynb** ⭐ PRIORITY
+### EXPERIMENT: **test_data_readers_comprehensive.ipynb** NOTABLE: PRIORITY
 **Comprehensive testing of all data loading functionality**
 
 - **Purpose**: Validates all file format features with real data
@@ -17,10 +17,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - Custom column mapping
   - Header line handling
   - Round-trip save/load compatibility
-- **Status**: ✅ Thoroughly tested, passes pytest --nbmake
+- **Status**: COMPLETE: Thoroughly tested, passes pytest --nbmake
 - **Best for**: Understanding file I/O capabilities, verifying functionality
 
-### 📊 **data_reader_demo.ipynb** ⭐ PRIORITY
+### DATA: **data_reader_demo.ipynb** NOTABLE: PRIORITY
 **Quick introduction to event data loading**
 
 - **Purpose**: Simple demonstration of core data loading features
@@ -29,10 +29,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - Basic event loading
   - Simple filtering examples
   - Quick visualization
-- **Status**: ✅ Working with latest evlib
+- **Status**: COMPLETE: Working with latest evlib
 - **Best for**: New users, quick start guide
 
-### 🎥 **evlib_event_reconstruction.ipynb**
+### VISUAL: **evlib_event_reconstruction.ipynb**
 **Event-to-video reconstruction using neural networks**
 
 - **Purpose**: Demonstrates E2VID neural network for video reconstruction
@@ -40,10 +40,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - E2VID UNet model loading
   - Event-to-video conversion
   - Reconstruction quality analysis
-- **Status**: ✅ Working (uses custom wrapper functions)
+- **Status**: COMPLETE: Working (uses custom wrapper functions)
 - **Best for**: Neural network applications, video reconstruction
 
-### 🎨 **ex2_events_viz_complete.ipynb**
+### VISUAL: **ex2_events_viz_complete.ipynb**
 **Comprehensive event visualization techniques**
 
 - **Purpose**: Educational notebook covering various visualization methods
@@ -51,10 +51,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - Multiple event representation techniques
   - Visualization exercises with solutions
   - Comparative analysis of methods
-- **Status**: ✅ Working (some custom implementations)
+- **Status**: COMPLETE: Working (some custom implementations)
 - **Best for**: Learning visualization techniques, educational purposes
 
-### 📈 **evlib_slider_depth.ipynb**
+### TREND: **evlib_slider_depth.ipynb**
 **Extensive dataset exploration and analysis**
 
 - **Purpose**: Comprehensive analysis of large event dataset
@@ -63,10 +63,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - Statistical analysis of event data
   - Advanced visualization techniques
   - Performance benchmarking
-- **Status**: 🟡 Needs minor API updates
+- **Status**: WARNING: Needs minor API updates
 - **Best for**: Advanced users, dataset analysis
 
-### 🖼️ **event_viz.ipynb**
+### VISUAL: **event_viz.ipynb**
 **Detailed event visualization guide**
 
 - **Purpose**: Comprehensive guide to event visualization
@@ -74,10 +74,10 @@ Our collection of Jupyter notebooks demonstrates evlib functionality with real d
   - Multiple representation methods
   - Customization techniques
   - Performance optimization
-- **Status**: 🟡 Needs minor API updates
+- **Status**: WARNING: Needs minor API updates
 - **Best for**: Visualization experts, custom implementations
 
-## 🚀 Running the Notebooks
+## FEATURE: Running the Notebooks
 
 ### Prerequisites
 ```bash
@@ -99,15 +99,15 @@ pytest --nbmake examples/
 pytest --nbmake examples/test_data_readers_comprehensive.ipynb
 ```
 
-## 📋 Notebook Status Guide
+## DOCUMENTATION: Notebook Status Guide
 
 | Status | Meaning | Action Required |
 |--------|---------|-----------------|
-| ✅ | Fully working with latest evlib | None - ready to use |
-| 🟡 | Minor API updates needed | Update API calls |
-| ❌ | Major issues or deprecated | Not recommended |
+| COMPLETE: | Fully working with latest evlib | None - ready to use |
+| WARNING: | Minor API updates needed | Update API calls |
+| INCOMPLETE: | Major issues or deprecated | Not recommended |
 
-## 🎯 Recommended Learning Path
+## TARGET: Recommended Learning Path
 
 ### 1. **Beginners** - Start Here
 1. `data_reader_demo.ipynb` - Learn basic data loading
@@ -124,7 +124,7 @@ pytest --nbmake examples/test_data_readers_comprehensive.ipynb
 - Explore source code examples in the working notebooks
 - Develop custom applications based on verified patterns
 
-## 🧪 Testing Your Own Notebooks
+## EXPERIMENT: Testing Your Own Notebooks
 
 When creating new notebooks:
 
@@ -148,11 +148,11 @@ print(f"Loaded {len(xs)} events")
 # Robust pattern with error handling
 try:
     xs, ys, ts, ps = evlib.formats.load_events(file_path)
-    print(f"✅ Successfully loaded {len(xs)} events")
+    print(f"COMPLETE: Successfully loaded {len(xs)} events")
 except FileNotFoundError:
-    print("❌ File not found")
+    print("INCOMPLETE: File not found")
 except Exception as e:
-    print(f"❌ Loading failed: {e}")
+    print(f"INCOMPLETE: Loading failed: {e}")
 ```
 
 ### Visualization
@@ -176,4 +176,4 @@ Check the git history for recent updates to each notebook.
 
 ---
 
-💡 **Tip**: Start with the priority notebooks (⭐) for the most reliable and comprehensive examples!
+TIP: Start with the priority notebooks (NOTABLE:) for the most reliable and comprehensive examples!

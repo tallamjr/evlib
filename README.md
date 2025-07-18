@@ -28,7 +28,7 @@ A robust event camera processing library with Rust backend and Python bindings, 
 
 ## Current Status (v0.2.3)
 
-**✅ Fully Working Features:**
+**Fully Working Features:**
 - Universal format support (H5, AEDAT, EVT2/3, AER, text)
 - Automatic format detection
 - Polars DataFrame integration (up to 97x speedup)
@@ -37,7 +37,7 @@ A robust event camera processing library with Rust backend and Python bindings, 
 - Neural network model loading (E2VID)
 - Large file support (tested with 200M+ events)
 
-**🚧 In Development:**
+**In Development:**
 - Advanced neural network processing (Rust backend temporarily disabled)
 - Real-time visualization (Rust backend temporarily disabled)
 

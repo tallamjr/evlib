@@ -57,17 +57,17 @@ def test_evlib_streaming_integration():
     # Should work even without model (returns voxel representation)
     if result is not None:
         assert result.shape == (180, 240)  # height x width
-        print(f"✓ Processing without model successful, output shape: {result.shape}")
+        print(f"PASS: Processing without model successful, output shape: {result.shape}")
 
     # Test statistics
     stats = processor.get_stats()
     assert stats.total_events_processed >= 0
-    print(f"✓ Stats: {stats}")
+    print(f"PASS: Stats: {stats}")
 
     # Test functional interface
     result2 = evlib.streaming.process_events_streaming(xs[:100], ys[:100], ts[:100], ps[:100])
     if result2 is not None:
-        print(f"✓ Functional interface successful, output shape: {result2.shape}")
+        print(f"PASS: Functional interface successful, output shape: {result2.shape}")
 
     # Test EventStream
     stream = evlib.streaming.PyEventStream(config)
@@ -79,7 +79,7 @@ def test_evlib_streaming_integration():
         assert False, "Should fail without model"
     except Exception as e:
         assert "Model must be loaded" in str(e)
-        print("✓ Expected error when starting stream without model")
+        print("PASS: Expected error when starting stream without model")
 
     print("Streaming integration test completed successfully!")
 

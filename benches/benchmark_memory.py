@@ -22,11 +22,11 @@ def get_memory_usage():
 
 def benchmark_file(file_path, description):
     """Benchmark memory usage for a specific file"""
-    print(f"\n📊 Benchmarking: {description}")
-    print(f"📁 File: {file_path}")
+    print(f"\nSTATS: Benchmarking: {description}")
+    print(f"FILE: {file_path}")
 
     if not Path(file_path).exists():
-        print(f"❌ File not found: {file_path}")
+        print(f"FAIL: File not found: {file_path}")
         return None
 
     # Force garbage collection
@@ -66,27 +66,27 @@ def benchmark_file(file_path, description):
         "events_per_second": events_per_second,
     }
 
-    print(f"✅ Events: {event_count:,}")
-    print(f"⏱️  Load time: {load_time:.2f}s ({events_per_second:,.0f} events/s)")
-    print(f"🧠 Peak memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
-    print(f"🔄 Memory retained: {memory_retained:.1f} MB")
+    print(f"PASS: Events: {event_count:,}")
+    print(f"TIMING: Load time: {load_time:.2f}s ({events_per_second:,.0f} events/s)")
+    print(f"MEMORY: Peak memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(f"Memory retained: {memory_retained:.1f} MB")
 
     return results
 
 
 def benchmark_polars_efficiency():
     """Test Polars-specific optimizations"""
-    print("\n🔬 POLARS EFFICIENCY TEST")
+    print("\nPOLARS EFFICIENCY TEST")
 
     file_path = "data/slider_depth/events.txt"
     if not Path(file_path).exists():
-        print(f"❌ Test file not found: {file_path}")
+        print(f"FAIL: Test file not found: {file_path}")
         return
 
-    print(f"📁 Using: {file_path}")
+    print(f"FILE: Using: {file_path}")
 
     # Test 1: Basic loading
-    print("\n1️⃣ Basic Loading Test")
+    print("\nSTEP1: Basic Loading Test")
     gc.collect()
     start_mem = get_memory_usage()
     start_time = time.time()
@@ -97,11 +97,11 @@ def benchmark_polars_efficiency():
     load_time = time.time() - start_time
     peak_mem = get_memory_usage()
 
-    print(f"   📊 Loaded {len(df):,} events in {load_time:.2f}s")
-    print(f"   🧠 Memory used: {peak_mem - start_mem:.1f} MB")
+    print(f"   STATS: Loaded {len(df):,} events in {load_time:.2f}s")
+    print(f"   MEMORY: Memory used: {peak_mem - start_mem:.1f} MB")
 
     # Test 2: LazyFrame operations (should be very fast)
-    print("\n2️⃣ LazyFrame Operations Test")
+    print("\nSTEP2: LazyFrame Operations Test")
     start_time = time.time()
 
     # Chain multiple operations using LazyFrame expressions
@@ -114,13 +114,13 @@ def benchmark_polars_efficiency():
     result_df = filtered.collect()
     filter_time = time.time() - start_time
 
-    print(f"   📊 Filtered to {len(result_df):,} events in {filter_time:.3f}s")
-    print(f"   ⚡ Filter speed: {len(df) / filter_time:,.0f} events/s")
+    print(f"   STATS: Filtered to {len(result_df):,} events in {filter_time:.3f}s")
+    print(f"   FAST: Filter speed: {len(df) / filter_time:,.0f} events/s")
 
     # Test 3: Type verification
-    print("\n3️⃣ Data Type Verification")
-    print(f"   📋 Columns: {df.columns}")
-    print(f"   🏷️  Types: {[str(df[col].dtype) for col in df.columns]}")
+    print("\nSTEP3: Data Type Verification")
+    print(f"   Columns: {df.columns}")
+    print(f"   LABEL: Types: {[str(df[col].dtype) for col in df.columns]}")
 
     # Verify memory-efficient types
     x_dtype = str(df["x"].dtype)
@@ -128,7 +128,7 @@ def benchmark_polars_efficiency():
     p_dtype = str(df["polarity"].dtype)
     t_dtype = str(df["timestamp"].dtype)
 
-    print("   ✅ Using efficient types:")
+    print("   PASS: Using efficient types:")
     print(f"      x, y: {x_dtype}, {y_dtype} (should be Int16 or Int64)")
     print(f"      polarity: {p_dtype} (should be Int8 or Int64)")
     print(f"      timestamp: {t_dtype} (should be Duration)")
@@ -138,7 +138,7 @@ def benchmark_polars_efficiency():
 
 
 def main():
-    print("🚀 EVLIB MEMORY OPTIMIZATION BENCHMARK")
+    print("PERFORMANCE: EVLIB MEMORY OPTIMIZATION BENCHMARK")
     print("=" * 50)
 
     # Test files with different sizes
@@ -159,40 +159,40 @@ def main():
 
     # Summary
     if results:
-        print("\n📈 SUMMARY")
+        print("\nTREND: SUMMARY")
         print("=" * 50)
 
         total_events = sum(r["event_count"] for r in results)
         avg_bytes_per_event = sum(r["bytes_per_event"] for r in results) / len(results)
         avg_speed = sum(r["events_per_second"] for r in results) / len(results)
 
-        print(f"📊 Total events tested: {total_events:,}")
-        print(f"🧠 Average memory efficiency: {avg_bytes_per_event:.1f} bytes/event")
-        print(f"⚡ Average processing speed: {avg_speed:,.0f} events/s")
+        print(f"STATS: Total events tested: {total_events:,}")
+        print(f"MEMORY: Average memory efficiency: {avg_bytes_per_event:.1f} bytes/event")
+        print(f"FAST: Average processing speed: {avg_speed:,.0f} events/s")
 
-        print("\n🎯 MEMORY EFFICIENCY ANALYSIS:")
+        print("\nTARGET: MEMORY EFFICIENCY ANALYSIS:")
         print("   • Target: <30 bytes/event (optimized)")
         print(f"   • Achieved: {avg_bytes_per_event:.1f} bytes/event")
 
         if avg_bytes_per_event < 30:
-            print("   ✅ EXCELLENT: Memory usage is highly optimized!")
+            print("   PASS: EXCELLENT: Memory usage is highly optimized!")
         elif avg_bytes_per_event < 40:
-            print("   ✅ GOOD: Memory usage is well optimized")
+            print("   PASS: GOOD: Memory usage is well optimized")
         else:
-            print("   ⚠️  HIGH: Memory usage could be improved")
+            print("   WARNING: HIGH: Memory usage could be improved")
 
-        print("\n🎯 PERFORMANCE ANALYSIS:")
+        print("\nTARGET: PERFORMANCE ANALYSIS:")
         print("   • Target: >500k events/s")
         print(f"   • Achieved: {avg_speed:,.0f} events/s")
 
         if avg_speed > 500000:
-            print("   ✅ EXCELLENT: Processing speed is very fast!")
+            print("   PASS: EXCELLENT: Processing speed is very fast!")
         elif avg_speed > 100000:
-            print("   ✅ GOOD: Processing speed is adequate")
+            print("   PASS: GOOD: Processing speed is adequate")
         else:
-            print("   ⚠️  SLOW: Processing speed could be improved")
+            print("   WARNING: SLOW: Processing speed could be improved")
 
-    print("\n🏁 Benchmark complete!")
+    print("\nBenchmark complete!")
 
 
 if __name__ == "__main__":

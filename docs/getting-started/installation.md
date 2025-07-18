@@ -152,6 +152,6 @@ RUN pip install evlib[all]
 
 ## Next Steps
 
-- 📖 [Quick Start Guide](quickstart.md)
-- 🎯 [Performance Guide](performance.md)
-- 📚 [User Guide](../user-guide/loading-data.md)
+- [Quick Start Guide](quickstart.md)
+- [Performance Guide](performance.md)
+- [User Guide](../user-guide/loading-data.md)

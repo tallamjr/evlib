@@ -41,7 +41,7 @@ All benchmarks performed on:
 
 ## When to Use evlib vs Alternatives
 
-### ✅ Use evlib When:
+### SUCCESS: Use evlib When:
 
 **Large Datasets (>100k events)**
 ```python
@@ -82,7 +82,7 @@ def production_pipeline(event_file):
         return None
 ```
 
-### ✅ Use NumPy/Pure Python When:
+### SUCCESS: Use NumPy/Pure Python When:
 
 **Small Datasets (<10k events)**
 ```python
@@ -126,12 +126,12 @@ evlib.formats.save_events_to_text(xs, ys, ts, ps, "data/slider_depth/events.txt"
 ### 2. Apply Filters During Loading
 
 ```python
-# ✅ GOOD: Filter during loading
+# SUCCESS: GOOD: Filter during loading
 xs, ys, ts, ps = evlib.formats.load_events_filtered("large_file.txt", t_start=1.0, t_end=2.0,  # Filtered during read
     polarity=1
 )
 
-# ❌ AVOID: Load all then filter
+# ERROR: AVOID: Load all then filter
 xs, ys, ts, ps = evlib.formats.load_events("large_file.txt")
 mask = (ts >= 1.0) & (ts <= 2.0) & (ps == 1)  # Memory inefficient
 xs, ys, ts, ps = xs[mask], ys[mask], ts[mask], ps[mask]
@@ -294,7 +294,7 @@ Memory per event: 78.1 bytes
 
 ## Best Practices Summary
 
-### 🚀 For Maximum Performance
+### FEATURE: For Maximum Performance
 
 1. **Use HDF5** for large datasets and repeated access
 2. **Apply filters during loading** rather than post-processing
@@ -302,14 +302,14 @@ Memory per event: 78.1 bytes
 4. **Batch process** very large files in time windows
 5. **Use evlib for complex algorithms**, NumPy for simple operations
 
-### 📊 For Memory Efficiency
+### DATA: For Memory Efficiency
 
 1. **Stream large files** using time window filtering
 2. **Avoid loading entire datasets** when possible
 3. **Use appropriate data types** (uint16 for coordinates, int8 for polarity)
 4. **Clean up intermediate results** in processing pipelines
 
-### 🔧 For Reliability
+### TOOL: For Reliability
 
 1. **Always use try-catch blocks** for file operations
 2. **Validate data shapes** after loading

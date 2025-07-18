@@ -26,7 +26,7 @@ def example_1_large_hdf5():
     events = evlib.load_events("data/original/front/seq01.h5")
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print(f"  Duration: {timestamps.max():.1f} seconds")
     print(f"  Event rate: {len(timestamps)/timestamps.max():,.0f} events/sec")
     print(f"  Polarity split: {np.bincount(polarities)}")
@@ -52,7 +52,7 @@ def example_2_etram_hdf5():
     events = evlib.load_events("data/eTram/h5/val_2/val_night_011_td.h5")
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print("  Dataset: eTram validation night sequence")
     print(f"  Recording: {timestamps.max():.1f} seconds")
     print(
@@ -72,7 +72,7 @@ def example_3_prophesee_raw():
     events = evlib.load_events("data/eTram/raw/val_2/val_night_011.raw")
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print("  Format: Prophesee EVT2 raw binary")
     print(f"  Duration: {timestamps.max():.1f} seconds")
     print(f"  Polarity encoding: {np.unique(polarities)} (signed)")
@@ -92,7 +92,7 @@ def example_4_text_format():
     events = evlib.load_events("data/slider_depth/events.txt")
     timestamps, x_coords, y_coords, polarities = events
 
-    print(f"✓ Loaded {len(timestamps):,} events")
+    print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print("  Format: Space-separated text")
     print("  Camera: DAVIS (346x240)")
     print("  Scene: Sliding objects with depth")
@@ -256,7 +256,7 @@ def main():
         example_8_memory_efficient()
 
         print("\n" + "=" * 50)
-        print("✓ All examples completed!")
+        print("SUCCESS: All examples completed!")
         print("\nKey Points:")
         print("• evlib handles HDF5, EVT2 raw, and text formats seamlessly")
         print("• All formats return: (timestamps, x, y, polarity)")

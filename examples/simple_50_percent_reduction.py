@@ -171,16 +171,16 @@ def main():
         reduced_events, height=240, width=346, nbins=8, window_duration_ms=50.0
     )
     print(f"Histogram shape: {histogram.shape}")
-    print("✅ Integration successful!")
+    print("SUCCESS: Integration successful!")
     print()
 
     # Summary
     print("SUMMARY:")
     print("--------")
-    print("✅ Use df.sample(fraction=0.5) for simple 50% reduction")
-    print("✅ Use stratified sampling to maintain polarity balance")
-    print("✅ Combine with evlib.preprocess_events() for complete pipeline")
-    print("✅ Polars native sampling is most efficient and idiomatic")
+    print("SUCCESS: Use df.sample(fraction=0.5) for simple 50% reduction")
+    print("SUCCESS: Use stratified sampling to maintain polarity balance")
+    print("SUCCESS: Combine with evlib.preprocess_events() for complete pipeline")
+    print("SUCCESS: Polars native sampling is most efficient and idiomatic")
     print("\nCode example:")
     print("```python")
     print("import evlib")

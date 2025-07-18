@@ -22,19 +22,19 @@ def get_memory_usage():
 def demonstrate_improvements():
     """Demonstrate the key improvements in the new implementation"""
 
-    print("🎯 EVLIB MEMORY OPTIMIZATION IMPROVEMENTS")
+    print("TARGET: EVLIB MEMORY OPTIMIZATION IMPROVEMENTS")
     print("=" * 60)
 
     # Test file
     test_file = "data/slider_depth/events.txt"
     if not Path(test_file).exists():
-        print(f"❌ Test file not found: {test_file}")
+        print(f"FAIL: Test file not found: {test_file}")
         return
 
-    print(f"📁 Test file: {test_file}")
+    print(f"FILE: Test file: {test_file}")
 
     # === IMPROVEMENT 1: Memory Efficiency ===
-    print("\n🧠 IMPROVEMENT 1: MEMORY EFFICIENCY")
+    print("\nIMPROVEMENT 1: MEMORY EFFICIENCY")
     print("-" * 40)
 
     gc.collect()
@@ -48,22 +48,22 @@ def demonstrate_improvements():
     memory_used = peak_mem - start_mem
     bytes_per_event = (memory_used * 1024 * 1024) / len(df)
 
-    print(f"📊 Events loaded: {len(df):,}")
-    print(f"🧠 Memory used: {memory_used:.1f} MB")
-    print(f"📈 Efficiency: {bytes_per_event:.1f} bytes/event")
+    print(f"STATS: Events loaded: {len(df):,}")
+    print(f"MEMORY: Memory used: {memory_used:.1f} MB")
+    print(f"TREND: Efficiency: {bytes_per_event:.1f} bytes/event")
 
     # Theoretical comparison
-    print("\n📊 MEMORY EFFICIENCY COMPARISON:")
+    print("\nSTATS: MEMORY EFFICIENCY COMPARISON:")
     old_estimate = len(df) * 37  # Old: ~37 bytes/event
     new_actual = memory_used * 1024 * 1024  # New: actual usage
     improvement = (old_estimate - new_actual) / old_estimate * 100
 
-    print(f"   📉 OLD (estimated): {old_estimate / 1024 / 1024:.1f} MB (~37 bytes/event)")
-    print(f"   📈 NEW (measured):  {new_actual / 1024 / 1024:.1f} MB ({bytes_per_event:.1f} bytes/event)")
-    print(f"   ✅ IMPROVEMENT:     {improvement:.1f}% memory reduction")
+    print(f"   OLD (estimated): {old_estimate / 1024 / 1024:.1f} MB (~37 bytes/event)")
+    print(f"   TREND: NEW (measured):  {new_actual / 1024 / 1024:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(f"   PASS: IMPROVEMENT:     {improvement:.1f}% memory reduction")
 
     # === IMPROVEMENT 2: Processing Speed ===
-    print("\n⚡ IMPROVEMENT 2: PROCESSING SPEED")
+    print("\nFAST: IMPROVEMENT 2: PROCESSING SPEED")
     print("-" * 40)
 
     # Test loading speed
@@ -73,8 +73,8 @@ def demonstrate_improvements():
     load_time = time.time() - start_time
 
     events_per_second = len(df2) / load_time
-    print(f"⏱️  Load time: {load_time:.2f}s")
-    print(f"🚀 Speed: {events_per_second:,.0f} events/s")
+    print(f"TIMING: Load time: {load_time:.2f}s")
+    print(f"PERFORMANCE: Speed: {events_per_second:,.0f} events/s")
 
     # Test filtering speed (LazyFrame optimization)
     start_time = time.time()
@@ -84,13 +84,13 @@ def demonstrate_improvements():
     filter_time = time.time() - start_time
 
     filter_speed = len(df2) / filter_time
-    print(f"🔍 Filter speed: {filter_speed:,.0f} events/s ({filter_time:.3f}s)")
+    print(f"ANALYSIS: Filter speed: {filter_speed:,.0f} events/s ({filter_time:.3f}s)")
 
     # === IMPROVEMENT 3: Data Type Optimization ===
-    print("\n🏷️  IMPROVEMENT 3: DATA TYPE OPTIMIZATION")
+    print("\nLABEL: IMPROVEMENT 3: DATA TYPE OPTIMIZATION")
     print("-" * 40)
 
-    print("📋 Optimized data types:")
+    print("Optimized data types:")
     for col in df.columns:
         dtype = str(df[col].dtype)
         print(f"   • {col}: {dtype}")
@@ -114,29 +114,29 @@ def demonstrate_improvements():
         else:
             total_bytes_per_event += 8  # Conservative estimate
 
-    print(f"💾 Core data size: {total_bytes_per_event} bytes/event (theoretical minimum)")
-    print(f"🧠 Actual memory: {bytes_per_event:.1f} bytes/event (includes overhead)")
+    print(f"Core data size: {total_bytes_per_event} bytes/event (theoretical minimum)")
+    print(f"MEMORY: Actual memory: {bytes_per_event:.1f} bytes/event (includes overhead)")
     overhead = bytes_per_event - total_bytes_per_event
-    print(f"⚙️  Memory overhead: {overhead:.1f} bytes/event ({overhead/bytes_per_event*100:.1f}%)")
+    print(f"CONFIG: Memory overhead: {overhead:.1f} bytes/event ({overhead/bytes_per_event*100:.1f}%)")
 
     # === IMPROVEMENT 4: Architecture Benefits ===
-    print("\n🏗️  IMPROVEMENT 4: ARCHITECTURE BENEFITS")
+    print("\nBUILD: IMPROVEMENT 4: ARCHITECTURE BENEFITS")
     print("-" * 40)
 
-    print("✅ BEFORE (Old Architecture):")
+    print("PASS: BEFORE (Old Architecture):")
     print("   Events → 4x Vec<T> → Python Dict → Polars DataFrame")
     print("   • Multiple memory allocations")
     print("   • Data copying at each step")
     print("   • Python object overhead")
 
-    print("\n✅ AFTER (New Architecture):")
+    print("\nPASS: AFTER (New Architecture):")
     print("   Events → Direct Polars Series → DataFrame")
     print("   • Single allocation per column")
     print("   • Zero intermediate copies")
     print("   • Native Arrow memory layout")
 
     # === IMPROVEMENT 5: Format-Specific Optimizations ===
-    print("\n🎯 IMPROVEMENT 5: FORMAT-SPECIFIC OPTIMIZATIONS")
+    print("\nTARGET: IMPROVEMENT 5: FORMAT-SPECIFIC OPTIMIZATIONS")
     print("-" * 40)
 
     # Test different formats
@@ -152,45 +152,45 @@ def demonstrate_improvements():
             df_test = lf_test.collect()
             polarities = sorted(df_test["polarity"].unique().to_list())
 
-            status = "✅" if polarities == expected_polarities else "❌"
+            status = "PASS:" if polarities == expected_polarities else "FAIL:"
             print(f"   {status} {format_name}: {polarities} (expected {expected_polarities})")
 
             del lf_test, df_test
         else:
-            print(f"   ⏸️  {format_name}: File not available for testing")
+            print(f"   PAUSE: {format_name}: File not available for testing")
 
     # === FINAL SUMMARY ===
-    print("\n🏆 OPTIMIZATION SUMMARY")
+    print("\nOPTIMIZATION SUMMARY")
     print("=" * 60)
 
-    print("📊 Performance Metrics:")
+    print("STATS: Performance Metrics:")
     print(f"   • Load Speed: {events_per_second:,.0f} events/s")
     print(f"   • Filter Speed: {filter_speed:,.0f} events/s")
     print(f"   • Memory Efficiency: {bytes_per_event:.1f} bytes/event")
 
-    print("\n🎯 Key Achievements:")
-    print("   ✅ Zero-copy memory architecture")
-    print("   ✅ Direct Polars Series construction")
-    print("   ✅ Format-specific optimizations")
-    print("   ✅ Maintained API compatibility")
-    print("   ✅ Enhanced type efficiency")
+    print("\nTARGET: Key Achievements:")
+    print("   PASS: Zero-copy memory architecture")
+    print("   PASS: Direct Polars Series construction")
+    print("   PASS: Format-specific optimizations")
+    print("   PASS: Maintained API compatibility")
+    print("   PASS: Enhanced type efficiency")
 
     # Performance classification
     if events_per_second > 1_000_000:
-        speed_rating = "🚀 EXCELLENT"
+        speed_rating = "PERFORMANCE: EXCELLENT"
     elif events_per_second > 500_000:
-        speed_rating = "✅ VERY GOOD"
+        speed_rating = "PASS: VERY GOOD"
     else:
-        speed_rating = "⚠️  ADEQUATE"
+        speed_rating = "WARNING: ADEQUATE"
 
     if bytes_per_event < 50:
-        memory_rating = "🚀 EXCELLENT"
+        memory_rating = "PERFORMANCE: EXCELLENT"
     elif bytes_per_event < 100:
-        memory_rating = "✅ VERY GOOD"
+        memory_rating = "PASS: VERY GOOD"
     else:
-        memory_rating = "⚠️  ADEQUATE"
+        memory_rating = "WARNING: ADEQUATE"
 
-    print("\n🏆 Overall Rating:")
+    print("\nOverall Rating:")
     print(f"   • Speed: {speed_rating}")
     print(f"   • Memory: {memory_rating}")
 

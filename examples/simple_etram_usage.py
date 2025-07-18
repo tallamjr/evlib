@@ -85,4 +85,4 @@ def simple_etram_example():
 if __name__ == "__main__":
     result = simple_etram_example()
     print(f"\nFinal result shape: {result.shape}")
-    print("✓ Successfully loaded eTram data and created tensor representation!")
+    print("SUCCESS: Successfully loaded eTram data and created tensor representation!")

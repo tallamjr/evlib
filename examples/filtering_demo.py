@@ -190,7 +190,7 @@ def main():
     demo_chaining_filters()
 
     print("\n" + "=" * 50)
-    print("✓ All demonstrations completed successfully!")
+    print("DONE: All demonstrations completed successfully!")
     print("\nThe filtering module provides:")
     print("  • Time-based filtering")
     print("  • Spatial ROI filtering")

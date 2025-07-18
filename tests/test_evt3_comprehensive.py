@@ -157,16 +157,16 @@ def test_format_detection():
             assert format_info[0] == "EVT3", f"Expected EVT3, got {format_info[0]}"
             assert format_info[1] > 0.9, f"Low confidence: {format_info[1]}"
 
-            print("✓ Format detection passed")
+            print("PASS: Format detection passed")
             return True
         else:
-            print("⚠ detect_format not available in current build")
+            print("WARN: detect_format not available in current build")
 
     except ImportError as e:
-        print(f"⚠ Could not import evlib: {e}")
+        print(f"WARN: Could not import evlib: {e}")
         return False
     except Exception as e:
-        print(f"✗ Error in format detection: {e}")
+        print(f"FAIL: Error in format detection: {e}")
         return False
     finally:
         os.unlink(test_file)
@@ -218,16 +218,16 @@ def test_evt3_loading():
             for i in range(1, len(t)):
                 assert t[i] >= t[i - 1], f"Timestamps not ordered: {t[i]} < {t[i-1]}"
 
-            print("✓ Event loading passed")
+            print("PASS: Event loading passed")
             return True
         else:
-            print("⚠ load_events not available in current build")
+            print("WARN: load_events not available in current build")
 
     except ImportError as e:
-        print(f"⚠ Could not import evlib: {e}")
+        print(f"WARN: Could not import evlib: {e}")
         return False
     except Exception as e:
-        print(f"✗ Error loading events: {e}")
+        print(f"FAIL: Error loading events: {e}")
         return False
     finally:
         os.unlink(test_file)
@@ -257,16 +257,16 @@ def test_evt3_metadata_extraction():
             # Check if sensor resolution was detected
             # Note: This depends on the specific header parsing implementation
 
-            print("✓ Metadata extraction passed")
+            print("PASS: Metadata extraction passed")
             return True
         else:
-            print("⚠ detect_format not available in current build")
+            print("WARN: detect_format not available in current build")
 
     except ImportError as e:
-        print(f"⚠ Could not import evlib: {e}")
+        print(f"WARN: Could not import evlib: {e}")
         return False
     except Exception as e:
-        print(f"✗ Error extracting metadata: {e}")
+        print(f"FAIL: Error extracting metadata: {e}")
         return False
     finally:
         os.unlink(test_file)
@@ -291,22 +291,22 @@ def test_evt3_error_handling():
         if hasattr(evlib, "load_events"):
             try:
                 x, y, t, p = evlib.load_events(malformed_file)
-                print("⚠ Expected error loading malformed EVT3 file, but succeeded")
+                print("WARN: Expected error loading malformed EVT3 file, but succeeded")
             except Exception as e:
-                print(f"✓ Correctly caught error for malformed file: {e}")
+                print(f"PASS: Correctly caught error for malformed file: {e}")
 
         # Test with file that doesn't exist
         if hasattr(evlib, "detect_format"):
             try:
                 _format_info = evlib.detect_format("/nonexistent/file.raw")
-                print("⚠ Expected error for nonexistent file, but succeeded")
+                print("WARN: Expected error for nonexistent file, but succeeded")
             except Exception as e:
-                print(f"✓ Correctly caught error for nonexistent file: {e}")
+                print(f"PASS: Correctly caught error for nonexistent file: {e}")
         else:
-            print("⚠ detect_format not available in current build")
+            print("WARN: detect_format not available in current build")
 
     except ImportError as e:
-        print(f"⚠ Could not import evlib: {e}")
+        print(f"WARN: Could not import evlib: {e}")
         return False
     finally:
         os.unlink(malformed_file)
@@ -356,17 +356,17 @@ def test_evt3_coordinate_bounds():
 
                 # Check if any events were loaded despite bounds issues
                 if len(x) > 0:
-                    print("⚠ Events loaded despite coordinate bounds issues")
+                    print("WARN: Events loaded despite coordinate bounds issues")
                 else:
-                    print("✓ No events loaded due to coordinate bounds validation")
+                    print("PASS: No events loaded due to coordinate bounds validation")
 
             except Exception as e:
-                print(f"✓ Correctly caught bounds error: {e}")
+                print(f"PASS: Correctly caught bounds error: {e}")
         else:
-            print("⚠ load_events not available in current build")
+            print("WARN: load_events not available in current build")
 
     except ImportError as e:
-        print(f"⚠ Could not import evlib: {e}")
+        print(f"WARN: Could not import evlib: {e}")
         return False
     finally:
         os.unlink(bounds_test_file)
@@ -396,16 +396,16 @@ def run_comprehensive_test():
             if test():
                 passed += 1
         except Exception as e:
-            print(f"✗ Test {test.__name__} failed with exception: {e}")
+            print(f"FAIL: Test {test.__name__} failed with exception: {e}")
 
     print("\n" + "=" * 60)
     print(f"TEST SUMMARY: {passed}/{total} tests passed")
     print("=" * 60)
 
     if passed == total:
-        print("🎉 All tests passed! EVT3.0 format support is production-ready.")
+        print("PASS: All tests passed! EVT3.0 format support is production-ready.")
     else:
-        print("⚠ Some tests failed. EVT3.0 format support may need fixes.")
+        print("WARN: Some tests failed. EVT3.0 format support may need fixes.")
 
     return passed == total
 

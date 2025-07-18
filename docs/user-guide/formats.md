@@ -6,12 +6,12 @@ This guide covers all supported event data formats in evlib, including format sp
 
 | Format | Extension | Status | Use Case | Performance |
 |--------|-----------|--------|----------|-------------|
-| **Text** | `.txt`, `.csv` | ✅ Production | Human-readable, debugging | Baseline |
-| **HDF5** | `.h5`, `.hdf5` | ✅ Production | Large datasets, fast I/O | 3-5x faster |
-| **EVT2** | `.raw` | ⚠️ Partial | Prophesee cameras (Gen 1-3) | Fast binary |
-| **EVT3** | `.evt3` | ✅ Production | Prophesee cameras (Gen 4+) | Fast binary |
-| **AEDAT** | `.aedat` | ✅ Production | iniVation cameras | Binary |
-| **AER** | `.aer` | ✅ Production | Address Event Representation | Binary |
+| **Text** | `.txt`, `.csv` | SUCCESS: Production | Human-readable, debugging | Baseline |
+| **HDF5** | `.h5`, `.hdf5` | SUCCESS: Production | Large datasets, fast I/O | 3-5x faster |
+| **EVT2** | `.raw` | WARNING: Partial | Prophesee cameras (Gen 1-3) | Fast binary |
+| **EVT3** | `.evt3` | SUCCESS: Production | Prophesee cameras (Gen 4+) | Fast binary |
+| **AEDAT** | `.aedat` | SUCCESS: Production | iniVation cameras | Binary |
+| **AER** | `.aer` | SUCCESS: Production | Address Event Representation | Binary |
 
 ## Format Specifications
 
@@ -96,7 +96,7 @@ evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
 
 ### EVT2 Format (.raw)
 
-**Status:** ⚠️ Partial support - some event types not handled
+**Status:** WARNING: Partial support - some event types not handled
 
 **Specification:**
 - **Source**: Prophesee cameras (Gen 1-3)
@@ -119,13 +119,13 @@ except Exception as e:
 ```
 
 **Real Data Testing:**
-- ✅ Format detection works (>95% confidence)
-- ❌ Event loading fails on some real files
-- 📊 Test files: `data/eTram/raw/val_2/*.raw` (15MB-526MB)
+- SUCCESS: Format detection works (>95% confidence)
+- ERROR: Event loading fails on some real files
+- DATA: Test files: `data/eTram/raw/val_2/*.raw` (15MB-526MB)
 
 ### EVT3 Format (.evt3)
 
-**Status:** ✅ Production ready
+**Status:** SUCCESS: Production ready
 
 **Specification:**
 - **Source**: Prophesee cameras (Gen 4+)
@@ -163,11 +163,11 @@ print(f"Polarities: {ps}")
 ```
 
 **Key Features:**
-- ✅ Complete specification compliance
-- ✅ Memory-efficient NumPy arrays
-- ✅ All event types supported
-- ✅ Robust error handling
-- ✅ 8/8 tests passing
+- SUCCESS: Complete specification compliance
+- SUCCESS: Memory-efficient NumPy arrays
+- SUCCESS: All event types supported
+- SUCCESS: Robust error handling
+- SUCCESS: 8/8 tests passing
 
 **Performance:**
 - Memory efficient with array-based storage
@@ -176,7 +176,7 @@ print(f"Polarities: {ps}")
 
 ### AEDAT Format (.aedat)
 
-**Status:** ✅ Production ready
+**Status:** SUCCESS: Production ready
 
 **Specification:**
 - **Source**: iniVation cameras (DAVIS, DVS)
@@ -197,7 +197,7 @@ xs, ys, ts, ps = evlib.formats.load_events("data/davis_recording.aedat")
 
 ### AER Format (.aer)
 
-**Status:** ✅ Production ready
+**Status:** SUCCESS: Production ready
 
 **Specification:**
 - **Source**: Address Event Representation
@@ -390,7 +390,7 @@ def convert_to_hdf5(input_file, output_file):
     np.testing.assert_array_equal(ts, ts2)
     np.testing.assert_array_equal(ps, ps2)
 
-    print(f"✅ Converted {len(xs)} events to HDF5")
+    print(f"SUCCESS: Converted {len(xs)} events to HDF5")
 ```
 
 ### 3. Robust Loading
@@ -424,7 +424,7 @@ def load_events_robust(file_path):
         return xs, ys, ts, ps
 
     except Exception as e:
-        print(f"❌ Failed to load {file_path}: {e}")
+        print(f"ERROR: Failed to load {file_path}: {e}")
         return None
 ```
 

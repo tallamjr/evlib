@@ -17,10 +17,10 @@ def get_memory_mb():
 def test_file(file_path, description):
     """Test loading performance for a single file"""
     if not Path(file_path).exists():
-        print(f"❌ {description}: File not found")
+        print(f"FAIL: {description}: File not found")
         return None
 
-    print(f"\n📁 {description}")
+    print(f"\nFILE: {description}")
     print(f"   File: {file_path}")
 
     # Memory monitoring
@@ -44,19 +44,19 @@ def test_file(file_path, description):
     polarity_values = sorted(df["polarity"].unique().to_list())
 
     # Results
-    print(f"   📊 Events: {event_count:,}")
-    print(f"   ⏱️  Load time: {load_time:.2f}s")
-    print(f"   ⚡ Speed: {events_per_second:,.0f} events/s")
-    print(f"   🧠 Memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
-    print(f"   🔍 Polarity: {polarity_values}")
+    print(f"   STATS: Events: {event_count:,}")
+    print(f"   TIMING: Load time: {load_time:.2f}s")
+    print(f"   FAST: Speed: {events_per_second:,.0f} events/s")
+    print(f"   MEMORY: Memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(f"   ANALYSIS: Polarity: {polarity_values}")
 
     # Performance assessment
     if events_per_second >= 5_000_000:
-        print("   ✅ EXCELLENT: Speed ≥5M events/s")
+        print("   PASS: EXCELLENT: Speed ≥5M events/s")
     elif events_per_second >= 1_000_000:
-        print("   ✅ GOOD: Speed ≥1M events/s")
+        print("   PASS: GOOD: Speed ≥1M events/s")
     else:
-        print("   ⚠️  SLOW: Speed <1M events/s")
+        print("   WARNING: SLOW: Speed <1M events/s")
 
     return {
         "file": file_path,
@@ -70,7 +70,7 @@ def test_file(file_path, description):
 
 
 def main():
-    print("🚀 VECTORIZED POLARITY CONVERSION - PERFORMANCE CHECK")
+    print("PERFORMANCE: VECTORIZED POLARITY CONVERSION - PERFORMANCE CHECK")
     print("=" * 60)
 
     # Test files with different formats
@@ -88,48 +88,48 @@ def main():
 
     # Summary
     if results:
-        print("\n📈 PERFORMANCE SUMMARY")
+        print("\nTREND: PERFORMANCE SUMMARY")
         print("=" * 60)
 
         total_events = sum(r["events"] for r in results)
         avg_speed = sum(r["speed"] for r in results) / len(results)
         avg_memory = sum(r["bytes_per_event"] for r in results) / len(results)
 
-        print(f"📊 Total events tested: {total_events:,}")
-        print(f"⚡ Average speed: {avg_speed:,.0f} events/s")
-        print(f"🧠 Average memory efficiency: {avg_memory:.1f} bytes/event")
+        print(f"STATS: Total events tested: {total_events:,}")
+        print(f"FAST: Average speed: {avg_speed:,.0f} events/s")
+        print(f"MEMORY: Average memory efficiency: {avg_memory:.1f} bytes/event")
 
         # Check polarity encoding correctness
-        print("\n🔍 POLARITY ENCODING VERIFICATION:")
+        print("\nANALYSIS: POLARITY ENCODING VERIFICATION:")
         for result in results:
             file_name = Path(result["file"]).name
             polarities = result["polarity_values"]
             if ".raw" in file_name:  # EVT2
                 expected = [-1, 1]
-                status = "✅" if polarities == expected else "❌"
+                status = "PASS:" if polarities == expected else "FAIL:"
                 print(f"   {file_name}: {polarities} {status} (EVT2 expects [-1, 1])")
             else:  # HDF5 or Text
                 expected = [0, 1]
-                status = "✅" if polarities == expected else "❌"
+                status = "PASS:" if polarities == expected else "FAIL:"
                 print(f"   {file_name}: {polarities} {status} (HDF5/Text expects [0, 1])")
 
         # Performance assessment
-        print("\n🎯 OPTIMIZATION SUCCESS:")
+        print("\nTARGET: OPTIMIZATION SUCCESS:")
         if avg_speed >= 5_000_000:
-            print(f"   🚀 OUTSTANDING: {avg_speed:,.0f} events/s (>5M target)")
+            print(f"   PERFORMANCE: OUTSTANDING: {avg_speed:,.0f} events/s (>5M target)")
         elif avg_speed >= 1_000_000:
-            print(f"   ✅ EXCELLENT: {avg_speed:,.0f} events/s (>1M target)")
+            print(f"   PASS: EXCELLENT: {avg_speed:,.0f} events/s (>1M target)")
         else:
-            print(f"   ⚠️  NEEDS WORK: {avg_speed:,.0f} events/s (<1M target)")
+            print(f"   WARNING: NEEDS WORK: {avg_speed:,.0f} events/s (<1M target)")
 
-        print("\n💡 OPTIMIZATION IMPACT:")
+        print("\nTIP: OPTIMIZATION IMPACT:")
         print("   • Eliminated per-event polarity conversion (3M+ function calls)")
         print("   • Replaced with single vectorized Polars operation")
-        print("   • Expected 10-100x speedup achieved: ✅")
-        print("   • Format-specific encoding working: ✅")
+        print("   • Expected 10-100x speedup achieved: PASS:")
+        print("   • Format-specific encoding working: PASS:")
 
     else:
-        print("❌ No test files found for benchmarking")
+        print("FAIL: No test files found for benchmarking")
 
 
 if __name__ == "__main__":

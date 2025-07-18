@@ -271,7 +271,7 @@ def main():
                     tensor = convert_to_pytorch_tensor(voxel_grid)
 
                     if tensor is not None:
-                        print(f"✓ Successfully created tensor for {description}")
+                        print(f"SUCCESS: Successfully created tensor for {description}")
                         print(f"  Shape: {tensor.shape}")
                         print(f"  Device: {tensor.device}")
                         print("  Ready for neural network processing!")

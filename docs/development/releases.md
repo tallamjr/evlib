@@ -22,7 +22,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ## Version 0.3.0 (Planned)
 
-### 🚀 New Features
+### FEATURE: New Features
 
 **Advanced Neural Networks**
 - SPADE-E2VID model support
@@ -40,7 +40,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Live event camera support
 - Real-time visualization improvements
 
-### 🔧 Improvements
+### TOOL: Improvements
 
 **Performance Optimizations**
 - 40% faster voxel grid creation
@@ -52,7 +52,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Perspective transformations
 - Advanced noise models
 
-### 🐛 Bug Fixes
+### INCOMPLETE: Bug Fixes
 
 - Fixed memory leak in long-running processes
 - Improved error handling for corrupted files
@@ -64,7 +64,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 *Released: January 2025*
 
-### 🚀 New Features
+### FEATURE: New Features
 
 **Neural Network Support**
 - E2VID UNet implementation with verified weights
@@ -87,7 +87,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Point tracking with Python interface
 - Trajectory analysis utilities
 
-### 🔧 Improvements
+### TOOL: Improvements
 
 **Performance Enhancements**
 - 25% faster voxel grid creation
@@ -104,13 +104,13 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Comprehensive user guides
 - Real-world examples and tutorials
 
-### 🐛 Bug Fixes
+### INCOMPLETE: Bug Fixes
 
 - Fixed timestamp precision issues in voxel grids
 - Resolved memory corruption in edge cases
 - Improved error handling for large files
 
-### 🔄 Breaking Changes
+### WARNING: Breaking Changes
 
 - Changed voxel grid axis order from (width, height, bins) to (bins, height, width)
 - Renamed `create_voxel_representation` to `create_voxel_grid`
@@ -122,7 +122,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 *Released: December 2024*
 
-### 🚀 Initial Features
+### FEATURE: Initial Features
 
 **Core Functionality**
 - Event data loading from text files
@@ -147,7 +147,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Matplotlib integration
 - Basic plotting utilities
 
-### 🎯 Performance Baseline
+### TARGET: Performance Baseline
 
 - File I/O: 0.8x-1.2x vs NumPy
 - Voxel grids: 1.5x-2.5x vs pure Python
@@ -359,11 +359,11 @@ pip install evlib[all]
 
 ### Automated Checks
 
-- ✅ Unit test coverage > 95%
-- ✅ Integration tests all pass
-- ✅ Performance regression < 5%
-- ✅ Documentation build successful
-- ✅ Cross-platform compatibility verified
+- COMPLETE: Unit test coverage > 95%
+- COMPLETE: Integration tests all pass
+- COMPLETE: Performance regression < 5%
+- COMPLETE: Documentation build successful
+- COMPLETE: Cross-platform compatibility verified
 
 ---
 
