@@ -105,7 +105,183 @@
 
 ---
 
-## **🔧 PHASE 3: PERFORMANCE INTEGRATION & BENCHMARKING**
+## **🔍 PHASE 3: FILTERING HELPER FUNCTIONS (CURRENT PRIORITY)**
+
+### **3.1 CORE FILTERING FUNCTIONALITY**
+
+#### **Task 3.1.1: Implement Core Filtering Module**
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Description**: Create comprehensive filtering helpers for Polars LazyFrames
+
+**Detailed Steps**:
+1. Create new file: `python/evlib/filtering.py`
+2. Implement core filtering functions:
+   ```python
+   def filter_by_time(events, t_start=None, t_end=None, **kwargs) -> pl.LazyFrame
+   def filter_by_roi(events, x_min, x_max, y_min, y_max, **kwargs) -> pl.LazyFrame
+   def filter_by_polarity(events, polarity=None, **kwargs) -> pl.LazyFrame
+   def filter_by_activity(events, min_activity_rate=None, window_size_ms=10.0, **kwargs) -> pl.LazyFrame
+   def filter_hot_pixels(events, threshold_percentile=99.9, **kwargs) -> pl.LazyFrame
+   def filter_noise(events, method="refractory", refractory_period_us=1000, **kwargs) -> pl.LazyFrame
+   ```
+3. Add high-level preprocessing function:
+   ```python
+   def preprocess_events(events, t_start=None, t_end=None, roi=None,
+                        polarity=None, remove_hot_pixels=True, remove_noise=True, **kwargs) -> pl.LazyFrame
+   ```
+4. Ensure all functions accept Union[str, Path, pl.LazyFrame] as input
+5. Add comprehensive docstrings with examples
+
+**Validation Criteria**:
+- [ ] All functions work with file paths and LazyFrames
+- [ ] Functions chain properly with lazy evaluation
+- [ ] Performance is equivalent to direct Polars operations
+- [ ] Input validation and error handling implemented
+
+#### **Task 3.1.2: Integration with Main API**
+**Priority**: HIGH
+**Estimated Time**: 1 hour
+**Description**: Expose filtering functions at top level
+
+**Detailed Steps**:
+1. Update `python/evlib/__init__.py`:
+   ```python
+   try:
+       from . import filtering
+       from .filtering import (
+           filter_by_time,
+           filter_by_roi,
+           filter_by_polarity,
+           preprocess_events,
+       )
+       _filtering_available = True
+   except ImportError:
+       _filtering_available = False
+   ```
+2. Add to `__all__` export list
+3. Update docstring examples to show filtering usage
+4. Ensure graceful fallback if filtering not available
+
+**Validation Criteria**:
+- [ ] Functions accessible via `evlib.filter_by_time()` etc.
+- [ ] Import errors handled gracefully
+- [ ] Documentation shows filtering examples
+- [ ] No breaking changes to existing API
+
+#### **Task 3.1.3: Advanced Filtering Algorithms**
+**Priority**: MEDIUM
+**Estimated Time**: 2-3 hours
+**Description**: Implement sophisticated noise reduction and activity-based filtering
+
+**Detailed Steps**:
+1. Hot pixel detection:
+   ```python
+   def _detect_hot_pixels(events: pl.LazyFrame, threshold_percentile: float) -> pl.LazyFrame:
+       # Group by pixel coordinates, count events
+       # Calculate percentile thresholds
+       # Return coordinates of hot pixels
+   ```
+2. Refractory period noise filtering:
+   ```python
+   def _apply_refractory_filter(events: pl.LazyFrame, period_us: int) -> pl.LazyFrame:
+       # Sort by timestamp within each pixel
+       # Remove events within refractory period
+   ```
+3. Activity-based filtering:
+   ```python
+   def _filter_by_local_activity(events: pl.LazyFrame, min_rate: float, window_ms: float) -> pl.LazyFrame:
+       # Calculate local activity rates
+       # Filter based on neighborhood activity
+   ```
+4. Add validation against synthetic noisy data
+
+**Validation Criteria**:
+- [ ] Hot pixel detection accuracy >95% on synthetic data
+- [ ] Refractory filtering preserves signal while removing noise
+- [ ] Activity filtering maintains spatial structure
+- [ ] Performance scales linearly with event count
+
+### **3.2 COMPREHENSIVE TESTING WITH REAL DATA**
+
+#### **Task 3.2.1: Real Data Test Suite**
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Description**: Test filtering functions against actual eTram raw data
+
+**Detailed Steps**:
+1. Create test file: `tests/test_filtering_real_data.py`
+2. Test against eTram data files:
+   - `data/eTram/raw/val_2/val_night_007.raw` (526MB)
+   - `data/eTram/raw/val_2/val_night_011.raw` (15MB)
+   - `data/eTram/h5/val_2/val_night_007_td.h5` (456MB)
+3. Implement comprehensive test cases:
+   ```python
+   def test_temporal_filtering_real_data():
+       # Test time-based filtering preserves expected event counts
+
+   def test_spatial_filtering_real_data():
+       # Test ROI filtering with known camera geometry
+
+   def test_polarity_filtering_real_data():
+       # Test polarity filtering maintains expected ratios
+
+   def test_chained_filtering_real_data():
+       # Test multiple filters applied in sequence
+
+   def test_preprocessing_pipeline_real_data():
+       # Test complete preprocessing pipeline
+   ```
+4. Add performance benchmarks for filtering operations
+5. Validate filtering preserves data integrity
+
+**Validation Criteria**:
+- [ ] All tests pass with real eTram data
+- [ ] Filtering performance >10M events/s
+- [ ] Memory usage stays reasonable during filtering
+- [ ] Filtered data maintains expected statistical properties
+
+#### **Task 3.2.2: Edge Case Testing**
+**Priority**: MEDIUM
+**Estimated Time**: 1-2 hours
+**Description**: Test filtering with edge cases and boundary conditions
+
+**Detailed Steps**:
+1. Test with empty event streams
+2. Test with single-event streams
+3. Test with extreme parameter values
+4. Test with malformed/corrupted data
+5. Test memory limits with very large datasets
+6. Add error handling validation
+
+**Validation Criteria**:
+- [ ] Graceful handling of empty inputs
+- [ ] Proper error messages for invalid parameters
+- [ ] No memory leaks with large datasets
+- [ ] Consistent behavior across different file formats
+
+### **3.3 DOCUMENTATION AND EXAMPLES**
+
+#### **Task 3.3.1: API Documentation**
+**Priority**: MEDIUM
+**Estimated Time**: 1 hour
+**Description**: Create comprehensive documentation for filtering API
+
+**Detailed Steps**:
+1. Update README.md with filtering examples
+2. Add filtering section to CLAUDE.md
+3. Create example scripts showing common workflows
+4. Add performance guidance for filtering operations
+
+**Validation Criteria**:
+- [ ] All functions have comprehensive docstrings
+- [ ] Examples work with real data
+- [ ] Performance characteristics documented
+- [ ] Best practices guide included
+
+---
+
+## **🔧 PHASE 4: PERFORMANCE INTEGRATION & BENCHMARKING**
 
 ### **3.1 AUTOMATED BENCHMARKING SYSTEM**
 

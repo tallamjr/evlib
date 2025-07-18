@@ -28,8 +28,22 @@ filtered = lf.filter(
     (pl.col("polarity") == 1)
 )
 
+# Or use high-level filtering functions
+filtered = evlib.filter_by_time(lf, t_start=0.1, t_end=0.2)
+filtered = evlib.filter_by_polarity(filtered, polarity=1)
+
+# Complete preprocessing pipeline
+processed = evlib.preprocess_events(
+    "path/to/your/data.h5",
+    t_start=0.1, t_end=0.5,
+    roi=(100, 500, 100, 400),
+    polarity=1,
+    remove_hot_pixels=True,
+    remove_noise=True
+)
+
 # Collect to DataFrame when needed
-df = filtered.collect()
+df = processed.collect()
 
 # Direct access to Rust formats module if needed
 # x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
@@ -44,6 +58,28 @@ x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
 
 # Create stacked histogram representation
 histogram = evlib.create_event_histogram(x, y, t, p, height=480, width=640)
+```
+
+### Event Filtering (New)
+```python
+import evlib
+
+# Apply temporal and spatial filtering
+filtered_events = evlib.filter_by_time("path/to/data.h5", t_start=0.1, t_end=1.0)
+roi_events = evlib.filter_by_roi(filtered_events, x_min=100, x_max=500, y_min=100, y_max=400)
+
+# Complete preprocessing pipeline
+processed_events = evlib.preprocess_events(
+    "path/to/data.h5",
+    t_start=0.1, t_end=1.0,
+    roi=(100, 500, 100, 400),
+    polarity=1,
+    remove_hot_pixels=True,
+    remove_noise=True
+)
+
+# Use with representations
+histogram = evlib.create_stacked_histogram(processed_events, height=480, width=640)
 ```
 
 ## Available Functions
@@ -61,6 +97,14 @@ histogram = evlib.create_event_histogram(x, y, t, p, height=480, width=640)
 - `create_voxel_grid()`: Create voxel grid representations (Polars-based)
 - `preprocess_for_detection()`: High-level API for neural network preprocessing
 - `benchmark_vs_rvt()`: Performance comparison with PyTorch approaches
+
+### Event Filtering Functions
+- `filter_by_time()`: Filter events by time range (start/end times)
+- `filter_by_roi()`: Filter events by spatial region of interest
+- `filter_by_polarity()`: Filter events by polarity (positive/negative)
+- `filter_hot_pixels()`: Remove hot pixels using statistical detection
+- `filter_noise()`: Apply noise filtering (refractory period, etc.)
+- `preprocess_events()`: Complete preprocessing pipeline with all filters
 
 """
 
@@ -88,6 +132,24 @@ try:
 except ImportError:
     _representations_available = False
 
+# Import filtering module
+try:
+    from . import filtering  # noqa: F401
+
+    _filtering_available = True
+
+    # Import key filtering functions directly
+    from .filtering import (  # noqa: F401
+        filter_by_time,  # noqa: F401
+        filter_by_roi,  # noqa: F401
+        filter_by_polarity,  # noqa: F401
+        filter_hot_pixels,  # noqa: F401
+        filter_noise,  # noqa: F401
+        preprocess_events,  # noqa: F401
+    )
+except ImportError:
+    _filtering_available = False
+
 # Import streaming utilities
 try:
     from . import streaming_utils  # noqa: F401
@@ -95,6 +157,24 @@ try:
     _streaming_utils_available = True
 except ImportError:
     _streaming_utils_available = False
+
+# Import filtering utilities
+try:
+    from . import filtering  # noqa: F401
+
+    _filtering_available = True
+
+    # Import key filtering functions directly
+    from .filtering import (
+        filter_by_time,  # noqa: F401
+        filter_by_roi,  # noqa: F401
+        filter_by_polarity,  # noqa: F401
+        filter_hot_pixels,  # noqa: F401
+        filter_noise,  # noqa: F401
+        preprocess_events,  # noqa: F401
+    )
+except ImportError:
+    _filtering_available = False
 
 # Import high-performance Polars preprocessing (consolidated into representations module)
 _representations_polars_available = False
@@ -132,6 +212,18 @@ if _models_available:
     __all__.append("models")
 if _streaming_utils_available:
     __all__.append("streaming_utils")
+if _filtering_available:
+    __all__.extend(
+        [
+            "filtering",
+            "filter_by_time",
+            "filter_by_roi",
+            "filter_by_polarity",
+            "filter_hot_pixels",
+            "filter_noise",
+            "preprocess_events",
+        ]
+    )
 if _representations_available:
     __all__.extend(
         [
@@ -141,6 +233,18 @@ if _representations_available:
             "create_voxel_grid",
             "preprocess_for_detection",
             "benchmark_vs_rvt",
+        ]
+    )
+if _filtering_available:
+    __all__.extend(
+        [
+            "filtering",
+            "filter_by_time",
+            "filter_by_roi",
+            "filter_by_polarity",
+            "filter_hot_pixels",
+            "filter_noise",
+            "preprocess_events",
         ]
     )
 if _formats_available:
