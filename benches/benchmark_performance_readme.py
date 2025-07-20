@@ -3,7 +3,10 @@
 Performance verification script for README metrics.
 
 This script validates the performance claims made in the README.md file
-using available test data.
+using available test data and generates performance visualization plots.
+
+Requirements:
+    pip install matplotlib psutil
 """
 
 import evlib
@@ -12,6 +15,8 @@ import time
 import os
 import psutil
 from pathlib import Path
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 def get_memory_usage_mb():
@@ -160,6 +165,152 @@ def test_readme_examples():
         print(f"FAIL: Error in README examples: {e}")
 
 
+def create_performance_plot(results):
+    """Create and save performance visualization plot"""
+    if not results:
+        print("No results to plot")
+        return
+
+    # Extract data for plotting
+    file_names = []
+    loading_speeds = []
+    filter_speeds = []
+    memory_efficiency = []
+    event_counts = []
+
+    for key, value in results.items():
+        if "_loading" in key:
+            file_name = key.replace("_loading", "").split("/")[-1]
+            file_names.append(file_name)
+            loading_speeds.append(value[0] / 1_000_000)  # Convert to millions of events/s
+            event_counts.append(value[1] / 1_000_000)  # Convert to millions of events
+        elif "_filtering" in key:
+            filter_speeds.append(value[0] / 1_000_000)  # Convert to millions of events/s
+        elif "_memory" in key:
+            memory_efficiency.append(value[0])  # bytes per event
+
+    if not file_names:
+        print("No data to plot")
+        return
+
+    # Create figure with subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle("evlib Performance Benchmarks", fontsize=16, fontweight="bold")
+
+    # Colors for consistency
+    colors = ["#2E86AB", "#A23B72", "#F18F01"]
+
+    # 1. Loading Speed
+    bars1 = ax1.bar(range(len(file_names)), loading_speeds, color=colors[0], alpha=0.8)
+    ax1.set_title("Loading Speed", fontweight="bold")
+    ax1.set_ylabel("Million Events/Second")
+    ax1.set_xticks(range(len(file_names)))
+
+    # Create clear format labels
+    format_labels = []
+    for name in file_names:
+        if ".txt" in name:
+            format_labels.append("Text Format")
+        elif ".h5" in name or "_td" in name:
+            format_labels.append("HDF5 Format")
+        elif ".raw" in name:
+            format_labels.append("RAW Binary")
+        else:
+            format_labels.append(name)
+
+    ax1.set_xticklabels(format_labels, rotation=45, ha="right")
+    ax1.grid(True, alpha=0.3)
+
+    # Add value labels on bars
+    for bar, speed in zip(bars1, loading_speeds):
+        height = bar.get_height()
+        ax1.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.05,
+            f"{speed:.1f}M",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+        )
+
+    # 2. Filter Speed
+    if filter_speeds:
+        bars2 = ax2.bar(range(len(file_names)), filter_speeds, color=colors[1], alpha=0.8)
+        ax2.set_title("Filter Speed", fontweight="bold")
+        ax2.set_ylabel("Million Events/Second")
+        ax2.set_xticks(range(len(file_names)))
+        ax2.set_xticklabels(format_labels, rotation=45, ha="right")
+        ax2.grid(True, alpha=0.3)
+
+        # Add value labels on bars
+        for bar, speed in zip(bars2, filter_speeds):
+            height = bar.get_height()
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                height + 5,
+                f"{speed:.0f}M",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+            )
+
+    # 3. Memory Efficiency
+    if memory_efficiency:
+        bars3 = ax3.bar(range(len(file_names)), memory_efficiency, color=colors[2], alpha=0.8)
+        ax3.set_title("Memory Efficiency", fontweight="bold")
+        ax3.set_ylabel("Bytes per Event")
+        ax3.set_xticks(range(len(file_names)))
+        ax3.set_xticklabels(format_labels, rotation=45, ha="right")
+        ax3.grid(True, alpha=0.3)
+
+        # Add value labels on bars
+        for bar, memory in zip(bars3, memory_efficiency):
+            height = bar.get_height()
+            ax3.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                height + 1,
+                f"{memory:.1f}",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+            )
+
+    # 4. Dataset Size vs Performance
+    if event_counts and loading_speeds:
+        ax4.scatter(event_counts, loading_speeds, s=100, c=colors[0], alpha=0.8, edgecolors="black")
+        ax4.set_title("Dataset Size vs Loading Performance", fontweight="bold")
+        ax4.set_xlabel("Dataset Size (Million Events)")
+        ax4.set_ylabel("Loading Speed (Million Events/Second)")
+        ax4.grid(True, alpha=0.3)
+
+        # Add labels for each point
+        for i, label in enumerate(format_labels):
+            ax4.annotate(
+                label,
+                (event_counts[i], loading_speeds[i]),
+                xytext=(5, 5),
+                textcoords="offset points",
+                fontsize=9,
+                ha="left",
+            )
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save plot
+    output_path = Path("docs/performance_benchmark.png")
+    output_path.parent.mkdir(exist_ok=True)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"\nPerformance plot saved to: {output_path}")
+
+    # Also save to root for README
+    root_path = Path("performance_benchmark.png")
+    plt.savefig(root_path, dpi=300, bbox_inches="tight")
+    print(f"Performance plot also saved to: {root_path}")
+
+    plt.close()
+
+
 def main():
     print("PERFORMANCE: README PERFORMANCE VERIFICATION")
     print("=" * 50)
@@ -233,6 +384,9 @@ def main():
         print("FAIL: No test files found for benchmarking")
 
     print("\nVerification complete!")
+
+    # Generate performance visualization
+    create_performance_plot(results)
 
 
 if __name__ == "__main__":

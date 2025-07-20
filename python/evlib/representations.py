@@ -71,7 +71,11 @@ def create_stacked_histogram(
 
     start_time = time.time()
 
+    # Debug: Calculate expected window count for complete windows only
+    # This will help us verify we match RVT's behavior
+
     # Create LazyFrame with temporal and spatial processing
+    # Simplified approach to avoid memory issues with many intermediate columns
     result_lazy = (
         events_lazy.with_columns(
             [
@@ -83,31 +87,45 @@ def create_stacked_histogram(
         )
         .with_columns(
             [
-                # Create window assignments
-                ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) // stride_us).alias("window_id"),
+                # Calculate time offset from sequence start
+                (pl.col("timestamp_us") - pl.col("timestamp_us").min()).alias("time_offset"),
+            ]
+        )
+        .with_columns(
+            [
+                # Create window assignments based on stride
+                (pl.col("time_offset") // stride_us).alias("window_id"),
+            ]
+        )
+        .with_columns(
+            [
+                # Calculate sequence duration for filtering
+                (pl.col("timestamp_us").max() - pl.col("timestamp_us").min()).alias("seq_duration"),
+            ]
+        )
+        .filter(
+            # Only keep events that belong to complete windows
+            # Window N is complete if there's enough data: (N+1) * stride + (window_duration - stride) <= seq_duration
+            (pl.col("window_id") + 1) * stride_us
+            <= pl.col("seq_duration") - (window_duration_us - stride_us)
+        )
+        .filter(
+            # Only keep events within the window duration for each window
+            pl.col("time_offset") % stride_us
+            < window_duration_us
+        )
+        .with_columns(
+            [
                 # Clip spatial coordinates
                 pl.col("x").clip(0, width - 1).cast(pl.Int32),
                 pl.col("y").clip(0, height - 1).cast(pl.Int32),
                 # Polarity channel (0 for negative/0, 1 for positive/1)
                 pl.col("polarity").cast(pl.Int32).alias("channel"),
-            ]
-        )
-        .filter(
-            # Only keep events within valid window bounds
-            (pl.col("timestamp_us") - pl.col("timestamp_us").min()) % stride_us
-            < window_duration_us
-        )
-        .with_columns(
-            [
                 # Temporal binning within each window
-                (
-                    ((pl.col("timestamp_us") - pl.col("timestamp_us").min()) % stride_us)
-                    * nbins
-                    // window_duration_us
-                )
+                ((pl.col("time_offset") % stride_us) * nbins // window_duration_us)
                 .clip(0, nbins - 1)
                 .cast(pl.Int32)
-                .alias("time_bin")
+                .alias("time_bin"),
             ]
         )
         .group_by(["window_id", "channel", "time_bin", "y", "x"])
@@ -126,6 +144,7 @@ def create_stacked_histogram(
     total_time = time.time() - start_time
     print(f"Success: Created stacked histogram LazyFrame in {total_time:.2f}s")
     print("Success: Lazy operations - will execute on collect/materialize")
+    print("Note: Incomplete windows at sequence boundaries are dropped (RVT-compatible)")
 
     return result_lazy
 

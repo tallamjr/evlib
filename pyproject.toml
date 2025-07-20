@@ -82,6 +82,15 @@ addopts = [
 [tool.black]
 line-length = 110
 
+[tool.isort]
+profile = "black"
+line_length = 110
+remove_unused_imports = false
+
+[tool.ruff]
+ignore = ["F401"]  # F401 = unused imports
+line-length = 110
+
 [tool.pytest-markdown-docs]
 # Configuration for pytest-markdown-docs
 docs_dir = "docs"
