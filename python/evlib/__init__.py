@@ -108,6 +108,8 @@ histogram = evlib.create_stacked_histogram(processed_events, height=480, width=6
 
 """
 
+import os
+
 # Import submodules (with graceful fallback)
 try:
     from . import models  # noqa: F401
@@ -178,6 +180,41 @@ except ImportError:
 
 # Import high-performance Polars preprocessing (consolidated into representations module)
 _representations_polars_available = False
+
+# Configure Polars GPU acceleration if available
+try:
+    import polars as pl
+
+    # Auto-detect GPU support and configure Polars engine
+    gpu_engine_requested = os.environ.get("POLARS_ENGINE_AFFINITY", "").lower() == "gpu"
+
+    if gpu_engine_requested:
+        try:
+            # Try to set GPU engine if requested via environment variable
+            pl.Config.set_engine_affinity("gpu")
+            print("evlib: Polars GPU engine enabled via POLARS_ENGINE_AFFINITY environment variable")
+        except Exception as e:
+            print(f"evlib: Could not enable Polars GPU engine: {e}")
+            print("evlib: Falling back to CPU engine")
+
+    # Auto-detect GPU availability for performance optimization
+    def _try_enable_gpu_engine():
+        """Try to enable GPU engine automatically if hardware is available."""
+        try:
+            # Test if GPU operations work
+            test_df = pl.DataFrame({"test": [1, 2, 3]})
+            pl.Config.set_engine_affinity("gpu")
+            _ = test_df.select(pl.col("test") * 2)
+            return True
+        except Exception:
+            pl.Config.set_engine_affinity("cpu")  # Reset to CPU
+            return False
+
+    # Store GPU availability for user information
+    _gpu_available = _try_enable_gpu_engine() if not gpu_engine_requested else False
+
+except ImportError:
+    _gpu_available = False
 
 # Import data reading functions from Rust module
 try:

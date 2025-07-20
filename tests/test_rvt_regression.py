@@ -97,8 +97,14 @@ class TestRVTRegression:
         total_nonzero = np.count_nonzero(dense)
         assert total_nonzero == 4
 
+    @pytest.mark.slow
+    @pytest.mark.integration
     def test_parquet_based_regression_quick(self, rvt_test_file, events_file):
-        """Quick Parquet-based regression test comparing against RVT reference data."""
+        """Quick Parquet-based regression test comparing against RVT reference data.
+
+        This is a slow integration test that requires large data files.
+        For CI/CD, use synthetic tests instead.
+        """
         if not (Path(rvt_test_file).exists() and Path(events_file).exists()):
             pytest.skip("Required files not available")
 

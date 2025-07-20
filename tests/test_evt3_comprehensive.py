@@ -188,9 +188,18 @@ def test_evt3_loading():
 
         # Test loading events
         if hasattr(evlib, "load_events"):
-            x, y, t, p = evlib.load_events(test_file)
+            # Load events as Polars LazyFrame (new API)
+            events_lazy = evlib.load_events(test_file)
+            events_df = events_lazy.collect()
 
-            print(f"Loaded {len(x)} events")
+            print(f"Loaded {events_df.height} events")
+
+            # Extract arrays from Polars DataFrame
+            x = events_df["x"].to_numpy()
+            y = events_df["y"].to_numpy()
+            t = events_df["timestamp"].to_numpy()
+            p = events_df["polarity"].to_numpy()
+
             print(f"X coordinates: {x}")
             print(f"Y coordinates: {y}")
             print(f"Timestamps: {t}")
@@ -287,7 +296,7 @@ def test_evt3_error_handling():
         # Test loading malformed file
         if hasattr(evlib, "load_events"):
             try:
-                x, y, t, p = evlib.load_events(malformed_file)
+                evlib.load_events(malformed_file).collect()
                 print("WARN: Expected error loading malformed EVT3 file, but succeeded")
             except Exception as e:
                 print(f"PASS: Correctly caught error for malformed file: {e}")
@@ -346,7 +355,9 @@ def test_evt3_coordinate_bounds():
         # Test loading file with out-of-bounds coordinates
         if hasattr(evlib, "load_events"):
             try:
-                x, y, t, p = evlib.load_events(bounds_test_file)
+                events_lazy = evlib.load_events(bounds_test_file)
+                events_df = events_lazy.collect()
+                x = events_df["x"].to_numpy()
                 print(f"Loaded {len(x)} events (bounds check may be disabled)")
 
                 # Check if any events were loaded despite bounds issues
