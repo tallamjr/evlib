@@ -1,0 +1,433 @@
+name: Publish to PyPI and crates.io
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'Cargo.toml'
+  workflow_dispatch:
+    inputs:
+      publish_to:
+        description: 'Where to publish'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+        - both
+        - pypi
+        - crates
+      test_mode:
+        description: 'Use test repositories (TestPyPI, cargo publish --dry-run)'
+        required: false
+        default: false
+        type: boolean
+      force_publish:
+        description: 'Force publish even if version exists'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-version:
+    name: Check Version Change
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version_changed: ${{ steps.check.outputs.version_changed }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Get current version
+      id: version
+      run: |
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Current version: $version"
+
+    - name: Check if version changed
+      id: check
+      run: |
+        version="${{ steps.version.outputs.version }}"
+        echo "Checking version: $version"
+
+        # For workflow_dispatch, always allow publishing
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "Manual trigger - allowing publish"
+          echo "should_publish=true" >> $GITHUB_OUTPUT
+          echo "version_changed=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Check if Cargo.toml version changed in this commit
+        if git diff HEAD~1 HEAD --name-only | grep -q "Cargo.toml"; then
+          echo "Cargo.toml changed, checking version difference..."
+
+          # Get previous version
+          prev_version=$(git show HEAD~1:Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Previous version: $prev_version"
+          echo "Current version: $version"
+
+          if [ "$version" != "$prev_version" ]; then
+            echo "Version changed from $prev_version to $version"
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "Cargo.toml not changed"
+          echo "should_publish=false" >> $GITHUB_OUTPUT
+          echo "version_changed=false" >> $GITHUB_OUTPUT
+        fi
+
+  pre-publish-checks:
+    name: Pre-publish Checks
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.should_publish == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: publish-checks
+
+    - name: Check Rust formatting
+      run: cargo fmt --check
+
+    - name: Run Clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Run Rust tests
+      run: cargo test --release --lib
+
+    - name: Check if crates.io version exists
+      id: crates_check
+      run: |
+        version="${{ needs.check-version.outputs.version }}"
+        if cargo search evlib | grep -q "evlib = \"$version\""; then
+          echo "Version $version already exists on crates.io"
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "Version $version does not exist on crates.io"
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Check if PyPI version exists
+      id: pypi_check
+      run: |
+        version="${{ needs.check-version.outputs.version }}"
+        if curl -s "https://pypi.org/pypi/evlib/$version/json" | grep -q "\"version\":\"$version\""; then
+          echo "Version $version already exists on PyPI"
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "Version $version does not exist on PyPI"
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Fail if version exists and not forced
+      if: |
+        (steps.crates_check.outputs.exists == 'true' || steps.pypi_check.outputs.exists == 'true') &&
+        github.event.inputs.force_publish != 'true'
+      run: |
+        echo "ERROR: Version ${{ needs.check-version.outputs.version }} already exists"
+        echo "crates.io exists: ${{ steps.crates_check.outputs.exists }}"
+        echo "PyPI exists: ${{ steps.pypi_check.outputs.exists }}"
+        echo "Use force_publish=true to override"
+        exit 1
+
+  publish-crates:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [check-version, pre-publish-checks]
+    if: |
+      needs.check-version.outputs.should_publish == 'true' &&
+      (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'crates' || github.event.inputs.publish_to == '')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: publish-crates
+
+    - name: Publish to crates.io (dry-run)
+      if: github.event.inputs.test_mode == 'true'
+      run: |
+        echo "TEST MODE: Dry-run publish to crates.io"
+        cargo publish --dry-run
+
+    - name: Publish to crates.io
+      if: github.event.inputs.test_mode != 'true'
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: |
+        echo "Publishing version ${{ needs.check-version.outputs.version }} to crates.io"
+        cargo publish --token $CARGO_REGISTRY_TOKEN
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ${{ matrix.os }}
+    needs: [check-version, pre-publish-checks]
+    if: |
+      needs.check-version.outputs.should_publish == 'true' &&
+      (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: publish-pypi-${{ matrix.os }}-${{ matrix.python-version }}
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev pkg-config cmake
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install hdf5 pkg-config cmake
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # Windows HDF5 setup is handled by conda/vcpkg in maturin
+        echo "Windows dependencies handled by maturin"
+
+    - name: Install maturin
+      run: |
+        python -m pip install --upgrade pip
+        pip install maturin
+
+    - name: Build wheel
+      run: |
+        echo "Building wheel for Python ${{ matrix.python-version }} on ${{ matrix.os }}"
+        maturin build --release --features python --interpreter python${{ matrix.python-version }}
+
+    - name: Upload wheels as artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
+        path: target/wheels/
+        retention-days: 7
+
+  test-wheels:
+    name: Test Built Wheels
+    runs-on: ubuntu-latest
+    needs: [check-version, publish-pypi]
+    if: needs.check-version.outputs.should_publish == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Download all wheels
+      uses: actions/download-artifact@v3
+      with:
+        path: wheels/
+
+    - name: Test wheel installation
+      run: |
+        echo "Testing wheel installation..."
+        wheel_file=$(find wheels/ -name "*.whl" | grep "linux" | grep "x86_64" | head -1)
+        if [ -n "$wheel_file" ]; then
+          echo "Installing wheel: $wheel_file"
+          pip install "$wheel_file"[dev]
+
+          # Test basic import
+          python -c "import evlib; print(f'evlib imported successfully')"
+
+          # Run quick tests if data exists
+          if [ -f "data/slider_depth/events.txt" ]; then
+            python -c "
+            import evlib
+            events = evlib.load_events('data/slider_depth/events.txt')
+            df = events.collect()
+            print(f'Loaded {len(df)} events successfully')
+            "
+          fi
+        else
+          echo "WARNING: No suitable wheel found for testing"
+        fi
+
+  publish-to-pypi:
+    name: Upload to PyPI
+    runs-on: ubuntu-latest
+    needs: [check-version, publish-pypi, test-wheels]
+    if: needs.check-version.outputs.should_publish == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Download all wheels
+      uses: actions/download-artifact@v3
+      with:
+        path: wheels/
+
+    - name: Prepare wheels for upload
+      run: |
+        mkdir -p dist/
+        find wheels/ -name "*.whl" -exec cp {} dist/ \;
+        ls -la dist/
+        echo "Found $(ls dist/*.whl | wc -l) wheels for upload"
+
+    - name: Install twine
+      run: pip install twine
+
+    - name: Upload to TestPyPI
+      if: github.event.inputs.test_mode == 'true'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      run: |
+        echo "TEST MODE: Uploading to TestPyPI"
+        twine upload --repository testpypi dist/*
+        echo "Upload complete. Test with:"
+        echo "pip install --index-url https://test.pypi.org/simple/ evlib==${{ needs.check-version.outputs.version }}"
+
+    - name: Upload to PyPI
+      if: github.event.inputs.test_mode != 'true'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        echo "Uploading version ${{ needs.check-version.outputs.version }} to PyPI"
+        twine upload dist/*
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [check-version, publish-crates, publish-to-pypi]
+    if: |
+      always() &&
+      needs.check-version.outputs.should_publish == 'true' &&
+      github.event.inputs.test_mode != 'true' &&
+      (needs.publish-crates.result == 'success' || needs.publish-crates.result == 'skipped') &&
+      (needs.publish-to-pypi.result == 'success' || needs.publish-to-pypi.result == 'skipped')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ needs.check-version.outputs.version }}
+        release_name: Release v${{ needs.check-version.outputs.version }}
+        body: |
+          ## evlib v${{ needs.check-version.outputs.version }}
+
+          ### Installation
+
+          **Python (PyPI):**
+          ```bash
+          pip install evlib==${{ needs.check-version.outputs.version }}
+          ```
+
+          **Rust (crates.io):**
+          ```bash
+          cargo add evlib@${{ needs.check-version.outputs.version }}
+          ```
+
+          ### Links
+          - [PyPI Package](https://pypi.org/project/evlib/${{ needs.check-version.outputs.version }}/)
+          - [crates.io Package](https://crates.io/crates/evlib/${{ needs.check-version.outputs.version }})
+          - [Documentation](https://docs.rs/evlib/${{ needs.check-version.outputs.version }})
+
+          ### Changes
+          See [CHANGELOG.md](https://github.com/tallamjr/evlib/blob/v${{ needs.check-version.outputs.version }}/CHANGELOG.md) for detailed changes.
+        draft: false
+        prerelease: false
+
+  summary:
+    name: Publication Summary
+    runs-on: ubuntu-latest
+    needs: [check-version, publish-crates, publish-to-pypi, create-release]
+    if: always()
+
+    steps:
+    - name: Publication Summary
+      run: |
+        echo "=== Publication Summary ==="
+        echo "Version: ${{ needs.check-version.outputs.version }}"
+        echo "Should publish: ${{ needs.check-version.outputs.should_publish }}"
+        echo "Version changed: ${{ needs.check-version.outputs.version_changed }}"
+        echo "Test mode: ${{ github.event.inputs.test_mode }}"
+        echo "Publish target: ${{ github.event.inputs.publish_to || 'both' }}"
+        echo ""
+        echo "Results:"
+        echo "- crates.io: ${{ needs.publish-crates.result }}"
+        echo "- PyPI: ${{ needs.publish-to-pypi.result }}"
+        echo "- GitHub Release: ${{ needs.create-release.result }}"
+        echo ""
+
+        if [ "${{ needs.check-version.outputs.should_publish }}" != "true" ]; then
+          echo "No publication needed - version unchanged"
+        elif [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "Test mode completed successfully"
+          echo "Ready for production publish when test_mode=false"
+        else
+          echo "Production publication completed!"
+          echo ""
+          echo "Package is now available:"
+          echo "- PyPI: https://pypi.org/project/evlib/${{ needs.check-version.outputs.version }}/"
+          echo "- crates.io: https://crates.io/crates/evlib/${{ needs.check-version.outputs.version }}"
+          echo ""
+          echo "Install with:"
+          echo "  pip install evlib==${{ needs.check-version.outputs.version }}"
+          echo "  cargo add evlib@${{ needs.check-version.outputs.version }}"
+        fi
