@@ -4,7 +4,7 @@ This guide covers evlib's high-performance Polars-based event preprocessing capa
 
 ## Overview
 
-The `evlib.representations` module provides high-performance Polars-based implementations of common event camera representations with significant performance improvements over traditional PyTorch approaches. All functions return NumPy arrays but leverage Polars internally for efficient processing.
+The `evlib.representations` module provides high-performance Polars-based implementations of common event camera representations with significant performance improvements over traditional PyTorch approaches. All functions return Polars LazyFrames for maximum efficiency and lazy evaluation.
 
 ### Performance Benefits
 
@@ -17,35 +17,23 @@ Based on testing with real event data:
 
 ### Output Compatibility
 
-- **Shape**: (69, 20, 240, 346) - matches RVT format expectations
-- **Data Type**: uint8 for stacked histograms, int8 for mixed density
-- **Channel Layout**: Polarity channels × temporal bins × height × width
-- **Format**: All functions return NumPy arrays directly (no need for .to_numpy())
+- **Format**: Polars LazyFrames with columns [window_id, channel, time_bin, y, x, count]
+- **Data Types**: Int32 for coordinates and counts, Duration for timestamps
+- **Lazy Evaluation**: Operations deferred until .collect() is called
+- **Engine Selection**: Automatically uses optimal Polars engine (GPU/streaming)
+- **RVT Compatibility**: Can be converted to RVT-expected tensor format when needed
 
 ## Quick Start
 
-```python
-import evlib.representations as evr
-
-# Drop-in replacement for RVT preprocessing
-data = evr.preprocess_for_detection(
-    "data/sequence.h5",
-    representation="stacked_histogram",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
-)
-
-# All functions return NumPy arrays directly
-print(f"Shape: {data.shape}, Type: {type(data)}")
-# Output: Shape: (69, 20, 480, 640), Type: <class 'numpy.ndarray'>
-```
+*High-level preprocessing API is under development.*
 
 ### Why This API is Better
 
 - **Single import**: All representation functions in one place
-- **High performance**: Polars-based processing with NumPy output
-- **No conversion needed**: Functions return NumPy arrays directly
-- **Clean API**: Only the essential functions, no legacy clutter
+- **Lazy evaluation**: Process only what's needed, when needed
+- **Memory efficient**: Polars handles large datasets with minimal memory
+- **Engine optimized**: Automatically uses best engine (GPU/streaming/CPU)
+- **Clean API**: Consistent LazyFrame outputs, no tensor manipulation needed
 
 ## API Reference
 
@@ -55,14 +43,7 @@ print(f"Shape: {data.shape}, Type: {type(data)}")
 
 Drop-in replacement for RVT preprocessing pipeline.
 
-```python
-data = evr.preprocess_for_detection(
-    events_path,
-    representation="stacked_histogram",  # or "mixed_density", "voxel_grid"
-    height=480, width=640,
-    **kwargs  # Representation-specific parameters
-)
-```
+*Detection preprocessing function is under development.*
 
 **Parameters:**
 - `events_path`: Path to event file
@@ -74,16 +55,7 @@ data = evr.preprocess_for_detection(
 
 Main function for temporal histogram creation with windowing.
 
-```python
-hist = evr.create_stacked_histogram(
-    events_path,
-    height=480, width=640,
-    nbins=10,                    # Temporal bins per window
-    window_duration_ms=50.0,     # Window duration
-    stride_ms=None,              # Defaults to window_duration_ms
-    count_cutoff=10              # Max count per bin
-)
-```
+*Stacked histogram creation function is under development.*
 
 **Parameters:**
 - `events`: Path to event file or Polars LazyFrame
@@ -94,51 +66,37 @@ hist = evr.create_stacked_histogram(
 - `count_cutoff`: Maximum count per bin (None for no limit)
 
 **Returns:**
-- numpy array of shape `(num_windows, 2*nbins, height, width)`
+- Polars LazyFrame with columns [window_id, channel, time_bin, y, x, count, channel_time_bin]
+- channel: 0 for negative polarity, 1 for positive polarity
+- channel_time_bin: combined channel*nbins + time_bin for easier tensor conversion
 
 #### `create_mixed_density_stack()`
 
 Logarithmic time binning with polarity accumulation.
 
-```python
-mixed = evr.create_mixed_density_stack(
-    events_path,
-    height=480, width=640,
-    nbins=10,
-    window_duration_ms=50.0,
-    count_cutoff=None
-)
-```
+*Mixed density stack creation is under development.*
 
 **Parameters:**
 - Similar to `create_stacked_histogram()` but uses logarithmic binning
 - `count_cutoff`: Maximum absolute value per bin
 
 **Returns:**
-- numpy array of shape `(num_windows, nbins, height, width)` with int8 values
+- Polars LazyFrame with columns [window_id, time_bin, y, x, polarity_sum]
+- polarity_sum: signed accumulation of polarity values
 
 #### `create_voxel_grid()`
 
 Traditional voxel grid representation for entire dataset.
 
-```python
-voxels = evr.create_voxel_grid(
-    events_path,
-    height=480, width=346,
-    nbins=5
-)
-```
+*Voxel grid creation function is under development.*
 
 **Returns:**
-- numpy array of shape `(nbins, height, width)`
+- Polars LazyFrame with columns [time_bin, y, x, value]
+- value: signed polarity accumulation per voxel
 
 ### Performance Benchmarking
 
-```python
-# Compare against RVT performance
-results = evr.benchmark_vs_rvt('data/events.h5')
-print(f"Speedup: {results['speedup']:.1f}x")
-```
+*Performance benchmarking is under development.*
 
 ## Technical Implementation
 
@@ -168,38 +126,26 @@ print(f"Speedup: {results['speedup']:.1f}x")
 ### Data Flow
 
 ```
-Event File → evlib.load_events() → Polars LazyFrame → Window Processing → NumPy Array
+Event File → evlib.load_events() → Polars LazyFrame → Window Processing → Output LazyFrame
                                                     ↓
                           Temporal Binning ← Spatial Clipping ← Polarity Conversion
                                                     ↓
-                          Groupby Aggregation → Dense Histogram → Output Array
+                          Groupby Aggregation → Sparse Histogram → .collect() → DataFrame
 ```
 
 ## Migration from RVT
 
 ### Code Changes Required
 
-**Before (RVT):**
+**evlib approach:**
 ```python
-from rvt.representations import StackedHistogram
-from rvt.data.utils.preprocessing import H5Reader
-
-# RVT preprocessing
-reader = H5Reader("data.h5")
-stacker = StackedHistogram(bins=10)
-hist = stacker(reader.events)
-```
-
-**After (evlib):**
-```python
+import evlib
 import evlib.representations as evr
 
-# evlib preprocessing (drop-in replacement)
-hist = evr.create_stacked_histogram(
-    "data.h5",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
-)
+# evlib preprocessing with Polars (high-performance)
+events = evlib.load_events("data/slider_depth/events.txt")
+hist = evr.create_stacked_histogram(events, width=640, height=480, nbins=10)
+hist_df = hist.collect()
 ```
 
 ### Performance Expectations
@@ -234,65 +180,39 @@ hist = evr.create_stacked_histogram(
 
 ### Custom Parameters
 
-```python
-# High-framerate preprocessing
-hist = evr.create_stacked_histogram(
-    'events.h5',
-    height=480, width=640,
-    nbins=15,
-    window_duration_ms=33.3,  # ~30 FPS
-    stride_ms=16.7,           # 50% overlap
-    count_cutoff=15
-)
-```
+*High-framerate preprocessing tools are under development.*
 
 ### Production Pipeline
 
-```python
-import evlib.representations as evr
-import numpy as np
-
-def preprocess_sequence(input_path, output_path):
-    """Complete preprocessing pipeline for detection models."""
-
-    # Load and preprocess
-    data = evr.preprocess_for_detection(
-        input_path,
-        representation="stacked_histogram",
-        height=480, width=640,
-        nbins=10, window_duration_ms=50
-    )
-
-    # Save preprocessed data
-    np.save(output_path, data)
-
-    return data.shape, data.nbytes / 1024 / 1024  # Shape and MB
-
-# Process dataset
-shape, size_mb = preprocess_sequence('input.h5', 'output.npy')
-print(f"Preprocessed {shape} ({size_mb:.1f} MB)")
-```
+*Production pipeline tools are under development.*
 
 ### Batch Processing
 
 ```python
 import glob
+from pathlib import Path
 
 def batch_preprocess(input_pattern, output_dir):
     """Process multiple files in batch."""
     files = glob.glob(input_pattern)
 
     for input_file in files:
-        output_file = f"{output_dir}/{Path(input_file).stem}_processed.npy"
+        output_file = f"{output_dir}/{Path(input_file).stem}_processed.parquet"
 
         try:
-            data = evr.preprocess_for_detection(
+            # Create lazy preprocessing pipeline
+            data_lazy = evr.preprocess_for_detection(
                 input_file,
                 representation="stacked_histogram",
                 height=480, width=640
             )
-            np.save(output_file, data)
+
+            # Collect and save efficiently
+            data_df = evlib.collect_with_optimal_engine(data_lazy)
+            data_df.write_parquet(output_file)
+
             print(f"SUCCESS: Processed: {input_file} -> {output_file}")
+            print(f"  Entries: {len(data_df)}, Size: {data_df.estimated_size()/1024/1024:.1f} MB")
 
         except Exception as e:
             print(f"ERROR: Failed: {input_file} - {e}")
@@ -306,19 +226,22 @@ batch_preprocess("data/*.h5", "preprocessed/")
 ### Common Issues
 
 **Memory Usage**: For very large files (>1GB), consider:
-- Using temporal filtering: `t_start`, `t_end`
-- Reducing window duration
-- Processing in smaller chunks
+- Use lazy evaluation: don't collect until needed
+- Apply filtering before collection: `lazy_frame.filter(condition)`
+- Use optimal engine: `evlib.collect_with_optimal_engine(lazy_frame)`
+- Stream processing: `lazy_frame.collect(streaming=True)`
 
 **Performance**: To optimize performance:
-- Use appropriate data types (Int16 for coordinates)
-- Enable progress reporting for long operations
-- Consider parallel processing for multiple files
+- Use lazy evaluation for chained operations
+- Apply filters early in the pipeline
+- Use `.collect(engine="streaming")` for large datasets
+- Consider GPU engine with `POLARS_ENGINE_AFFINITY=gpu`
 
 **Compatibility**: For RVT migration:
-- Check output shapes match expected format
-- Verify polarity encoding (-1/1 vs 0/1)
-- Test with small datasets first
+- LazyFrames provide more flexibility than fixed tensors
+- Convert to tensor format only when feeding to neural networks
+- Use `.collect()` sparingly - work with LazyFrames when possible
+- Check polarity encoding in your specific dataset
 
 ### Getting Help
 

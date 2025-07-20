@@ -96,10 +96,10 @@ representations.
 import evlib
 
 # Load events from any supported format (automatic detection)
-df = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw").collect()
+df = evlib.load_events("data/slider_depth/events.txt").collect(engine='streaming')
 
 # Or load as LazyFrame for memory-efficient processing
-lf = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+lf = evlib.load_events("data/slider_depth/events.txt")
 
 # Basic event information
 print(f"Loaded {len(df)} events")
@@ -115,11 +115,12 @@ polarities = df['polarity'].to_numpy()
 
 ### Advanced Filtering
 ```python
+import evlib
 import evlib.filtering as evf
 
 # High-level preprocessing pipeline
 processed = evf.preprocess_events(
-    "tests/data/eTram/raw/val_2/val_night_011.raw",
+    "data/slider_depth/events.txt",
     t_start=0.1, t_end=0.5,
     roi=(100, 500, 100, 400),
     polarity=1,
@@ -130,7 +131,7 @@ processed = evf.preprocess_events(
 )
 
 # Individual filters (work with LazyFrames)
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+events = evlib.load_events("data/slider_depth/events.txt")
 time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
@@ -139,11 +140,12 @@ denoised = evf.filter_noise(clean_events, method="refractory", refractory_period
 
 ### Event Representations
 ```python
+import evlib
 import evlib.representations as evr
 
 # Create stacked histogram (replaces RVT preprocessing)
 hist = evr.create_stacked_histogram(
-    "tests/data/eTram/raw/val_2/val_night_011.raw",
+    "data/slider_depth/events.txt",
     height=480, width=640,
     nbins=10, window_duration_ms=50.0,
     count_cutoff=10
@@ -151,28 +153,21 @@ hist = evr.create_stacked_histogram(
 
 # Create mixed density stack representation
 density = evr.create_mixed_density_stack(
-    "tests/data/eTram/raw/val_2/val_night_011.raw",
+    "data/slider_depth/events.txt",
     height=480, width=640,
     nbins=10, window_duration_ms=50.0
 )
 
-# Create voxel grid representation
-voxel = evr.create_voxel_grid(
-    "tests/data/eTram/raw/val_2/val_night_011.raw",
-    height=480, width=640,
-    nbins=5
-)
-
 # High-level preprocessing for neural networks
 data = evr.preprocess_for_detection(
-    "tests/data/eTram/raw/val_2/val_night_011.raw",
+    "data/slider_depth/events.txt",
     representation="stacked_histogram",
     height=480, width=640,
     nbins=10, window_duration_ms=50
 )
 
 # Performance benchmarking against RVT
-results = evr.benchmark_vs_rvt("tests/data/eTram/raw/val_2/val_night_011.raw", height=480, width=640)
+results = evr.benchmark_vs_rvt("data/slider_depth/events.txt", height=480, width=640)
 ```
 
 ## Installation
@@ -257,33 +252,37 @@ evlib provides comprehensive Polars DataFrame support for high-performance event
 
 #### Loading Data
 ```python
+import evlib
+
 # Load as LazyFrame (recommended)
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()  # Collect to DataFrame when needed
 
 # Automatic format detection and optimization
-events = evlib.load_events("data.evt2")  # EVT2 format automatically detected
-print(f"Format: {evlib.detect_format('data.evt2')}")
+events = evlib.load_events("data/slider_depth/events.txt")  # EVT2 format automatically detected
+print(f"Format: {evlib.detect_format('data/slider_depth/events.txt')}")
 print(f"Description: {evlib.get_format_description('EVT2')}")
 
 ```
 
 #### Advanced Features
 ```python
+import evlib
 import polars as pl
 
 # Chain operations with LazyFrames for optimal performance
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+events = evlib.load_events("data/slider_depth/events.txt")
 result = events.filter(pl.col("polarity") == 1).with_columns([
     pl.col("timestamp").dt.total_microseconds().alias("time_us"),
     (pl.col("x") + pl.col("y")).alias("diagonal_pos")
 ]).collect()
 
 # Memory-efficient temporal analysis
-temporal_stats = events.group_by_dynamic(
-    "timestamp",
-    every="1s"
-).agg([
+time_stats = events.with_columns([
+    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+]).group_by([
+    (pl.col("time_us") // 1_000_000).alias("time_second")  # Group by second
+]).agg([
     pl.len().alias("event_count"),
     pl.col("polarity").mean().alias("avg_polarity")
 ]).collect()
@@ -298,15 +297,16 @@ analysis = filtered.with_columns([
 
 #### Utility Functions
 ```python
+import evlib
 import polars as pl
 import evlib.filtering as evf
 
 # Built-in format detection
-format_info = evlib.detect_format("tests/data/eTram/raw/val_2/val_night_011.raw")
+format_info = evlib.detect_format("data/slider_depth/events.txt")
 print(f"Detected format: {format_info}")
 
 # Spatial filtering using dedicated filtering functions (preferred)
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+events = evlib.load_events("data/slider_depth/events.txt")
 spatial_filtered = evf.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
 
 # Or using direct Polars operations
@@ -316,14 +316,21 @@ manual_filtered = events.filter(
 )
 
 # Temporal analysis with Polars operations
-rates = events.group_by_dynamic("timestamp", every="10ms").agg([
+rates = events.with_columns([
+    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+]).group_by([
+    (pl.col("time_us") // 10_000).alias("time_10ms")  # Group by 10ms
+]).agg([
     pl.len().alias("event_rate"),
     pl.col("polarity").mean().alias("avg_polarity")
 ]).collect()
 
 # Save processed data
-processed = evf.preprocess_events("tests/data/eTram/raw/val_2/val_night_011.raw", t_start=0.1, t_end=0.5)
-x, y, t, p = processed.select(["x", "y", "timestamp", "polarity"]).collect().to_numpy().T
+processed = evf.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
+processed_df = processed.collect()
+x, y, t_us, p = processed_df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+# Convert microseconds to seconds for save function
+t = t_us.astype('float64') / 1_000_000
 evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 ```
 
@@ -353,10 +360,10 @@ python -c "
 import evlib
 import time
 start = time.time()
-events = evlib.load_events('tests/data/eTram/raw/val_2/val_night_011.raw')
+events = evlib.load_events('data/slider_depth/events.txt')
 df = events.collect()
 print(f'Loaded {len(df):,} events in {time.time()-start:.2f}s')
-print(f'Format: {evlib.detect_format(\"tests/data/eTram/raw/val_2/val_night_011.raw\")}')
+print(f'Format: {evlib.detect_format(\"data/slider_depth/events.txt\")}')
 print(f'Memory per event: {df.estimated_size() / len(df):.1f} bytes')
 "
 ```
@@ -370,11 +377,11 @@ import evlib.filtering as evf
 import polars as pl
 
 # Small files (<5M events) - Direct loading
-events_small = evlib.load_events("small_file.h5")
+events_small = evlib.load_events("data/slider_depth/events.txt")
 df_small = events_small.collect()
 
 # Large files (>5M events) - Automatic streaming
-events_large = evlib.load_events("large_file.h5")
+events_large = evlib.load_events("data/slider_depth/events.txt")
 # Same API, automatically uses streaming for memory efficiency
 
 # Memory-efficient filtering on large datasets using filtering module
@@ -400,7 +407,7 @@ def monitor_memory():
 
 # Monitor memory usage during loading
 initial_mem = monitor_memory()
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 peak_mem = monitor_memory()
 
@@ -427,12 +434,14 @@ print(f"Polars DataFrame size: {df.estimated_size() / 1024 / 1024:.1f} MB")
 
 **Issue**: Out of memory errors
 ```python
+import evlib
+import evlib.filtering as evf
+
 # Solution: Use filtering before collecting (streaming activates automatically)
-events = evlib.load_events("large_file.h5")
+events = evlib.load_events("data/slider_depth/events.txt")
 # Streaming activates automatically for files >5M events
 
 # Apply filtering before collecting to reduce memory usage
-import evlib.filtering as evf
 filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 df = filtered.collect()  # Only collect when needed
 
@@ -442,11 +451,14 @@ filtered.sink_parquet("filtered_events.parquet")
 
 **Issue**: Slow loading performance
 ```python
+import evlib
+import evlib.filtering as evf
+import polars as pl
+
 # Solution: Use LazyFrame for complex operations and filtering module
-events = evlib.load_events("file.h5")
+events = evlib.load_events("data/slider_depth/events.txt")
 
 # Use filtering module for optimized operations
-import evlib.filtering as evf
 result = evf.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
 df = result.collect()
 
@@ -456,16 +468,17 @@ result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).
 
 **Issue**: Memory usage higher than expected
 ```python
-# Solution: Monitor and verify optimization
 import evlib
-events = evlib.load_events("file.h5")
+
+# Solution: Monitor and verify optimization
+events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
 print(f"DataFrame schema: {df.schema}")
 print(f"Number of events: {len(df):,}")
 
 # Check format detection
-format_info = evlib.detect_format("file.h5")
+format_info = evlib.detect_format("data/slider_depth/events.txt")
 print(f"Format: {format_info}")
 ```
 
@@ -481,28 +494,33 @@ evlib provides several Python modules for different aspects of event processing:
 
 ### Module Overview
 ```python
-# Core event loading (returns Polars LazyFrame)
 import evlib
-events = evlib.load_events("tests/data/eTram/raw/val_2/val_night_011.raw")
+import evlib.filtering as evf
+import evlib.representations as evr
+
+# Core event loading (returns Polars LazyFrame)
+events = evlib.load_events("data/slider_depth/events.txt")
 
 # Format detection and description
-format_info = evlib.detect_format("tests/data/eTram/raw/val_2/val_night_011.raw")
+format_info = evlib.detect_format("data/slider_depth/events.txt")
 description = evlib.get_format_description("HDF5")
 
 # Advanced filtering
-import evlib.filtering as evf
-filtered = evf.preprocess_events("tests/data/eTram/raw/val_2/val_night_011.raw", t_start=0.1, t_end=0.5)
+filtered = evf.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
 time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 
 # Event representations
-import evlib.representations as evr
-hist = evr.create_stacked_histogram("tests/data/eTram/raw/val_2/val_night_011.raw", height=480, width=640, nbins=10)
-voxel = evr.create_voxel_grid("tests/data/eTram/raw/val_2/val_night_011.raw", height=480, width=640, nbins=5)
+hist = evr.create_stacked_histogram("data/slider_depth/events.txt", height=480, width=640, nbins=10)
+# voxel = evr.create_voxel_grid("data/slider_depth/events.txt", height=480, width=640, nbins=5)  # API compatibility issue
 
 # Neural network models (limited functionality)
 from evlib.models import ModelConfig  # If available
 
-# Data saving
+# Data saving (need to get arrays first)
+df = events.collect()
+x, y, t_us, p = df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+# Convert microseconds to seconds for save functions
+t = t_us.astype('float64') / 1_000_000
 evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 evlib.save_events_to_text(x, y, t, p, "output.txt")
 ```

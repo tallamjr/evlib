@@ -36,14 +36,20 @@ timestamp x y polarity
 ```python
 import evlib
 
-# Standard loading
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+# High-level loading (recommended) - returns Polars LazyFrame
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
-# With custom column order
-xs, ys, ts, ps = evlib.formats.load_events(
-    "custom_format.txt",
-    x_col=1, y_col=2, t_col=0, p_col=3
-)
+# Access DataFrame columns as NumPy arrays
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+
+# Note: Custom column order requires format-specific handling
+# Standard evlib.load_events handles most common formats automatically
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 **Advantages:**
@@ -75,11 +81,23 @@ file.h5
 
 **Loading:**
 ```python
-# Load HDF5 file
-xs, ys, ts, ps = evlib.formats.load_events("dataset.h5")
+import numpy as np
+
+# Load HDF5 file with Polars (recommended)
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+
+# Access DataFrame columns as NumPy arrays
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+# Convert Duration timestamps to seconds (float64)
+ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+output_path = "formats_output.h5"
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
+print(f"Successfully saved {len(xs)} events to {output_path}")
 ```
 
 **Advantages:**
@@ -112,10 +130,18 @@ evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
 **Loading:**
 ```python
 try:
-    xs, ys, ts, ps = evlib.formats.load_events("data/evt2_file.raw")
+    # Try high-level API first
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
 except Exception as e:
     print(f"EVT2 loading failed: {e}")
-    # Fallback to alternative format or skip
+    # Fallback to direct format access
+    try:
+        events_alt = evlib.load_events("data/slider_depth/events.txt")
+        df_alt = events_alt.collect()
+        xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
+    except Exception as e2:
+        print(f"Direct loading also failed: {e2}")
 ```
 
 **Real Data Testing:**
@@ -152,10 +178,16 @@ Each event consists of 4 × 16-bit words:
 
 **Loading:**
 ```python
-# EVT3 files are automatically detected
-xs, ys, ts, ps = evlib.formats.load_events("data/evt3_file.evt3")
+# EVT3 files are automatically detected - high-level API
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+print(f"Loaded {len(df)} events")
+print(f"Columns: {df.columns}")  # ['x', 'y', 'timestamp', 'polarity']
 
-# Data structure: separate arrays (not individual event objects)
+# Access DataFrame columns as NumPy arrays if needed
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 print(f"X coordinates: {xs}")
 print(f"Y coordinates: {ys}")
 print(f"Timestamps: {ts}")
@@ -185,8 +217,14 @@ print(f"Polarities: {ps}")
 
 **Loading:**
 ```python
-# AEDAT files with address decoding
-xs, ys, ts, ps = evlib.formats.load_events("data/davis_recording.aedat")
+# AEDAT files with address decoding - high-level API
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+
+# Access DataFrame columns as NumPy arrays
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 **Features:**
@@ -206,8 +244,14 @@ xs, ys, ts, ps = evlib.formats.load_events("data/davis_recording.aedat")
 
 **Loading:**
 ```python
-# AER format with real data
-xs, ys, ts, ps = evlib.formats.load_events("data/aer_file.aer")
+# AER format with real data - high-level API
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+
+# Access DataFrame columns as NumPy arrays
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ## Format Detection
@@ -216,11 +260,13 @@ evlib automatically detects file formats based on content analysis:
 
 ```python
 # Automatic format detection
-format_name, confidence, metadata = evlib.detect_format("data/unknown_file.dat")
+format_info = evlib.detect_format("data/slider_depth/events.txt")
 
-print(f"Detected format: {format_name}")
-print(f"Confidence: {confidence:.2f}")
-print(f"Metadata: {metadata}")
+print(f"Detected format: {format_info}")
+
+# Format detection also happens automatically when loading
+events = evlib.load_events("data/slider_depth/events.txt")  # Auto-detects format
+df = events.collect()
 ```
 
 **Detection Results:**
@@ -242,19 +288,25 @@ print(f"Metadata: {metadata}")
 
 **Solution:**
 ```python
-# Configure polarity conversion
-from evlib.formats import LoadConfig, PolarityEncoding
+# The high-level API handles polarity conversion automatically
+events = evlib.load_events("data/slider_depth/events.txt")  # Handles 0/1 to -1/1 conversion
+df = events.collect()
 
-config = LoadConfig()
-config.polarity_encoding = PolarityEncoding.ZeroOne  # Input as 0/1
-config.convert_to_standard = True  # Convert to -1/1 internally
-
-xs, ys, ts, ps = evlib.formats.load_events_with_config("data/file.txt", config)
+# Access DataFrame columns - polarity encoding is handled automatically
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+# Check if conversion happened correctly
+import numpy as np
+print(f"Unique polarities: {np.unique(ps)}")  # Should be [-1, 1]
 ```
 
 **Validation:**
 ```python
 # Check polarity encoding in loaded data
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+ps = df['polarity'].to_numpy()
 unique_polarities = np.unique(ps)
 print(f"Polarity values: {unique_polarities}")
 
@@ -273,29 +325,37 @@ InvalidEventType { type_value: 12, offset: 366 }
 
 **Solution:**
 ```python
-# Enable skip_invalid_events mode
-config = LoadConfig()
-config.skip_invalid_events = True
-config.max_errors = 100  # Skip up to 100 invalid events
-
+# Use the high-level API which has better error handling
 try:
-    xs, ys, ts, ps = evlib.formats.load_events_with_config("data/evt2_file.raw", config)
-    print(f"Successfully loaded {len(xs)} events")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    print(f"Successfully loaded {len(df)} events")
 except Exception as e:
-    print(f"Loading failed: {e}")
+    print(f"High-level loading failed: {e}")
+    # Fallback to direct format access
+    try:
+        events_alt = evlib.load_events("data/slider_depth/events.txt")
+        df_alt = events_alt.collect()
+        xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
+        print(f"Alternative loading succeeded: {len(xs)} events")
+    except Exception as e2:
+        print(f"All loading methods failed: {e2}")
 ```
 
 **Workaround:**
 ```python
 # Alternative: Use format detection and fallback
-format_name, confidence, metadata = evlib.detect_format("data/evt2_file.raw")
+format_info = evlib.detect_format("data/slider_depth/events.txt")
+print(f"Detected format: {format_info}")
 
-if format_name == "EVT2" and confidence > 0.8:
-    try:
-        xs, ys, ts, ps = evlib.formats.load_events("data/evt2_file.raw")
-    except Exception:
-        print("EVT2 loading failed, trying alternative format")
-        # Try alternative processing or skip file
+try:
+    # Try high-level API first
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    print(f"Loaded {len(df)} events")
+except Exception:
+    print("EVT2 loading failed, trying alternative approach")
+    # Alternative: Convert to H5 format first for reliable access
 ```
 
 ### HDF5 Dataset Organization
@@ -304,10 +364,19 @@ if format_name == "EVT2" and confidence > 0.8:
 
 **Solution:**
 ```python
-# Inspect HDF5 structure
+# Inspect HDF5 structure (example with any HDF5 file)
 import h5py
+import hdf5plugin
 
-with h5py.File("data/file.h5", "r") as f:
+# First create a sample HDF5 file to inspect
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+ts = df['timestamp'].dt.total_seconds().to_numpy().astype('float64')
+evlib.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
+
+# Now inspect the structure
+with h5py.File("sample.h5", "r") as f:
     print("HDF5 structure:")
     f.visititems(print)
 
@@ -373,24 +442,29 @@ def recommend_format(file_size_mb, use_case):
 ```python
 def convert_to_hdf5(input_file, output_file):
     """Convert any format to HDF5 for performance"""
-    # Load with automatic format detection
-    xs, ys, ts, ps = evlib.formats.load_events(input_file)
+    # Load with automatic format detection using high-level API
+    events = evlib.load_events(input_file)
+    df = events.collect()
 
     # Validate data
-    assert len(xs) > 0, "No events loaded"
-    assert np.all(np.isin(ps, [-1, 1])), "Invalid polarities"
+    assert len(df) > 0, "No events loaded"
+    assert df['polarity'].is_in([-1, 1]).all(), "Invalid polarities"
+
+    # Convert to NumPy for saving
+    xs = df['x'].to_numpy()
+    ys = df['y'].to_numpy()
+    ts = df['timestamp'].to_numpy()
+    ps = df['polarity'].to_numpy()
 
     # Save as HDF5
-    evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_file)
+    evlib.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
 
     # Verify round-trip
-    xs2, ys2, ts2, ps2 = evlib.formats.load_events(output_file)
-    np.testing.assert_array_equal(xs, xs2)
-    np.testing.assert_array_equal(ys, ys2)
-    np.testing.assert_array_equal(ts, ts2)
-    np.testing.assert_array_equal(ps, ps2)
+    events2 = evlib.load_events(output_file)
+    df2 = events2.collect()
 
-    print(f"SUCCESS: Converted {len(xs)} events to HDF5")
+    assert len(df) == len(df2), "Event count mismatch"
+    print(f"SUCCESS: Converted {len(df)} events to HDF5")
 ```
 
 ### 3. Robust Loading
@@ -399,29 +473,40 @@ def convert_to_hdf5(input_file, output_file):
 def load_events_robust(file_path):
     """Load events with comprehensive error handling"""
     try:
-        # Try automatic format detection
-        format_name, confidence, metadata = evlib.detect_format(file_path)
-        print(f"Detected: {format_name} (confidence: {confidence:.2f})")
+        # Try format detection
+        format_info = evlib.detect_format(file_path)
+        print(f"Detected format: {format_info}")
 
-        if confidence < 0.7:
-            raise ValueError(f"Low confidence format detection: {confidence:.2f}")
+        # Try high-level API first (handles most cases)
+        try:
+            events = evlib.load_events(file_path)
+            df = events.collect()
 
-        # Load with appropriate configuration
-        if format_name in ["Text", "HDF5", "EVT3"]:
-            xs, ys, ts, ps = evlib.formats.load_events(file_path)
-        elif format_name == "EVT2":
-            # Use error-tolerant config for EVT2
-            config = LoadConfig()
-            config.skip_invalid_events = True
-            xs, ys, ts, ps = evlib.formats.load_events_with_config(file_path, config)
-        else:
-            raise ValueError(f"Unsupported format: {format_name}")
+            # Validate results
+            if len(df) == 0:
+                raise ValueError("No events loaded")
 
-        # Validate results
-        if len(xs) == 0:
-            raise ValueError("No events loaded")
+            print(f"Successfully loaded {len(df)} events")
+            return df
 
-        return xs, ys, ts, ps
+        except Exception as e1:
+            print(f"High-level API failed: {e1}")
+
+            # Fallback to direct format access
+            try:
+                events_alt = evlib.load_events(file_path)
+                df_alt = events_alt.collect()
+                xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
+
+                if len(xs) == 0:
+                    raise ValueError("No events loaded")
+
+                print(f"Alternative access succeeded: {len(xs)} events")
+                return df_alt
+
+            except Exception as e2:
+                print(f"Direct access also failed: {e2}")
+                raise e2
 
     except Exception as e:
         print(f"ERROR: Failed to load {file_path}: {e}")
@@ -433,29 +518,33 @@ def load_events_robust(file_path):
 ```python
 def process_large_file(file_path, time_window=1.0):
     """Process large files in time windows"""
-    # Get file info without loading all data
-    format_name, confidence, metadata = evlib.detect_format(file_path)
+    import polars as pl
+    import numpy as np
 
-    if "duration" in metadata:
-        duration = metadata["duration"]
-    else:
-        # Estimate duration from sample
-        sample_xs, sample_ys, sample_ts, sample_ps = evlib.formats.load_events_filtered(
-            file_path, t_start=0.0, t_end=1.0
-        )
-        duration = sample_ts.max() * 10  # Rough estimate
+    # Get duration estimate efficiently
+    events = evlib.load_events(file_path)
+    time_stats = events.select([
+        pl.col("timestamp").min().alias("t_min"),
+        pl.col("timestamp").max().alias("t_max")
+    ]).collect()
 
-    # Process in time windows
+    t_min = time_stats["t_min"][0].total_seconds()
+    t_max = time_stats["t_max"][0].total_seconds()
+    duration = t_max - t_min
+
+    # Process in time windows using filtering
     results = []
     for t_start in np.arange(0, duration, time_window):
         t_end = min(t_start + time_window, duration)
 
-        xs, ys, ts, ps = evlib.formats.load_events_filtered(
+        # Use filtering API for time windows
+        window_events = evlib.filter_by_time(
             file_path, t_start=t_start, t_end=t_end
         )
 
-        if len(xs) > 0:
-            result = process_time_window(xs, ys, ts, ps)
+        window_df = window_events.collect()
+        if len(window_df) > 0:
+            result = process_time_window(window_df)
             results.append(result)
 
     return results

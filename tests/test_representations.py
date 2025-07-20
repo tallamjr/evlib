@@ -11,10 +11,10 @@ import os
 def test_create_stacked_histogram():
     """Test create_stacked_histogram function with real data."""
     # Create sample event data using evlib's expected format
-    x = np.array([10, 20, 30, 40, 50], dtype=np.int16)
-    y = np.array([15, 25, 35, 45, 55], dtype=np.int16)
+    x = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    y = np.array([15, 25, 35, 45, 55], dtype=np.int64)
     t = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
-    p = np.array([1, 0, 1, 0, 1], dtype=np.int8)
+    p = np.array([1, 0, 1, 0, 1], dtype=np.int64)
 
     # Save to temporary HDF5 file using evlib
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
@@ -45,10 +45,10 @@ def test_create_stacked_histogram():
 def test_create_voxel_grid():
     """Test create_voxel_grid function with real data."""
     # Create sample event data
-    x = np.array([10, 20, 30, 40, 50], dtype=np.int16)
-    y = np.array([15, 25, 35, 45, 55], dtype=np.int16)
+    x = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    y = np.array([15, 25, 35, 45, 55], dtype=np.int64)
     t = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
-    p = np.array([1, 0, 1, 0, 1], dtype=np.int8)
+    p = np.array([1, 0, 1, 0, 1], dtype=np.int64)
 
     # Save to temporary HDF5 file using evlib
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
@@ -77,10 +77,10 @@ def test_create_voxel_grid():
 def test_preprocess_for_detection():
     """Test preprocess_for_detection function with real data."""
     # Create sample event data
-    x = np.array([10, 20, 30, 40, 50], dtype=np.int16)
-    y = np.array([15, 25, 35, 45, 55], dtype=np.int16)
+    x = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    y = np.array([15, 25, 35, 45, 55], dtype=np.int64)
     t = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float64)
-    p = np.array([1, 0, 1, 0, 1], dtype=np.int8)
+    p = np.array([1, 0, 1, 0, 1], dtype=np.int64)
 
     # Save to temporary HDF5 file using evlib
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
@@ -110,10 +110,10 @@ def test_preprocess_for_detection():
 def test_benchmark_vs_rvt():
     """Test benchmark_vs_rvt function with real data."""
     # Create sample event data
-    x = np.array([10, 20, 30, 40, 50] * 100, dtype=np.int16)
-    y = np.array([15, 25, 35, 45, 55] * 100, dtype=np.int16)
+    x = np.array([10, 20, 30, 40, 50] * 100, dtype=np.int64)
+    y = np.array([15, 25, 35, 45, 55] * 100, dtype=np.int64)
     t = np.linspace(0.1, 1.0, 500, dtype=np.float64)
-    p = np.array([1, 0, 1, 0, 1] * 100, dtype=np.int8)
+    p = np.array([1, 0, 1, 0, 1] * 100, dtype=np.int64)
 
     # Save to temporary HDF5 file using evlib
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
@@ -141,10 +141,10 @@ def test_benchmark_vs_rvt():
 def test_representations_with_empty_data():
     """Test representations functions handle empty data correctly."""
     # Create empty event data
-    x = np.array([], dtype=np.int16)
-    y = np.array([], dtype=np.int16)
+    x = np.array([], dtype=np.int64)
+    y = np.array([], dtype=np.int64)
     t = np.array([], dtype=np.float64)
-    p = np.array([], dtype=np.int8)
+    p = np.array([], dtype=np.int64)
 
     # Save to temporary HDF5 file using evlib
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:

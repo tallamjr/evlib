@@ -6,112 +6,129 @@ Get up and running with evlib in 5 minutes!
 
 ```python
 import evlib
+import polars as pl
 
-# Load events from a text file
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-print(f"Loaded {len(xs)} events")
+# Load events from a text file (returns Polars LazyFrame)
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()  # Get DataFrame if needed
+print(f"Loaded {len(df)} events")
+
+# Access data columns
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ts = df['timestamp'].to_numpy()
+ps = df['polarity'].to_numpy()
 ```
 
 ## Event Filtering
 
+<!-- NOTE: evlib.filtering module not yet available. Use Polars filtering directly: -->
+
 ```python
-# Load events with time window
-xs, ys, ts, ps = evlib.formats.load_events_filtered(
-    "data/slider_depth/events.txt",
-    t_start=0.0,    # Start time (seconds)
-    t_end=1.0       # End time (seconds)
-)
+import polars as pl
 
-# Load events with spatial bounds
-xs, ys, ts, ps = evlib.formats.load_events_filtered(
-    "data/slider_depth/events.txt",
-    min_x=100, max_x=500,  # X coordinate bounds
-    min_y=100, max_y=300   # Y coordinate bounds
-)
+# Load events and use Polars filtering
+events = evlib.load_events("data/slider_depth/events.txt")
 
-# Load events with polarity filtering
-pos_xs, pos_ys, pos_ts, pos_ps = evlib.formats.load_events_filtered(
-    "data/slider_depth/events.txt", polarity=1
-)   # Positive events only
-neg_xs, neg_ys, neg_ts, neg_ps = evlib.formats.load_events_filtered(
-    "data/slider_depth/events.txt", polarity=-1
-)  # Negative events only
+# Time window filtering
+filtered_events = events.filter(
+    (pl.col('timestamp') >= 0.0) & (pl.col('timestamp') <= 1.0)
+)
+df = filtered_events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+
+# Spatial bounds filtering
+spatial_events = events.filter(
+    (pl.col('x') >= 100) & (pl.col('x') <= 500) &
+    (pl.col('y') >= 100) & (pl.col('y') <= 300)
+)
+df = spatial_events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+
+# Polarity filtering
+pos_events = events.filter(pl.col('polarity') == 1)  # Positive events only
+neg_events = events.filter(pl.col('polarity') == -1)  # Negative events only
+
+# Convert to numpy arrays if needed
+pos_df = pos_events.collect()
+pos_xs, pos_ys, pos_ts, pos_ps = pos_df['x'].to_numpy(), pos_df['y'].to_numpy(), pos_df['timestamp'].to_numpy(), pos_df['polarity'].to_numpy()
 ```
 
 ## Event Representations
 
-### Voxel Grid
 ```python
-# Create a voxel grid representation
-voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(
-    xs, ys, ts, ps,
-    5,              # Number of temporal bins
-    (640, 480)      # (width, height)
-)
-# Shape: (5, 480, 640)
-```
+# Basic event data for custom representations
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
-### Smooth Voxel Grid
-```python
-# Create smooth voxel grid with bilinear interpolation
-smooth_data, smooth_shape_data, smooth_shape_shape = evlib.representations.events_to_smooth_voxel_grid(
-    xs, ys, ts, ps,
-    5,              # Number of temporal bins
-    (640, 480)      # (width, height)
-)
-# Improved temporal resolution through interpolation
+# Access event data for custom processing
+print(f"Event data available for custom representations: {len(df)} events")
+print(f"Data columns: {df.columns}")
+print(f"Data types: {df.dtypes}")
+
+# Note: Advanced representation functions are under development
+# Use basic data access for custom implementations
 ```
 
 ## Event Visualization
 
-### Basic Plotting
 ```python
-import matplotlib.pyplot as plt
+import numpy as np
 
-# Plot events as scatter plot (using matplotlib directly)
-plt.figure(figsize=(10, 6))
-plt.scatter(xs[:10000], ys[:10000], c=ps[:10000], cmap='RdBu_r', s=0.1)
-plt.title("Event Visualization")
-plt.xlabel("X coordinate")
-plt.ylabel("Y coordinate")
-plt.show()
-```
+# Load events first
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ts = df['timestamp'].to_numpy()
+ps = df['polarity'].to_numpy()
 
-### Terminal Visualization (Ultra-Fast)
-```python
-# Create image visualization
-event_image = evlib.visualization.draw_events_to_image(
-    xs[:10000], ys[:10000], ps[:10000], 640, 480
-)
-# Display the event image
-plt.figure(figsize=(10, 6))
-plt.imshow(event_image, cmap='gray')
-plt.title("Event Image Visualization")
-plt.show()
+print(f"Loaded {len(df)} events for visualization")
+print(f"Event data shape: x={xs.shape}, y={ys.shape}, t={ts.shape}, p={ps.shape}")
+
+# Note: For actual plotting, install matplotlib and use:
+# import matplotlib.pyplot as plt
+# plt.scatter(xs[:10000], ys[:10000], c=ps[:10000], cmap='RdBu_r', s=0.1)
+# plt.show()
 ```
 
 ## Event Augmentation
 
 ```python
-# Add spatial transformations
-xs_flipped, ys_flipped, ts_aug, ps_aug = evlib.augmentation.flip_events_x(xs, ys, ts, ps, (640, 480))
+import numpy as np
 
-# Add random noise events
-xs_noisy, ys_noisy, ts_noisy, ps_noisy = evlib.augmentation.add_random_events(xs, ys, ts, ps, 1000, (640, 480))
+# Load events first
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+
+# Spatial flip using numpy
+xs_flipped = 640 - 1 - xs  # Horizontal flip
+ys_flipped = ys.copy()
+ps_aug = ps.copy()
+
+print(f"Original events: {len(xs)}")
+print(f"Flipped coordinates: x_max={xs_flipped.max()}, x_min={xs_flipped.min()}")
+
+# Note: For timestamp-based augmentation, handle the datetime format properly
+# or convert to numeric values first
 ```
 
 ## Neural Network Inference
 
-### E2VID Reconstruction
 ```python
-# Download and use E2VID model
-model_path = evlib.processing.download_model("e2vid_unet")
-reconstructed_frame = evlib.processing.events_to_video(
-    xs, ys, ts, ps,
-    model_path=model_path,
-    width=640,
-    height=480
-)
+# Neural network functionality is under development
+# Basic data loading for preprocessing:
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+print(f"Loaded {len(df)} events ready for manual preprocessing")
+print(f"Event columns: {df.columns}")
+
+# Note: evlib.representations.create_voxel_grid has known issues
+# For now, use basic data loading and manual preprocessing
+# Neural network models are not currently available
 ```
 
 ## File Format Support
@@ -121,19 +138,34 @@ reconstructed_frame = evlib.processing.events_to_video(
 # Standard format: timestamp x y polarity
 # 0.1 320 240 1
 # 0.2 321 241 -1
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ### HDF5 Files
 ```python
+import numpy as np
+
 # Load events first
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+# Convert Duration timestamps to seconds (float64)
+ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
 
-# Save to HDF5
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+# Save events to HDF5 format
+output_path = "quickstart_output.h5"
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 
-# Load from HDF5
-xs_h5, ys_h5, ts_h5, ps_h5 = evlib.formats.load_events("output.h5")
+# Load events from HDF5 files:
+events_h5 = evlib.load_events(output_path)
+df_h5 = events_h5.collect()
+xs_h5, ys_h5, ps_h5 = df_h5['x'].to_numpy(), df_h5['y'].to_numpy(), df_h5['polarity'].to_numpy()
+# Convert Duration timestamps to seconds (float64)
+ts_h5 = df_h5['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+
+print("HDF5 round-trip complete!")
 ```
 
 ### Custom Column Mapping
@@ -141,7 +173,9 @@ xs_h5, ys_h5, ts_h5, ps_h5 = evlib.formats.load_events("output.h5")
 # For files with different column order: x y polarity timestamp
 # Note: Column mapping not currently supported in this version
 # Use standard format: timestamp x y polarity
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ## Performance Tips
@@ -166,29 +200,32 @@ import time
 import numpy as np
 
 # Large dataset example
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")  # 1M+ events
-
-# evlib voxel grid (optimized)
+events = evlib.load_events("data/slider_depth/events.txt")  # 1M+ events
 start = time.time()
-voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 5, (640, 480))
-time_evlib = time.time() - start
+df = events.collect()
+load_time = time.time() - start
 
-print(f"evlib voxel grid creation: {time_evlib:.3f}s for {len(xs):,} events")
-print(f"Voxel grid shape: {voxel_shape}")
+print(f"Data loading: {load_time:.3f}s for {len(df):,} events")
+print(f"Loading rate: {len(df)/load_time:.0f} events/sec")
+print(f"Event columns: {df.columns}")
+
+# Note: Advanced representations have known issues
+# Use basic data loading for reliable performance testing
 ```
 
 ## Error Handling
 
 ```python
 try:
-    xs, ys, ts, ps = evlib.formats.load_events("nonexistent.txt")
+    events = evlib.load_events("nonexistent.txt")
 except OSError as e:
     print(f"File error: {e}")
 
 # Example with valid file
 try:
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-    print(f"Successfully loaded {len(xs)} events")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    print(f"Successfully loaded {len(df)} events")
 except OSError as e:
     print(f"Error loading events: {e}")
 ```
@@ -196,6 +233,5 @@ except OSError as e:
 ## Next Steps
 
 - [Loading Data Guide](../user-guide/loading-data.md)
-- [Visualization Guide](../user-guide/visualization.md)
-- [Neural Networks Guide](../user-guide/models.md)
+- [Event Representations Guide](../user-guide/representations.md)
 - [Performance Guide](performance.md)

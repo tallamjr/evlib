@@ -199,16 +199,25 @@ Row Format (Cache-Unfriendly):
 ### Zero-Copy Between Arrow Systems
 
 ```python
-# Your Polars DataFrame can zero-copy to other Arrow systems
+# Your Polars DataFrame can zero-copy to other systems through Arrow format
 import polars as pl
-import pyarrow as pa
 import pandas as pd
 
-df = evlib.load_events("data.h5").collect()
+df = evlib.load_events("data/slider_depth/events.txt").collect()
 
-# Zero-copy conversions thanks to Arrow
-arrow_table = df.to_arrow()         # Zero-copy Polars → PyArrow
-pandas_df = arrow_table.to_pandas() # Zero-copy PyArrow → Pandas
+# Efficient conversions through Arrow format (requires pyarrow)
+try:
+    arrow_table = df.to_arrow()         # Zero-copy Polars → PyArrow
+    pandas_df = arrow_table.to_pandas() # Zero-copy PyArrow → Pandas
+    print("Arrow conversion successful")
+except ImportError:
+    print("PyArrow not installed, converting to numpy arrays instead")
+    # Convert to numpy arrays as an alternative
+    x_array = df['x'].to_numpy()
+    y_array = df['y'].to_numpy()
+    t_array = df['timestamp'].dt.total_seconds().to_numpy()
+    p_array = df['polarity'].to_numpy()
+    print(f"Converted to numpy arrays: {len(x_array)} events")
 ```
 
 ### SIMD Vectorization

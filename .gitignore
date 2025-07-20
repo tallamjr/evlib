@@ -735,6 +735,9 @@ data/gen4_1mpx_processed_RVT
 
 data/slider_depth
 
+tests/data/output.*
+tests/data/filtered_events.parquet
+
 models/
 
 libs/

@@ -24,12 +24,6 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ### FEATURE: New Features
 
-**Advanced Neural Networks**
-- SPADE-E2VID model support
-- SSL-E2VID implementation
-- FireNet+ architecture
-- Multi-model ensemble inference
-
 **GPU Acceleration**
 - CUDA support for voxel grid creation
 - Metal Performance Shaders (macOS)
@@ -38,7 +32,6 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 **Real-time Streaming**
 - GStreamer integration
 - Live event camera support
-- Real-time visualization improvements
 
 ### TOOL: Improvements
 
@@ -47,10 +40,6 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - SIMD optimizations for event processing
 - Memory usage reduction (15% improvement)
 
-**Enhanced Augmentation**
-- Temporal jittering
-- Perspective transformations
-- Advanced noise models
 
 ### INCOMPLETE: Bug Fixes
 
@@ -179,39 +168,6 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ---
 
-## Migration Guides
-
-### Upgrading from v0.1.0 to v0.2.0
-
-**API Changes:**
-```python
-# Old (v0.1.0)
-voxel_grid = evlib.representations.create_voxel_representation(
-    xs, ys, ts, ps, 640, 480, 5
-)
-# Shape: (640, 480, 5)
-
-# New (v0.2.0)
-voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(
-    xs, ys, ts, ps, 640, 480, 5
-)
-# Shape: (5, 480, 640)
-```
-
-**Migration Steps:**
-1. Update function names in your code
-2. Transpose voxel grid dimensions if needed
-3. Update minimum Python version to 3.10
-4. Reinstall package to get latest version
-
-### Upgrading from v0.2.0 to v0.3.0 (Planned)
-
-**Expected Changes:**
-- GPU acceleration will be opt-in feature
-- New neural network models will have separate import paths
-- Real-time streaming will require additional dependencies
-
----
 
 ## Performance Evolution
 

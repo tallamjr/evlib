@@ -257,16 +257,23 @@ mod tests {
 ```python
 # tests/test_custom_representation.py
 import evlib
+import evlib.representations as evr
 import numpy as np
 
 def test_custom_representation():
     # Load real data
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # Test function
-    result = evlib.representations.create_custom_representation(
-        xs, ys, ts, ps, 640, 480, 1.0
+    voxel_lazy = evr.create_voxel_grid(
+        "data/slider_depth/events.txt",
+        height=480, width=640, nbins=5
     )
+    result = voxel_lazy.collect()
 
     # Validate output
     assert result.shape == (640, 480, 5)
@@ -309,7 +316,11 @@ def create_custom_representation(xs, ys, ts, ps, width, height, parameter):
 
     Examples
     --------
-    >>> xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    >>> events = evlib.load_events("data/slider_depth/events.txt")
+    >>> df = events.collect()
+    >>> xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+# Convert Duration timestamps to seconds (float64)
+ts = df['timestamp'].dt.total_seconds().to_numpy()
     >>> custom = evlib.representations.create_custom_representation(
     ...     xs, ys, ts, ps, 640, 480, 1.0
     ... )
@@ -330,7 +341,11 @@ import time
 import evlib
 
 def benchmark_custom_representation():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # Benchmark evlib
     start = time.time()
@@ -355,15 +370,21 @@ def benchmark_custom_representation():
 ### Memory Profiling
 
 ```python
-# Use memory_profiler for detailed analysis
-from memory_profiler import profile
+# Use standard Python profiling tools for detailed analysis
+import psutil
+import os
 
-@profile
 def test_memory_usage():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-    result = evlib.representations.create_custom_representation(
-        xs, ys, ts, ps, 640, 480, 1.0
+    process = psutil.Process(os.getpid())
+    baseline_memory = process.memory_info().rss / 1024 / 1024  # MB
+
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    voxel_lazy = evr.create_voxel_grid(
+        "data/slider_depth/events.txt",
+        height=480, width=640, nbins=5
     )
+    result = voxel_lazy.collect()
     return result
 ```
 

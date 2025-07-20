@@ -291,7 +291,7 @@ def create_voxel_grid(
                     (
                         (pl.col("timestamp_us") - pl.col("timestamp_us").min())
                         * nbins
-                        / (pl.col("timestamp_us").max() - pl.col("timestamp_us").min()).max(1)
+                        / (pl.col("timestamp_us").max() - pl.col("timestamp_us").min())
                     )
                     .floor()
                     .clip(0, nbins - 1)

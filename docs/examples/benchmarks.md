@@ -28,7 +28,11 @@ def benchmark_text_loading():
 
     # evlib loading
     start = time.time()
-    xs, ys, ts, ps = evlib.formats.load_events(file_path)
+    events = evlib.load_events(file_path)
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
     evlib_time = time.time() - start
 
     # Pure Python loading
@@ -51,19 +55,21 @@ def benchmark_text_loading():
 ```python
 def benchmark_hdf5_performance():
     # Create test dataset
-    xs = np.random.randint(0, 640, 1000000, dtype=np.uint16)
-    ys = np.random.randint(0, 480, 1000000, dtype=np.uint16)
+    xs = np.random.randint(0, 640, 1000000, dtype=np.int64)
+    ys = np.random.randint(0, 480, 1000000, dtype=np.int64)
     ts = np.sort(np.random.rand(1000000).astype(np.float64))
-    ps = np.random.choice([-1, 1], 1000000, dtype=np.int8)
+    ps = np.random.choice([-1, 1], 1000000, dtype=np.int64)
 
     # Save with evlib
     start = time.time()
-    evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "test_evlib.h5")
+    evlib.save_events_to_hdf5(xs, ys, ts, ps, "test_evlib.h5")
     evlib_save_time = time.time() - start
 
     # Load with evlib
     start = time.time()
-    xs2, ys2, ts2, ps2 = evlib.formats.load_events("test_evlib.h5")
+    events2 = evlib.load_events("test_evlib.h5")
+    df2 = events2.collect()
+    xs2, ys2, ts2, ps2 = df2['x'].to_numpy(), df2['y'].to_numpy(), df2['timestamp'].to_numpy(), df2['polarity'].to_numpy()
     evlib_load_time = time.time() - start
 
     print(f"Save time: {evlib_save_time:.3f}s")
@@ -80,14 +86,25 @@ def benchmark_hdf5_performance():
 ### Voxel Grid Creation
 
 ```python
+import evlib
+import evlib.representations as evr
+import numpy as np
+import time
+
 def benchmark_voxel_grid():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # evlib implementation
     start = time.time()
-    voxel_evlib_data, voxel_evlib_shape = evlib.representations.events_to_voxel_grid(
-        xs, ys, ts, ps, 640, 480, 5
+    voxel_lazy = evr.create_voxel_grid(
+        "data/slider_depth/events.txt",
+        height=480, width=640, nbins=5
     )
+    voxel_df = voxel_lazy.collect()
     evlib_time = time.time() - start
 
     # Pure Python implementation
@@ -129,7 +146,11 @@ def create_voxel_grid_numpy(xs, ys, ts, ps, width, height, bins):
 
 ```python
 def benchmark_smooth_voxel():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # evlib smooth voxel
     start = time.time()
@@ -159,7 +180,11 @@ def benchmark_smooth_voxel():
 
 ```python
 def benchmark_augmentation():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # evlib flip
     start = time.time()
@@ -187,7 +212,11 @@ def benchmark_augmentation():
 
 ```python
 def benchmark_noise_addition():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
 
     # evlib noise addition
     start = time.time()
@@ -217,8 +246,17 @@ def benchmark_model_loading():
     download_time = time.time() - start
 
     # Model inference
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-    voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 5, (640, 480))
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
+    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+    # Convert Duration timestamps to seconds (float64)
+    ts = df['timestamp'].dt.total_seconds().to_numpy()
+
+    voxel_lazy = evr.create_voxel_grid(
+        "data/slider_depth/events.txt",
+        height=480, width=640, nbins=5
+    )
+    voxel_df = voxel_lazy.collect()
 
     start = time.time()
     reconstructed = evlib.processing.events_to_video(
@@ -250,11 +288,15 @@ def benchmark_memory_usage():
     baseline_memory = process.memory_info().rss / 1024 / 1024  # MB
 
     # Load large dataset
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
     loaded_memory = process.memory_info().rss / 1024 / 1024  # MB
 
     # Create voxel grid
-    voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 5, (640, 480))
+    voxel_lazy = evr.create_voxel_grid(
+        "data/slider_depth/events.txt",
+        height=480, width=640, nbins=5
+    )
+    voxel_df = voxel_lazy.collect()
     voxel_memory = process.memory_info().rss / 1024 / 1024  # MB
 
     print(f"Baseline: {baseline_memory:.1f} MB")
@@ -324,16 +366,8 @@ if __name__ == "__main__":
 ## Profiling Tools
 
 ### Memory Profiling
-```python
-# Use memory_profiler for detailed analysis
-from memory_profiler import profile
 
-@profile
-def memory_intensive_operation():
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-    voxel_data, voxel_shape_data, voxel_shape_shape = evlib.representations.events_to_voxel_grid(xs, ys, ts, ps, 10, (640, 480))
-    return voxel_grid
-```
+Use standard Python profiling tools to monitor memory usage during evlib operations.
 
 ### Performance Profiling
 ```python

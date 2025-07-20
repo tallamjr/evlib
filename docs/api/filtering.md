@@ -22,11 +22,14 @@ Filter events by time range.
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Filter events between 0.1 and 0.5 seconds
-filtered = evf.filter_by_time("events.h5", t_start=0.1, t_end=0.5)
+filtered = evf.filter_by_time("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
 
 # Filter with LazyFrame
-lf = evlib.load_events("events.h5")
+import evlib
+lf = evlib.load_events("data/slider_depth/events.txt")
 time_filtered = evf.filter_by_time(lf, t_start=0.1, t_end=0.5)
 ```
 
@@ -44,9 +47,11 @@ Filter events by spatial region of interest (ROI).
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Filter events in center region
 filtered = evf.filter_by_roi(
-    "events.h5",
+    "data/slider_depth/events.txt",
     x_min=100, x_max=500,
     y_min=100, y_max=400
 )
@@ -68,11 +73,13 @@ Filter events by polarity.
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Keep only positive events
-positive = evf.filter_by_polarity("events.h5", polarity=1)
+positive = evf.filter_by_polarity("data/slider_depth/events.txt", polarity=1)
 
 # Keep both positive and negative (for -1/1 encoding)
-both = evf.filter_by_polarity("events.h5", polarity=[-1, 1])
+both = evf.filter_by_polarity("data/slider_depth/events.txt", polarity=[-1, 1])
 ```
 
 **Parameters:**
@@ -88,11 +95,13 @@ Remove hot pixels based on event count statistics.
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Remove pixels with >99.9% of event counts
-filtered = evf.filter_hot_pixels("events.h5", threshold_percentile=99.9)
+filtered = evf.filter_hot_pixels("data/slider_depth/events.txt", threshold_percentile=99.9)
 
 # More aggressive hot pixel removal
-filtered = evf.filter_hot_pixels("events.h5", threshold_percentile=99.0)
+filtered = evf.filter_hot_pixels("data/slider_depth/events.txt", threshold_percentile=99.0)
 ```
 
 **Parameters:**
@@ -108,9 +117,11 @@ Remove noise events using temporal filtering.
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Remove events within 1ms refractory period per pixel
 filtered = evf.filter_noise(
-    "events.h5",
+    "data/slider_depth/events.txt",
     method="refractory",
     refractory_period_us=1000
 )
@@ -132,9 +143,11 @@ High-level event preprocessing pipeline combining multiple filters.
 
 **Example Usage:**
 ```python
+import evlib.filtering as evf
+
 # Complete preprocessing pipeline
 processed = evf.preprocess_events(
-    "events.h5",
+    "data/slider_depth/events.txt",
     t_start=0.1, t_end=0.5,
     roi=(100, 500, 100, 400),
     polarity=1,
@@ -203,7 +216,7 @@ import evlib.filtering as evf
 import evlib
 
 # Load events
-lf = evlib.load_events("large_dataset.h5")
+lf = evlib.load_events("data/slider_depth/events.txt")
 
 # Apply filters in sequence
 filtered = evf.filter_by_time(lf, t_start=1.0, t_end=2.0)
@@ -218,9 +231,11 @@ print(f"Filtered to {len(df):,} events")
 ### Advanced Preprocessing
 
 ```python
+import evlib.filtering as evf
+
 # Complete preprocessing with all filters
 processed = evf.preprocess_events(
-    "noisy_dataset.h5",
+    "data/slider_depth/events.txt",
     t_start=0.5, t_end=1.5,
     roi=(200, 400, 150, 350),
     polarity=1,
@@ -237,10 +252,12 @@ final_events = processed.collect()
 ### Custom Filtering Pipeline
 
 ```python
+import evlib.filtering as evf
+import evlib
 import polars as pl
 
 # Load events
-lf = evlib.load_events("events.h5")
+lf = evlib.load_events("data/slider_depth/events.txt")
 
 # Custom filtering with Polars operations
 custom_filtered = lf.filter(

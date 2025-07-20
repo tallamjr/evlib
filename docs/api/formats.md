@@ -5,7 +5,7 @@ The formats module provides reliable, tested functions for loading and saving ev
 ## Overview
 
 ```python
-import evlib.formats
+import evlib
 ```
 
 The formats module supports:
@@ -17,40 +17,29 @@ The formats module supports:
 
 ### load_events
 
-::: evlib.formats.load_events
+::: evlib.load_events
 
 The primary function for loading event data with comprehensive filtering options.
 
 **Example Usage:**
 ```python
-# Basic loading
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+# High-level API (recommended) - returns Polars LazyFrame
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
-# Time window filtering
-xs, ys, ts, ps = evlib.formats.load_events_filtered("data/slider_depth/events.txt", t_start=0.0,
-    t_end=1.0
-)
+# Time window filtering using evlib.filtering
+import evlib.filtering as evf
+filtered_events = evf.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=0.0, t_end=1.0)
 
-# Spatial filtering
-xs, ys, ts, ps = evlib.formats.load_events_filtered("data/slider_depth/events.txt", min_x=100, max_x=500,
-    min_y=100, max_y=300
-)
+# Spatial filtering using preprocessing
+processed_events = evf.preprocess_events("data/slider_depth/events.txt", roi=(100, 500, 100, 300))
 
-# Polarity filtering
-positive_events = evlib.formats.load_events_filtered("data/slider_depth/events.txt", polarity=1)
-negative_events = evlib.formats.load_events_filtered("data/slider_depth/events.txt", polarity=-1)
+# Polarity filtering using Polars
+import polars as pl
+events = evlib.load_events("data/slider_depth/events.txt")
+positive_events = events.filter(pl.col('polarity') == 1)
 
-# Custom column mapping
-xs, ys, ts, ps = evlib.formats.load_events(
-    "custom_format.txt",
-    x_col=0, y_col=1, p_col=2, t_col=3
-)
-
-# Skip header lines
-xs, ys, ts, ps = evlib.formats.load_events(
-    "events_with_header.txt",
-    header_lines=1
-)
+# Data is sorted by timestamp by default when using evlib.load_events
 ```
 
 **Parameters:**
@@ -70,34 +59,54 @@ xs, ys, ts, ps = evlib.formats.load_events(
 - `header_lines` (int): Number of header lines to skip
 
 **Returns:**
-- `tuple`: (x_coordinates, y_coordinates, timestamps, polarities)
+- `dict`: Dictionary with keys ["x", "y", "timestamp", "polarity"] for Polars integration
 
 ### save_events_to_hdf5
 
-::: evlib.formats.save_events_to_hdf5
+::: evlib.save_events_to_hdf5
 
 Save event data to HDF5 format with perfect round-trip compatibility.
 
 **Example Usage:**
 ```python
+import numpy as np
+
+# Prepare event data
+xs = np.array([320, 321, 319], dtype=np.int64)
+ys = np.array([240, 241, 239], dtype=np.int64)
+ts = np.array([100, 200, 300], dtype=np.float64)  # in seconds
+ps = np.array([1, 0, 1], dtype=np.int64)
+
 # Save events to HDF5
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+output_path = "output_example.h5"
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 
 # Verify round-trip compatibility
-xs_loaded, ys_loaded, ts_loaded, ps_loaded = evlib.formats.load_events("output.h5")
+events_loaded = evlib.load_events(output_path)
+df_loaded = events_loaded.collect()
+xs_loaded = df_loaded['x'].to_numpy()
 assert np.array_equal(xs, xs_loaded)  # Perfect round-trip
+print(f"Successfully saved and loaded {len(xs)} events")
 ```
 
 ### save_events_to_text
 
-::: evlib.formats.save_events_to_text
+::: evlib.save_events_to_text
 
 Save event data to text format.
 
 **Example Usage:**
 ```python
+import numpy as np
+
+# Prepare event data
+xs = np.array([320, 321, 319], dtype=np.int64)
+ys = np.array([240, 241, 239], dtype=np.int64)
+ts = np.array([0.0001, 0.0002, 0.0003], dtype=np.float64)  # in seconds
+ps = np.array([1, 0, 1], dtype=np.int64)
+
 # Save events to text file
-evlib.formats.save_events_to_text(xs, ys, ts, ps, "output.txt")
+evlib.save_events_to_text(xs, ys, ts, ps, "output.txt")
 ```
 
 ## File Format Support
@@ -114,13 +123,13 @@ evlib.formats.save_events_to_text(xs, ys, ts, ps, "output.txt")
 
 **Custom Column Mapping:**
 ```python
-# For files with different column order
+# For files with different column order, preprocessing is recommended
 # x y polarity timestamp
 # 320 240 1 0.000100
-xs, ys, ts, ps = evlib.formats.load_events(
-    "custom.txt",
-    x_col=0, y_col=1, p_col=2, t_col=3
-)
+# Note: Use evlib.load_events with standard format for best compatibility
+events = evlib.load_events("data/slider_depth/events.txt")  # Handles standard formats
+df = events.collect()
+# Access data: df['x'], df['y'], df['timestamp'], df['polarity']
 ```
 
 ### HDF5 Files
@@ -133,12 +142,12 @@ HDF5 files are automatically detected and loaded. The format supports:
 **Supported HDF5 Structures:**
 ```python
 # Structure 1: datasets inside "events" group
-/events/t, /events/x, /events/y, /events/p
+# Example paths: /events/t, /events/x, /events/y, /events/p
 
 # Structure 2: separate root datasets
-/t, /x, /y, /p
-/timestamps, /x_pos, /y_pos, /polarity
-/ts, /xs, /ys, /ps
+# Example paths: /t, /x, /y, /p
+# Alternative names: /timestamps, /x_pos, /y_pos, /polarity
+# Short names: /ts, /xs, /ys, /ps
 ```
 
 ## Advanced Features
@@ -147,30 +156,41 @@ HDF5 files are automatically detected and loaded. The format supports:
 
 All filters can be combined:
 ```python
-# Complex filtering example
-xs, ys, ts, ps = evlib.formats.load_events_filtered("data/slider_depth/events.txt", t_start=1.0, t_end=5.0,        # Time window
-    min_x=100, max_x=500,          # Spatial bounds
-    min_y=100, max_y=400,
-    polarity=1,                    # Positive events only
-    sort=True                      # Sort by timestamp
+# Complex filtering example using high-level API
+import evlib.filtering as evf
+import polars as pl
+
+# Use preprocessing pipeline for comprehensive filtering
+processed_events = evf.preprocess_events(
+    "data/slider_depth/events.txt",
+    t_start=1.0, t_end=5.0,        # Time window
+    roi=(100, 500, 100, 400),      # Spatial bounds (min_x, max_x, min_y, max_y)
+    remove_hot_pixels=True
 )
+# Then filter by polarity using Polars
+positive_events = processed_events.filter(pl.col('polarity') == 1)
+df = positive_events.collect()
 ```
 
 ### Performance Optimization
 
 ```python
-# For large files, use chunked loading
-xs, ys, ts, ps = evlib.formats.load_events(
-    "massive_dataset.txt",
-    chunk_size=100000  # Process in 100k event chunks
+import evlib.filtering as evf
+
+# For large files, use filtering for efficiency
+filtered_events = evf.filter_by_time(
+    evlib.load_events("data/slider_depth/events.txt"),
+    t_start=0.1, t_end=1.0  # Only load events in time range
 )
+df = filtered_events.collect()
 ```
 
 ### Error Handling
 
 ```python
 try:
-    xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
+    events = evlib.load_events("data/slider_depth/events.txt")
+    df = events.collect()
 except FileNotFoundError:
     print("File not found")
 except OSError as e:
@@ -206,26 +226,19 @@ except OSError as e:
 
 ## Migration from Other Libraries
 
-### From event_utils
+### From other libraries
 ```python
-# Old: event_utils
-import event_utils
-events = event_utils.load_events("file.txt")
+# evlib provides a unified API for event data loading
+import evlib
+import evlib.filtering as evf
 
-# New: evlib
-import evlib.formats
-xs, ys, ts, ps = evlib.formats.load_events("file.txt")
-```
+# Load events as Polars LazyFrame
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
-### From esim_py
-```python
-# Old: esim_py
-import esim_py
-events = esim_py.EventsIterator("file.txt")
-
-# New: evlib (with filtering)
-import evlib.formats
-xs, ys, ts, ps = evlib.formats.load_events_filtered("file.txt", t_start=start_time,
-    t_end=end_time
-)
+# Apply filtering
+start_time = 0.1
+end_time = 1.0
+filtered_events = evf.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=start_time, t_end=end_time)
+df = filtered_events.collect()
 ```

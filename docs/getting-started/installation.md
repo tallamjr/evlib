@@ -96,12 +96,12 @@ Test your installation:
 import evlib
 
 # Test basic functionality
-print(f"evlib version: {evlib.__version__}")
 print(f"Available modules: {[m for m in dir(evlib) if not m.startswith('_')]}")
 
 # Test with sample data
-xs, ys, ts, ps = evlib.formats.load_events("data/slider_depth/events.txt")
-print(f"Loaded {len(xs)} events successfully!")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+print(f"Loaded {len(df)} events successfully!")
 ```
 
 ## Troubleshooting

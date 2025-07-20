@@ -1,7 +1,8 @@
 # Processing API Reference
 
-> **Status Note**: The Rust backend neural network processing module is temporarily disabled in the current version. Neural network functionality is available through the Python `evlib.models` module. See the [Models API](../user-guide/models.md) for currently available functionality.
+> **Status Note**: The Rust backend neural network processing module is temporarily disabled in the current version. Neural network functionality is not currently available.
 
+<!--
 Neural network processing functions for event camera data.
 
 ## E2VID Neural Network
@@ -266,3 +267,4 @@ def validate_model_input(voxel_grid: np.ndarray,
     if not np.isfinite(voxel_grid).all():
         raise ValueError("Input contains non-finite values")
 ```
+-->
