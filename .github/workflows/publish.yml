@@ -111,7 +111,13 @@ jobs:
         key: publish-checks
 
     - name: Check Rust formatting
-      run: cargo fmt --check
+      run: |
+        cargo fmt --version
+        cargo fmt --check || {
+          echo "Rust formatting check failed. Running cargo fmt to see differences:";
+          cargo fmt --check --verbose;
+          exit 1;
+        }
 
     - name: Run Clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
