@@ -257,8 +257,43 @@ except ImportError:
     _polars_available = False
     _polars_utils_available = False
 
+# Import version from Rust module
+try:
+    from .evlib import __version__
+except ImportError:
+    # Fallback to reading from Cargo.toml if Rust module not available
+    import pathlib
+
+    try:
+        # Try tomllib first (Python 3.11+), then fallback to tomli or manual parsing
+        try:
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib
+            except ImportError:
+                # Manual parsing fallback for Python 3.10
+                import re
+
+                _cargo_toml_path = pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
+                with open(_cargo_toml_path, "r") as f:
+                    content = f.read()
+                version_match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+                if version_match:
+                    __version__ = version_match.group(1)
+                else:
+                    __version__ = "unknown"
+                raise ImportError  # Skip the tomllib parsing below
+
+        _cargo_toml_path = pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
+        with open(_cargo_toml_path, "rb") as f:
+            _cargo_data = tomllib.load(f)
+        __version__ = _cargo_data["package"]["version"]
+    except (FileNotFoundError, KeyError, AttributeError):
+        __version__ = "unknown"
+
 # Export the available functionality
-__all__ = []
+__all__ = ["__version__"]
 
 if _models_available:
     __all__.append("models")
