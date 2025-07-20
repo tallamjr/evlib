@@ -25,12 +25,15 @@ exclude         = [
 name           = "evlib"
 crate-type     = ["cdylib", "rlib"]
 
+# Binary targets (optional, only built when features are enabled)
 [[bin]]
 name           = "evlib-terminal"
+path           = "src/bin/evlib-terminal.rs"
 required-features = ["terminal", "gstreamer"]
 
 [[bin]]
 name           = "evlib-web"
+path           = "src/bin/evlib-web.rs"
 required-features = ["gstreamer", "terminal"]
 
 [[bench]]
