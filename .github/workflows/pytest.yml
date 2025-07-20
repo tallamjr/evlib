@@ -86,8 +86,8 @@ jobs:
 
       - name: Run fast tests (CI-friendly)
         run: |
-          # Run fast tests excluding slow integration tests
-          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5
+          # Run fast tests excluding slow integration tests and documentation tests
+          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5 --ignore=docs/ --ignore=README.md
 
       - name: Run GPU-specific tests
         if: matrix.gpu == true
@@ -134,7 +134,7 @@ jobs:
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.gpu != true  # Only generate coverage once
         run: |
-          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration" --ignore=docs/ --ignore=README.md
 
       - name: Test GStreamer functionality
         if: matrix.python-version == '3.11' && matrix.gpu != true  # Only test on one configuration
