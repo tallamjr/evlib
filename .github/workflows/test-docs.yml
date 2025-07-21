@@ -52,11 +52,11 @@ jobs:
         echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
         echo "$PWD/.venv/bin" >> $GITHUB_PATH
         source .venv/bin/activate
-        uv pip install -e ".[dev]"
+        uv pip install -e ".[all]"
 
     - name: Build evlib
       run: |
-        maturin develop --release
+        maturin develop --release --features polars
 
     - name: Test documentation examples
       run: |
@@ -106,11 +106,11 @@ jobs:
         echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
         echo "$PWD/.venv/bin" >> $GITHUB_PATH
         source .venv/bin/activate
-        uv pip install -e ".[dev]"
+        uv pip install -e ".[all]"
 
     - name: Build evlib
       run: |
-        maturin develop --release
+        maturin develop --release --features polars
 
     - name: Test documentation examples (quick check)
       run: |
@@ -149,11 +149,11 @@ jobs:
         echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
         echo "$PWD/.venv/bin" >> $GITHUB_PATH
         source .venv/bin/activate
-        uv pip install -e ".[dev]"
+        uv pip install -e ".[all]"
 
     - name: Build evlib
       run: |
-        maturin develop --release
+        maturin develop --release --features polars
 
     - name: Test README examples
       run: |
