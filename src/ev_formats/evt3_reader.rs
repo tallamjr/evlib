@@ -455,10 +455,6 @@ impl Evt3Reader {
         let mut current_line = Vec::new();
         let mut header_size = 0u64;
 
-        // Read header byte by byte to avoid UTF-8 issues with binary data
-        let mut consecutive_binary_bytes = 0;
-        const MAX_BINARY_BYTES: usize = 10; // If we see this many non-printable bytes, assume binary data started
-
         loop {
             let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
@@ -466,36 +462,23 @@ impl Evt3Reader {
                 if !current_line.is_empty() {
                     let line_str = String::from_utf8_lossy(&current_line);
                     let line = line_str.trim_end();
+
+                    // Check if this line starts with "%" - if not, it's the start of binary data
+                    if !line.starts_with("% ") {
+                        // This line doesn't start with "% " so binary data has started
+                        // Back up to the start of this line
+                        header_size -= current_line.len() as u64;
+                        break;
+                    }
+
                     if line == "% end" {
                         break;
                     }
-                    // Process any remaining header line
-                    if let Some(stripped) = line.strip_prefix("% ") {
-                        if let Some((key, value)) = stripped.split_once(' ') {
-                            match key {
-                                "evt" => {
-                                    if value != "3.0" {
-                                        return Err(Evt3Error::InvalidHeader(format!(
-                                            "Expected EVT 3.0, got: {}",
-                                            value
-                                        )));
-                                    }
-                                }
-                                "format" => {
-                                    self.parse_format_line(value, &mut metadata)?;
-                                }
-                                "geometry" => {
-                                    self.parse_geometry_line(value, &mut metadata)?;
-                                }
-                                _ => {
-                                    metadata
-                                        .properties
-                                        .insert(key.to_string(), value.to_string());
-                                }
-                            }
-                        }
-                    }
+
+                    // Process header line
+                    self.process_header_line(line, &mut metadata)?;
                 }
+
                 // End of file reached - this is OK if we have some valid header data
                 if !metadata.properties.is_empty() || metadata.sensor_resolution.is_some() {
                     break;
@@ -509,64 +492,26 @@ impl Evt3Reader {
             let byte = byte_buffer[0];
             header_size += 1;
 
-            // Check if we're hitting binary data (non-printable ASCII bytes)
-            if byte < 32 && byte != b'\n' && byte != b'\r' && byte != b'\t' {
-                consecutive_binary_bytes += 1;
-                if consecutive_binary_bytes > MAX_BINARY_BYTES {
-                    // We've hit binary data, back up to where it started and process current line
-                    header_size -= consecutive_binary_bytes as u64;
-
-                    // Process any line we were building before hitting binary data
-                    if !current_line.is_empty() {
-                        let line_str = String::from_utf8_lossy(&current_line);
-                        let line = line_str.trim_end();
-                        if line == "% end" {
-                            // Found "% end" without newline, adjust header size
-                            header_size -=
-                                current_line.len() as u64 - consecutive_binary_bytes as u64;
-                            break;
-                        }
-                    }
-                    break;
-                }
-            } else {
-                consecutive_binary_bytes = 0;
-            }
-
             if byte == b'\n' {
                 // End of line - process the line
                 let line_str = String::from_utf8_lossy(&current_line);
                 let line = line_str.trim_end();
 
+                // Check if this line starts with "%" - if not, it's the start of binary data
+                if !line.starts_with("% ") && !line.is_empty() {
+                    // This line doesn't start with "% " so binary data has started
+                    // Back up to the start of this line (including the newline)
+                    header_size -= current_line.len() as u64 + 1; // +1 for the newline
+                    break;
+                }
+
                 if line == "% end" {
                     break;
                 }
 
-                // Parse header fields
-                if let Some(stripped) = line.strip_prefix("% ") {
-                    if let Some((key, value)) = stripped.split_once(' ') {
-                        match key {
-                            "evt" => {
-                                if value != "3.0" {
-                                    return Err(Evt3Error::InvalidHeader(format!(
-                                        "Expected EVT 3.0, got: {}",
-                                        value
-                                    )));
-                                }
-                            }
-                            "format" => {
-                                self.parse_format_line(value, &mut metadata)?;
-                            }
-                            "geometry" => {
-                                self.parse_geometry_line(value, &mut metadata)?;
-                            }
-                            _ => {
-                                metadata
-                                    .properties
-                                    .insert(key.to_string(), value.to_string());
-                            }
-                        }
-                    }
+                // Process header line
+                if !line.is_empty() {
+                    self.process_header_line(line, &mut metadata)?;
                 }
 
                 // Clear current line for next iteration
@@ -574,15 +519,6 @@ impl Evt3Reader {
             } else {
                 // Add byte to current line
                 current_line.push(byte);
-
-                // Check if current line ends with "% end" (without newline)
-                if current_line.len() >= 5 {
-                    let line_str = String::from_utf8_lossy(&current_line);
-                    let line = line_str.trim_end();
-                    if line == "% end" {
-                        break;
-                    }
-                }
             }
         }
 
@@ -594,6 +530,40 @@ impl Evt3Reader {
         }
 
         Ok((metadata, header_size))
+    }
+
+    /// Process a single header line
+    fn process_header_line(
+        &self,
+        line: &str,
+        metadata: &mut Evt3Metadata,
+    ) -> Result<(), Evt3Error> {
+        if let Some(stripped) = line.strip_prefix("% ") {
+            if let Some((key, value)) = stripped.split_once(' ') {
+                match key {
+                    "evt" => {
+                        if value != "3.0" {
+                            return Err(Evt3Error::InvalidHeader(format!(
+                                "Expected EVT 3.0, got: {}",
+                                value
+                            )));
+                        }
+                    }
+                    "format" => {
+                        self.parse_format_line(value, metadata)?;
+                    }
+                    "geometry" => {
+                        self.parse_geometry_line(value, metadata)?;
+                    }
+                    _ => {
+                        metadata
+                            .properties
+                            .insert(key.to_string(), value.to_string());
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Parse format line (e.g., "EVT3;height=720;width=1280")
