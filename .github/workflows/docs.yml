@@ -42,13 +42,14 @@ jobs:
         echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
         echo "$PWD/.venv/bin" >> $GITHUB_PATH
         source .venv/bin/activate
-        # Install dev dependencies without the package
-        uv pip install pytest pytest-markdown-docs pytest-benchmark pytest-cov nbmake pytest-xdist codecov twine tqdm h5py maturin
+        uv pip install maturin
 
-    - name: Build evlib
+    - name: Build and install evlib
       run: |
         source .venv/bin/activate
         maturin develop --release
+        # Install with all dependencies needed for documentation tests
+        uv pip install -e ".[all]"
         # Verify installation
         python -c "import evlib; print('evlib imported successfully')"
 
