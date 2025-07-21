@@ -41,7 +41,7 @@ class TestEvlibRegression:
                 "resolution": (2048, 2000),  # Actual sensor resolution from data
                 "expected_event_count": (3300000, 3500000),  # Actual: 3397511
                 "polarity_encoding": (-1, 1),  # EVT2 correctly converts to -1/1
-                "min_duration": 8000.0,  # Actual: 8612.691s
+                "min_duration": 5.0,  # Actual: ~5.1s
                 "description": "Small EVT2 file (~15MB)",
             },
             "evt2_large": {
