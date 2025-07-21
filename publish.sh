@@ -178,9 +178,27 @@ publish_to_pypi() {
     # Clean previous builds
     rm -rf dist/ target/wheels/
 
-    # Build wheel with Python features
-    print_step "Building wheel with Python features..."
-    maturin build --release --features python
+    # Build wheels for multiple Python versions
+    print_step "Building wheels for Python 3.10, 3.11, and 3.12..."
+
+    # Check which Python interpreters are available
+    PYTHON_VERSIONS=()
+    for py_version in python3.10 python3.11 python3.12; do
+        if command_exists "$py_version"; then
+            PYTHON_VERSIONS+=("$py_version")
+        else
+            print_warning "$py_version not found, skipping..."
+        fi
+    done
+
+    if [ ${#PYTHON_VERSIONS[@]} -eq 0 ]; then
+        print_error "No Python interpreters found for versions 3.10, 3.11, or 3.12"
+        print_step "Falling back to current Python interpreter..."
+        maturin build --release --features python
+    else
+        print_step "Building wheels for: ${PYTHON_VERSIONS[*]}"
+        maturin build --release --features python --interpreter "${PYTHON_VERSIONS[@]}"
+    fi
 
     if [ "$TEST_MODE" = true ]; then
         print_step "Publishing to TestPyPI..."
