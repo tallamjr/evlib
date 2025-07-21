@@ -5,6 +5,7 @@ Test the polarity encoding fix for gen4 files.
 
 import evlib
 import numpy as np
+import pytest
 from pathlib import Path
 
 
@@ -16,7 +17,7 @@ def test_polarity_fix():
 
     if not Path(file_path).exists():
         print("FAIL: Gen4 file not found - skipping test")
-        return True
+        pytest.skip("Gen4 test file not found")
 
     print("INFO: Testing gen4 polarity encoding fix...")
 
@@ -110,7 +111,7 @@ def test_other_files():
         p = df["polarity"].to_numpy()
 
         unique_polarities = np.unique(p)
-        actual = set(unique_polarities)
+        actual = set(int(x) for x in unique_polarities)  # Convert numpy types to Python int
 
         if allow_single:
             test_passed = actual.issubset(expected)

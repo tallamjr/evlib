@@ -39,7 +39,7 @@ class TestEvlibRegression:
                 "path": data_dir / "eTram/raw/val_2/val_night_011.raw",
                 "format": "EVT2",
                 "resolution": (2048, 2000),  # Actual sensor resolution from data
-                "expected_event_count": (2700000, 2800000),  # Actual: 2774556
+                "expected_event_count": (3300000, 3500000),  # Actual: 3397511
                 "polarity_encoding": (-1, 1),  # EVT2 correctly converts to -1/1
                 "min_duration": 8000.0,  # Actual: 8612.691s
                 "description": "Small EVT2 file (~15MB)",

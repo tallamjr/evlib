@@ -17,7 +17,7 @@ use crate::ev_core::{Event, Events};
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// EVT3 event types encoded in 4-bit field
@@ -450,60 +450,147 @@ impl Evt3Reader {
 
     /// Parse EVT3 header
     pub fn parse_header(&self, file: &mut File) -> Result<(Evt3Metadata, u64), Evt3Error> {
-        let mut reader = BufReader::new(file);
         let mut metadata = Evt3Metadata::default();
+        let mut byte_buffer = [0u8; 1];
+        let mut current_line = Vec::new();
         let mut header_size = 0u64;
 
-        // Read header line by line
+        // Read header byte by byte to avoid UTF-8 issues with binary data
+        let mut consecutive_binary_bytes = 0;
+        const MAX_BINARY_BYTES: usize = 10; // If we see this many non-printable bytes, assume binary data started
+
         loop {
-            let mut line = String::new();
-            let bytes_read = reader.read_line(&mut line)?;
+            let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
-                return Err(Evt3Error::InvalidHeader(
-                    "Unexpected end of file".to_string(),
-                ));
-            }
-
-            header_size += bytes_read as u64;
-            let line = line.trim_end();
-
-            if line == "% end" {
-                break;
-            }
-
-            // Parse header fields
-            if let Some(stripped) = line.strip_prefix("% ") {
-                if let Some((key, value)) = stripped.split_once(' ') {
-                    match key {
-                        "evt" => {
-                            if value != "3.0" {
-                                return Err(Evt3Error::InvalidHeader(format!(
-                                    "Expected EVT 3.0, got: {}",
-                                    value
-                                )));
+                // End of file reached - process any remaining line buffer
+                if !current_line.is_empty() {
+                    let line_str = String::from_utf8_lossy(&current_line);
+                    let line = line_str.trim_end();
+                    if line == "% end" {
+                        break;
+                    }
+                    // Process any remaining header line
+                    if let Some(stripped) = line.strip_prefix("% ") {
+                        if let Some((key, value)) = stripped.split_once(' ') {
+                            match key {
+                                "evt" => {
+                                    if value != "3.0" {
+                                        return Err(Evt3Error::InvalidHeader(format!(
+                                            "Expected EVT 3.0, got: {}",
+                                            value
+                                        )));
+                                    }
+                                }
+                                "format" => {
+                                    self.parse_format_line(value, &mut metadata)?;
+                                }
+                                "geometry" => {
+                                    self.parse_geometry_line(value, &mut metadata)?;
+                                }
+                                _ => {
+                                    metadata
+                                        .properties
+                                        .insert(key.to_string(), value.to_string());
+                                }
                             }
                         }
-                        "format" => {
-                            self.parse_format_line(value, &mut metadata)?;
+                    }
+                }
+                // End of file reached - this is OK if we have some valid header data
+                if !metadata.properties.is_empty() || metadata.sensor_resolution.is_some() {
+                    break;
+                } else {
+                    return Err(Evt3Error::InvalidHeader(
+                        "Unexpected end of file".to_string(),
+                    ));
+                }
+            }
+
+            let byte = byte_buffer[0];
+            header_size += 1;
+
+            // Check if we're hitting binary data (non-printable ASCII bytes)
+            if byte < 32 && byte != b'\n' && byte != b'\r' && byte != b'\t' {
+                consecutive_binary_bytes += 1;
+                if consecutive_binary_bytes > MAX_BINARY_BYTES {
+                    // We've hit binary data, back up to where it started and process current line
+                    header_size -= consecutive_binary_bytes as u64;
+
+                    // Process any line we were building before hitting binary data
+                    if !current_line.is_empty() {
+                        let line_str = String::from_utf8_lossy(&current_line);
+                        let line = line_str.trim_end();
+                        if line == "% end" {
+                            // Found "% end" without newline, adjust header size
+                            header_size -=
+                                current_line.len() as u64 - consecutive_binary_bytes as u64;
+                            break;
                         }
-                        "geometry" => {
-                            self.parse_geometry_line(value, &mut metadata)?;
+                    }
+                    break;
+                }
+            } else {
+                consecutive_binary_bytes = 0;
+            }
+
+            if byte == b'\n' {
+                // End of line - process the line
+                let line_str = String::from_utf8_lossy(&current_line);
+                let line = line_str.trim_end();
+
+                if line == "% end" {
+                    break;
+                }
+
+                // Parse header fields
+                if let Some(stripped) = line.strip_prefix("% ") {
+                    if let Some((key, value)) = stripped.split_once(' ') {
+                        match key {
+                            "evt" => {
+                                if value != "3.0" {
+                                    return Err(Evt3Error::InvalidHeader(format!(
+                                        "Expected EVT 3.0, got: {}",
+                                        value
+                                    )));
+                                }
+                            }
+                            "format" => {
+                                self.parse_format_line(value, &mut metadata)?;
+                            }
+                            "geometry" => {
+                                self.parse_geometry_line(value, &mut metadata)?;
+                            }
+                            _ => {
+                                metadata
+                                    .properties
+                                    .insert(key.to_string(), value.to_string());
+                            }
                         }
-                        _ => {
-                            metadata
-                                .properties
-                                .insert(key.to_string(), value.to_string());
-                        }
+                    }
+                }
+
+                // Clear current line for next iteration
+                current_line.clear();
+            } else {
+                // Add byte to current line
+                current_line.push(byte);
+
+                // Check if current line ends with "% end" (without newline)
+                if current_line.len() >= 5 {
+                    let line_str = String::from_utf8_lossy(&current_line);
+                    let line = line_str.trim_end();
+                    if line == "% end" {
+                        break;
                     }
                 }
             }
         }
 
-        // Validate required fields
+        // For Prophesee EVT3 files, sensor resolution might not be in header
+        // Set a default resolution if missing (will be auto-detected from events)
         if metadata.sensor_resolution.is_none() {
-            return Err(Evt3Error::InvalidHeader(
-                "Missing sensor resolution".to_string(),
-            ));
+            // Common resolutions for Prophesee Gen4 cameras
+            metadata.sensor_resolution = Some((1280, 720)); // Default, will be updated during event parsing
         }
 
         Ok((metadata, header_size))
