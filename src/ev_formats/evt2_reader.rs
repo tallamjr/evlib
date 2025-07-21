@@ -16,7 +16,7 @@ use crate::ev_core::{Event, Events};
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// EVT2 event types encoded in 4-bit field
@@ -405,60 +405,93 @@ impl Evt2Reader {
 
     /// Parse EVT2 header
     fn parse_header(&self, file: &mut File) -> Result<(Evt2Metadata, u64), Evt2Error> {
-        let mut reader = BufReader::new(file);
         let mut metadata = Evt2Metadata::default();
+        // Remove unused header_buffer variable
+        let mut byte_buffer = [0u8; 1];
+        let mut current_line = Vec::new();
         let mut header_size = 0u64;
 
-        // Read header line by line
+        // Read header byte by byte to avoid UTF-8 issues with binary data
+        let mut consecutive_binary_bytes = 0;
+        const MAX_BINARY_BYTES: usize = 10; // If we see this many non-printable bytes, assume binary data started
+
         loop {
-            let mut line = String::new();
-            let bytes_read = reader.read_line(&mut line)?;
+            let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
-                return Err(Evt2Error::InvalidHeader(
-                    "Unexpected end of file".to_string(),
-                ));
+                // End of file reached - this is OK if we have some valid header data
+                if !metadata.properties.is_empty() {
+                    break;
+                } else {
+                    return Err(Evt2Error::InvalidHeader(
+                        "Unexpected end of file".to_string(),
+                    ));
+                }
             }
 
-            header_size += bytes_read as u64;
-            let line = line.trim_end();
+            header_size += 1;
+            let byte = byte_buffer[0];
 
-            if line == "% end" {
-                break;
+            // Check if we're hitting binary data (non-printable ASCII bytes)
+            if byte < 32 && byte != b'\n' && byte != b'\r' && byte != b'\t' {
+                consecutive_binary_bytes += 1;
+                if consecutive_binary_bytes > MAX_BINARY_BYTES {
+                    // We've hit binary data, back up to where it started
+                    header_size -= consecutive_binary_bytes as u64;
+                    break;
+                }
+            } else {
+                consecutive_binary_bytes = 0;
             }
 
-            // Parse header fields
-            if let Some(stripped) = line.strip_prefix("% ") {
-                if let Some((key, value)) = stripped.split_once(' ') {
-                    match key {
-                        "evt" => {
-                            if value != "2.0" {
-                                return Err(Evt2Error::InvalidHeader(format!(
-                                    "Expected EVT 2.0, got: {}",
-                                    value
-                                )));
+            if byte == b'\n' {
+                // End of line - process the line
+                let line_str = String::from_utf8_lossy(&current_line);
+                let line = line_str.trim_end();
+
+                if line == "% end" {
+                    break;
+                }
+
+                // Parse header fields
+                if let Some(stripped) = line.strip_prefix("% ") {
+                    if let Some((key, value)) = stripped.split_once(' ') {
+                        match key {
+                            "evt" => {
+                                if value != "2.0" {
+                                    return Err(Evt2Error::InvalidHeader(format!(
+                                        "Expected EVT 2.0, got: {}",
+                                        value
+                                    )));
+                                }
                             }
-                        }
-                        "format" => {
-                            self.parse_format_line(value, &mut metadata)?;
-                        }
-                        "geometry" => {
-                            self.parse_geometry_line(value, &mut metadata)?;
-                        }
-                        _ => {
-                            metadata
-                                .properties
-                                .insert(key.to_string(), value.to_string());
+                            "format" => {
+                                self.parse_format_line(value, &mut metadata)?;
+                            }
+                            "geometry" => {
+                                self.parse_geometry_line(value, &mut metadata)?;
+                            }
+                            _ => {
+                                metadata
+                                    .properties
+                                    .insert(key.to_string(), value.to_string());
+                            }
                         }
                     }
                 }
+
+                // Clear current line for next iteration
+                current_line.clear();
+            } else {
+                // Add byte to current line
+                current_line.push(byte);
             }
         }
 
-        // Validate required fields
+        // For Prophesee RAW files, sensor resolution might not be in header
+        // Set a default resolution if missing (will be auto-detected from events)
         if metadata.sensor_resolution.is_none() {
-            return Err(Evt2Error::InvalidHeader(
-                "Missing sensor resolution".to_string(),
-            ));
+            // Common resolutions for Prophesee Gen3 cameras
+            metadata.sensor_resolution = Some((640, 480)); // Default, will be updated during event parsing
         }
 
         Ok((metadata, header_size))
