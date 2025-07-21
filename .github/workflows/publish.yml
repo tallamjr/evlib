@@ -47,7 +47,7 @@ jobs:
     - name: Get current version
       id: version
       run: |
-        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        version=$(grep '^version[[:space:]]*=' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "Current version: $version"
 
@@ -70,7 +70,7 @@ jobs:
           echo "Cargo.toml changed, checking version difference..."
 
           # Get previous version
-          prev_version=$(git show HEAD~1:Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          prev_version=$(git show HEAD~1:Cargo.toml | grep '^version[[:space:]]*=' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
           echo "Previous version: $prev_version"
           echo "Current version: $version"
 

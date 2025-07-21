@@ -46,9 +46,9 @@ jobs:
           git diff HEAD^ HEAD -- Cargo.toml > cargo_diff.txt
 
           # Check if version was changed
-          if grep -q '^\+version =' cargo_diff.txt; then
+          if grep -q '^\+version[[:space:]]*=' cargo_diff.txt; then
             # Extract the new version
-            VERSION=$(grep '^version =' Cargo.toml | cut -d '"' -f2)
+            VERSION=$(grep '^version[[:space:]]*=' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
             echo "Found new version: $VERSION"
 
             # Check if tag already exists

@@ -71,7 +71,7 @@ print_error() {
 
 # Get version from Cargo.toml
 get_version() {
-    grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/'
+    grep '^version[[:space:]]*=' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/'
 }
 
 # Check if command exists
