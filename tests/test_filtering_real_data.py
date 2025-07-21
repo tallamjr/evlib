@@ -22,7 +22,7 @@ import pytest
 
 
 # Test data configuration
-ETRAM_DATA_DIR = Path("data/eTram")
+ETRAM_DATA_DIR = Path("tests/data/eTram")
 ETRAM_RAW_DIR = ETRAM_DATA_DIR / "raw" / "val_2"
 ETRAM_H5_DIR = ETRAM_DATA_DIR / "h5" / "val_2"
 
@@ -40,10 +40,10 @@ TEST_FILES = {
 
 # Expected approximate file sizes (for validation)
 EXPECTED_SIZES = {
-    "large_raw": 526_000_000,  # ~526MB
-    "small_raw": 14_000_000,  # ~14MB
-    "large_h5": 456_000_000,  # ~456MB
-    "small_h5": 13_000_000,  # ~13MB
+    "val_night_007": 526_000_000,  # ~526MB (large_raw)
+    "val_night_011": 15_000_000,  # ~15MB (small_raw, actual size is ~14.9MB)
+    "val_night_007_td": 456_000_000,  # ~456MB (large_h5)
+    "val_night_011_td": 15_000_000,  # ~15MB (small_h5, actual size is ~14.9MB)
 }
 
 # Performance thresholds

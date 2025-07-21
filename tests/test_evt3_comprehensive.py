@@ -178,15 +178,11 @@ def test_format_detection():
 
 
 def test_evt3_loading():
-    """Test basic EVT3 header parsing with real Prophesee data"""
+    """Test basic EVT3 header parsing with synthetic EVT3 data"""
     print("\nTesting EVT3 header parsing...")
 
-    from pathlib import Path
-
-    evt3_file = "data/prophersee/samples/evt3/pedestrians.raw"
-
-    if not Path(evt3_file).exists():
-        pytest.skip(f"EVT3 test file not found: {evt3_file}")
+    # Use the synthetic test file instead of the missing real file
+    evt3_file = create_test_evt3_file()
 
     try:
         import evlib
@@ -229,6 +225,12 @@ def test_evt3_loading():
     except Exception as e:
         print(f"FAIL: Error with EVT3 processing: {e}")
         pytest.fail(f"Error with EVT3 processing: {e}")
+    finally:
+        # Clean up the test file
+        import os
+
+        if os.path.exists(evt3_file):
+            os.unlink(evt3_file)
 
 
 def test_evt3_metadata_extraction():

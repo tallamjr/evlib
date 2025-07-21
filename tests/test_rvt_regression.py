@@ -60,12 +60,12 @@ class TestRVTRegression:
     @pytest.fixture
     def rvt_test_file(self):
         """Path to RVT reference data (matching the events file)."""
-        return "data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000/event_representations_v2/stacked_histogram_dt=50_nbins=10/event_representations_ds2_nearest.h5"
+        return "tests/data/gen4_1mpx_processed_RVT/test/moorea_2019-06-19_000_793500000_853500000/event_representations_v2/stacked_histogram_dt50_nbins10/event_representations_ds2_nearest.h5"
 
     @pytest.fixture
     def events_file(self):
         """Path to corresponding events file."""
-        return "data/gen4_1mpx_original/val/moorea_2019-02-21_000_td_2257500000_2317500000_td.h5"
+        return "tests/data/eTram/h5/val_2/val_night_011_td.h5"
 
     def test_evlib_sparse_to_dense_conversion(self):
         """Test conversion from evlib sparse format to dense tensor."""
