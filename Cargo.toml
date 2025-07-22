@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.2.20"
+version         = "0.2.21"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -59,8 +59,8 @@ rand_distr     = "=0.4.3"
 fastrand       = "2.0"
 
 # Torch-style tensor ops (via Candle)
-candle-core    = "0.9.1"
-candle-nn      = "0.9.1"
+candle-core    = { version = "0.9.1", default-features = false }
+candle-nn      = { version = "0.9.1", default-features = false }
 
 # Optional PyTorch integration via tch-rs
 tch            = { version = "0.16", optional = true }
