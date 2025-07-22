@@ -21,9 +21,9 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y libhdf5-dev pkg-config
+        sudo apt-get install -y libhdf5-dev pkg-config cmake
         if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
-          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+          sudo apt-get install -y libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
                                   libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \
                                   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
                                   gstreamer1.0-plugins-ugly
@@ -34,7 +34,7 @@ runs:
       shell: bash
       run: |
         brew update
-        brew install cmake hdf5@1.10 pkgconf
+        brew install cmake hdf5@1.10 pkgconf glib
         if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
           brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
         fi
