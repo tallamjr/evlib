@@ -2,9 +2,9 @@ import numpy as np
 
 import evlib
 
-# Direct access to the functions
-events_to_block_py = evlib.evlib.core.events_to_block
-merge_events = evlib.evlib.core.merge_events
+# Direct access to the functions using clean API
+events_to_block_py = evlib.core.events_to_block
+merge_events = evlib.core.merge_events
 
 
 def test_events_to_block_py():

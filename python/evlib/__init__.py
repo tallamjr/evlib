@@ -231,29 +231,34 @@ try:
 except ImportError:
     _gpu_available = False
 
-# Import data reading functions from Rust module
+# Import the compiled Rust extension module
+# The .so file is the actual PyO3 module that contains all the functions and submodules
 try:
-    from .evlib import formats
+    # Import the compiled Rust module
 
-    _formats_available = True
-
-    # Make data reading functions directly accessible
+    # Check what submodules are available in the compiled module
+    # The Rust code should have created 'core' and 'formats' submodules
     try:
+        from .evlib import core, formats
+
+        _core_available = True
+        _formats_available = True
+
+        # Make key functions directly accessible
         save_events_to_hdf5 = formats.save_events_to_hdf5
         save_events_to_text = formats.save_events_to_text
         detect_format = formats.detect_format
         get_format_description = formats.get_format_description
-
         _polars_available = True
 
-    except AttributeError:
-        # Some functions might not be available in this build
+    except ImportError:
+        _core_available = False
         _formats_available = False
         _polars_available = False
-        _polars_utils_available = False
 
 except ImportError:
     _formats_available = False
+    _core_available = False
     _polars_available = False
     _polars_utils_available = False
 
@@ -346,6 +351,9 @@ if _formats_available:
         "collect_with_optimal_engine",
     ]
     __all__.extend(format_exports)
+
+if _core_available:
+    __all__.append("core")
 
 
 def get_recommended_engine():
