@@ -22,8 +22,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libhdf5-dev pkg-config cmake libglib2.0-dev \
-                                build-essential clang libobjc4 libobjc-dev \
-                                gobjc gcc-objc
+                                build-essential clang libobjc4 gobjc
         if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
           sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
                                   libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \
