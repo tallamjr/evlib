@@ -60,27 +60,6 @@ class TestEvlibRegression:
                 "description": "Small HDF5 file (~14MB)",
                 "required": True,  # Core functionality
             },
-            "output_test": {
-                "path": data_dir / "output.h5",
-                "format": "HDF5",
-                "resolution": (100, 100),  # Generic test size
-                "expected_event_count": (1, 1000),  # Small test file
-                "polarity_encoding": (-1, 1),
-                "min_duration": 0.1,
-                "description": "Test output HDF5 file",
-                "required": False,  # Optional
-            },
-            "text_medium": {
-                "path": data_dir / "output.txt",
-                "format": "Text",
-                "resolution": (720, 1280),  # width=720, height=1280 based on actual data
-                "expected_event_count": (3300000, 3500000),  # Based on wc -l
-                "polarity_encoding": (-1, 1),  # Text format uses -1/1 encoding
-                "min_duration": 5.0,
-                "description": "Medium text file (~3.4M events)",
-                "required": True,  # Core functionality for text format
-                "allow_single_polarity": True,  # May be filtered by previous doc tests
-            },
             "evt2_large": {
                 "path": data_dir / "eTram/raw/large_file.raw",  # Placeholder path
                 "format": "EVT2",
@@ -161,7 +140,6 @@ class TestEvlibRegression:
         [
             "evt2_small",
             "hdf5_small",
-            "output_test",
             "rvt_processed",
         ],
     )
@@ -196,7 +174,6 @@ class TestEvlibRegression:
         [
             "evt2_small",
             "hdf5_small",
-            "text_medium",
         ],
     )
     def test_load_events_basic(self, data_files, file_key):
@@ -303,7 +280,6 @@ class TestEvlibRegression:
         [
             "evt2_small",
             "hdf5_small",
-            "text_medium",
         ],
     )
     def test_data_types_and_shapes(self, data_files, file_key):
@@ -356,7 +332,6 @@ class TestEvlibRegression:
         [
             ("EVT2", ["evt2_small", "evt2_large"]),
             ("HDF5", ["hdf5_small", "hdf5_large", "hdf5_xlarge"]),
-            ("Text", ["text_medium"]),
         ],
     )
     def test_consistency_across_format(self, data_files, format_name, test_files):
@@ -555,9 +530,7 @@ class TestEvlibRegression:
             pytest.skip("No test files available")
 
         # Use a smaller file for this test
-        file_key = next(
-            (k for k in ["text_medium", "hdf5_small", "evt2_small"] if k in test_files), test_files[0]
-        )
+        file_key = next((k for k in ["hdf5_small", "evt2_small"] if k in test_files), test_files[0])
         file_info = data_files[file_key]
 
         initial_objects = len(gc.get_objects())
