@@ -3,66 +3,44 @@ name: Tag Version
 on:
   workflow_run:
     workflows: ["Rust"]
-    types:
-      - completed
+    types: [completed]
     branches: [main, master]
 
 permissions:
   contents: write
 
 jobs:
-  check-version-and-tag:
+  create-tag:
     runs-on: ubuntu-latest
-    # Only run if the Rust workflow completed successfully
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # Need history to compare changes
+          fetch-depth: 2
 
-      - name: Check if Cargo.toml was changed
-        id: check_cargo_toml
+      - name: Check version change and create tag
         run: |
-          # Get the list of changed files in the triggering event
           git fetch origin ${{ github.event.workflow_run.head_branch }}
           git checkout ${{ github.event.workflow_run.head_sha }}
 
-          # Check if Cargo.toml was among the changed files
-          CARGO_CHANGED=$(git diff --name-only HEAD^ HEAD | grep -c "Cargo.toml" || true)
+          if git diff --name-only HEAD^ HEAD | grep -q "Cargo.toml"; then
+            if grep -q '^\+version[[:space:]]*=' <(git diff HEAD^ HEAD -- Cargo.toml); then
+              VERSION=$(grep '^version[[:space:]]*=' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+              echo "Found new version: $VERSION"
 
-          if [ "$CARGO_CHANGED" -gt 0 ]; then
-            echo "Cargo.toml was changed"
-            echo "cargo_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "Cargo.toml was not changed"
-            echo "cargo_changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check for version change and create tag
-        if: steps.check_cargo_toml.outputs.cargo_changed == 'true'
-        run: |
-          # Get the current and previous Cargo.toml content
-          git diff HEAD^ HEAD -- Cargo.toml > cargo_diff.txt
-
-          # Check if version was changed
-          if grep -q '^\+version[[:space:]]*=' cargo_diff.txt; then
-            # Extract the new version
-            VERSION=$(grep '^version[[:space:]]*=' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-            echo "Found new version: $VERSION"
-
-            # Check if tag already exists
-            if ! git ls-remote --tags origin | grep -q "refs/tags/v$VERSION"; then
-              # Create and push the tag
-              git config --local user.email "actions@github.com"
-              git config --local user.name "GitHub Actions"
-              echo "Creating tag v$VERSION"
-              git tag -a "v$VERSION" -m "Release version $VERSION"
-              git push origin "v$VERSION"
-              echo "Successfully pushed tag v$VERSION"
+              if ! git ls-remote --tags origin | grep -q "refs/tags/v$VERSION"; then
+                git config --local user.email "actions@github.com"
+                git config --local user.name "GitHub Actions"
+                git tag -a "v$VERSION" -m "Release version $VERSION"
+                git push origin "v$VERSION"
+                echo "Successfully created tag v$VERSION"
+              else
+                echo "Tag v$VERSION already exists"
+              fi
             else
-              echo "Tag v$VERSION already exists, skipping"
+              echo "No version change detected"
             fi
           else
-            echo "No version change detected in Cargo.toml"
+            echo "Cargo.toml not changed"
           fi

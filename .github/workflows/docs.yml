@@ -1,4 +1,4 @@
-name: Test Documentation Examples
+name: Documentation Tests
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - "python/**"
       - "src/**"
       - "pyproject.toml"
-      - ".github/workflows/test-docs.yml"
+      - ".github/workflows/docs.yml"
   pull_request:
     branches: [main, master]
     paths:
@@ -16,190 +16,35 @@ on:
       - "python/**"
       - "src/**"
       - "pyproject.toml"
-      - ".github/workflows/test-docs.yml"
+      - ".github/workflows/docs.yml"
 
 jobs:
   test-docs:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config cmake
+          python-version: '3.11'
+          os: ubuntu-latest
 
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install uv
-          uv venv
-          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
-          echo "$PWD/.venv/bin" >> $GITHUB_PATH
           source .venv/bin/activate
           uv pip install -e ".[all]"
 
       - name: Build evlib
         run: |
+          source .venv/bin/activate
           maturin develop --release --features python
 
       - name: Test documentation examples
         run: |
-          pytest --markdown-docs README.md docs/ -v --tb=short --maxfail=10
-
-      - name: Generate documentation test report
-        run: |
-          pytest --markdown-docs README.md docs/ --tb=short --maxfail=10 --junitxml=docs-test-results.xml
-        continue-on-error: true
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: docs-test-results-${{ matrix.python-version }}
-          path: docs-test-results.xml
-          retention-days: 7
-
-  test-docs-quick:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config cmake
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install uv
-          uv venv
-          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
-          echo "$PWD/.venv/bin" >> $GITHUB_PATH
           source .venv/bin/activate
-          uv pip install -e ".[all]"
-
-  test-docs-comprehensive:
-    runs-on: ubuntu-latest
-    needs: test-docs-quick
-    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'test-docs')
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config cmake
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Generate comprehensive test report
-        run: |
-          pytest --markdown-docs README.md docs/ --tb=short --junitxml=comprehensive-docs-test-results.xml
-        continue-on-error: true
-
-      - name: Upload comprehensive test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: comprehensive-docs-test-results
-          path: comprehensive-docs-test-results.xml
-          retention-days: 7
-
-  validate-docs:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install pytest-markdown-docs
-        run: |
-          pip install pytest-markdown-docs
-
-      - name: Validate documentation structure
-        run: |
-          echo "=== Documentation Structure Validation ==="
-          # Check that documentation files exist and are valid
-          docs_count=$(find docs/ -name "*.md" | wc -l)
-          echo "Found $docs_count markdown files"
-
-          # List some documentation files
-          find docs/ -name "*.md" | head -10
-
-          # Check for Python code blocks
-          python_blocks=$(find docs/ README.md -type f -name "*.md" -exec grep -l '```python' {} \; | wc -l)
-          echo "Found $python_blocks files with Python code blocks"
-
-          if [ $python_blocks -eq 0 ]; then
-            echo "WARNING: No Python code blocks found!"
-          else
-            echo "SUCCESS: Documentation contains testable code examples"
-          fi
-
-      - name: Check configuration
-        run: |
-          echo "=== Configuration Check ==="
-          # Check if pyproject.toml exists
-          if [ -f "pyproject.toml" ]; then
-            echo "SUCCESS: pyproject.toml exists"
-
-            # Check for pytest configuration
-            if grep -q "pytest" pyproject.toml; then
-              echo "SUCCESS: pytest configuration found"
-            else
-              echo "WARNING: pytest configuration not found"
-            fi
-
-            # Check for markdown docs configuration
-            if grep -q "markdown" pyproject.toml; then
-              echo "SUCCESS: markdown docs configuration found"
-            else
-              echo "WARNING: markdown docs configuration not found"
-            fi
-          else
-            echo "ERROR: pyproject.toml not found"
-          fi
+          pytest --markdown-docs README.md docs/ -v --tb=short --maxfail=10

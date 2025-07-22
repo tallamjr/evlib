@@ -1,10 +1,8 @@
-name: Python
+name: Python Tests
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
     paths:
       - "**.py"
       - "**.rs"
@@ -22,18 +20,13 @@ on:
 
 jobs:
   python-tests:
-    name: Python Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
-        include:
-          # Add GPU testing on Ubuntu
-          - os: ubuntu-latest
-            python-version: "3.11"
-            gpu: true
 
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +34,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-${{ matrix.python-version }}
-          cache-targets: true
+          key: test-${{ matrix.os }}-${{ matrix.python-version }}
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-dependencies
@@ -51,30 +43,28 @@ jobs:
           enable-gstreamer: "true"
           os: ${{ matrix.os }}
 
-      - name: Setup GPU support (Ubuntu only)
-        if: matrix.gpu == true
-        run: |
-          echo "GPU testing enabled - will install CUDA toolkit"
-          sudo apt-get update
-          sudo apt-get install -y nvidia-cuda-toolkit
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: |
+          source .venv/bin/activate
           uv pip install .[all]
 
-      - name: Run fast tests
+      - name: Run tests
         run: |
-          # Run fast tests excluding slow integration tests and documentation tests
           source .venv/bin/activate
-          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5 --ignore=docs/ --ignore=README.md
+          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5
           uv run pytest --nbmake examples/*.ipynb -v --no-cov
 
       - name: Generate coverage report
-        if: matrix.python-version == '3.11' && matrix.gpu != true # Only generate coverage once
+        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
         run: |
-          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration" --ignore=docs/ --ignore=README.md
+          source .venv/bin/activate
+          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
