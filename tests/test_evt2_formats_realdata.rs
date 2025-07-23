@@ -17,10 +17,7 @@ mod evt2_tests {
     fn test_evt2_format_detection() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -55,10 +52,7 @@ mod evt2_tests {
     fn test_evt2_reader_basic() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -124,10 +118,7 @@ mod evt2_tests {
     fn test_evt2_reader_with_load_config() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -172,10 +163,7 @@ mod evt2_tests {
     fn test_evt2_reader_coordinate_validation() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -219,10 +207,7 @@ mod evt2_tests {
     fn test_evt2_reader_performance() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -243,7 +228,7 @@ mod evt2_tests {
 
         println!("EVT2 reader performance test results:");
         println!("  Events read: {}", events.len());
-        println!("  Time taken: {:?}", duration);
+        println!("  Time taken: {duration:?}");
         println!(
             "  Events per second: {:.2}",
             events.len() as f64 / duration.as_secs_f64()
@@ -262,10 +247,7 @@ mod evt2_tests {
     fn test_evt2_reader_chunked_vs_single() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -310,23 +292,19 @@ mod evt2_tests {
         {
             assert_eq!(
                 event_large.t, event_small.t,
-                "Timestamp mismatch at event {}",
-                i
+                "Timestamp mismatch at event {i}"
             );
             assert_eq!(
                 event_large.x, event_small.x,
-                "X coordinate mismatch at event {}",
-                i
+                "X coordinate mismatch at event {i}"
             );
             assert_eq!(
                 event_large.y, event_small.y,
-                "Y coordinate mismatch at event {}",
-                i
+                "Y coordinate mismatch at event {i}"
             );
             assert_eq!(
                 event_large.polarity, event_small.polarity,
-                "Polarity mismatch at event {}",
-                i
+                "Polarity mismatch at event {i}"
             );
         }
     }
@@ -335,10 +313,7 @@ mod evt2_tests {
     fn test_evt2_reader_header_parsing() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -375,10 +350,7 @@ mod evt2_tests {
     fn test_evt2_timestamp_reconstruction() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -402,9 +374,9 @@ mod evt2_tests {
             let last_timestamp = events[events.len() - 1].t;
             let duration = last_timestamp - first_timestamp;
 
-            println!("  First timestamp: {:.6} s", first_timestamp);
-            println!("  Last timestamp: {:.6} s", last_timestamp);
-            println!("  Duration: {:.6} s", duration);
+            println!("  First timestamp: {first_timestamp:.6} s");
+            println!("  Last timestamp: {last_timestamp:.6} s");
+            println!("  Duration: {duration:.6} s");
 
             // Validate timestamp reconstruction
             assert!(first_timestamp >= 0.0);

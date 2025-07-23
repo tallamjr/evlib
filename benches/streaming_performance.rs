@@ -71,7 +71,7 @@ fn generate_events_with_pattern(count: usize, pattern: &str) -> Vec<Event> {
                 });
             }
         }
-        _ => panic!("Unknown pattern: {}", pattern),
+        _ => panic!("Unknown pattern: {pattern}"),
     }
 
     events

@@ -138,37 +138,35 @@ fn test_format_detection_comprehensive() {
     for (file_path, expected_format) in test_files {
         let path = Path::new(file_path);
         if !path.exists() {
-            println!("Skipping {}: file not found", file_path);
+            println!("Skipping {file_path}: file not found");
             continue;
         }
 
-        println!("Testing format detection for: {}", file_path);
+        println!("Testing format detection for: {file_path}");
 
         let detection_result = detect_event_format(file_path);
         assert!(
             detection_result.is_ok(),
-            "Format detection failed for {}: {:?}",
-            file_path,
+            "Format detection failed for {file_path}: {:?}",
             detection_result.err()
         );
 
         let result = detection_result.unwrap();
         assert_eq!(
             result.format, expected_format,
-            "Format mismatch for {}: expected {:?}, got {:?}",
-            file_path, expected_format, result.format
+            "Format mismatch for {file_path}: expected {expected_format:?}, got {:?}",
+            result.format
         );
 
         assert!(
             result.confidence > 0.8,
-            "Low confidence for {}: {:.2}",
-            file_path,
+            "Low confidence for {file_path}: {:.2}",
             result.confidence
         );
 
         println!(
-            "OK: Format detection passed: {} -> {:?} (confidence: {:.2})",
-            file_path, result.format, result.confidence
+            "OK: Format detection passed: {file_path} -> {:?} (confidence: {:.2})",
+            result.format, result.confidence
         );
     }
 }
@@ -514,11 +512,7 @@ fn test_data_consistency_evt2_vs_hdf5() {
     let hdf5_count = hdf5_events.len();
 
     // Allow for small differences due to format conversion (within 1%)
-    let count_diff = if evt2_count > hdf5_count {
-        evt2_count - hdf5_count
-    } else {
-        hdf5_count - evt2_count
-    };
+    let count_diff = evt2_count.abs_diff(hdf5_count);
     let max_allowed_diff = std::cmp::max(evt2_count, hdf5_count) / 100; // 1% tolerance
 
     assert!(

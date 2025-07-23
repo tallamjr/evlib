@@ -65,24 +65,20 @@ fn test_aedat_1_0_address_decoding() {
         let event = &events[i];
         assert_eq!(
             event.x, *expected_x as u16,
-            "Event {}: X coordinate mismatch",
-            i
+            "Event {i}: X coordinate mismatch"
         );
         assert_eq!(
             event.y, *expected_y as u16,
-            "Event {}: Y coordinate mismatch",
-            i
+            "Event {i}: Y coordinate mismatch"
         );
         assert_eq!(
             event.polarity,
             *expected_polarity > 0,
-            "Event {}: Polarity mismatch",
-            i
+            "Event {i}: Polarity mismatch"
         );
         assert_eq!(
             event.t, *expected_timestamp as f64,
-            "Event {}: Timestamp mismatch",
-            i
+            "Event {i}: Timestamp mismatch"
         );
     }
 }
@@ -141,24 +137,20 @@ fn test_aedat_2_0_address_decoding() {
         let event = &events[i];
         assert_eq!(
             event.x, *expected_x as u16,
-            "Event {}: X coordinate mismatch",
-            i
+            "Event {i}: X coordinate mismatch"
         );
         assert_eq!(
             event.y, *expected_y as u16,
-            "Event {}: Y coordinate mismatch",
-            i
+            "Event {i}: Y coordinate mismatch"
         );
         assert_eq!(
             event.polarity,
             *expected_polarity > 0,
-            "Event {}: Polarity mismatch",
-            i
+            "Event {i}: Polarity mismatch"
         );
         assert_eq!(
             event.t, *expected_timestamp as f64,
-            "Event {}: Timestamp mismatch",
-            i
+            "Event {i}: Timestamp mismatch"
         );
     }
 }
@@ -218,24 +210,20 @@ fn test_aedat_3_1_address_decoding() {
         let event = &events[i];
         assert_eq!(
             event.x, *expected_x as u16,
-            "Event {}: X coordinate mismatch",
-            i
+            "Event {i}: X coordinate mismatch"
         );
         assert_eq!(
             event.y, *expected_y as u16,
-            "Event {}: Y coordinate mismatch",
-            i
+            "Event {i}: Y coordinate mismatch"
         );
         assert_eq!(
             event.polarity,
             *expected_polarity > 0,
-            "Event {}: Polarity mismatch",
-            i
+            "Event {i}: Polarity mismatch"
         );
         assert_eq!(
             event.t, *expected_timestamp as f64,
-            "Event {}: Timestamp mismatch",
-            i
+            "Event {i}: Timestamp mismatch"
         );
     }
 }
@@ -342,24 +330,20 @@ fn test_aedat_4_0_address_decoding() {
         let event = &events[i];
         assert_eq!(
             event.x, *expected_x as u16,
-            "Event {}: X coordinate mismatch",
-            i
+            "Event {i}: X coordinate mismatch"
         );
         assert_eq!(
             event.y, *expected_y as u16,
-            "Event {}: Y coordinate mismatch",
-            i
+            "Event {i}: Y coordinate mismatch"
         );
         assert_eq!(
             event.polarity,
             *expected_polarity > 0,
-            "Event {}: Polarity mismatch",
-            i
+            "Event {i}: Polarity mismatch"
         );
         assert_eq!(
             event.t, *expected_timestamp as f64,
-            "Event {}: Timestamp mismatch",
-            i
+            "Event {i}: Timestamp mismatch"
         );
     }
 }
