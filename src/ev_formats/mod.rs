@@ -270,10 +270,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     if total_events > 10_000_000 {
                         let progress = (end_idx as f64 / total_events as f64) * 100.0;
                         if end_idx % 50_000_000 == 0 || end_idx == total_events {
-                            eprintln!(
-                                "Loading HDF5: {:.1}% ({}/{})",
-                                progress, end_idx, total_events
-                            );
+                            eprintln!("Loading HDF5: {progress:.1}% ({end_idx}/{total_events})");
                         }
                     }
                 }
@@ -927,8 +924,7 @@ pub mod python {
                         .i8()
                         .map_err(|e| {
                             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to extract i8 column: {}",
-                                e
+                                "Failed to extract i8 column: {e}"
                             ))
                         })?
                         .into_no_null_iter()
@@ -940,8 +936,7 @@ pub mod python {
                         .duration()
                         .map_err(|e| {
                             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to extract duration column: {}",
-                                e
+                                "Failed to extract duration column: {e}"
                             ))
                         })?
                         .into_no_null_iter()
@@ -1053,22 +1048,19 @@ pub mod python {
                 let streamer = PolarsEventStreamer::new(chunk_size, format_result.format);
 
                 eprintln!(
-                    "Using streaming mode for {} events (chunk size: {})",
-                    event_count, chunk_size
+                    "Using streaming mode for {event_count} events (chunk size: {chunk_size})"
                 );
 
                 streamer.stream_to_polars(events.into_iter()).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to stream Polars DataFrame: {}",
-                        e
+                        "Failed to stream Polars DataFrame: {e}"
                     ))
                 })?
             } else {
                 // Direct construction for smaller datasets
                 build_polars_dataframe(&events, format_result.format).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to build Polars DataFrame: {}",
-                        e
+                        "Failed to build Polars DataFrame: {e}"
                     ))
                 })?
             };
@@ -1106,15 +1098,12 @@ pub mod python {
 
         // Create HDF5 file
         let file = H5File::create(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                "Failed to create HDF5 file: {}",
-                e
-            ))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create HDF5 file: {e}"))
         })?;
 
         // Create a group to store the data
         let group = file.create_group("events").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create group: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create group: {e}"))
         })?;
 
         // Convert arrays to Rust vectors
@@ -1143,12 +1132,11 @@ pub mod python {
             .create("xs")
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to create xs dataset: {}",
-                    e
+                    "Failed to create xs dataset: {e}"
                 ))
             })?;
         xs_dataset.write(&xs_vec).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write xs data: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write xs data: {e}"))
         })?;
 
         let ys_dataset = group
@@ -1157,12 +1145,11 @@ pub mod python {
             .create("ys")
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to create ys dataset: {}",
-                    e
+                    "Failed to create ys dataset: {e}"
                 ))
             })?;
         ys_dataset.write(&ys_vec).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ys data: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ys data: {e}"))
         })?;
 
         let ts_dataset = group
@@ -1171,12 +1158,11 @@ pub mod python {
             .create("ts")
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to create ts dataset: {}",
-                    e
+                    "Failed to create ts dataset: {e}"
                 ))
             })?;
         ts_dataset.write(&ts_vec).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ts data: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ts data: {e}"))
         })?;
 
         let ps_dataset = group
@@ -1185,12 +1171,11 @@ pub mod python {
             .create("ps")
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to create ps dataset: {}",
-                    e
+                    "Failed to create ps dataset: {e}"
                 ))
             })?;
         ps_dataset.write(&ps_vec).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ps data: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write ps data: {e}"))
         })?;
 
         Ok(())
@@ -1216,12 +1201,12 @@ pub mod python {
 
         // Create output file
         let mut file = std::fs::File::create(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create file: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to create file: {e}"))
         })?;
 
         // Write header
         file.write_all(b"# timestamp x y polarity\n").map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write header: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write header: {e}"))
         })?;
 
         // Write events
@@ -1234,7 +1219,7 @@ pub mod python {
                 ps.get(i).unwrap()
             );
             file.write_all(line.as_bytes()).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write line: {}", e))
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to write line: {e}"))
             })?;
         }
 
@@ -1248,7 +1233,7 @@ pub mod python {
         path: &str,
     ) -> PyResult<(String, f64, std::collections::HashMap<String, String>)> {
         let result = format_detector::detect_event_format(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Format detection failed: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Format detection failed: {e}"))
         })?;
 
         Ok((

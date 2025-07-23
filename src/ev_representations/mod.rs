@@ -219,7 +219,7 @@ pub fn events_to_frame(
     }
 
     Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
-        Box::new(TensorError(format!("Shape error: {}", e)))
+        Box::new(TensorError(format!("Shape error: {e}")))
             as Box<dyn std::error::Error + Send + Sync>
     })
 }

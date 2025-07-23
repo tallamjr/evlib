@@ -138,10 +138,7 @@ impl PolarsEventStreamer {
 
                 // Progress reporting
                 if total_processed % self.progress_interval == 0 {
-                    eprintln!(
-                        "Processed {} events in {} chunks",
-                        total_processed, chunk_count
-                    );
+                    eprintln!("Processed {total_processed} events in {chunk_count} chunks");
                 }
 
                 chunk_buffer.clear();
@@ -172,10 +169,7 @@ impl PolarsEventStreamer {
             concat(&lazy_frames, UnionArgs::default())?.collect()?
         };
 
-        eprintln!(
-            "Streaming complete: {} events processed in {} chunks",
-            total_processed, chunk_count
-        );
+        eprintln!("Streaming complete: {total_processed} events processed in {chunk_count} chunks");
         Ok(final_df)
     }
 

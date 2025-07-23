@@ -1501,7 +1501,7 @@ mod tests {
         for (header, expected_version) in test_cases {
             let file_path = temp_dir.path().join(format!("test_{header}.aedat"));
             let mut file = File::create(&file_path).unwrap();
-            writeln!(file, "{}", header).unwrap();
+            writeln!(file, "{header}").unwrap();
             // Add padding to ensure at least 10 bytes
             writeln!(file, "# padding").unwrap();
 
