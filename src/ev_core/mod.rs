@@ -1,19 +1,27 @@
 // Core event data structures and types
 // This module defines the fundamental data structures for event-based vision
 
-use candle_core::{DType, Device, Result, Tensor};
-use lazy_static::lazy_static;
-// Remove unused import
+use ndarray::Array2;
+// Remove candle dependencies - replaced with ndarray
 
 // Python bindings module (optional)
 #[cfg(feature = "python")]
 pub mod python;
 
-lazy_static! {
-    // Default device for tensor operations (CPU by default)
-    pub static ref DEVICE: Device = Device::Cpu;
-    // The user can override this with GPU if needed using features
+// Tensor result type (replacing candle's Result)
+pub type TensorResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+// Simple error type for tensor operations
+#[derive(Debug)]
+pub struct TensorError(pub String);
+
+impl std::fmt::Display for TensorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TensorError: {}", self.0)
+    }
 }
+
+impl std::error::Error for TensorError {}
 
 /// Core event data structure.
 /// Represents a single event from an event camera.
@@ -33,34 +41,31 @@ pub fn events_with_capacity(capacity: usize) -> Events {
     Events::with_capacity(capacity)
 }
 
-/// Converts a set of events into a block/tensor representation
-pub fn events_to_tensor(events: &Events) -> Result<Tensor> {
+/// Converts a set of events into a block/array representation
+pub fn events_to_tensor(events: &Events) -> TensorResult<Array2<f32>> {
     let n = events.len();
 
     if n == 0 {
-        // Return an empty tensor with shape (0, 4)
-        return Tensor::zeros((0, 4), DType::F32, &DEVICE);
+        // Return an empty array with shape (0, 4)
+        return Ok(Array2::zeros((0, 4)));
     }
 
-    let mut xs = Vec::with_capacity(n);
-    let mut ys = Vec::with_capacity(n);
-    let mut ts = Vec::with_capacity(n);
-    let mut ps = Vec::with_capacity(n);
+    let mut data = Vec::with_capacity(n * 4);
 
     for ev in events {
-        xs.push(ev.x as f32);
-        ys.push(ev.y as f32);
-        ts.push(ev.t as f32);
-        ps.push(if ev.polarity { 1.0 } else { 0.0 });
+        data.extend_from_slice(&[
+            ev.x as f32,
+            ev.y as f32,
+            ev.t as f32,
+            if ev.polarity { 1.0 } else { 0.0 },
+        ]);
     }
 
-    // Stack the arrays into a Nx4 tensor
-    let xs = Tensor::from_vec(xs, (n, 1), &DEVICE)?;
-    let ys = Tensor::from_vec(ys, (n, 1), &DEVICE)?;
-    let ts = Tensor::from_vec(ts, (n, 1), &DEVICE)?;
-    let ps = Tensor::from_vec(ps, (n, 1), &DEVICE)?;
-
-    Tensor::cat(&[xs, ys, ts, ps], 1)
+    // Create Nx4 array from the data
+    Array2::from_shape_vec((n, 4), data).map_err(|e| {
+        Box::new(TensorError(format!("Shape error: {}", e)))
+            as Box<dyn std::error::Error + Send + Sync>
+    })
 }
 
 /// Convert Python event arrays into our internal Events type

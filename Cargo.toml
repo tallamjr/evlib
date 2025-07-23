@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.2.23"
+version         = "0.2.24"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -58,9 +58,9 @@ rand           = "=0.8.5"
 rand_distr     = "=0.4.3"
 fastrand       = "2.0"
 
-# Torch-style tensor ops (via Candle)
-candle-core    = { version = "0.9.1", default-features = false }
-candle-nn      = { version = "0.9.1", default-features = false }
+# Torch-style tensor ops removed (was causing objc_exception compilation issues on Linux)
+# candle-core    = { version = "0.9.1", default-features = false }
+# candle-nn      = { version = "0.9.1", default-features = false }
 
 # Optional PyTorch integration via tch-rs
 tch            = { version = "0.16", optional = true }
@@ -108,8 +108,8 @@ criterion      = { version = "0.5", features = ["html_reports"] }
 [features]
 default        = ["polars"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy"]
-cuda           = ["candle-core/cuda"]
-metal          = ["candle-core/metal"]
+# cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
+# metal          = ["candle-core/metal"]  # Removed with candle dependencies
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 pytorch        = ["dep:tch"]
 polars         = ["dep:polars"]

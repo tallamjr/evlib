@@ -3,8 +3,9 @@
 
 // Smooth voxel grid module has been removed
 
-use crate::ev_core::{Events, DEVICE};
-use candle_core::{DType, Result, Tensor};
+use crate::ev_core::Events;
+use crate::ev_core::{TensorError, TensorResult};
+use ndarray::Array3;
 
 // Voxel grid functionality has been removed
 
@@ -24,15 +25,15 @@ pub fn events_to_timestamp_image(
     resolution: (u16, u16),
     normalize: bool,
     polarity_separate: bool,
-) -> Result<Tensor> {
+) -> TensorResult<Array3<f32>> {
     let (width, height) = (resolution.0 as usize, resolution.1 as usize);
 
     // Handle empty events
     if events.is_empty() {
         return if polarity_separate {
-            Tensor::zeros((2, height, width), DType::F32, &DEVICE)
+            Ok(Array3::zeros((2, height, width)))
         } else {
-            Tensor::zeros((1, height, width), DType::F32, &DEVICE)
+            Ok(Array3::zeros((1, height, width)))
         };
     }
 
@@ -72,10 +73,13 @@ pub fn events_to_timestamp_image(
         }
     }
 
-    // Convert to tensor
+    // Convert to ndarray
     if polarity_separate {
         let all_timestamps = [&timestamps_pos[..], &timestamps_neg[..]].concat();
-        Tensor::from_vec(all_timestamps, (2, height, width), &DEVICE)
+        Array3::from_shape_vec((2, height, width), all_timestamps).map_err(|e| {
+            Box::new(TensorError(format!("Shape error: {}", e)))
+                as Box<dyn std::error::Error + Send + Sync>
+        })
     } else {
         // Combine both polarities, taking the most recent timestamp
         let mut timestamps = vec![0f32; width * height];
@@ -86,7 +90,10 @@ pub fn events_to_timestamp_image(
                 timestamps_neg[i]
             };
         }
-        Tensor::from_vec(timestamps, (1, height, width), &DEVICE)
+        Array3::from_shape_vec((1, height, width), timestamps).map_err(|e| {
+            Box::new(TensorError(format!("Shape error: {}", e)))
+                as Box<dyn std::error::Error + Send + Sync>
+        })
     }
 }
 
@@ -100,7 +107,7 @@ pub fn events_to_count_image(
     events: &Events,
     resolution: (u16, u16),
     polarity_as_channel: bool,
-) -> Result<Tensor> {
+) -> TensorResult<Array3<f32>> {
     let (width, height) = (resolution.0 as usize, resolution.1 as usize);
 
     // Initialize count images
@@ -117,21 +124,27 @@ pub fn events_to_count_image(
         }
     }
 
-    // Convert to tensor
+    // Convert to ndarray
     if polarity_as_channel {
         // Create a 2-channel image [pos_counts, neg_counts]
         let counts_pos_f32: Vec<f32> = counts_pos.iter().map(|&x| x as f32).collect();
         let counts_neg_f32: Vec<f32> = counts_neg.iter().map(|&x| x as f32).collect();
 
         let all_counts = [&counts_pos_f32[..], &counts_neg_f32[..]].concat();
-        Tensor::from_vec(all_counts, (2, height, width), &DEVICE)
+        Array3::from_shape_vec((2, height, width), all_counts).map_err(|e| {
+            Box::new(TensorError(format!("Shape error: {}", e)))
+                as Box<dyn std::error::Error + Send + Sync>
+        })
     } else {
         // Create a single-channel image with combined counts
         let mut counts = vec![0f32; width * height];
         for i in 0..counts.len() {
             counts[i] = (counts_pos[i] + counts_neg[i]) as f32;
         }
-        Tensor::from_vec(counts, (1, height, width), &DEVICE)
+        Array3::from_shape_vec((1, height, width), counts).map_err(|e| {
+            Box::new(TensorError(format!("Shape error: {}", e)))
+                as Box<dyn std::error::Error + Send + Sync>
+        })
     }
 }
 
@@ -150,12 +163,15 @@ pub fn events_to_frame(
     resolution: (u16, u16),
     method: &str,
     normalize: bool,
-) -> Result<Tensor> {
+) -> TensorResult<Array3<f32>> {
     let (width, height) = (resolution.0 as usize, resolution.1 as usize);
     let mut frame = vec![0f32; width * height];
 
     if events.is_empty() {
-        return Tensor::from_vec(frame, (1, height, width), &DEVICE);
+        return Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
+            Box::new(TensorError(format!("Shape error: {}", e)))
+                as Box<dyn std::error::Error + Send + Sync>
+        });
     }
 
     // Accumulate based on method
@@ -202,7 +218,10 @@ pub fn events_to_frame(
         }
     }
 
-    Tensor::from_vec(frame, (1, height, width), &DEVICE)
+    Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
+        Box::new(TensorError(format!("Shape error: {}", e)))
+            as Box<dyn std::error::Error + Send + Sync>
+    })
 }
 
 /// Create a time window representation of events
@@ -220,7 +239,7 @@ pub fn events_to_time_windows(
     resolution: (u16, u16),
     window_duration: f64,
     representation: &str,
-) -> Result<Vec<Tensor>> {
+) -> TensorResult<Vec<Array3<f32>>> {
     if events.is_empty() {
         return Ok(Vec::new());
     }
@@ -255,12 +274,8 @@ pub fn events_to_time_windows(
                 };
                 result.push(tensor);
             } else {
-                // Add empty tensor if no events in window
-                let tensor = Tensor::zeros(
-                    (1, resolution.1 as usize, resolution.0 as usize),
-                    DType::F32,
-                    &DEVICE,
-                )?;
+                // Add empty array if no events in window
+                let tensor = Array3::zeros((1, resolution.1 as usize, resolution.0 as usize));
                 result.push(tensor);
             }
 

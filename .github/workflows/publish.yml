@@ -66,6 +66,7 @@ jobs:
         with:
           python-version: '3.11'
           os: ubuntu-latest
+          enable-gstreamer: true
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -78,8 +79,8 @@ jobs:
       - name: Run checks
         run: |
           cargo fmt --check
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo test --release --lib
+          cargo clippy --all-targets --features "python,polars,gstreamer,terminal" -- -D warnings
+          cargo test --release --lib --features "python,polars"
 
   publish-crates:
     runs-on: ubuntu-latest

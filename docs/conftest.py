@@ -93,7 +93,6 @@ class MockAugmentation:
         """Mock add_random_events function."""
         import numpy as np
 
-        n_original = len(xs)
         new_xs = np.concatenate([xs, np.random.randint(0, shape[0], n_events)])
         new_ys = np.concatenate([ys, np.random.randint(0, shape[1], n_events)])
         new_ts = np.concatenate([ts, np.random.uniform(ts.min(), ts.max(), n_events)])

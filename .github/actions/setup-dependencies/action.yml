@@ -21,23 +21,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y libhdf5-dev pkg-config cmake libglib2.0-dev \
-                                gobjc gnustep-base-common libgnustep-base-dev
-
-        # Configure GNUstep environment for Objective-C headers
-        echo "GNUSTEP_MAKEFILES=/usr/share/GNUstep/Makefiles" >> $GITHUB_ENV
-        echo "/usr/lib/gcc/x86_64-linux-gnu/$(gcc -dumpversion)/include/objc" >> $GITHUB_PATH
-
-        # Create symlink for objc/NSObject.h if it doesn't exist
-        if [ ! -f /usr/include/objc/NSObject.h ]; then
-          sudo mkdir -p /usr/include/objc
-          if [ -f /usr/include/GNUstep/Foundation/NSObject.h ]; then
-            sudo ln -sf /usr/include/GNUstep/Foundation/NSObject.h /usr/include/objc/NSObject.h
-          elif [ -f /usr/include/gnustep/base/NSObject.h ]; then
-            sudo ln -sf /usr/include/gnustep/base/NSObject.h /usr/include/objc/NSObject.h
-          fi
-        fi
-
+        sudo apt-get install -y libhdf5-dev pkg-config cmake libglib2.0-dev
         if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
           sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
                                   libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \

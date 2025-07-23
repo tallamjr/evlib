@@ -8,7 +8,7 @@ pub mod ev_representations;
 // pub mod ev_visualization; // Removed - limited/broken functionality
 
 // Re-export core types for easier usage
-pub use ev_core::{Event, Events, DEVICE};
+pub use ev_core::{Event, Events};
 
 // Test modules
 // #[cfg(test)]
