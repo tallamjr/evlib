@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Test configuration for different data files
+#[allow(dead_code)]
 struct TestFileConfig {
     path: PathBuf,
     expected_format: EventFormat,
@@ -18,6 +19,7 @@ struct TestFileConfig {
 }
 
 /// Validation results for event data
+#[allow(dead_code)]
 #[derive(Debug)]
 struct ValidationResults {
     event_count: usize,
@@ -28,6 +30,7 @@ struct ValidationResults {
     execution_time: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct DataIntegrity {
     has_nan: bool,
@@ -111,8 +114,8 @@ fn analyze_events(
     let t_max = events.iter().map(|e| e.t).fold(f64::NEG_INFINITY, f64::max);
     let duration = t_max - t_min;
 
-    let positive_count = events.iter().filter(|e| e.polarity == true).count();
-    let negative_count = events.iter().filter(|e| e.polarity == false).count();
+    let positive_count = events.iter().filter(|e| e.polarity).count();
+    let negative_count = events.iter().filter(|e| !e.polarity).count();
 
     ValidationResults {
         event_count: events.len(),
@@ -276,7 +279,7 @@ fn test_evt2_reader_comprehensive() {
             "Filtering didn't reduce event count"
         );
         assert!(
-            filtered_events.iter().all(|e| e.polarity == true),
+            filtered_events.iter().all(|e| e.polarity),
             "Polarity filtering failed"
         );
 
@@ -458,7 +461,7 @@ fn test_text_reader_comprehensive() {
         "Filtering didn't reduce event count"
     );
     assert!(
-        filtered_events.iter().all(|e| e.polarity == true),
+        filtered_events.iter().all(|e| e.polarity),
         "Polarity filtering failed"
     );
     assert!(

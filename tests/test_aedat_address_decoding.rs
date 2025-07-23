@@ -98,7 +98,7 @@ fn test_aedat_2_0_address_decoding() {
     writeln!(file, "#!AER-DAT2.0").unwrap();
     writeln!(file, "# sizeX 640").unwrap();
     writeln!(file, "# sizeY 480").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Test various coordinate combinations
     // AEDAT 2.0 format: polarity (1 bit) + x (15 bits) + y (15 bits) + unused (1 bit)
@@ -174,7 +174,7 @@ fn test_aedat_3_1_address_decoding() {
     writeln!(file, "#!AER-DAT3.1").unwrap();
     writeln!(file, "# sizeX 346").unwrap();
     writeln!(file, "# sizeY 240").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Test various coordinate combinations
     // AEDAT 3.1 format: validity (1 bit) + polarity (1 bit) + y (15 bits) + x (15 bits)
@@ -249,7 +249,7 @@ fn test_aedat_3_1_validity_bit() {
     // Create test AEDAT 3.1 file
     let mut file = File::create(&file_path).unwrap();
     writeln!(file, "#!AER-DAT3.1").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Create events with mixed validity bits
     let test_events = vec![
@@ -435,8 +435,8 @@ fn test_polarity_validation() {
     let (events, _) = reader.read_file(&file_path).unwrap();
 
     assert_eq!(events.len(), 2);
-    assert_eq!(events[0].polarity, true); // ON polarity (1 -> true)
-    assert_eq!(events[1].polarity, false); // OFF polarity (0 -> false)
+    assert!(events[0].polarity); // ON polarity (1 -> true)
+    assert!(!events[1].polarity); // OFF polarity (0 -> false)
 }
 
 /// Test endianness handling
@@ -458,7 +458,7 @@ fn test_endianness_handling() {
     // Create AEDAT 2.0 file (big-endian)
     let mut file2 = File::create(&file_path_2).unwrap();
     writeln!(file2, "#!AER-DAT2.0").unwrap();
-    writeln!(file2, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file2).unwrap(); // Add empty line to mark end of header
     let address2 = (10u32 << 16) | (20u32 << 1) | 1;
     file2.write_all(&1000u32.to_be_bytes()).unwrap();
     file2.write_all(&address2.to_be_bytes()).unwrap();
@@ -482,6 +482,6 @@ fn test_endianness_handling() {
     assert_eq!(events1[0].y, 10);
     assert_eq!(events2[0].x, 20);
     assert_eq!(events2[0].y, 10);
-    assert_eq!(events1[0].polarity, true);
-    assert_eq!(events2[0].polarity, true);
+    assert!(events1[0].polarity);
+    assert!(events2[0].polarity);
 }

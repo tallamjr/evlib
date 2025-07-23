@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use evlib::ev_core::Event;
 use evlib::ev_formats::streaming::{
     estimate_memory_usage, should_use_streaming, PolarsEventStreamer,

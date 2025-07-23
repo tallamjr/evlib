@@ -69,7 +69,7 @@ fn test_load_config_with_polarity_encoding() {
         config.polarity_encoding,
         Some(PolarityEncoding::MinusOnePlusOne)
     );
-    assert_eq!(config.sort, true);
+    assert!(config.sort);
     assert_eq!(config.polarity, Some(true));
 
     println!("OK: LoadConfig polarity encoding test passed");

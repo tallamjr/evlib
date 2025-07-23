@@ -3,7 +3,6 @@
 /// This test suite focuses on integration between format detection and loading functions,
 /// testing the complete workflow from format detection to event loading.
 /// Basic format detection tests are covered in test_format_detection.rs.
-
 #[cfg(test)]
 mod evt_format_detection_tests {
     use evlib::ev_formats::{format_detector::FormatDetector, load_events_with_config, LoadConfig};
@@ -39,7 +38,7 @@ mod evt_format_detection_tests {
         binary_data.extend_from_slice(&time_high.to_le_bytes());
         let time_low = ((0x200u16) << 4) | 0x6;
         binary_data.extend_from_slice(&time_low.to_le_bytes());
-        let y_addr = ((200u16) << 4) | 0x0;
+        let y_addr = (200u16) << 4;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
         let x_addr = ((1u16) << 15) | ((300u16) << 4) | 0x2;
         binary_data.extend_from_slice(&x_addr.to_le_bytes());
@@ -90,7 +89,7 @@ mod evt_format_detection_tests {
         // Test loading with automatic format detection
         let events = load_events_with_config(file_path.to_str().unwrap(), &config).unwrap();
 
-        assert!(events.len() > 0);
+        assert!(!events.is_empty());
         println!("EVT2 integration test:");
         println!("  Events loaded: {}", events.len());
 
@@ -125,7 +124,7 @@ mod evt_format_detection_tests {
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
         // Y address
-        let y_addr = ((200u16) << 4) | 0x0;
+        let y_addr = (200u16) << 4;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // X address
@@ -142,7 +141,7 @@ mod evt_format_detection_tests {
         // Test loading with automatic format detection
         let events = load_events_with_config(file_path.to_str().unwrap(), &config).unwrap();
 
-        assert!(events.len() > 0);
+        assert!(!events.is_empty());
         println!("EVT3 integration test:");
         println!("  Events loaded: {}", events.len());
 
@@ -184,7 +183,7 @@ mod evt_format_detection_tests {
         );
 
         // Integration should be reasonably fast
-        assert!(events.len() > 0);
+        assert!(!events.is_empty());
         assert!(duration.as_secs() < 30); // Should complete within 30 seconds
     }
 

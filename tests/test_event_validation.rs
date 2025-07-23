@@ -629,11 +629,11 @@ fn test_aer_synthetic_validation() {
             // Check specific event values
             assert_eq!(events[0].x, 100);
             assert_eq!(events[0].y, 150);
-            assert_eq!(events[0].polarity, true);
+            assert!(events[0].polarity);
 
             assert_eq!(events[1].x, 200);
             assert_eq!(events[1].y, 250);
-            assert_eq!(events[1].polarity, false); // polarity 0 -> false
+            assert!(!events[1].polarity); // polarity 0 -> false
 
             println!("AER synthetic validation passed");
         }

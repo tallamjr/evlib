@@ -266,7 +266,7 @@ fn benchmark_sorting(c: &mut Criterion) {
     let mut rng = 42u64;
     let mut events = Vec::with_capacity(event_count);
 
-    for i in 0..event_count {
+    for _ in 0..event_count {
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
         let random_time = (rng % 10000) as f64 / 10000.0;
 

@@ -106,7 +106,7 @@ fn test_format_detection_hdf5_files() {
     for file_path in &hdf5_files {
         if check_data_file_exists(file_path) {
             let result = detect_event_format(file_path)
-                .expect(&format!("Failed to detect format for {}", file_path));
+                .unwrap_or_else(|_| panic!("Failed to detect format for {}", file_path));
             assert_eq!(result.format, EventFormat::HDF5);
             assert!(
                 result.confidence > 0.9,
@@ -346,7 +346,7 @@ fn test_load_with_time_filtering() {
         "Filtered events should be fewer than full set"
     );
     assert!(
-        events_filtered.len() > 0,
+        !events_filtered.is_empty(),
         "Should have some events in time window"
     );
 
@@ -417,7 +417,7 @@ fn test_load_with_polarity_filtering() {
 
     // Verify all events have positive polarity
     for event in &events_pos {
-        assert_eq!(event.polarity, true, "Found non-positive polarity event");
+        assert!(event.polarity, "Found non-positive polarity event");
     }
 
     // Load only negative polarity events
@@ -428,7 +428,7 @@ fn test_load_with_polarity_filtering() {
     // Verify all events have negative polarity
     for event in &events_neg {
         assert!(
-            event.polarity == false,
+            !event.polarity,
             "Found non-negative polarity event: {}",
             event.polarity
         );
@@ -545,7 +545,7 @@ fn test_aer_binary_format_synthetic() {
     let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
 
     // Generate test events in AER 18-bit format
-    let test_events = vec![
+    let test_events = [
         (100, 150, 1), // x=100, y=150, polarity=1
         (200, 250, 0), // x=200, y=250, polarity=0
         (300, 350, 1), // x=300, y=350, polarity=1
@@ -568,11 +568,11 @@ fn test_aer_binary_format_synthetic() {
             // Verify event data
             assert_eq!(events[0].x, 100);
             assert_eq!(events[0].y, 150);
-            assert_eq!(events[0].polarity, true);
+            assert!(events[0].polarity);
 
             assert_eq!(events[1].x, 200);
             assert_eq!(events[1].y, 250);
-            assert_eq!(events[1].polarity, false); // polarity 0 -> false
+            assert!(!events[1].polarity); // polarity 0 -> false
 
             println!("Successfully tested AER binary format with synthetic data");
         }
@@ -673,10 +673,10 @@ fn test_error_handling_invalid_files() {
     let empty_file = NamedTempFile::new().expect("Failed to create temp file");
     let result = load_events_from_text(empty_file.path().to_str().unwrap(), &config);
     // Empty file should return empty events, not error
-    match result {
-        Ok(events) => assert!(events.is_empty(), "Empty file should return empty events"),
-        Err(_) => {} // Also acceptable
+    if let Ok(events) = result {
+        assert!(events.is_empty(), "Empty file should return empty events");
     }
+    // Also acceptable if it fails
 
     // Test with invalid data
     let mut invalid_file = NamedTempFile::new().expect("Failed to create temp file");

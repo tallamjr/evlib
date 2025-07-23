@@ -2,7 +2,6 @@
 ///
 /// This test suite validates the EVT2 reader implementation against real Prophesee data files
 /// and ensures proper binary parsing, timestamp reconstruction, and event validation.
-
 #[cfg(test)]
 mod evt2_tests {
     use evlib::ev_formats::{
@@ -84,7 +83,7 @@ mod evt2_tests {
         println!("  Resolution: {:?}", metadata.sensor_resolution);
 
         // Basic validation
-        assert!(events.len() > 0);
+        assert!(!events.is_empty());
         assert!(events.len() <= 10000);
         assert_eq!(metadata.sensor_resolution, Some((1280, 720)));
         assert!(metadata.header_size > 0);
@@ -160,7 +159,7 @@ mod evt2_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 100);
             assert!(event.y <= 200);
-            assert_eq!(event.polarity, true);
+            assert!(event.polarity);
         }
 
         // Check if events are sorted

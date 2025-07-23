@@ -2,7 +2,6 @@
 ///
 /// This test suite validates the EVT3 reader implementation with synthetic data
 /// and ensures proper vectorized binary parsing and event reconstruction.
-
 #[cfg(test)]
 mod evt3_tests {
     use evlib::ev_formats::{
@@ -41,20 +40,20 @@ mod evt3_tests {
     #[test]
     fn test_evt3_y_addr_event_parsing() {
         // Test Y address event: y=300, orig=true (slave camera)
-        let raw_data = (1u16 << 15) | (300u16 << 4) | 0x0;
+        let raw_data = (1u16 << 15) | (300u16 << 4);
         let raw_event = RawEvt3Event { data: raw_data };
 
         let y_event = raw_event.as_y_addr_event().unwrap();
         assert_eq!(y_event.y, 300);
-        assert_eq!(y_event.orig, true);
+        assert!(y_event.orig);
 
         // Test Y address event: y=100, orig=false (master camera)
-        let raw_data = (0u16 << 15) | (100u16 << 4) | 0x0;
+        let raw_data = 100u16 << 4;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let y_event = raw_event.as_y_addr_event().unwrap();
         assert_eq!(y_event.y, 100);
-        assert_eq!(y_event.orig, false);
+        assert!(!y_event.orig);
     }
 
     #[test]
@@ -65,15 +64,15 @@ mod evt3_tests {
 
         let x_event = raw_event.as_x_addr_event().unwrap();
         assert_eq!(x_event.x, 500);
-        assert_eq!(x_event.polarity, true);
+        assert!(x_event.polarity);
 
         // Test X address event: x=200, polarity=false (negative)
-        let raw_data = (0u16 << 15) | (200u16 << 4) | 0x2;
+        let raw_data = (200u16 << 4) | 0x2;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let x_event = raw_event.as_x_addr_event().unwrap();
         assert_eq!(x_event.x, 200);
-        assert_eq!(x_event.polarity, false);
+        assert!(!x_event.polarity);
     }
 
     #[test]
@@ -84,7 +83,7 @@ mod evt3_tests {
 
         let vect_base_event = raw_event.as_vect_base_x_event().unwrap();
         assert_eq!(vect_base_event.x, 800);
-        assert_eq!(vect_base_event.polarity, true);
+        assert!(vect_base_event.polarity);
     }
 
     #[test]
@@ -133,7 +132,7 @@ mod evt3_tests {
 
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x123);
-        assert_eq!(time_event.is_high, false);
+        assert!(!time_event.is_high);
 
         // Test Time High event with time=0x456
         let raw_data = (0x456u16 << 4) | 0x8;
@@ -141,7 +140,7 @@ mod evt3_tests {
 
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x456);
-        assert_eq!(time_event.is_high, true);
+        assert!(time_event.is_high);
     }
 
     #[test]
@@ -212,7 +211,7 @@ mod evt3_tests {
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
         // 3. Y address event (y=100)
-        let y_addr = ((100u16) << 4) | 0x0;
+        let y_addr = (100u16) << 4;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // 4. X address event (x=200, polarity=positive)
@@ -247,7 +246,7 @@ mod evt3_tests {
         println!("  Sensor resolution: {:?}", metadata.sensor_resolution);
 
         // Should have read events: 1 single event + 3 vector events = 4 total
-        assert!(events.len() >= 1); // At least the single event
+        assert!(!events.is_empty()); // At least the single event
         assert_eq!(metadata.sensor_resolution, Some((640, 480)));
 
         // Check the first event (single X address event)
@@ -255,7 +254,7 @@ mod evt3_tests {
             let first_event = &events[0];
             assert_eq!(first_event.x, 200);
             assert_eq!(first_event.y, 100);
-            assert_eq!(first_event.polarity, true);
+            assert!(first_event.polarity);
 
             // Check timestamp reconstruction (0x100 << 12 | 0x200 = 0x100200)
             let expected_timestamp = 0x100200_u32 as f64 / 1_000_000.0;
@@ -285,7 +284,7 @@ mod evt3_tests {
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
         // Y address
-        let y_addr = ((150u16) << 4) | 0x0;
+        let y_addr = (150u16) << 4;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // Event 1: x=100, positive polarity (should be included)
@@ -293,7 +292,7 @@ mod evt3_tests {
         binary_data.extend_from_slice(&x_addr1.to_le_bytes());
 
         // Event 2: x=50, negative polarity (should be excluded by polarity filter)
-        let x_addr2 = ((0u16) << 15) | ((50u16) << 4) | 0x2;
+        let x_addr2 = (50u16 << 4) | 0x2;
         binary_data.extend_from_slice(&x_addr2.to_le_bytes());
 
         // Event 3: x=300, positive polarity (should be excluded by coordinate filter)
@@ -320,7 +319,7 @@ mod evt3_tests {
         println!("  Filtered events: {}", events.len());
 
         // Should have only the first event
-        assert!(events.len() >= 1);
+        assert!(!events.is_empty());
 
         // Validate all events pass the filters
         for event in &events {
@@ -328,7 +327,7 @@ mod evt3_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 140);
             assert!(event.y <= 160);
-            assert_eq!(event.polarity, true);
+            assert!(event.polarity);
         }
     }
 
@@ -354,7 +353,7 @@ mod evt3_tests {
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
         // Y address (out of bounds)
-        let y_addr = ((150u16) << 4) | 0x0;
+        let y_addr = (150u16) << 4;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // X address (out of bounds)
@@ -393,14 +392,14 @@ mod evt3_tests {
         let (events_no_validation, _) = reader_no_validation.read_file(&file_path).unwrap();
 
         // Should have events (validation disabled)
-        assert!(events_no_validation.len() > 0);
+        assert!(!events_no_validation.is_empty());
     }
 
     #[test]
     fn test_evt3_config_defaults() {
         let config = Evt3Config::default();
-        assert_eq!(config.validate_coordinates, true);
-        assert_eq!(config.skip_invalid_events, false);
+        assert!(config.validate_coordinates);
+        assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.sensor_resolution, None);
         assert_eq!(config.chunk_size, 1_000_000);
