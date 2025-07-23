@@ -1,7 +1,5 @@
-use crate::ev_formats::polarity_handler::{PolarityConfig, PolarityEncoding, PolarityHandler};
-use crate::ev_formats::LoadConfig;
-use std::io::Write;
-use tempfile::NamedTempFile;
+use evlib::ev_formats::polarity_handler::{PolarityConfig, PolarityEncoding, PolarityHandler};
+use evlib::ev_formats::LoadConfig;
 
 #[test]
 fn test_polarity_conversion_zero_one_to_minus_one_plus_one() {
@@ -65,14 +63,14 @@ fn test_load_config_with_polarity_encoding() {
     let config = LoadConfig::new()
         .with_polarity_encoding(PolarityEncoding::MinusOnePlusOne)
         .with_sorting(true)
-        .with_polarity(Some(1));
+        .with_polarity(Some(true));
 
     assert_eq!(
         config.polarity_encoding,
         Some(PolarityEncoding::MinusOnePlusOne)
     );
     assert_eq!(config.sort, true);
-    assert_eq!(config.polarity, Some(1));
+    assert_eq!(config.polarity, Some(true));
 
     println!("OK: LoadConfig polarity encoding test passed");
 }

@@ -30,31 +30,31 @@ fn create_test_events() -> Events {
             t: 0.001000,
             x: 100,
             y: 150,
-            polarity: 1,
+            polarity: true,
         },
         Event {
             t: 0.001005,
             x: 200,
             y: 250,
-            polarity: -1,
+            polarity: false,
         },
         Event {
             t: 0.001010,
             x: 300,
             y: 350,
-            polarity: 1,
+            polarity: true,
         },
         Event {
             t: 0.001015,
             x: 400,
             y: 450,
-            polarity: 0,
+            polarity: false,
         },
         Event {
             t: 0.001020,
             x: 500,
             y: 550,
-            polarity: 1,
+            polarity: true,
         },
     ]
 }
@@ -68,7 +68,10 @@ fn create_test_file_with_events(events: &Events) -> NamedTempFile {
         writeln!(
             temp_file,
             "{:.6} {} {} {}",
-            event.t, event.x, event.y, event.polarity
+            event.t,
+            event.x,
+            event.y,
+            if event.polarity { 1 } else { 0 }
         )
         .unwrap();
     }
@@ -90,7 +93,7 @@ struct ValidationStats {
     max_x: u16,
     min_y: u16,
     max_y: u16,
-    polarity_distribution: HashMap<i8, usize>,
+    polarity_distribution: HashMap<bool, usize>,
 }
 
 impl ValidationStats {
@@ -141,10 +144,8 @@ impl ValidationStats {
                 stats.coordinate_violations += 1;
             }
 
-            // Check polarity values
-            if event.polarity < -1 || event.polarity > 1 {
-                stats.polarity_violations += 1;
-            }
+            // Check polarity values - with bool type, no validation needed
+            // All bool values are valid
 
             // Update polarity distribution
             *stats
@@ -325,16 +326,15 @@ fn test_polarity_validation() {
     );
 
     // Should have both positive and negative events
-    let has_positive = stats.polarity_distribution.get(&1).unwrap_or(&0) > &0;
-    let has_negative = stats.polarity_distribution.get(&-1).unwrap_or(&0) > &0
-        || stats.polarity_distribution.get(&0).unwrap_or(&0) > &0;
+    let has_positive = stats.polarity_distribution.get(&true).unwrap_or(&0) > &0;
+    let has_negative = stats.polarity_distribution.get(&false).unwrap_or(&0) > &0;
 
     assert!(has_positive, "Should have positive polarity events");
     assert!(has_negative, "Should have negative polarity events");
 
     // Check polarity balance (shouldn't be too skewed)
     let total_valid = stats.polarity_distribution.values().sum::<usize>();
-    let positive_count = *stats.polarity_distribution.get(&1).unwrap_or(&0);
+    let positive_count = *stats.polarity_distribution.get(&true).unwrap_or(&0);
     let positive_ratio = positive_count as f64 / total_valid as f64;
 
     assert!(
@@ -411,19 +411,19 @@ fn test_edge_case_coordinates() {
             t: 0.001,
             x: 0,
             y: 0,
-            polarity: 1,
+            polarity: true,
         }, // Corner
         Event {
             t: 0.002,
             x: 1023,
             y: 767,
-            polarity: -1,
+            polarity: false,
         }, // Max coords
         Event {
             t: 0.003,
             x: 512,
             y: 384,
-            polarity: 1,
+            polarity: true,
         }, // Center
     ];
 
@@ -654,31 +654,31 @@ fn test_duplicate_detection() {
             t: 0.001,
             x: 100,
             y: 150,
-            polarity: 1,
+            polarity: true,
         },
         Event {
             t: 0.002,
             x: 200,
             y: 250,
-            polarity: -1,
+            polarity: false,
         },
         Event {
             t: 0.001,
             x: 100,
             y: 150,
-            polarity: 1,
+            polarity: true,
         }, // Exact duplicate
         Event {
             t: 0.003,
             x: 300,
             y: 350,
-            polarity: 1,
+            polarity: true,
         },
         Event {
             t: 0.002,
             x: 200,
             y: 250,
-            polarity: -1,
+            polarity: false,
         }, // Another duplicate
     ];
 

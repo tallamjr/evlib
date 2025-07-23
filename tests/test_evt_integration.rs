@@ -6,10 +6,7 @@
 
 #[cfg(test)]
 mod evt_format_detection_tests {
-    use evlib::ev_formats::{
-        format_detector::{EventFormat, FormatDetector},
-        load_events_with_config, LoadConfig,
-    };
+    use evlib::ev_formats::{format_detector::FormatDetector, load_events_with_config, LoadConfig};
     use std::fs::File;
     use std::io::Write;
     use std::path::Path;

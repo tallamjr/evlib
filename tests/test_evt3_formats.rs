@@ -308,7 +308,7 @@ mod evt3_tests {
             max_x: Some(200),
             min_y: Some(140),
             max_y: Some(160),
-            polarity: Some(1), // Positive events only
+            polarity: Some(true), // Positive events only
             sort: true,
             ..Default::default()
         };

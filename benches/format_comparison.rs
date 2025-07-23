@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use evlib::ev_core::Event;
 use evlib::ev_formats::streaming::PolarsEventStreamer;
 use evlib::ev_formats::{format_detector, load_events_with_config, LoadConfig};
@@ -154,7 +154,7 @@ fn benchmark_format_loading_performance(c: &mut Criterion) {
 
         for (format_name, file_path) in test_files {
             group.bench_with_input(
-                BenchmarkId::new("load_format", format!("{}_{}", format_name, count)),
+                BenchmarkId::new("load_format", format!("{format_name}_{count}")),
                 &file_path,
                 |b, path| {
                     b.iter(|| {

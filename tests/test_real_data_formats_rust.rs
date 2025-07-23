@@ -266,7 +266,7 @@ fn test_evt2_reader_comprehensive() {
                 Some(results.time_range.0 + 0.1),
                 Some(results.time_range.1 - 0.1),
             )
-            .with_polarity(Some(1));
+            .with_polarity(Some(true));
 
         let filtered_events = reader
             .read_with_config(config.path.to_str().unwrap(), &filter_config)
@@ -430,11 +430,11 @@ fn test_text_reader_comprehensive() {
     );
 
     // Check polarity encoding conversion
-    let unique_polarities: std::collections::HashSet<i8> =
+    let unique_polarities: std::collections::HashSet<bool> =
         events.iter().map(|e| e.polarity).collect();
     assert_eq!(
         unique_polarities,
-        [1, -1].iter().cloned().collect(),
+        [true, false].iter().cloned().collect(),
         "Polarity encoding conversion failed: {:?}",
         unique_polarities
     );
@@ -449,7 +449,7 @@ fn test_text_reader_comprehensive() {
     // Test filtering functionality
     let filter_config = LoadConfig::new()
         .with_spatial_bounds(Some(100), Some(200), Some(50), Some(150))
-        .with_polarity(Some(1));
+        .with_polarity(Some(true));
 
     let filtered_events =
         load_events_from_text(config.path.to_str().unwrap(), &filter_config).unwrap();

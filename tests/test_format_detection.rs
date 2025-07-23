@@ -12,7 +12,6 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-const DATA_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data";
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
 const ORIGINAL_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/original/front";
 
@@ -42,7 +41,7 @@ fn create_synthetic_aer_file() -> NamedTempFile {
     // Create AER events: (y << 10) | (x << 1) | polarity
     let events = [
         ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-        ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+        ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
         ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
     ];
 
@@ -67,8 +66,8 @@ fn create_random_binary_file() -> NamedTempFile {
 #[test]
 fn test_text_format_detection() {
     // Test real text files
-    let events_txt = format!("{}/events.txt", SLIDER_DEPTH_DIR);
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_txt = format!("{SLIDER_DEPTH_DIR}/events.txt");
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if check_data_file_exists(&events_txt) {
         let result =
@@ -126,15 +125,15 @@ fn test_text_format_detection() {
 #[test]
 fn test_hdf5_format_detection() {
     let hdf5_files = [
-        format!("{}/seq01.h5", ORIGINAL_HDF5_DIR),
-        format!("{}/seq02.h5", ORIGINAL_HDF5_DIR),
-        format!("{}/seq03.h5", ORIGINAL_HDF5_DIR),
+        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
+        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
+        format!("{ORIGINAL_HDF5_DIR}/seq03.h5"),
     ];
 
     for file_path in &hdf5_files {
         if check_data_file_exists(file_path) {
             let result = detect_event_format(file_path)
-                .expect(&format!("Failed to detect format for {}", file_path));
+                .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
 
             assert_eq!(result.format, EventFormat::HDF5);
             assert!(
@@ -220,7 +219,7 @@ fn test_empty_file_detection() {
             println!("Empty file correctly rejected");
         }
         Err(e) => {
-            panic!("Unexpected error for empty file: {}", e);
+            panic!("Unexpected error for empty file: {e}");
         }
     }
 }
@@ -236,7 +235,7 @@ fn test_nonexistent_file_detection() {
             println!("Non-existent file correctly rejected");
         }
         e => {
-            panic!("Unexpected error type for non-existent file: {:?}", e);
+            panic!("Unexpected error type for non-existent file: {e:?}");
         }
     }
 }
@@ -246,10 +245,10 @@ fn test_confidence_scoring_consistency() {
     // Test that confidence scores are consistent across multiple detections
     let test_files = vec![
         (
-            format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR),
+            format!("{SLIDER_DEPTH_DIR}/events_chunk.txt"),
             EventFormat::Text,
         ),
-        (format!("{}/seq01.h5", ORIGINAL_HDF5_DIR), EventFormat::HDF5),
+        (format!("{ORIGINAL_HDF5_DIR}/seq01.h5"), EventFormat::HDF5),
     ];
 
     for (file_path, expected_format) in test_files {
@@ -262,7 +261,7 @@ fn test_confidence_scoring_consistency() {
         // Run detection multiple times
         for _ in 0..3 {
             let result = detect_event_format(&file_path)
-                .expect(&format!("Failed to detect format for {}", file_path));
+                .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
 
             assert_eq!(result.format, expected_format);
             confidences.push(result.confidence);
@@ -273,8 +272,7 @@ fn test_confidence_scoring_consistency() {
         for &confidence in &confidences[1..] {
             assert!(
                 (confidence - first_confidence).abs() < 1e-6,
-                "Inconsistent confidence scores: {:?}",
-                confidences
+                "Inconsistent confidence scores: {confidences:?}"
             );
         }
 
@@ -289,7 +287,7 @@ fn test_confidence_scoring_consistency() {
 
 #[test]
 fn test_metadata_extraction() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if check_data_file_exists(&events_chunk_txt) {
         let result = detect_event_format(&events_chunk_txt).expect("Failed to detect format");
@@ -331,24 +329,22 @@ fn test_format_description_consistency() {
         let description = FormatDetector::get_format_description(format);
         assert!(
             !description.is_empty(),
-            "Format description should not be empty for {:?}",
-            format
+            "Format description should not be empty for {format:?}"
         );
         assert!(
             description.len() > 5,
-            "Format description should be meaningful for {:?}",
-            format
+            "Format description should be meaningful for {format:?}"
         );
 
-        println!("{}: {}", format, description);
+        println!("{format}: {description}");
     }
 }
 
 #[test]
 fn test_detection_performance() {
     let test_files = vec![
-        format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR),
-        format!("{}/seq01.h5", ORIGINAL_HDF5_DIR),
+        format!("{SLIDER_DEPTH_DIR}/events_chunk.txt"),
+        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
     ];
 
     for file_path in test_files {
@@ -358,7 +354,7 @@ fn test_detection_performance() {
 
         let start = std::time::Instant::now();
         let result = detect_event_format(&file_path)
-            .expect(&format!("Failed to detect format for {}", file_path));
+            .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
         let duration = start.elapsed();
 
         // Detection should be fast (< 100ms for typical files)
@@ -429,14 +425,14 @@ fn test_file_extension_influence() {
 
     // .txt extension
     let mut txt_file = NamedTempFile::with_suffix(".txt").expect("Failed to create .txt file");
-    write!(txt_file, "{}", content).unwrap();
+    write!(txt_file, "{content}").unwrap();
 
     let txt_result =
         detect_event_format(txt_file.path().to_str().unwrap()).expect("Failed to detect .txt file");
 
     // .dat extension
     let mut dat_file = NamedTempFile::with_suffix(".dat").expect("Failed to create .dat file");
-    write!(dat_file, "{}", content).unwrap();
+    write!(dat_file, "{content}").unwrap();
 
     let dat_result =
         detect_event_format(dat_file.path().to_str().unwrap()).expect("Failed to detect .dat file");
@@ -454,7 +450,7 @@ fn test_file_extension_influence() {
 
 #[test]
 fn test_large_file_detection() {
-    let events_txt = format!("{}/events.txt", SLIDER_DEPTH_DIR);
+    let events_txt = format!("{SLIDER_DEPTH_DIR}/events.txt");
 
     if check_data_file_exists(&events_txt) {
         let start = std::time::Instant::now();

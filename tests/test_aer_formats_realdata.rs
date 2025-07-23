@@ -8,16 +8,14 @@
 /// 4. Handle large datasets efficiently
 /// 5. Parse HDF5 files correctly
 /// 6. Detect format issues and handle errors gracefully
-use evlib::ev_core::{Event, Events};
 use evlib::ev_formats::{
     detect_event_format, load_events_from_hdf5, load_events_from_text, load_events_with_config,
-    AerConfig, AerReader, EventFormat, LoadConfig, TimestampMode,
+    AerConfig, AerReader, EventFormat, LoadConfig,
 };
 use std::collections::HashSet;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-const DATA_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data";
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
 const ORIGINAL_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/original/front";
 const ETRAM_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/eTram/h5/val_2";
@@ -283,13 +281,12 @@ fn test_event_polarity_distribution() {
 
     let mut positive_count = 0;
     let mut negative_count = 0;
-    let mut invalid_count = 0;
+    let invalid_count = 0;
 
     for event in &events {
         match event.polarity {
-            1 => positive_count += 1,
-            0 | -1 => negative_count += 1,
-            _ => invalid_count += 1,
+            true => positive_count += 1,
+            false => negative_count += 1,
         }
     }
 
@@ -414,7 +411,7 @@ fn test_load_with_polarity_filtering() {
     }
 
     // Load only positive polarity events
-    let config_pos = LoadConfig::new().with_polarity(Some(1));
+    let config_pos = LoadConfig::new().with_polarity(Some(true));
     let events_pos = load_events_from_text(&events_chunk_txt, &config_pos)
         .expect("Failed to load positive polarity events");
 
@@ -424,7 +421,7 @@ fn test_load_with_polarity_filtering() {
     }
 
     // Load only negative polarity events
-    let config_neg = LoadConfig::new().with_polarity(Some(-1));
+    let config_neg = LoadConfig::new().with_polarity(Some(false));
     let events_neg = load_events_from_text(&events_chunk_txt, &config_neg)
         .expect("Failed to load negative polarity events");
 
