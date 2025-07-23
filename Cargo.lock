@@ -803,7 +803,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "evlib"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "async-channel",
  "clap",

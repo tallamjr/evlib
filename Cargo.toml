@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.2.24"
+version         = "0.2.25"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
