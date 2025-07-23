@@ -3,17 +3,17 @@ name: Publish
 on:
   push:
     branches: [main, master]
-    paths: ['Cargo.toml']
+    paths: ["Cargo.toml"]
   workflow_dispatch:
     inputs:
       publish_to:
-        description: 'Where to publish'
+        description: "Where to publish"
         required: true
-        default: 'both'
+        default: "both"
         type: choice
         options: [both, pypi, crates]
       test_mode:
-        description: 'Use test repositories'
+        description: "Use test repositories"
         required: false
         default: false
         type: boolean
@@ -64,7 +64,7 @@ jobs:
       - name: Setup dependencies
         uses: ./.github/actions/setup-dependencies
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           os: ubuntu-latest
           enable-gstreamer: true
 
