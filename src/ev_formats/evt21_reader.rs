@@ -850,7 +850,7 @@ mod tests {
         assert_eq!(vec_event.x_base, 100);
         assert_eq!(vec_event.y, 200);
         assert_eq!(vec_event.timestamp, 30);
-        assert_eq!(vec_event.polarity, true);
+        assert!(vec_event.polarity);
         assert_eq!(vec_event.validity_mask, 0x0000000F);
     }
 
@@ -872,7 +872,7 @@ mod tests {
         let raw_event = RawEvt21Event { data: raw_data };
 
         let trigger_event = raw_event.as_ext_trigger_event().unwrap();
-        assert_eq!(trigger_event.value, true);
+        assert!(trigger_event.value);
         assert_eq!(trigger_event.id, 15);
         assert_eq!(trigger_event.timestamp, 30);
     }
@@ -900,11 +900,11 @@ mod tests {
     #[test]
     fn test_evt21_config_default() {
         let config = Evt21Config::default();
-        assert_eq!(config.validate_coordinates, false);
-        assert_eq!(config.skip_invalid_events, false);
+        assert!(!config.validate_coordinates);
+        assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.chunk_size, 500_000);
-        assert_eq!(config.decode_vectorized, true);
+        assert!(config.decode_vectorized);
     }
 
     #[test]
@@ -931,13 +931,13 @@ mod tests {
         // Check first event
         assert_eq!(events[0].x, 100);
         assert_eq!(events[0].y, 200);
-        assert_eq!(events[0].polarity, true);
+        assert!(events[0].polarity);
         assert_eq!(events[0].t, 1.000030); // (1000000 + 30) / 1_000_000.0
 
         // Check last event
         assert_eq!(events[3].x, 103);
         assert_eq!(events[3].y, 200);
-        assert_eq!(events[3].polarity, true);
+        assert!(events[3].polarity);
     }
 
     #[test]

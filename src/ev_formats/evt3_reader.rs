@@ -895,9 +895,6 @@ impl Default for Evt3Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
-    use tempfile::TempDir;
 
     #[test]
     fn test_evt3_event_type_parsing() {
@@ -942,7 +939,7 @@ mod tests {
 
         let y_event = raw_event.as_y_addr_event().unwrap();
         assert_eq!(y_event.y, 300);
-        assert_eq!(y_event.orig, true);
+        assert!(y_event.orig);
     }
 
     #[test]
@@ -953,7 +950,7 @@ mod tests {
 
         let x_event = raw_event.as_x_addr_event().unwrap();
         assert_eq!(x_event.x, 500);
-        assert_eq!(x_event.polarity, true);
+        assert!(x_event.polarity);
     }
 
     #[test]
@@ -974,7 +971,7 @@ mod tests {
 
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x123);
-        assert_eq!(time_event.is_high, false);
+        assert!(!time_event.is_high);
 
         // Test Time High event with time=0x456
         let raw_data = (0x456u16 << 4) | 0x8;
@@ -982,7 +979,7 @@ mod tests {
 
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x456);
-        assert_eq!(time_event.is_high, true);
+        assert!(time_event.is_high);
     }
 
     #[test]
@@ -990,18 +987,18 @@ mod tests {
         let state = DecoderState::default();
         assert_eq!(state.current_timestamp, 0);
         assert_eq!(state.current_y, 0);
-        assert_eq!(state.current_polarity, false);
+        assert!(!state.current_polarity);
         assert_eq!(state.vect_base_x, 0);
-        assert_eq!(state.vect_base_polarity, false);
-        assert_eq!(state.has_y, false);
-        assert_eq!(state.has_timestamp, false);
+        assert!(!state.vect_base_polarity);
+        assert!(!state.has_y);
+        assert!(!state.has_timestamp);
     }
 
     #[test]
     fn test_evt3_config_default() {
         let config = Evt3Config::default();
-        assert_eq!(config.validate_coordinates, true);
-        assert_eq!(config.skip_invalid_events, false);
+        assert!(config.validate_coordinates);
+        assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.chunk_size, 1_000_000);
     }

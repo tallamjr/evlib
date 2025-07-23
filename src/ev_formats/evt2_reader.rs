@@ -781,7 +781,7 @@ mod tests {
         assert_eq!(cd_event.x, 100);
         assert_eq!(cd_event.y, 200);
         assert_eq!(cd_event.timestamp, 30);
-        assert_eq!(cd_event.polarity, true);
+        assert!(cd_event.polarity);
     }
 
     #[test]
@@ -818,8 +818,8 @@ mod tests {
     #[test]
     fn test_evt2_config_default() {
         let config = Evt2Config::default();
-        assert_eq!(config.validate_coordinates, true);
-        assert_eq!(config.skip_invalid_events, false);
+        assert!(config.validate_coordinates);
+        assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.chunk_size, 1_000_000);
     }

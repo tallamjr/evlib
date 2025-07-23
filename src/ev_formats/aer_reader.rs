@@ -594,7 +594,7 @@ mod tests {
 
         assert_eq!(event.x, 100);
         assert_eq!(event.y, 200);
-        assert_eq!(event.polarity, true);
+        assert!(event.polarity);
     }
 
     #[test]
@@ -611,7 +611,7 @@ mod tests {
 
         assert_eq!(event.x, 50);
         assert_eq!(event.y, 75);
-        assert_eq!(event.polarity, false);
+        assert!(!event.polarity);
     }
 
     #[test]
@@ -620,7 +620,7 @@ mod tests {
         let reader = AerReader::with_config(config);
 
         // Create an event with coordinates exceeding bounds
-        let raw_event = ((200u32 << 10) | (150u32 << 1) | 1); // x=150, y=200
+        let raw_event = (200u32 << 10) | (150u32 << 1) | 1; // x=150, y=200
         let data = raw_event.to_le_bytes();
 
         let result = reader.parse_single_event(&data, 0);
@@ -643,15 +643,15 @@ mod tests {
         let mut data = Vec::new();
 
         // Valid event: x=50, y=75, polarity=1
-        let valid_event = ((75u32 << 10) | (50u32 << 1) | 1);
+        let valid_event = (75u32 << 10) | (50u32 << 1) | 1;
         data.extend_from_slice(&valid_event.to_le_bytes());
 
         // Invalid event: x=150, y=200, polarity=0 (exceeds bounds)
-        let invalid_event = ((200u32 << 10) | (150u32 << 1) | 0);
+        let invalid_event = (200u32 << 10) | (150u32 << 1) | 0;
         data.extend_from_slice(&invalid_event.to_le_bytes());
 
         // Another valid event: x=25, y=30, polarity=0
-        let valid_event2 = ((30u32 << 10) | (25u32 << 1) | 0);
+        let valid_event2 = (30u32 << 10) | (25u32 << 1) | 0;
         data.extend_from_slice(&valid_event2.to_le_bytes());
 
         let (events, metadata) = reader.parse_events(&data, data.len() as u64).unwrap();
@@ -731,7 +731,7 @@ mod tests {
 
         assert_eq!(event.x, 100);
         assert_eq!(event.y, 200);
-        assert_eq!(event.polarity, true);
+        assert!(event.polarity);
     }
 
     #[test]
@@ -742,13 +742,13 @@ mod tests {
         // Create a test event in 16-bit format
         // Since we're using 16-bit, we need to fit polarity + x + y into 16 bits
         // Let's use: 1 bit polarity + 7 bits x + 8 bits y
-        let raw_event = ((75u16 << 8) | (50u16 << 1) | 1); // polarity=1, x=50, y=75
+        let raw_event = (75u16 << 8) | (50u16 << 1) | 1; // polarity=1, x=50, y=75
         let data = raw_event.to_le_bytes();
 
         let event = reader.parse_single_event(&data, 0).unwrap();
 
         // With 16-bit format, coordinates will be different due to bit layout
-        assert_eq!(event.polarity, true);
+        assert!(event.polarity);
     }
 
     #[test]
@@ -780,7 +780,7 @@ mod tests {
         // Check first event
         assert_eq!(events[0].x, 50);
         assert_eq!(events[0].y, 100);
-        assert_eq!(events[0].polarity, true);
+        assert!(events[0].polarity);
 
         // Check metadata
         assert!(metadata.coordinate_bounds.is_some());

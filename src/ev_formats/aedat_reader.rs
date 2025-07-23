@@ -1185,19 +1185,19 @@ mod tests {
         // Verify first event
         assert_eq!(events[0].x, 1);
         assert_eq!(events[0].y, 1);
-        assert_eq!(events[0].polarity, true);
+        assert!(events[0].polarity);
         assert_eq!(events[0].t, 1000.0);
 
         // Verify second event
         assert_eq!(events[1].x, 2);
         assert_eq!(events[1].y, 2);
-        assert_eq!(events[1].polarity, true);
+        assert!(events[1].polarity);
         assert_eq!(events[1].t, 2000.0);
 
         // Verify third event
         assert_eq!(events[2].x, 3);
         assert_eq!(events[2].y, 3);
-        assert_eq!(events[2].polarity, false); // polarity 0 -> false
+        assert!(!events[2].polarity); // polarity 0 -> false
         assert_eq!(events[2].t, 3000.0);
     }
 
@@ -1245,7 +1245,7 @@ mod tests {
         assert_eq!(metadata.version, Some(AedatVersion::V2_0));
         // Header parsing might not extract resolution correctly in test
         // assert_eq!(metadata.sensor_resolution, Some((640, 480)));
-        assert!(events.len() >= 0); // Just verify we can read events
+        // Events length is always >= 0 by definition, no need to assert
 
         // Verify first event if present - just check that we can read events
         if !events.is_empty() {
@@ -1296,12 +1296,12 @@ mod tests {
             ..Default::default()
         };
         let reader = AedatReader::with_config(config);
-        let (events, metadata) = reader.read_file(&file_path).unwrap();
+        let (_events, metadata) = reader.read_file(&file_path).unwrap();
 
         assert_eq!(metadata.version, Some(AedatVersion::V3_1));
         // Header parsing might not extract resolution correctly in test
         // assert_eq!(metadata.sensor_resolution, Some((346, 240)));
-        assert!(events.len() >= 0); // Just verify we can read events
+        // Events length is always >= 0 by definition, no need to assert
     }
 
     /// Test AEDAT 4.0 format reading
@@ -1350,7 +1350,7 @@ mod tests {
         // Verify first event
         assert_eq!(events[0].x, 100);
         assert_eq!(events[0].y, 200);
-        assert_eq!(events[0].polarity, true);
+        assert!(events[0].polarity);
         assert_eq!(events[0].t, 1000.0);
     }
 
