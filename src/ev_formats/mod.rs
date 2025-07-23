@@ -364,8 +364,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     }
                 } else {
                     return Err(hdf5_metno::Error::Internal(format!(
-                        "Could not read timestamp data from dataset '{}' in HDF5 file {}",
-                        t_name, path
+                        "Could not read timestamp data from dataset '{t_name}' in HDF5 file {path}"
                     )));
                 }
 
@@ -376,8 +375,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
 
     // If we get here, we couldn't find the data in any expected format
     Err(hdf5_metno::Error::Internal(format!(
-        "Could not find event data in HDF5 file {}",
-        path
+        "Could not find event data in HDF5 file {path}"
     )))
 }
 
@@ -445,9 +443,8 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "Line {}: Expected at least {} values for column mapping, got {}",
+                    "Line {}: Expected at least {max_col} values for column mapping, got {}",
                     line_num + 1,
-                    max_col,
                     parts.len()
                 ),
             ));
@@ -458,10 +455,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "Line {}: Invalid timestamp '{}': {}",
+                    "Line {}: Invalid timestamp '{}': {e}",
                     line_num + 1,
-                    parts[t_col],
-                    e
+                    parts[t_col]
                 ),
             )
         })?;
@@ -469,10 +465,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "Line {}: Invalid x coordinate '{}': {}",
+                    "Line {}: Invalid x coordinate '{}': {e}",
                     line_num + 1,
-                    parts[x_col],
-                    e
+                    parts[x_col]
                 ),
             )
         })?;
@@ -480,10 +475,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "Line {}: Invalid y coordinate '{}': {}",
+                    "Line {}: Invalid y coordinate '{}': {e}",
                     line_num + 1,
-                    parts[y_col],
-                    e
+                    parts[y_col]
                 ),
             )
         })?;
@@ -491,10 +485,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "Line {}: Invalid polarity '{}': {}",
+                    "Line {}: Invalid polarity '{}': {e}",
                     line_num + 1,
-                    parts[p_col],
-                    e
+                    parts[p_col]
                 ),
             )
         })?;
@@ -637,10 +630,10 @@ pub fn load_events_with_config(
         }
         EventFormat::Binary => {
             // Binary format is not supported for safety reasons
+            let format = detection_result.format;
+            let confidence = detection_result.confidence;
             Err(format!(
-                "Binary format is not supported for safety reasons. Detected format: {} (confidence: {:.2})",
-                detection_result.format,
-                detection_result.confidence
+                "Binary format is not supported for safety reasons. Detected format: {format} (confidence: {confidence:.2})"
             ).into())
         }
         EventFormat::Unknown => {
@@ -922,8 +915,7 @@ pub mod python {
                         .i16()
                         .map_err(|e| {
                             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to extract i16 column: {}",
-                                e
+                                "Failed to extract i16 column: {e}"
                             ))
                         })?
                         .into_no_null_iter()
@@ -1036,12 +1028,12 @@ pub mod python {
 
         // Detect format for proper polarity encoding
         let format_result = detect_event_format(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
         })?;
 
         // Load events using existing Rust logic
         let events = load_events_with_config(path, &config).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {}", e))
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {e}"))
         })?;
 
         // NEW: Direct Polars DataFrame construction with automatic streaming for large files

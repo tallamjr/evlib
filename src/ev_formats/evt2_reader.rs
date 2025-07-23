@@ -236,30 +236,28 @@ pub enum Evt2Error {
 impl std::fmt::Display for Evt2Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Evt2Error::Io(e) => write!(f, "I/O error: {}", e),
-            Evt2Error::InvalidHeader(msg) => write!(f, "Invalid header: {}", msg),
+            Evt2Error::Io(e) => write!(f, "I/O error: {e}"),
+            Evt2Error::InvalidHeader(msg) => write!(f, "Invalid header: {msg}"),
             Evt2Error::InvalidEventType { type_value, offset } => {
-                write!(f, "Invalid event type {} at offset {}", type_value, offset)
+                write!(f, "Invalid event type {type_value} at offset {offset}")
             }
             Evt2Error::InvalidBinaryData { offset, message } => {
-                write!(f, "Invalid binary data at offset {}: {}", offset, message)
+                write!(f, "Invalid binary data at offset {offset}: {message}")
             }
             Evt2Error::InsufficientData { expected, actual } => {
                 write!(
                     f,
-                    "Insufficient data: expected {} bytes, got {} bytes",
-                    expected, actual
+                    "Insufficient data: expected {expected} bytes, got {actual} bytes"
                 )
             }
             Evt2Error::CoordinateOutOfBounds { x, y, max_x, max_y } => {
                 write!(
                     f,
-                    "Coordinate out of bounds: ({}, {}) exceeds ({}, {})",
-                    x, y, max_x, max_y
+                    "Coordinate out of bounds: ({x}, {y}) exceeds ({max_x}, {max_y})"
                 )
             }
-            Evt2Error::TimestampError(msg) => write!(f, "Timestamp error: {}", msg),
-            Evt2Error::PolarityError(e) => write!(f, "Polarity error: {}", e),
+            Evt2Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
+            Evt2Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
         }
     }
 }
@@ -459,8 +457,7 @@ impl Evt2Reader {
                             "evt" => {
                                 if value != "2.0" {
                                     return Err(Evt2Error::InvalidHeader(format!(
-                                        "Expected EVT 2.0, got: {}",
-                                        value
+                                        "Expected EVT 2.0, got: {value}"
                                     )));
                                 }
                             }
@@ -503,8 +500,7 @@ impl Evt2Reader {
 
         if parts.is_empty() || parts[0] != "EVT2" {
             return Err(Evt2Error::InvalidHeader(format!(
-                "Expected EVT2 format, got: {}",
-                line
+                "Expected EVT2 format, got: {line}"
             )));
         }
 
@@ -516,12 +512,12 @@ impl Evt2Reader {
                 match key {
                     "width" => {
                         width = Some(value.parse().map_err(|_| {
-                            Evt2Error::InvalidHeader(format!("Invalid width: {}", value))
+                            Evt2Error::InvalidHeader(format!("Invalid width: {value}"))
                         })?);
                     }
                     "height" => {
                         height = Some(value.parse().map_err(|_| {
-                            Evt2Error::InvalidHeader(format!("Invalid height: {}", value))
+                            Evt2Error::InvalidHeader(format!("Invalid height: {value}"))
                         })?);
                     }
                     _ => {
@@ -548,17 +544,16 @@ impl Evt2Reader {
     ) -> Result<(), Evt2Error> {
         if let Some((width_str, height_str)) = line.split_once('x') {
             let width = width_str.parse().map_err(|_| {
-                Evt2Error::InvalidHeader(format!("Invalid width in geometry: {}", width_str))
+                Evt2Error::InvalidHeader(format!("Invalid width in geometry: {width_str}"))
             })?;
             let height = height_str.parse().map_err(|_| {
-                Evt2Error::InvalidHeader(format!("Invalid height in geometry: {}", height_str))
+                Evt2Error::InvalidHeader(format!("Invalid height in geometry: {height_str}"))
             })?;
 
             metadata.sensor_resolution = Some((width, height));
         } else {
             return Err(Evt2Error::InvalidHeader(format!(
-                "Invalid geometry format: {}",
-                line
+                "Invalid geometry format: {line}"
             )));
         }
 

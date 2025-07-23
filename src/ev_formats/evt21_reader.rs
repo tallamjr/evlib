@@ -264,32 +264,30 @@ pub enum Evt21Error {
 impl std::fmt::Display for Evt21Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Evt21Error::Io(e) => write!(f, "I/O error: {}", e),
-            Evt21Error::InvalidHeader(msg) => write!(f, "Invalid header: {}", msg),
+            Evt21Error::Io(e) => write!(f, "I/O error: {e}"),
+            Evt21Error::InvalidHeader(msg) => write!(f, "Invalid header: {msg}"),
             Evt21Error::InvalidEventType { type_value, offset } => {
-                write!(f, "Invalid event type {} at offset {}", type_value, offset)
+                write!(f, "Invalid event type {type_value} at offset {offset}")
             }
             Evt21Error::InvalidBinaryData { offset, message } => {
-                write!(f, "Invalid binary data at offset {}: {}", offset, message)
+                write!(f, "Invalid binary data at offset {offset}: {message}")
             }
             Evt21Error::InsufficientData { expected, actual } => {
                 write!(
                     f,
-                    "Insufficient data: expected {} bytes, got {} bytes",
-                    expected, actual
+                    "Insufficient data: expected {expected} bytes, got {actual} bytes"
                 )
             }
             Evt21Error::CoordinateOutOfBounds { x, y, max_x, max_y } => {
                 write!(
                     f,
-                    "Coordinate out of bounds: ({}, {}) exceeds ({}, {})",
-                    x, y, max_x, max_y
+                    "Coordinate out of bounds: ({x}, {y}) exceeds ({max_x}, {max_y})"
                 )
             }
-            Evt21Error::TimestampError(msg) => write!(f, "Timestamp error: {}", msg),
-            Evt21Error::PolarityError(e) => write!(f, "Polarity error: {}", e),
+            Evt21Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
+            Evt21Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
             Evt21Error::VectorizedDecodingError(msg) => {
-                write!(f, "Vectorized decoding error: {}", msg)
+                write!(f, "Vectorized decoding error: {msg}")
             }
         }
     }
@@ -470,8 +468,7 @@ impl Evt21Reader {
                         "evt" => {
                             if value != "2.1" {
                                 return Err(Evt21Error::InvalidHeader(format!(
-                                    "Expected EVT 2.1, got: {}",
-                                    value
+                                    "Expected EVT 2.1, got: {value}"
                                 )));
                             }
                         }
@@ -511,8 +508,7 @@ impl Evt21Reader {
 
         if parts.is_empty() || !parts[0].starts_with("EVT2") {
             return Err(Evt21Error::InvalidHeader(format!(
-                "Expected EVT2.1 format, got: {}",
-                line
+                "Expected EVT2.1 format, got: {line}"
             )));
         }
 
@@ -524,12 +520,12 @@ impl Evt21Reader {
                 match key {
                     "width" => {
                         width = Some(value.parse().map_err(|_| {
-                            Evt21Error::InvalidHeader(format!("Invalid width: {}", value))
+                            Evt21Error::InvalidHeader(format!("Invalid width: {value}"))
                         })?);
                     }
                     "height" => {
                         height = Some(value.parse().map_err(|_| {
-                            Evt21Error::InvalidHeader(format!("Invalid height: {}", value))
+                            Evt21Error::InvalidHeader(format!("Invalid height: {value}"))
                         })?);
                     }
                     _ => {
@@ -556,17 +552,16 @@ impl Evt21Reader {
     ) -> Result<(), Evt21Error> {
         if let Some((width_str, height_str)) = line.split_once('x') {
             let width = width_str.parse().map_err(|_| {
-                Evt21Error::InvalidHeader(format!("Invalid width in geometry: {}", width_str))
+                Evt21Error::InvalidHeader(format!("Invalid width in geometry: {width_str}"))
             })?;
             let height = height_str.parse().map_err(|_| {
-                Evt21Error::InvalidHeader(format!("Invalid height in geometry: {}", height_str))
+                Evt21Error::InvalidHeader(format!("Invalid height in geometry: {height_str}"))
             })?;
 
             metadata.sensor_resolution = Some((width, height));
         } else {
             return Err(Evt21Error::InvalidHeader(format!(
-                "Invalid geometry format: {}",
-                line
+                "Invalid geometry format: {line}"
             )));
         }
 

@@ -59,25 +59,20 @@ pub enum AedatError {
 impl std::fmt::Display for AedatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AedatError::Io(e) => write!(f, "I/O error: {}", e),
-            AedatError::InvalidVersion(v) => write!(f, "Invalid AEDAT version: {}", v),
-            AedatError::CorruptedHeader(msg) => write!(f, "Corrupted header: {}", msg),
+            AedatError::Io(e) => write!(f, "I/O error: {e}"),
+            AedatError::InvalidVersion(v) => write!(f, "Invalid AEDAT version: {v}"),
+            AedatError::CorruptedHeader(msg) => write!(f, "Corrupted header: {msg}"),
             AedatError::InvalidBinaryData { offset, message } => {
-                write!(f, "Invalid binary data at offset {}: {}", offset, message)
+                write!(f, "Invalid binary data at offset {offset}: {message}")
             }
             AedatError::InsufficientData { expected, actual } => {
                 write!(
                     f,
-                    "Insufficient data: expected {} bytes, got {} bytes",
-                    expected, actual
+                    "Insufficient data: expected {expected} bytes, got {actual} bytes"
                 )
             }
             AedatError::InvalidEventCount { expected, actual } => {
-                write!(
-                    f,
-                    "Invalid event count: expected {}, got {}",
-                    expected, actual
-                )
+                write!(f, "Invalid event count: expected {expected}, got {actual}")
             }
             AedatError::TimestampMonotonicityViolation {
                 event_index,
@@ -86,8 +81,7 @@ impl std::fmt::Display for AedatError {
             } => {
                 write!(
                     f,
-                    "Timestamp monotonicity violation at event {}: {} -> {}",
-                    event_index, prev_timestamp, curr_timestamp
+                    "Timestamp monotonicity violation at event {event_index}: {prev_timestamp} -> {curr_timestamp}"
                 )
             }
             AedatError::CoordinateOutOfBounds {
@@ -99,8 +93,7 @@ impl std::fmt::Display for AedatError {
             } => {
                 write!(
                     f,
-                    "Coordinate out of bounds at event {}: x={}, y={}, max_x={}, max_y={}",
-                    event_index, x, y, max_x, max_y
+                    "Coordinate out of bounds at event {event_index}: x={x}, y={y}, max_x={max_x}, max_y={max_y}"
                 )
             }
             AedatError::InvalidPolarity {
@@ -109,8 +102,7 @@ impl std::fmt::Display for AedatError {
             } => {
                 write!(
                     f,
-                    "Invalid polarity value {} at event {}: must be -1 or 1",
-                    polarity, event_index
+                    "Invalid polarity value {polarity} at event {event_index}: must be -1 or 1"
                 )
             }
         }
@@ -282,9 +274,9 @@ impl AedatReader {
             return Ok(AedatVersion::V1_0);
         }
 
+        let first_bytes = &buffer[..bytes_read.min(32)];
         Err(AedatError::InvalidVersion(format!(
-            "Unknown AEDAT version, first 32 bytes: {:?}",
-            &buffer[..bytes_read.min(32)]
+            "Unknown AEDAT version, first 32 bytes: {first_bytes:?}"
         )))
     }
 
@@ -390,7 +382,7 @@ impl AedatReader {
 
                         metadata
                             .properties
-                            .insert(format!("header_line_{}", header_end), line.to_string());
+                            .insert(format!("header_line_{header_end}"), line.to_string());
                     }
                     header_end = current_pos;
                 } else {
@@ -562,7 +554,7 @@ impl AedatReader {
 
                 metadata
                     .properties
-                    .insert(format!("header_line_{}", line_index), line.to_string());
+                    .insert(format!("header_line_{line_index}"), line.to_string());
                 line_index += 1;
             } else {
                 // End of header
@@ -723,7 +715,7 @@ impl AedatReader {
 
                 metadata
                     .properties
-                    .insert(format!("header_line_{}", line_index), line.to_string());
+                    .insert(format!("header_line_{line_index}"), line.to_string());
                 line_index += 1;
             } else {
                 // End of header
@@ -922,7 +914,7 @@ impl AedatReader {
 
                 metadata
                     .properties
-                    .insert(format!("header_line_{}", line_index), line.to_string());
+                    .insert(format!("header_line_{line_index}"), line.to_string());
                 line_index += 1;
             } else {
                 // End of header
@@ -1507,7 +1499,7 @@ mod tests {
         ];
 
         for (header, expected_version) in test_cases {
-            let file_path = temp_dir.path().join(format!("test_{}.aedat", header));
+            let file_path = temp_dir.path().join(format!("test_{header}.aedat"));
             let mut file = File::create(&file_path).unwrap();
             writeln!(file, "{}", header).unwrap();
             // Add padding to ensure at least 10 bytes

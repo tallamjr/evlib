@@ -260,31 +260,29 @@ pub enum Evt3Error {
 impl std::fmt::Display for Evt3Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Evt3Error::Io(e) => write!(f, "I/O error: {}", e),
-            Evt3Error::InvalidHeader(msg) => write!(f, "Invalid header: {}", msg),
+            Evt3Error::Io(e) => write!(f, "I/O error: {e}"),
+            Evt3Error::InvalidHeader(msg) => write!(f, "Invalid header: {msg}"),
             Evt3Error::InvalidEventType { type_value, offset } => {
-                write!(f, "Invalid event type {} at offset {}", type_value, offset)
+                write!(f, "Invalid event type {type_value} at offset {offset}")
             }
             Evt3Error::InvalidBinaryData { offset, message } => {
-                write!(f, "Invalid binary data at offset {}: {}", offset, message)
+                write!(f, "Invalid binary data at offset {offset}: {message}")
             }
             Evt3Error::InsufficientData { expected, actual } => {
                 write!(
                     f,
-                    "Insufficient data: expected {} bytes, got {} bytes",
-                    expected, actual
+                    "Insufficient data: expected {expected} bytes, got {actual} bytes"
                 )
             }
             Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y } => {
                 write!(
                     f,
-                    "Coordinate out of bounds: ({}, {}) exceeds ({}, {})",
-                    x, y, max_x, max_y
+                    "Coordinate out of bounds: ({x}, {y}) exceeds ({max_x}, {max_y})"
                 )
             }
-            Evt3Error::TimestampError(msg) => write!(f, "Timestamp error: {}", msg),
-            Evt3Error::PolarityError(e) => write!(f, "Polarity error: {}", e),
-            Evt3Error::DecodingError(msg) => write!(f, "Decoding error: {}", msg),
+            Evt3Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
+            Evt3Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
+            Evt3Error::DecodingError(msg) => write!(f, "Decoding error: {msg}"),
         }
     }
 }
@@ -544,8 +542,7 @@ impl Evt3Reader {
                     "evt" => {
                         if value != "3.0" {
                             return Err(Evt3Error::InvalidHeader(format!(
-                                "Expected EVT 3.0, got: {}",
-                                value
+                                "Expected EVT 3.0, got: {value}"
                             )));
                         }
                     }
@@ -572,8 +569,7 @@ impl Evt3Reader {
 
         if parts.is_empty() || parts[0] != "EVT3" {
             return Err(Evt3Error::InvalidHeader(format!(
-                "Expected EVT3 format, got: {}",
-                line
+                "Expected EVT3 format, got: {line}"
             )));
         }
 
@@ -585,12 +581,12 @@ impl Evt3Reader {
                 match key {
                     "width" => {
                         width = Some(value.parse().map_err(|_| {
-                            Evt3Error::InvalidHeader(format!("Invalid width: {}", value))
+                            Evt3Error::InvalidHeader(format!("Invalid width: {value}"))
                         })?);
                     }
                     "height" => {
                         height = Some(value.parse().map_err(|_| {
-                            Evt3Error::InvalidHeader(format!("Invalid height: {}", value))
+                            Evt3Error::InvalidHeader(format!("Invalid height: {value}"))
                         })?);
                     }
                     _ => {
@@ -617,17 +613,16 @@ impl Evt3Reader {
     ) -> Result<(), Evt3Error> {
         if let Some((width_str, height_str)) = line.split_once('x') {
             let width = width_str.parse().map_err(|_| {
-                Evt3Error::InvalidHeader(format!("Invalid width in geometry: {}", width_str))
+                Evt3Error::InvalidHeader(format!("Invalid width in geometry: {width_str}"))
             })?;
             let height = height_str.parse().map_err(|_| {
-                Evt3Error::InvalidHeader(format!("Invalid height in geometry: {}", height_str))
+                Evt3Error::InvalidHeader(format!("Invalid height in geometry: {height_str}"))
             })?;
 
             metadata.sensor_resolution = Some((width, height));
         } else {
             return Err(Evt3Error::InvalidHeader(format!(
-                "Invalid geometry format: {}",
-                line
+                "Invalid geometry format: {line}"
             )));
         }
 
@@ -934,7 +929,7 @@ mod tests {
     #[test]
     fn test_y_addr_event_parsing() {
         // Test Y address event at y=300, orig=true
-        let raw_data = (1u16 << 15) | (300u16 << 4) | 0x0;
+        let raw_data = (1u16 << 15) | (300u16 << 4);
         let raw_event = RawEvt3Event { data: raw_data };
 
         let y_event = raw_event.as_y_addr_event().unwrap();

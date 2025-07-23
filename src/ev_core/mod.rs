@@ -17,7 +17,8 @@ pub struct TensorError(pub String);
 
 impl std::fmt::Display for TensorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TensorError: {}", self.0)
+        let error_msg = &self.0;
+        write!(f, "TensorError: {error_msg}")
     }
 }
 
@@ -63,7 +64,7 @@ pub fn events_to_tensor(events: &Events) -> TensorResult<Array2<f32>> {
 
     // Create Nx4 array from the data
     Array2::from_shape_vec((n, 4), data).map_err(|e| {
-        Box::new(TensorError(format!("Shape error: {}", e)))
+        Box::new(TensorError(format!("Shape error: {e}")))
             as Box<dyn std::error::Error + Send + Sync>
     })
 }

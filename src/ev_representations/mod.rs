@@ -77,7 +77,7 @@ pub fn events_to_timestamp_image(
     if polarity_separate {
         let all_timestamps = [&timestamps_pos[..], &timestamps_neg[..]].concat();
         Array3::from_shape_vec((2, height, width), all_timestamps).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {}", e)))
+            Box::new(TensorError(format!("Shape error: {e}")))
                 as Box<dyn std::error::Error + Send + Sync>
         })
     } else {
@@ -91,7 +91,7 @@ pub fn events_to_timestamp_image(
             };
         }
         Array3::from_shape_vec((1, height, width), timestamps).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {}", e)))
+            Box::new(TensorError(format!("Shape error: {e}")))
                 as Box<dyn std::error::Error + Send + Sync>
         })
     }
@@ -132,7 +132,7 @@ pub fn events_to_count_image(
 
         let all_counts = [&counts_pos_f32[..], &counts_neg_f32[..]].concat();
         Array3::from_shape_vec((2, height, width), all_counts).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {}", e)))
+            Box::new(TensorError(format!("Shape error: {e}")))
                 as Box<dyn std::error::Error + Send + Sync>
         })
     } else {
@@ -142,7 +142,7 @@ pub fn events_to_count_image(
             counts[i] = (counts_pos[i] + counts_neg[i]) as f32;
         }
         Array3::from_shape_vec((1, height, width), counts).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {}", e)))
+            Box::new(TensorError(format!("Shape error: {e}")))
                 as Box<dyn std::error::Error + Send + Sync>
         })
     }
@@ -169,7 +169,7 @@ pub fn events_to_frame(
 
     if events.is_empty() {
         return Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {}", e)))
+            Box::new(TensorError(format!("Shape error: {e}")))
                 as Box<dyn std::error::Error + Send + Sync>
         });
     }

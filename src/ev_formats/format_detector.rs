@@ -106,8 +106,8 @@ pub enum FormatDetectionError {
 impl std::fmt::Display for FormatDetectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FormatDetectionError::Io(e) => write!(f, "I/O error: {}", e),
-            FormatDetectionError::FileNotFound(path) => write!(f, "File not found: {}", path),
+            FormatDetectionError::Io(e) => write!(f, "I/O error: {e}"),
+            FormatDetectionError::FileNotFound(path) => write!(f, "File not found: {path}"),
             FormatDetectionError::EmptyFile => write!(f, "File is empty"),
             FormatDetectionError::InsufficientData => {
                 write!(f, "Insufficient data to determine format")
@@ -891,7 +891,7 @@ impl FormatDetector {
 
     /// Extract parameter from EVT2 format line
     fn extract_evt2_parameter(line: &str, param: &str) -> Option<u16> {
-        if let Some(start) = line.find(&format!("{}=", param)) {
+        if let Some(start) = line.find(&format!("{param}=")) {
             let value_start = start + param.len() + 1;
             if let Some(end) = line[value_start..]
                 .find(';')

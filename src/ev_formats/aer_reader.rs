@@ -75,30 +75,27 @@ pub enum AerError {
 impl std::fmt::Display for AerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AerError::Io(e) => write!(f, "I/O error: {}", e),
+            AerError::Io(e) => write!(f, "I/O error: {e}"),
             AerError::InvalidFileSize(size, expected) => write!(
                 f,
-                "Invalid file size: {} bytes, expected multiple of {}",
-                size, expected
+                "Invalid file size: {size} bytes, expected multiple of {expected}"
             ),
             AerError::InvalidCoordinate(x, y, max_x, max_y) => write!(
                 f,
-                "Invalid coordinate: x={}, y={}, max_x={}, max_y={}",
-                x, y, max_x, max_y
+                "Invalid coordinate: x={x}, y={y}, max_x={max_x}, max_y={max_y}"
             ),
             AerError::InvalidEventData(offset, data) => {
-                write!(f, "Invalid event data at byte {}: {:02X?}", offset, data)
+                write!(f, "Invalid event data at byte {offset}: {data:02X?}")
             }
             AerError::InsufficientData(expected, actual) => write!(
                 f,
-                "Insufficient data: expected {} bytes, got {}",
-                expected, actual
+                "Insufficient data: expected {expected} bytes, got {actual}"
             ),
             AerError::InvalidBytesPerEvent(bytes) => {
-                write!(f, "Invalid bytes per event: {}, expected 2 or 4", bytes)
+                write!(f, "Invalid bytes per event: {bytes}, expected 2 or 4")
             }
             AerError::EmptyFile => write!(f, "File is empty"),
-            AerError::ValidationFailed(msg) => write!(f, "Event validation failed: {}", msg),
+            AerError::ValidationFailed(msg) => write!(f, "Event validation failed: {msg}"),
         }
     }
 }
@@ -439,10 +436,10 @@ impl AerReader {
             }
             TimestampMode::Custom(timestamps) => {
                 if timestamps.len() != events.len() {
+                    let timestamp_count = timestamps.len();
+                    let event_count = events.len();
                     return Err(AerError::ValidationFailed(format!(
-                        "Custom timestamp count ({}) doesn't match event count ({})",
-                        timestamps.len(),
-                        events.len()
+                        "Custom timestamp count ({timestamp_count}) doesn't match event count ({event_count})"
                     )));
                 }
 
@@ -603,7 +600,7 @@ mod tests {
         let reader = AerReader::with_config(config);
 
         // Create a test event: polarity=0, x=50, y=75
-        // Raw: (75 << 10) | (50 << 1) | 0 = 76800 + 100 + 0 = 76900
+        // Raw: (75 << 10) | (50 << 1) = 76800 + 100 = 76900
         let raw_event = 76900u32;
         let data = raw_event.to_le_bytes();
 
@@ -647,11 +644,11 @@ mod tests {
         data.extend_from_slice(&valid_event.to_le_bytes());
 
         // Invalid event: x=150, y=200, polarity=0 (exceeds bounds)
-        let invalid_event = (200u32 << 10) | (150u32 << 1) | 0;
+        let invalid_event = (200u32 << 10) | (150u32 << 1);
         data.extend_from_slice(&invalid_event.to_le_bytes());
 
         // Another valid event: x=25, y=30, polarity=0
-        let valid_event2 = (30u32 << 10) | (25u32 << 1) | 0;
+        let valid_event2 = (30u32 << 10) | (25u32 << 1);
         data.extend_from_slice(&valid_event2.to_le_bytes());
 
         let (events, metadata) = reader.parse_events(&data, data.len() as u64).unwrap();
@@ -678,7 +675,7 @@ mod tests {
         // Create test data
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
             ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
         ];
 
@@ -705,7 +702,7 @@ mod tests {
         // Create test data for 3 events
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
             ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
         ];
 
@@ -762,7 +759,7 @@ mod tests {
         // Write test events
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
             ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
         ];
 
@@ -833,7 +830,7 @@ mod tests {
         // Create test data
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
             ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
         ];
 
@@ -853,7 +850,7 @@ mod tests {
 
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
         ];
 
         for event_bytes in events_data {
@@ -873,7 +870,7 @@ mod tests {
         // Write 3 events but limit to 2
         let events_data = vec![
             ((100u32 << 10) | (50u32 << 1) | 1).to_le_bytes(),
-            ((200u32 << 10) | (150u32 << 1) | 0).to_le_bytes(),
+            ((200u32 << 10) | (150u32 << 1)).to_le_bytes(),
             ((300u32 << 10) | (250u32 << 1) | 1).to_le_bytes(),
         ];
 

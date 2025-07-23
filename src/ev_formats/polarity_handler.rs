@@ -59,10 +59,10 @@ impl std::fmt::Display for PolarityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PolarityError::InvalidInputValue(value) => {
-                write!(f, "Invalid polarity value: {}", value)
+                write!(f, "Invalid polarity value: {value}")
             }
             PolarityError::UnsupportedConversion(from, to) => {
-                write!(f, "Unsupported conversion from {:?} to {:?}", from, to)
+                write!(f, "Unsupported conversion from {from:?} to {to:?}")
             }
             PolarityError::AutoDetectionFailed => {
                 write!(f, "Failed to auto-detect polarity encoding")
