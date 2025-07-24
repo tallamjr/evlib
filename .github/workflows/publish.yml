@@ -94,6 +94,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: "3.11"
+          os: ubuntu-latest
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
