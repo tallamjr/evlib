@@ -30,6 +30,9 @@ classifiers = [
 ]
 dependencies = [
   "numpy >= 1.24.0",
+  "h5py>=3.8.0",
+  "hdf5plugin>=5.1.0",
+  "polars >= 1.30.0",
 ]
 
 dynamic = ["version"]
@@ -45,19 +48,15 @@ dev = [
     "codecov",
     "twine",
     "tqdm>=4.67.1",
-    "h5py>=3.8.0",
-    "hdf5plugin>=5.1.0",
     "pytest-markdown-docs>=0.9.0",
 ]
-polars = ["polars >= 1.30.0"]
 plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0", "seaborn>=0.13.2",]
 jupyter = ["jupyter >= 1.0.0"]
 torch = ["torch >= 2.0.0"]
-hdf5 = ["h5py >= 3.8.0", "hdf5plugin >= 5.1.0"]
 
 # All
 all = [
-  "evlib[dev,plot,jupyter,torch,polars,hdf5]",
+  "evlib[dev,plot,jupyter,torch]",
 ]
 
 [tool.maturin]
