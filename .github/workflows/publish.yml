@@ -118,7 +118,7 @@ jobs:
       (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
@@ -137,10 +137,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: publish-${{ matrix.os }}-${{ matrix.python-version }}
-
-      - name: Install Windows dependencies
-        if: matrix.os == 'windows-latest'
-        run: echo "Windows dependencies handled by maturin"
 
       - name: Install maturin and build wheel
         run: |
