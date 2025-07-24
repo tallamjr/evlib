@@ -68,16 +68,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
         with:
           python-version: ${{ matrix.python-version }}
+          os: ${{ matrix.os }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: publish-${{ matrix.os }}-${{ matrix.python-version }}
+
       - name: Install maturin
-        run: pip install maturin>=1.7.4
+        run: |
+          source .venv/bin/activate
+          uv pip install maturin>=1.7.4
 
       - name: Publish to PyPI
         env:
@@ -101,8 +109,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: "3.11"
+          os: ubuntu-latest
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Publish to crates.io
         env:
