@@ -26,7 +26,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       should_publish: ${{ steps.check.outputs.should_publish }}
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +58,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-version
     if: needs.check-version.outputs.should_publish == 'true'
-
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +88,6 @@ jobs:
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'crates' || github.event.inputs.publish_to == '')
-
     steps:
       - uses: actions/checkout@v4
 
@@ -162,7 +159,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-version, build-wheels]
     if: needs.check-version.outputs.should_publish == 'true'
-
     steps:
       - uses: actions/checkout@v4
 
@@ -177,21 +173,20 @@ jobs:
           find wheels/ -name "*.whl" -exec cp {} dist/ \;
           echo "Found $(ls dist/*.whl | wc -l) wheels for upload"
 
-      - name: Install twine
-        run: pip install twine>=5.0.0
+      - name: Install maturin
+        run: pip install maturin>=1.7.4
 
-      - name: Upload to PyPI
+      - name: Upload to PyPI with maturin
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-          TEST_TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TEST_MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
             echo "TEST MODE: Uploading to TestPyPI"
-            twine upload --repository testpypi dist/* --password $TEST_TWINE_PASSWORD --verbose
+            maturin publish --no-build --no-sdist -u __token__ -p "$TEST_MATURIN_PYPI_TOKEN" --repository testpypi --interpreter python3
           else
             echo "Uploading to PyPI"
-            twine upload dist/* --verbose
+            maturin publish --no-build --no-sdist -u __token__ -p "$MATURIN_PYPI_TOKEN" --interpreter python3
           fi
 
   create-release:
