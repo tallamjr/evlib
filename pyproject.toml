@@ -103,3 +103,4 @@ ignore_glob = [
     "development/contributing.md",
     "development/testing.md",
 ]
+# CI trigger
