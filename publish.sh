@@ -202,7 +202,7 @@ publish_to_pypi() {
 
     if [ "$TEST_MODE" = true ]; then
         print_step "Publishing to TestPyPI..."
-        if ! maturin publish --repository testpypi --features python; then
+        if ! maturin publish --skip-existing --repository testpypi --features python; then
             print_error "Failed to publish to TestPyPI"
             exit 1
         fi
