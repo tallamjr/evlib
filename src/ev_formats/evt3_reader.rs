@@ -26,6 +26,8 @@ use std::path::Path;
 pub enum Evt3EventType {
     /// Y address event - identifies CD event and Y coordinate
     AddrY = 0x0,
+    /// Reserved/Unknown event type (found in some EVT3 files)
+    Reserved1 = 0x1,
     /// X address event - marks valid single event with polarity and X coordinate
     AddrX = 0x2,
     /// Vector base X - transmits base address for subsequent vector events
@@ -36,10 +38,24 @@ pub enum Evt3EventType {
     Vect8 = 0x5,
     /// Time Low event - encodes lower 12 bits of timebase (bits 11-0)
     TimeLow = 0x6,
+    /// Continued 4 event (reserved)
+    Continued4 = 0x7,
     /// Time High event - encodes higher portion of timebase (bits 23-12)
     TimeHigh = 0x8,
+    /// Reserved/Unknown event type 9 (found in some EVT3 files)
+    Reserved9 = 0x9,
     /// External trigger event
     ExtTrigger = 0xA,
+    /// Reserved/Unknown event type B (found in some EVT3 files)
+    ReservedB = 0xB,
+    /// Reserved/Unknown event type C (found in some EVT3 files)
+    ReservedC = 0xC,
+    /// Reserved/Unknown event type D (found in some EVT3 files)
+    ReservedD = 0xD,
+    /// Others event (reserved)
+    Others = 0xE,
+    /// Continued 12 event (reserved)
+    Continued12 = 0xF,
 }
 
 impl TryFrom<u8> for Evt3EventType {
@@ -48,13 +64,21 @@ impl TryFrom<u8> for Evt3EventType {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(Evt3EventType::AddrY),
+            0x1 => Ok(Evt3EventType::Reserved1),
             0x2 => Ok(Evt3EventType::AddrX),
             0x3 => Ok(Evt3EventType::VectBaseX),
             0x4 => Ok(Evt3EventType::Vect12),
             0x5 => Ok(Evt3EventType::Vect8),
             0x6 => Ok(Evt3EventType::TimeLow),
+            0x7 => Ok(Evt3EventType::Continued4),
             0x8 => Ok(Evt3EventType::TimeHigh),
+            0x9 => Ok(Evt3EventType::Reserved9),
             0xA => Ok(Evt3EventType::ExtTrigger),
+            0xB => Ok(Evt3EventType::ReservedB),
+            0xC => Ok(Evt3EventType::ReservedC),
+            0xD => Ok(Evt3EventType::ReservedD),
+            0xE => Ok(Evt3EventType::Others),
+            0xF => Ok(Evt3EventType::Continued12),
             _ => Err(Evt3Error::InvalidEventType {
                 type_value: value,
                 offset: 0,
@@ -323,7 +347,7 @@ pub struct Evt3Config {
 impl Default for Evt3Config {
     fn default() -> Self {
         Self {
-            validate_coordinates: true,
+            validate_coordinates: false, // Disable by default for better compatibility
             skip_invalid_events: false,
             max_events: None,
             sensor_resolution: None,
@@ -819,6 +843,17 @@ impl Evt3Reader {
                             Evt3EventType::ExtTrigger => {
                                 // Skip external trigger events for now
                             }
+                            Evt3EventType::Reserved1
+                            | Evt3EventType::Continued4
+                            | Evt3EventType::Reserved9
+                            | Evt3EventType::ReservedB
+                            | Evt3EventType::ReservedC
+                            | Evt3EventType::ReservedD
+                            | Evt3EventType::Others
+                            | Evt3EventType::Continued12 => {
+                                // Skip reserved/unknown event types
+                                // These are undocumented event types that appear in some EVT3 files
+                            }
                         }
                     }
                     Err(e) => {
@@ -924,6 +959,19 @@ mod tests {
         // Test External Trigger event
         let raw_event = RawEvt3Event { data: 0x000A };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::ExtTrigger);
+
+        // Test Reserved event types
+        let raw_event = RawEvt3Event { data: 0x0001 };
+        assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Reserved1);
+
+        let raw_event = RawEvt3Event { data: 0x0007 };
+        assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued4);
+
+        let raw_event = RawEvt3Event { data: 0x000E };
+        assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Others);
+
+        let raw_event = RawEvt3Event { data: 0x000F };
+        assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued12);
     }
 
     #[test]
@@ -992,7 +1040,7 @@ mod tests {
     #[test]
     fn test_evt3_config_default() {
         let config = Evt3Config::default();
-        assert!(config.validate_coordinates);
+        assert!(!config.validate_coordinates); // Changed to false for better compatibility
         assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.chunk_size, 1_000_000);

@@ -612,7 +612,7 @@ pub fn load_events_with_config(
         EventFormat::EVT3 => {
             // Use EVT3 reader
             let evt3_config = Evt3Config {
-                validate_coordinates: true,
+                validate_coordinates: false, // Disable validation for better compatibility
                 skip_invalid_events: false,
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
