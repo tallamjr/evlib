@@ -52,14 +52,13 @@ pub fn events_to_video_py(
 
     // Process events
     let output = e2vid.process_events(&events).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error processing events: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error processing events: {e}"))
     })?;
 
     // Convert tensor to numpy array
     let output_vec = output.to_vec2::<f32>().map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Error converting output to vector: {}",
-            e
+            "Error converting output to vector: {e}"
         ))
     })?;
 
@@ -244,14 +243,14 @@ pub fn events_to_video_advanced_py(
     // If model_path is provided, load the model from file
     if let Some(path) = model_path {
         let model_path_buf = PathBuf::from(path);
-        println!("INFO: Attempting to load model from: {}", path);
+        println!("INFO: Attempting to load model from: {path}");
 
         match e2vid.load_model_from_file(&model_path_buf) {
             Ok(()) => {
                 println!("Successfully loaded model from file");
             }
             Err(e) => {
-                eprintln!("Failed to load model from file: {:?}", e);
+                eprintln!("Failed to load model from file: {e:?}");
                 eprintln!("Falling back to default model creation");
             }
         }

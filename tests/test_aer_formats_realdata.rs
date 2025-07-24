@@ -30,8 +30,8 @@ fn get_test_files() -> Vec<String> {
     let mut files = Vec::new();
 
     // Text files
-    let events_txt = format!("{}/events.txt", SLIDER_DEPTH_DIR);
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_txt = format!("{SLIDER_DEPTH_DIR}/events.txt");
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if check_data_file_exists(&events_txt) {
         files.push(events_txt);
@@ -42,9 +42,9 @@ fn get_test_files() -> Vec<String> {
 
     // HDF5 files - check a few representative ones
     let hdf5_files = [
-        format!("{}/seq01.h5", ORIGINAL_HDF5_DIR),
-        format!("{}/seq02.h5", ORIGINAL_HDF5_DIR),
-        format!("{}/val_night_007_td.h5", ETRAM_HDF5_DIR),
+        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
+        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
+        format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5"),
     ];
 
     for file in hdf5_files {
@@ -58,8 +58,8 @@ fn get_test_files() -> Vec<String> {
 
 #[test]
 fn test_format_detection_text_files() {
-    let events_txt = format!("{}/events.txt", SLIDER_DEPTH_DIR);
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_txt = format!("{SLIDER_DEPTH_DIR}/events.txt");
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     // Test detection of events.txt
     if check_data_file_exists(&events_txt) {
@@ -73,8 +73,9 @@ fn test_format_detection_text_files() {
         assert!(result.metadata.file_size > 0);
 
         println!(
-            "events.txt detected as: {} (confidence: {:.2})",
-            result.format, result.confidence
+            "events.txt detected as: {format} (confidence: {confidence:.2})",
+            format = result.format,
+            confidence = result.confidence
         );
     }
 
@@ -90,8 +91,9 @@ fn test_format_detection_text_files() {
         assert!(result.metadata.file_size > 0);
 
         println!(
-            "events_chunk.txt detected as: {} (confidence: {:.2})",
-            result.format, result.confidence
+            "events_chunk.txt detected as: {format} (confidence: {confidence:.2})",
+            format = result.format,
+            confidence = result.confidence
         );
     }
 }
@@ -99,14 +101,14 @@ fn test_format_detection_text_files() {
 #[test]
 fn test_format_detection_hdf5_files() {
     let hdf5_files = [
-        format!("{}/seq01.h5", ORIGINAL_HDF5_DIR),
-        format!("{}/seq02.h5", ORIGINAL_HDF5_DIR),
+        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
+        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
     ];
 
     for file_path in &hdf5_files {
         if check_data_file_exists(file_path) {
             let result = detect_event_format(file_path)
-                .unwrap_or_else(|_| panic!("Failed to detect format for {}", file_path));
+                .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
             assert_eq!(result.format, EventFormat::HDF5);
             assert!(
                 result.confidence > 0.9,
@@ -115,8 +117,9 @@ fn test_format_detection_hdf5_files() {
             assert!(result.metadata.file_size > 0);
 
             println!(
-                "{} detected as: {} (confidence: {:.2})",
-                file_path, result.format, result.confidence
+                "{file_path} detected as: {format} (confidence: {confidence:.2})",
+                format = result.format,
+                confidence = result.confidence
             );
         }
     }
@@ -124,10 +127,10 @@ fn test_format_detection_hdf5_files() {
 
 #[test]
 fn test_load_text_events_basic() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -148,19 +151,25 @@ fn test_load_text_events_basic() {
     assert!(first_event.y <= 1024, "Y coordinate should be reasonable");
     // Polarity is bool, so always valid
 
-    println!("Loaded {} events from {}", events.len(), events_chunk_txt);
     println!(
-        "First event: t={:.6}, x={}, y={}, p={}",
-        first_event.t, first_event.x, first_event.y, first_event.polarity
+        "Loaded {count} events from {events_chunk_txt}",
+        count = events.len()
+    );
+    println!(
+        "First event: t={t:.6}, x={x}, y={y}, p={p}",
+        t = first_event.t,
+        x = first_event.x,
+        y = first_event.y,
+        p = first_event.polarity
     );
 }
 
 #[test]
 fn test_load_text_events_large_file() {
-    let events_txt = format!("{}/events.txt", SLIDER_DEPTH_DIR);
+    let events_txt = format!("{SLIDER_DEPTH_DIR}/events.txt");
 
     if !check_data_file_exists(&events_txt) {
-        println!("Skipping test: {} not found", events_txt);
+        println!("Skipping test: {events_txt} not found");
         return;
     }
 
@@ -188,19 +197,23 @@ fn test_load_text_events_large_file() {
         "Timestamps should be increasing"
     );
 
-    println!("Loaded {} events from large file", events.len());
     println!(
-        "Time range: {:.6} to {:.6} seconds",
-        first_event.t, last_event.t
+        "Loaded {count} events from large file",
+        count = events.len()
+    );
+    println!(
+        "Time range: {start:.6} to {end:.6} seconds",
+        start = first_event.t,
+        end = last_event.t
     );
 }
 
 #[test]
 fn test_event_timestamp_ordering() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -224,19 +237,18 @@ fn test_event_timestamp_ordering() {
     );
 
     println!(
-        "Timestamp violations: {} out of {} events ({:.4}%)",
-        violations,
-        events.len(),
-        violation_rate * 100.0
+        "Timestamp violations: {violations} out of {total} events ({rate:.4}%)",
+        total = events.len(),
+        rate = violation_rate * 100.0
     );
 }
 
 #[test]
 fn test_event_coordinate_ranges() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -261,18 +273,15 @@ fn test_event_coordinate_ranges() {
     assert!(min_x < max_x, "Should have variation in X coordinates");
     assert!(min_y < max_y, "Should have variation in Y coordinates");
 
-    println!(
-        "Coordinate ranges: X=[{}, {}], Y=[{}, {}]",
-        min_x, max_x, min_y, max_y
-    );
+    println!("Coordinate ranges: X=[{min_x}, {max_x}], Y=[{min_y}, {max_y}]");
 }
 
 #[test]
 fn test_event_polarity_distribution() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -305,19 +314,19 @@ fn test_event_polarity_distribution() {
     );
 
     println!(
-        "Polarity distribution: {} positive, {} negative ({:.1}% positive)",
-        positive_count,
-        negative_count,
-        pos_ratio * 100.0
+        "Polarity distribution: {pos} positive, {neg} negative ({ratio:.1}% positive)",
+        pos = positive_count,
+        neg = negative_count,
+        ratio = pos_ratio * 100.0
     );
 }
 
 #[test]
 fn test_load_with_time_filtering() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -359,20 +368,20 @@ fn test_load_with_time_filtering() {
     }
 
     println!(
-        "Time filtering: {} -> {} events in window [{:.6}, {:.6}]",
-        events_full.len(),
-        events_filtered.len(),
-        min_time,
-        mid_time
+        "Time filtering: {full} -> {filtered} events in window [{start:.6}, {end:.6}]",
+        full = events_full.len(),
+        filtered = events_filtered.len(),
+        start = min_time,
+        end = mid_time
     );
 }
 
 #[test]
 fn test_load_with_spatial_filtering() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -385,28 +394,28 @@ fn test_load_with_spatial_filtering() {
     for event in &events {
         assert!(
             event.x >= 50 && event.x <= 200,
-            "Event X coordinate outside filter bounds: {}",
-            event.x
+            "Event X coordinate outside filter bounds: {x}",
+            x = event.x
         );
         assert!(
             event.y >= 50 && event.y <= 200,
-            "Event Y coordinate outside filter bounds: {}",
-            event.y
+            "Event Y coordinate outside filter bounds: {y}",
+            y = event.y
         );
     }
 
     println!(
-        "Spatial filtering: {} events in bounds [50-200, 50-200]",
-        events.len()
+        "Spatial filtering: {count} events in bounds [50-200, 50-200]",
+        count = events.len()
     );
 }
 
 #[test]
 fn test_load_with_polarity_filtering() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -429,24 +438,24 @@ fn test_load_with_polarity_filtering() {
     for event in &events_neg {
         assert!(
             !event.polarity,
-            "Found non-negative polarity event: {}",
-            event.polarity
+            "Found non-negative polarity event: {polarity}",
+            polarity = event.polarity
         );
     }
 
     println!(
-        "Polarity filtering: {} positive, {} negative events",
-        events_pos.len(),
-        events_neg.len()
+        "Polarity filtering: {pos} positive, {neg} negative events",
+        pos = events_pos.len(),
+        neg = events_neg.len()
     );
 }
 
 #[test]
 fn test_hdf5_file_loading() {
-    let seq01_h5 = format!("{}/seq01.h5", ORIGINAL_HDF5_DIR);
+    let seq01_h5 = format!("{ORIGINAL_HDF5_DIR}/seq01.h5");
 
     if !check_data_file_exists(&seq01_h5) {
-        println!("Skipping test: {} not found", seq01_h5);
+        println!("Skipping test: {seq01_h5} not found");
         return;
     }
 
@@ -466,10 +475,10 @@ fn test_hdf5_file_loading() {
                 assert!(first_event.y < 1024, "Y coordinate should be reasonable");
 
                 println!(
-                    "Successfully loaded {} events from {} (dataset: {})",
-                    events.len(),
-                    seq01_h5,
-                    dataset_name
+                    "Successfully loaded {count} events from {file} (dataset: {dataset})",
+                    count = events.len(),
+                    file = seq01_h5,
+                    dataset = dataset_name
                 );
                 loaded = true;
                 break;
@@ -484,13 +493,13 @@ fn test_hdf5_file_loading() {
             Ok(events) => {
                 assert!(!events.is_empty(), "No events loaded from HDF5 file");
                 println!(
-                    "Successfully loaded {} events from {} (auto-detected dataset)",
-                    events.len(),
-                    seq01_h5
+                    "Successfully loaded {count} events from {file} (auto-detected dataset)",
+                    count = events.len(),
+                    file = seq01_h5
                 );
             }
             Err(e) => {
-                println!("Warning: Could not load HDF5 file {}: {}", seq01_h5, e);
+                println!("Warning: Could not load HDF5 file {seq01_h5}: {e}");
                 // Don't fail the test as HDF5 structure may vary
             }
         }
@@ -511,24 +520,24 @@ fn test_generic_load_function() {
     for file_path in test_files {
         match load_events_with_config(&file_path, &config) {
             Ok(events) => {
-                assert!(!events.is_empty(), "No events loaded from {}", file_path);
+                assert!(!events.is_empty(), "No events loaded from {file_path}");
 
                 // Basic validation
                 for (i, event) in events.iter().take(100).enumerate() {
-                    assert!(event.t >= 0.0, "Invalid timestamp at event {}", i);
-                    assert!(event.x < 2048, "Invalid X coordinate at event {}", i);
-                    assert!(event.y < 2048, "Invalid Y coordinate at event {}", i);
+                    assert!(event.t >= 0.0, "Invalid timestamp at event {i}");
+                    assert!(event.x < 2048, "Invalid X coordinate at event {i}");
+                    assert!(event.y < 2048, "Invalid Y coordinate at event {i}");
                     // Polarity is bool, so always valid
                 }
 
                 println!(
-                    "Successfully loaded {} events from {} using generic loader",
-                    events.len(),
-                    file_path
+                    "Successfully loaded {count} events from {file} using generic loader",
+                    count = events.len(),
+                    file = file_path
                 );
             }
             Err(e) => {
-                println!("Warning: Could not load {}: {}", file_path, e);
+                println!("Warning: Could not load {file_path}: {e}");
                 // Some files might not be loadable due to format variations
             }
         }
@@ -577,7 +586,7 @@ fn test_aer_binary_format_synthetic() {
             println!("Successfully tested AER binary format with synthetic data");
         }
         Err(e) => {
-            println!("AER binary test failed: {}", e);
+            println!("AER binary test failed: {e}");
             // Don't panic as this is a synthetic test
         }
     }
@@ -585,10 +594,10 @@ fn test_aer_binary_format_synthetic() {
 
 #[test]
 fn test_event_count_accuracy() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -606,20 +615,23 @@ fn test_event_count_accuracy() {
     assert_eq!(
         events.len(),
         line_count,
-        "Event count mismatch: loaded {} vs {} lines",
-        events.len(),
-        line_count
+        "Event count mismatch: loaded {loaded} vs {lines} lines",
+        loaded = events.len(),
+        lines = line_count
     );
 
-    println!("Event count accuracy verified: {} events", events.len());
+    println!(
+        "Event count accuracy verified: {count} events",
+        count = events.len()
+    );
 }
 
 #[test]
 fn test_duplicate_events() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -650,15 +662,15 @@ fn test_duplicate_events() {
     // Real sensor data might have some duplicates, but not too many
     assert!(
         duplicate_rate < 0.05,
-        "Too many duplicate events: {:.2}%",
-        duplicate_rate * 100.0
+        "Too many duplicate events: {rate:.2}%",
+        rate = duplicate_rate * 100.0
     );
 
     println!(
-        "Duplicate events: {} out of {} ({:.4}%)",
-        duplicates,
-        events.len(),
-        duplicate_rate * 100.0
+        "Duplicate events: {dups} out of {total} ({rate:.4}%)",
+        dups = duplicates,
+        total = events.len(),
+        rate = duplicate_rate * 100.0
     );
 }
 

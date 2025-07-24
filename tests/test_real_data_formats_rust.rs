@@ -153,20 +153,22 @@ fn test_format_detection_comprehensive() {
 
         let result = detection_result.unwrap();
         assert_eq!(
-            result.format, expected_format,
-            "Format mismatch for {file_path}: expected {expected_format:?}, got {:?}",
-            result.format
+            result.format,
+            expected_format,
+            "Format mismatch for {file_path}: expected {expected_format:?}, got {actual:?}",
+            actual = result.format
         );
 
         assert!(
             result.confidence > 0.8,
-            "Low confidence for {file_path}: {:.2}",
-            result.confidence
+            "Low confidence for {file_path}: {confidence:.2}",
+            confidence = result.confidence
         );
 
         println!(
-            "OK: Format detection passed: {file_path} -> {:?} (confidence: {:.2})",
-            result.format, result.confidence
+            "OK: Format detection passed: {file_path} -> {format:?} (confidence: {confidence:.2})",
+            format = result.format,
+            confidence = result.confidence
         );
     }
 }
@@ -192,11 +194,11 @@ fn test_evt2_reader_comprehensive() {
 
     for config in test_files {
         if !config.path.exists() {
-            println!("Skipping {}: file not found", config.description);
+            println!("Skipping {desc}: file not found", desc = config.description);
             continue;
         }
 
-        println!("Testing EVT2 reader: {}", config.description);
+        println!("Testing EVT2 reader: {desc}", desc = config.description);
 
         // Test format detection first
         let detection_result = detect_event_format(config.path.to_str().unwrap()).unwrap();
@@ -232,9 +234,9 @@ fn test_evt2_reader_comprehensive() {
 
         assert!(
             results.event_count >= config.min_expected_events,
-            "Too few events: {} < {}",
-            results.event_count,
-            config.min_expected_events
+            "Too few events: {actual} < {expected}",
+            actual = results.event_count,
+            expected = config.min_expected_events
         );
 
         assert!(
@@ -255,10 +257,10 @@ fn test_evt2_reader_comprehensive() {
         );
 
         println!(
-            "OK: EVT2 test passed: {} events in {:.2}s ({:.0} events/s)",
-            results.event_count,
-            results.execution_time,
-            results.event_count as f64 / results.execution_time
+            "OK: EVT2 test passed: {count} events in {time:.2}s ({rate:.0} events/s)",
+            count = results.event_count,
+            time = results.execution_time,
+            rate = results.event_count as f64 / results.execution_time
         );
 
         // Test filtering
@@ -282,9 +284,9 @@ fn test_evt2_reader_comprehensive() {
         );
 
         println!(
-            "OK: EVT2 filtering passed: {} -> {} events",
-            events.len(),
-            filtered_events.len()
+            "OK: EVT2 filtering passed: {full} -> {filtered} events",
+            full = events.len(),
+            filtered = filtered_events.len()
         );
     }
 }
@@ -310,11 +312,11 @@ fn test_hdf5_reader_comprehensive() {
 
     for config in test_files {
         if !config.path.exists() {
-            println!("Skipping {}: file not found", config.description);
+            println!("Skipping {desc}: file not found", desc = config.description);
             continue;
         }
 
-        println!("Testing HDF5 reader: {}", config.description);
+        println!("Testing HDF5 reader: {desc}", desc = config.description);
 
         // Test format detection
         let detection_result = detect_event_format(config.path.to_str().unwrap()).unwrap();
@@ -337,9 +339,9 @@ fn test_hdf5_reader_comprehensive() {
 
         assert!(
             results.event_count >= config.min_expected_events,
-            "Too few events: {} < {}",
-            results.event_count,
-            config.min_expected_events
+            "Too few events: {actual} < {expected}",
+            actual = results.event_count,
+            expected = config.min_expected_events
         );
 
         assert!(
@@ -360,10 +362,10 @@ fn test_hdf5_reader_comprehensive() {
         );
 
         println!(
-            "OK: HDF5 test passed: {} events in {:.2}s ({:.0} events/s)",
-            results.event_count,
-            results.execution_time,
-            results.event_count as f64 / results.execution_time
+            "OK: HDF5 test passed: {count} events in {time:.2}s ({rate:.0} events/s)",
+            count = results.event_count,
+            time = results.execution_time,
+            rate = results.event_count as f64 / results.execution_time
         );
     }
 }
@@ -383,7 +385,7 @@ fn test_text_reader_comprehensive() {
         return;
     }
 
-    println!("Testing text reader: {}", config.description);
+    println!("Testing text reader: {desc}", desc = config.description);
 
     // Test format detection
     let detection_result = detect_event_format(config.path.to_str().unwrap()).unwrap();
@@ -436,15 +438,14 @@ fn test_text_reader_comprehensive() {
     assert_eq!(
         unique_polarities,
         [true, false].iter().cloned().collect(),
-        "Polarity encoding conversion failed: {:?}",
-        unique_polarities
+        "Polarity encoding conversion failed: {unique_polarities:?}"
     );
 
     println!(
-        "OK: Text test passed: {} events in {:.2}s ({:.0} events/s)",
-        results.event_count,
-        results.execution_time,
-        results.event_count as f64 / results.execution_time
+        "OK: Text test passed: {count} events in {time:.2}s ({rate:.0} events/s)",
+        count = results.event_count,
+        time = results.execution_time,
+        rate = results.event_count as f64 / results.execution_time
     );
 
     // Test filtering functionality
@@ -472,9 +473,9 @@ fn test_text_reader_comprehensive() {
     );
 
     println!(
-        "OK: Text filtering passed: {} -> {} events",
-        events.len(),
-        filtered_events.len()
+        "OK: Text filtering passed: {full} -> {filtered} events",
+        full = events.len(),
+        filtered = filtered_events.len()
     );
 }
 
@@ -517,15 +518,11 @@ fn test_data_consistency_evt2_vs_hdf5() {
 
     assert!(
         count_diff <= max_allowed_diff,
-        "Event count difference too large: EVT2 {} vs HDF5 {} (diff: {})",
-        evt2_count,
-        hdf5_count,
-        count_diff
+        "Event count difference too large: EVT2 {evt2_count} vs HDF5 {hdf5_count} (diff: {count_diff})"
     );
 
     println!(
-        "OK: Consistency test passed: EVT2 {} events, HDF5 {} events (diff: {})",
-        evt2_count, hdf5_count, count_diff
+        "OK: Consistency test passed: EVT2 {evt2_count} events, HDF5 {hdf5_count} events (diff: {count_diff})"
     );
 }
 
@@ -539,14 +536,11 @@ fn test_generic_load_function() {
 
     for (file_path, expected_resolution) in test_files {
         if !Path::new(file_path).exists() {
-            println!(
-                "Skipping generic load test for {}: file not found",
-                file_path
-            );
+            println!("Skipping generic load test for {file_path}: file not found");
             continue;
         }
 
-        println!("Testing generic load function: {}", file_path);
+        println!("Testing generic load function: {file_path}");
 
         let start_time = Instant::now();
         let config = LoadConfig::new().with_polarity_encoding(PolarityEncoding::ZeroOne);
@@ -555,43 +549,35 @@ fn test_generic_load_function() {
 
         assert!(
             events_result.is_ok(),
-            "Generic load failed for {}: {:?}",
-            file_path,
-            events_result.err()
+            "Generic load failed for {file_path}: {err:?}",
+            err = events_result.err()
         );
         let events = events_result.unwrap();
 
         let results = analyze_events(&events, expected_resolution, execution_time);
 
-        assert!(
-            results.event_count > 0,
-            "No events loaded from {}",
-            file_path
-        );
+        assert!(results.event_count > 0, "No events loaded from {file_path}");
         assert!(
             !results.data_integrity.has_nan,
-            "NaN values found in {}",
-            file_path
+            "NaN values found in {file_path}"
         );
         assert!(
             !results.data_integrity.has_inf,
-            "Inf values found in {}",
-            file_path
+            "Inf values found in {file_path}"
         );
         assert!(
             results.data_integrity.valid_coordinates,
-            "Invalid coordinates in {}",
-            file_path
+            "Invalid coordinates in {file_path}"
         );
         assert!(
             results.data_integrity.valid_polarities,
-            "Invalid polarities in {}",
-            file_path
+            "Invalid polarities in {file_path}"
         );
 
         println!(
-            "OK: Generic load passed: {} events in {:.2}s",
-            results.event_count, results.execution_time
+            "OK: Generic load passed: {count} events in {time:.2}s",
+            count = results.event_count,
+            time = results.execution_time
         );
     }
 }
@@ -608,11 +594,11 @@ fn test_performance_benchmarks() {
 
     for (file_path, description) in test_files {
         if !Path::new(file_path).exists() {
-            println!("Skipping benchmark for {}: file not found", description);
+            println!("Skipping benchmark for {description}: file not found");
             continue;
         }
 
-        println!("\nBenchmarking: {}", description);
+        println!("\nBenchmarking: {description}");
 
         // Get file size
         let file_size = std::fs::metadata(file_path).unwrap().len() as f64 / 1024.0 / 1024.0; // MB
@@ -626,18 +612,17 @@ fn test_performance_benchmarks() {
         let mb_per_second = file_size / execution_time;
         let bytes_per_event = (file_size * 1024.0 * 1024.0) / events.len() as f64;
 
-        println!("  File size: {:.1} MB", file_size);
-        println!("  Events: {}", events.len());
-        println!("  Time: {:.2} seconds", execution_time);
-        println!("  Rate: {:.0} events/second", events_per_second);
-        println!("  Throughput: {:.1} MB/second", mb_per_second);
-        println!("  Storage efficiency: {:.1} bytes/event", bytes_per_event);
+        println!("  File size: {file_size:.1} MB");
+        println!("  Events: {count}", count = events.len());
+        println!("  Time: {execution_time:.2} seconds");
+        println!("  Rate: {events_per_second:.0} events/second");
+        println!("  Throughput: {mb_per_second:.1} MB/second");
+        println!("  Storage efficiency: {bytes_per_event:.1} bytes/event");
 
         // Performance assertions
         assert!(
             events_per_second > 100_000.0,
-            "Performance too slow: {:.0} events/s",
-            events_per_second
+            "Performance too slow: {events_per_second:.0} events/s"
         );
         assert!(
             execution_time < file_size,
@@ -668,9 +653,9 @@ fn test_memory_efficiency() {
     let expected_memory = events.len() * event_size;
     let expected_memory_mb = expected_memory as f64 / 1024.0 / 1024.0;
 
-    println!("  Events: {}", events.len());
-    println!("  Event size: {} bytes", event_size);
-    println!("  Expected memory: {:.1} MB", expected_memory_mb);
+    println!("  Events: {count}", count = events.len());
+    println!("  Event size: {event_size} bytes");
+    println!("  Expected memory: {expected_memory_mb:.1} MB");
 
     // Each event should be exactly 24 bytes (8 + 2 + 2 + 1 + padding)
     assert_eq!(event_size, 24, "Event size changed unexpectedly");
@@ -678,8 +663,7 @@ fn test_memory_efficiency() {
     // Memory usage should be reasonable
     assert!(
         expected_memory_mb < 1000.0,
-        "Memory usage too high: {:.1} MB",
-        expected_memory_mb
+        "Memory usage too high: {expected_memory_mb:.1} MB"
     );
 
     println!("OK: Memory efficiency test passed");

@@ -175,35 +175,41 @@ impl ValidationStats {
     }
 
     fn print_summary(&self, label: &str) {
-        println!("\n=== {} Validation Summary ===", label);
-        println!("Total events: {}", self.total_events);
+        println!("\n=== {label} Validation Summary ===");
+        println!("Total events: {count}", count = self.total_events);
         println!(
-            "Timestamp range: {:.6} to {:.6} ({:.6}s span)",
-            self.min_timestamp,
-            self.max_timestamp,
-            self.max_timestamp - self.min_timestamp
+            "Timestamp range: {min:.6} to {max:.6} ({span:.6}s span)",
+            min = self.min_timestamp,
+            max = self.max_timestamp,
+            span = self.max_timestamp - self.min_timestamp
         );
         println!(
-            "Coordinate range: X=[{}, {}], Y=[{}, {}]",
-            self.min_x, self.max_x, self.min_y, self.max_y
+            "Coordinate range: X=[{min_x}, {max_x}], Y=[{min_y}, {max_y}]",
+            min_x = self.min_x,
+            max_x = self.max_x,
+            min_y = self.min_y,
+            max_y = self.max_y
         );
         println!(
-            "Violations: {} timestamp, {} coordinate, {} polarity, {} duplicates",
-            self.timestamp_violations,
-            self.coordinate_violations,
-            self.polarity_violations,
-            self.duplicate_events
+            "Violations: {ts} timestamp, {coord} coordinate, {pol} polarity, {dup} duplicates",
+            ts = self.timestamp_violations,
+            coord = self.coordinate_violations,
+            pol = self.polarity_violations,
+            dup = self.duplicate_events
         );
-        println!("Polarity distribution: {:?}", self.polarity_distribution);
+        println!(
+            "Polarity distribution: {dist:?}",
+            dist = self.polarity_distribution
+        );
     }
 }
 
 #[test]
 fn test_timestamp_validation() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -236,17 +242,16 @@ fn test_timestamp_validation() {
     assert!(time_span > 0.0, "Should have positive time span");
     assert!(
         time_span < 3600.0,
-        "Time span seems unreasonably large: {:.2}s",
-        time_span
+        "Time span seems unreasonably large: {time_span:.2}s"
     );
 }
 
 #[test]
 fn test_coordinate_validation() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -257,21 +262,22 @@ fn test_coordinate_validation() {
 
     // Validate coordinate properties
     assert_eq!(
-        stats.coordinate_violations, 0,
-        "Found {} events with invalid coordinates",
-        stats.coordinate_violations
+        stats.coordinate_violations,
+        0,
+        "Found {count} events with invalid coordinates",
+        count = stats.coordinate_violations
     );
 
     // Check for reasonable coordinate ranges
     assert!(
         stats.max_x < 1024,
-        "X coordinates seem too large: {}",
-        stats.max_x
+        "X coordinates seem too large: {max_x}",
+        max_x = stats.max_x
     );
     assert!(
         stats.max_y < 1024,
-        "Y coordinates seem too large: {}",
-        stats.max_y
+        "Y coordinates seem too large: {max_y}",
+        max_y = stats.max_y
     );
 
     // Should have coordinate variation
@@ -289,27 +295,28 @@ fn test_coordinate_validation() {
     let y_range = stats.max_y - stats.min_y;
     assert!(
         x_range > 10,
-        "X coordinate range seems too small: {}",
-        x_range
+        "X coordinate range seems too small: {x_range}"
     );
     assert!(
         y_range > 10,
-        "Y coordinate range seems too small: {}",
-        y_range
+        "Y coordinate range seems too small: {y_range}"
     );
 
     println!(
-        "Coordinate validation passed: X=[{}, {}], Y=[{}, {}]",
-        stats.min_x, stats.max_x, stats.min_y, stats.max_y
+        "Coordinate validation passed: X=[{min_x}, {max_x}], Y=[{min_y}, {max_y}]",
+        min_x = stats.min_x,
+        max_x = stats.max_x,
+        min_y = stats.min_y,
+        max_y = stats.max_y
     );
 }
 
 #[test]
 fn test_polarity_validation() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -320,9 +327,10 @@ fn test_polarity_validation() {
 
     // Validate polarity properties
     assert_eq!(
-        stats.polarity_violations, 0,
-        "Found {} events with invalid polarity",
-        stats.polarity_violations
+        stats.polarity_violations,
+        0,
+        "Found {count} events with invalid polarity",
+        count = stats.polarity_violations
     );
 
     // Should have both positive and negative events
@@ -339,14 +347,14 @@ fn test_polarity_validation() {
 
     assert!(
         positive_ratio > 0.1 && positive_ratio < 0.9,
-        "Polarity distribution seems skewed: {:.2}% positive",
-        positive_ratio * 100.0
+        "Polarity distribution seems skewed: {ratio:.2}% positive",
+        ratio = positive_ratio * 100.0
     );
 
     println!(
-        "Polarity validation passed: {:.1}% positive, distribution: {:?}",
-        positive_ratio * 100.0,
-        stats.polarity_distribution
+        "Polarity validation passed: {ratio:.1}% positive, distribution: {dist:?}",
+        ratio = positive_ratio * 100.0,
+        dist = stats.polarity_distribution
     );
 }
 
@@ -369,17 +377,15 @@ fn test_synthetic_event_validation() {
     for (i, (original, loaded)) in test_events.iter().zip(loaded_events.iter()).enumerate() {
         assert!(
             (original.t - loaded.t).abs() < 1e-6,
-            "Timestamp mismatch at event {}: {} vs {}",
-            i,
-            original.t,
-            loaded.t
+            "Timestamp mismatch at event {i}: {orig} vs {loaded}",
+            orig = original.t,
+            loaded = loaded.t
         );
-        assert_eq!(original.x, loaded.x, "X coordinate mismatch at event {}", i);
-        assert_eq!(original.y, loaded.y, "Y coordinate mismatch at event {}", i);
+        assert_eq!(original.x, loaded.x, "X coordinate mismatch at event {i}");
+        assert_eq!(original.y, loaded.y, "Y coordinate mismatch at event {i}");
         assert_eq!(
             original.polarity, loaded.polarity,
-            "Polarity mismatch at event {}",
-            i
+            "Polarity mismatch at event {i}"
         );
     }
 
@@ -479,10 +485,10 @@ fn test_invalid_event_handling() {
 #[test]
 fn test_large_coordinate_filtering() {
     // Test spatial filtering with various coordinate bounds
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -533,18 +539,18 @@ fn test_large_coordinate_filtering() {
     filtered_stats.print_summary("Spatially Filtered Events");
 
     println!(
-        "Spatial filtering validation passed: {} -> {} events",
-        events_full.len(),
-        events_filtered.len()
+        "Spatial filtering validation passed: {full} -> {filtered} events",
+        full = events_full.len(),
+        filtered = events_filtered.len()
     );
 }
 
 #[test]
 fn test_timestamp_precision() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -569,19 +575,14 @@ fn test_timestamp_precision() {
         assert!(min_diff > 0.0, "Should have positive time differences");
         assert!(
             min_diff < 0.1,
-            "Minimum time difference seems too large: {:.6}s",
-            min_diff
+            "Minimum time difference seems too large: {min_diff:.6}s"
         );
         assert!(
             median_diff < 1.0,
-            "Median time difference seems too large: {:.6}s",
-            median_diff
+            "Median time difference seems too large: {median_diff:.6}s"
         );
 
-        println!(
-            "Timestamp precision: min_diff={:.6}s, median_diff={:.6}s",
-            min_diff, median_diff
-        );
+        println!("Timestamp precision: min_diff={min_diff:.6}s, median_diff={median_diff:.6}s");
     }
 }
 
@@ -638,10 +639,7 @@ fn test_aer_synthetic_validation() {
             println!("AER synthetic validation passed");
         }
         Err(e) => {
-            println!(
-                "AER synthetic test failed (expected for some systems): {}",
-                e
-            );
+            println!("AER synthetic test failed (expected for some systems): {e}");
         }
     }
 }
@@ -692,23 +690,25 @@ fn test_duplicate_detection() {
 
     // Should detect the duplicates
     assert_eq!(
-        stats.duplicate_events, 2,
-        "Should detect 2 duplicate events, found {}",
-        stats.duplicate_events
+        stats.duplicate_events,
+        2,
+        "Should detect 2 duplicate events, found {count}",
+        count = stats.duplicate_events
     );
 
     println!(
-        "Duplicate detection passed: found {} duplicates out of {} events",
-        stats.duplicate_events, stats.total_events
+        "Duplicate detection passed: found {dups} duplicates out of {total} events",
+        dups = stats.duplicate_events,
+        total = stats.total_events
     );
 }
 
 #[test]
 fn test_consistency_across_load_methods() {
-    let events_chunk_txt = format!("{}/events_chunk.txt", SLIDER_DEPTH_DIR);
+    let events_chunk_txt = format!("{SLIDER_DEPTH_DIR}/events_chunk.txt");
 
     if !check_data_file_exists(&events_chunk_txt) {
-        println!("Skipping test: {} not found", events_chunk_txt);
+        println!("Skipping test: {events_chunk_txt} not found");
         return;
     }
 
@@ -731,14 +731,13 @@ fn test_consistency_across_load_methods() {
     for (i, (e1, e2)) in events1.iter().zip(events2.iter()).enumerate() {
         assert!(
             (e1.t - e2.t).abs() < 1e-9,
-            "Timestamp mismatch at event {}: {} vs {}",
-            i,
-            e1.t,
-            e2.t
+            "Timestamp mismatch at event {i}: {e1_t} vs {e2_t}",
+            e1_t = e1.t,
+            e2_t = e2.t
         );
-        assert_eq!(e1.x, e2.x, "X coordinate mismatch at event {}", i);
-        assert_eq!(e1.y, e2.y, "Y coordinate mismatch at event {}", i);
-        assert_eq!(e1.polarity, e2.polarity, "Polarity mismatch at event {}", i);
+        assert_eq!(e1.x, e2.x, "X coordinate mismatch at event {i}");
+        assert_eq!(e1.y, e2.y, "Y coordinate mismatch at event {i}");
+        assert_eq!(e1.polarity, e2.polarity, "Polarity mismatch at event {i}");
     }
 
     let stats1 = ValidationStats::analyze_events(&events1);

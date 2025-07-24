@@ -78,10 +78,10 @@ impl EventBroadcaster {
                 if batch.len() > 50 {
                     // Only log larger batches to reduce spam
                     println!(
-                        "Broadcasting {} events ({} bytes) to {} clients",
-                        batch.len(),
-                        message.len(),
-                        self.clients.len()
+                        "Broadcasting {batch_len} events ({message_len} bytes) to {clients_len} clients",
+                        batch_len = batch.len(),
+                        message_len = message.len(),
+                        clients_len = self.clients.len()
                     );
                 }
 
@@ -91,11 +91,11 @@ impl EventBroadcaster {
                     .filter_map(|(id, client)| {
                         match client.tx.send(Message::binary(message.clone())) {
                             Ok(_) => {
-                                println!("  OK: Sent to client {}", id);
+                                println!("  OK: Sent to client {id}");
                                 None
                             }
                             Err(e) => {
-                                println!("  FAIL: Failed to send to client {}: {}", id, e);
+                                println!("  FAIL: Failed to send to client {id}: {e}");
                                 Some(*id)
                             }
                         }
@@ -110,10 +110,9 @@ impl EventBroadcaster {
             // Only log buffering for significant accumulations
             if self.event_buffer.len() % 100 == 0 && !self.event_buffer.is_empty() {
                 println!(
-                    "Buffering {} events (total: {}, clients: {})",
-                    event_count,
-                    self.event_buffer.len(),
-                    self.clients.len()
+                    "Buffering {event_count} events (total: {total}, clients: {clients})",
+                    total = self.event_buffer.len(),
+                    clients = self.clients.len()
                 );
             }
         }
@@ -182,8 +181,9 @@ impl EventWebServer {
         let routes = websocket_route.or(static_route);
 
         println!(
-            "WebSocket server listening on {}:{}",
-            self.config.host, self.config.port
+            "WebSocket server listening on {host}:{port}",
+            host = self.config.host,
+            port = self.config.port
         );
         warp::serve(routes)
             .run(([127, 0, 0, 1], self.config.port))
@@ -207,9 +207,8 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
 
     broadcaster.lock().await.add_client(client).unwrap();
     println!(
-        "Client {} connected (total clients: {})",
-        client_id,
-        broadcaster.lock().await.clients.len()
+        "Client {client_id} connected (total clients: {total})",
+        total = broadcaster.lock().await.clients.len()
     );
 
     // Spawn task to forward messages from channel to websocket
@@ -244,9 +243,8 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
 
     broadcaster.lock().await.remove_client(&client_id);
     println!(
-        "Client {} disconnected (remaining clients: {})",
-        client_id,
-        broadcaster.lock().await.clients.len()
+        "Client {client_id} disconnected (remaining clients: {remaining})",
+        remaining = broadcaster.lock().await.clients.len()
     );
 }
 
@@ -385,8 +383,9 @@ pub mod python {
         /// Get the server URL
         pub fn get_url(&self) -> String {
             format!(
-                "http://{}:{}",
-                self.server.config.host, self.server.config.port
+                "http://{host}:{port}",
+                host = self.server.config.host,
+                port = self.server.config.port
             )
         }
     }

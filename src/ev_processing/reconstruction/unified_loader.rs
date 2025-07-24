@@ -84,9 +84,8 @@ impl UnifiedModelLoader {
         let format = ModelFormat::from_path(model_path)?;
 
         println!(
-            "Loading model: {} (format: {:?})",
-            model_path.display(),
-            format
+            "Loading model: {path} (format: {format:?})",
+            path = model_path.display()
         );
 
         match format {
@@ -177,7 +176,7 @@ impl UnifiedModelLoader {
                 Ok(Some(verification))
             }
             Err(e) => {
-                println!("Model verification failed: {}", e);
+                println!("Model verification failed: {e}");
                 Ok(None)
             }
         }
@@ -267,13 +266,12 @@ pub fn auto_load_model(
     ];
 
     for (extension, format) in &formats {
-        let candidate_path_str = format!("{}{}", base_path, extension);
+        let candidate_path_str = format!("{base_path}{extension}");
         let candidate_path = Path::new(&candidate_path_str);
         if candidate_path.exists() {
             println!(
-                "Found model: {} (format: {:?})",
-                candidate_path.display(),
-                format
+                "Found model: {path} (format: {format:?})",
+                path = candidate_path.display()
             );
 
             let config = ModelLoadConfig {

@@ -53,12 +53,12 @@ mod evt_format_detection_tests {
         println!("EVT2 vs EVT3 integration comparison:");
         match evt2_result {
             Ok(events) => println!("  EVT2 events loaded: {}", events.len()),
-            Err(e) => println!("  EVT2 loading failed: {}", e),
+            Err(e) => println!("  EVT2 loading failed: {e}"),
         }
 
         match evt3_result {
             Ok(events) => println!("  EVT3 events loaded: {}", events.len()),
-            Err(e) => println!("  EVT3 loading failed: {}", e),
+            Err(e) => println!("  EVT3 loading failed: {e}"),
         }
     }
 
@@ -66,10 +66,7 @@ mod evt_format_detection_tests {
     fn test_evt2_integration_with_load_function() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -158,10 +155,7 @@ mod evt_format_detection_tests {
     fn test_format_detection_integration_performance() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -176,7 +170,7 @@ mod evt_format_detection_tests {
 
         println!("Format detection + loading performance:");
         println!("  Events loaded: {}", events.len());
-        println!("  Total time: {:?}", duration);
+        println!("  Total time: {duration:?}");
         println!(
             "  Events per second: {:.2}",
             events.len() as f64 / duration.as_secs_f64()
@@ -191,10 +185,7 @@ mod evt_format_detection_tests {
     fn test_header_metadata_extraction() {
         let file_path = Path::new(REAL_EVT2_FILE);
         if !file_path.exists() {
-            println!(
-                "Skipping test - real data file not found: {}",
-                REAL_EVT2_FILE
-            );
+            println!("Skipping test - real data file not found: {REAL_EVT2_FILE}");
             return;
         }
 
@@ -202,7 +193,10 @@ mod evt_format_detection_tests {
 
         println!("Header metadata extraction:");
         println!("  Resolution: {:?}", result.metadata.sensor_resolution);
-        println!("  File size: {} bytes", result.metadata.file_size);
+        println!(
+            "  File size: {file_size} bytes",
+            file_size = result.metadata.file_size
+        );
         println!(
             "  Estimated events: {:?}",
             result.metadata.estimated_event_count
@@ -224,7 +218,7 @@ mod evt_format_detection_tests {
         // Check header properties
         println!("  Header properties:");
         for (key, value) in &result.metadata.properties {
-            println!("    {}: {}", key, value);
+            println!("    {key}: {value}");
         }
     }
 }
