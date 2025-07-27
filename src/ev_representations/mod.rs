@@ -365,9 +365,8 @@ pub mod python {
             ])
             .filter(
                 // Only keep events that belong to complete windows
-                (col("window_id") + lit(1))
-                    * lit(stride_us)
-                        .lt_eq(col("seq_duration") - lit(window_duration_us - stride_us)),
+                ((col("window_id") + lit(1)) * lit(stride_us))
+                    .lt_eq(col("seq_duration") - lit(window_duration_us - stride_us)),
             )
             .filter(
                 // Only keep events within the window duration for each window

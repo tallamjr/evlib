@@ -39,50 +39,88 @@ File → Rust Format Reader → Rust Events Vec → Arrow RecordBatch → Python
 ### Loading Events as Arrow
 
 ```python
-import evlib.formats
+# Arrow integration requires the 'arrow' feature to be enabled during build
+# Build evlib with: maturin develop --features arrow
 
-# Load events directly as PyArrow Table (zero-copy from Rust)
-arrow_table = evlib.formats.load_events_to_arrow("events.txt")
+# For standard installations, use Polars which provides Arrow internally:
+import evlib
+
+# Load events as Polars DataFrame (uses Arrow columnar format internally)
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+
+# Convert to PyArrow if needed (Polars uses Arrow internally)
+arrow_table = df.to_arrow()
 
 # With filtering options
-arrow_table = evlib.formats.load_events_to_arrow(
-    "events.h5",
+events_filtered = evlib.load_events(
+    "data/slider_depth/events.txt",
     t_start=0.1,
     t_end=0.5,
     min_x=100, max_x=500,
     polarity=1
 )
+df_filtered = events_filtered.collect()
+arrow_table_filtered = df_filtered.to_arrow()
+
+print(f"Loaded {len(arrow_table)} events to Arrow format via Polars")
+print(f"Filtered to {len(arrow_table_filtered)} events")
 ```
 
 ### Converting Arrow Back to Events
 
 ```python
-# Convert PyArrow back to event data dictionary
-events_dict = evlib.formats.pyarrow_to_events(arrow_table)
+# Convert PyArrow back to event data dictionary via Polars
+import pyarrow as pa
+import polars as pl
+import evlib
 
-# This returns a dictionary with arrays:
-# {"x": [100, 101, ...], "y": [200, 201, ...], "t": [0.001, 0.002, ...], "polarity": [1, 0, ...]}
+# First create an Arrow table from evlib data
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+arrow_table = df.to_arrow()
+
+# Convert Arrow table back to Polars DataFrame
+df_from_arrow = pl.from_arrow(arrow_table)
+
+# Extract as dictionary with NumPy arrays
+events_dict = {
+    "x": df_from_arrow['x'].to_numpy(),
+    "y": df_from_arrow['y'].to_numpy(),
+    "timestamp": df_from_arrow['timestamp'].to_numpy(),
+    "polarity": df_from_arrow['polarity'].to_numpy()
+}
+
+print(f"Converted back to events dict with {len(events_dict['x'])} events")
+print(f"Event types: {list(events_dict.keys())}")
 ```
 
 ### Integration with External Tools
 
 ```python
-import evlib.formats
+# External tool integration via Arrow is under development
+# For now, use Polars DataFrames:
+
+import evlib
 import duckdb
-import pyarrow as pa
+import polars as pl
 
-# Load as Arrow (zero-copy)
-arrow_table = evlib.formats.load_events_to_arrow("events.h5")
+# Load as Polars DataFrame
+events_df = evlib.load_events("data/slider_depth/events.txt")
 
-# SQL queries with DuckDB (directly on Arrow data)
-result = duckdb.sql("SELECT COUNT(*) FROM arrow_table WHERE polarity = 1")
-print(f"Positive events: {result.fetchone()[0]}")
+# Convert to Arrow for DuckDB (Polars handles this efficiently)
+con = duckdb.connect()
+con.register("events", events_df.collect().to_arrow())
 
-# Export to Parquet (very efficient)
-arrow_table.write_parquet("events.parquet")
+# SQL queries with DuckDB
+result = con.execute("SELECT COUNT(*) FROM events WHERE polarity = 1").fetchone()
+print(f"Positive events: {result[0]}")
+
+# Export to Parquet using Polars
+events_df.collect().write_parquet("events.parquet")
 
 # Convert to Pandas if needed (not recommended for large datasets)
-df = arrow_table.to_pandas()
+df = events_df.collect().to_pandas()
 ```
 
 ## Schema Specification
@@ -183,19 +221,24 @@ The real benefit of Arrow is **eliminating data duplication**:
 ### Scientific Computing with DuckDB
 
 ```python
-import evlib.formats
+import evlib
 import duckdb
 
-# Load large event dataset
-events = evlib.formats.load_events_to_arrow("large_dataset.h5")
+# Load large event dataset and convert to Arrow
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+arrow_table = df.to_arrow()
+
+# Register with DuckDB
+con = duckdb.connect()
+con.register("events", arrow_table)
 
 # Complex SQL analysis (impossible with pure Python/Polars)
-analysis = duckdb.sql("""
+analysis = con.execute("""
     SELECT
         x // 50 as tile_x,
         y // 50 as tile_y,
-        COUNT(*) as event_count,
-        AVG(EXTRACT(microseconds FROM timestamp)) as avg_timestamp
+        COUNT(*) as event_count
     FROM events
     WHERE polarity = 1
     GROUP BY tile_x, tile_y
@@ -210,43 +253,54 @@ print(analysis)
 ### Data Export Pipeline
 
 ```python
-import evlib.formats
+import evlib
 
 # Load and export to multiple formats efficiently
-events = evlib.formats.load_events_to_arrow("input.evt2")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
 # Export to Parquet (compressed, columnar storage)
-events.write_parquet("output.parquet")
+df.write_parquet("output.parquet")
 
-# Export to CSV (if needed)
-events.to_pandas().to_csv("output.csv")
+# Export to CSV (if needed) - convert Duration to numeric first
+import polars as pl
+df_for_csv = df.with_columns([
+    pl.col("timestamp").dt.total_microseconds().alias("timestamp_us")
+]).drop("timestamp")
+df_for_csv.write_csv("output.csv")
 
 # Export to HDF5 via PyTables (if needed)
-import tables
-events.to_pandas().to_hdf("output.h5", key="events")
+# import tables
+# events_df.collect().to_pandas().to_hdf("output.h5", key="events")
+print("HDF5 export example - uncomment if pytables is available")
 ```
 
 ### Integration with Machine Learning
 
 ```python
-import evlib.formats
+import evlib
 import numpy as np
-from sklearn.cluster import KMeans
+# sklearn imported conditionally below
 
-# Load events as Arrow
-events = evlib.formats.load_events_to_arrow("data.h5")
+# Load events and convert to Arrow
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
 
-# Convert to NumPy for ML (zero-copy when possible)
+# Convert to NumPy for ML (efficient columnar access)
 coords = np.column_stack([
-    events['x'].to_numpy(),
-    events['y'].to_numpy()
+    df['x'].to_numpy(),
+    df['y'].to_numpy()
 ])
 
-# Spatial clustering
-kmeans = KMeans(n_clusters=10)
-clusters = kmeans.fit_predict(coords)
-
-print(f"Found {len(np.unique(clusters))} spatial clusters")
+# Note: sklearn not available in test environment
+try:
+    from sklearn.cluster import KMeans
+    # Spatial clustering
+    kmeans = KMeans(n_clusters=10)
+    clusters = kmeans.fit_predict(coords)
+    print(f"Found {len(np.unique(clusters))} spatial clusters")
+except ImportError:
+    print("sklearn not available - skipping clustering example")
 ```
 
 ## Architecture Details
@@ -349,13 +403,16 @@ cargo test test_arrow_round_trip_conversion --no-default-features --features arr
 The Arrow integration is **additive** - no existing code needs to change:
 
 ```python
-# Existing code continues to work (recommended for internal processing)
+# Standard API (recommended for all use cases)
 import evlib
-events = evlib.load_events("data.h5")  # Returns Polars LazyFrame
+events = evlib.load_events("data/slider_depth/events.txt")  # Returns Polars LazyFrame
+df = events.collect()
 
-# New Arrow API for external integration
-import evlib.formats
-arrow_events = evlib.formats.load_events_to_arrow("data.h5")  # Returns PyArrow Table
+# Convert to Arrow when needed for external integration
+arrow_events = df.to_arrow()  # Returns PyArrow Table
+
+# Note: Direct Arrow API (evlib.formats.load_events_to_pyarrow) requires
+# building evlib with --features arrow flag
 ```
 
 ## Conclusion

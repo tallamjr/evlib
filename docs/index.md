@@ -119,7 +119,7 @@ import evlib
 import evlib.filtering as evf
 
 # High-level preprocessing pipeline
-processed = evf.preprocess_events(
+processed = evlib.filtering.preprocess_events(
     "data/slider_depth/events.txt",
     t_start=0.1, t_end=0.5,
     roi=(100, 500, 100, 400),
@@ -132,10 +132,10 @@ processed = evf.preprocess_events(
 
 # Individual filters (work with LazyFrames)
 events = evlib.load_events("data/slider_depth/events.txt")
-time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
-spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
-clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
-denoised = evf.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
+time_filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
+spatial_filtered = evlib.filtering.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+clean_events = evlib.filtering.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
+denoised = evlib.filtering.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
 ```
 
 ### Event Representations
@@ -143,31 +143,44 @@ denoised = evf.filter_noise(clean_events, method="refractory", refractory_period
 import evlib
 import evlib.representations as evr
 
-# Create stacked histogram (replaces RVT preprocessing)
-hist = evr.create_stacked_histogram(
-    "data/slider_depth/events.txt",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50.0,
-    count_cutoff=10
+# Create voxel grid representation (reliable alternative to stacked histogram)
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+voxel_df = evr.create_voxel_grid_py(
+    events_df,
+    _height=480, _width=640,
+    nbins=10
 )
 
 # Create mixed density stack representation
-density = evr.create_mixed_density_stack(
-    "data/slider_depth/events.txt",
-    height=480, width=640,
+mixed_df = evr.create_mixed_density_stack_py(
+    events_df,
+    _height=480, _width=640,
     nbins=10, window_duration_ms=50.0
 )
+print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
 # High-level preprocessing for neural networks
-data = evr.preprocess_for_detection(
-    "data/slider_depth/events.txt",
-    representation="stacked_histogram",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+data_df = evr.create_voxel_grid_py(
+    events_df,
+    _height=480, _width=640,
+    nbins=10
 )
+print(f"Preprocessed {len(data_df)} entries for detection pipeline")
 
-# Performance benchmarking against RVT
-results = evr.benchmark_vs_rvt("data/slider_depth/events.txt", height=480, width=640)
+# Performance benchmarking against RVT (manual comparison available)
+import time
+
+start_time = time.time()
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+results_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=10)
+processing_time = time.time() - start_time
+
+print(f"evlib processing: {processing_time:.3f}s for {len(results_df)} voxel grid entries")
+print("Implement equivalent RVT PyTorch pipeline for direct comparison")
 ```
 
 ## Installation
@@ -260,8 +273,8 @@ df = events.collect()  # Collect to DataFrame when needed
 
 # Automatic format detection and optimization
 events = evlib.load_events("data/slider_depth/events.txt")  # EVT2 format automatically detected
-print(f"Format: {evlib.detect_format('data/slider_depth/events.txt')}")
-print(f"Description: {evlib.get_format_description('EVT2')}")
+print(f"Format: {evlib.formats.detect_format('data/slider_depth/events.txt')}")
+print(f"Description: {evlib.formats.get_format_description('EVT2')}")
 
 ```
 
@@ -289,7 +302,7 @@ time_stats = events.with_columns([
 
 # Combine with filtering module for complex operations
 import evlib.filtering as evf
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
 analysis = filtered.with_columns([
     pl.col("timestamp").dt.total_microseconds().alias("time_us")
 ]).collect()
@@ -302,12 +315,12 @@ import polars as pl
 import evlib.filtering as evf
 
 # Built-in format detection
-format_info = evlib.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
 print(f"Detected format: {format_info}")
 
 # Spatial filtering using dedicated filtering functions (preferred)
 events = evlib.load_events("data/slider_depth/events.txt")
-spatial_filtered = evf.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
+spatial_filtered = evlib.filtering.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
 
 # Or using direct Polars operations
 manual_filtered = events.filter(
@@ -326,12 +339,17 @@ rates = events.with_columns([
 ]).collect()
 
 # Save processed data
-processed = evf.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
+processed = evlib.filtering.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
 processed_df = processed.collect()
 x, y, t_us, p = processed_df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+# Ensure correct dtypes for save function
+x = x.astype(np.int64)
+y = y.astype(np.int64)
+p = p.astype(np.int64)
 # Convert microseconds to seconds for save function
-t = t_us.astype('float64') / 1_000_000
-evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
+t = t_us.astype(np.float64) / 1_000_000
+evlib.formats.save_events_to_hdf5(x, y, t, p, "output.h5")
+print(f"Successfully saved {len(x)} processed events to HDF5")
 ```
 
 ### Performance Benchmarks
@@ -385,8 +403,8 @@ events_large = evlib.load_events("data/slider_depth/events.txt")
 # Same API, automatically uses streaming for memory efficiency
 
 # Memory-efficient filtering on large datasets using filtering module
-filtered = evf.filter_by_time(events_large, t_start=1.0, t_end=2.0)
-positive_events = evf.filter_by_polarity(filtered, polarity=1)
+filtered = evlib.filtering.filter_by_time(events_large, t_start=1.0, t_end=2.0)
+positive_events = evlib.filtering.filter_by_polarity(filtered, polarity=1)
 
 # Or using direct Polars operations
 manual_filtered = events_large.filter(
@@ -442,7 +460,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 # Streaming activates automatically for files >5M events
 
 # Apply filtering before collecting to reduce memory usage
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
 df = filtered.collect()  # Only collect when needed
 
 # Or stream to disk using Polars
@@ -459,7 +477,7 @@ import polars as pl
 events = evlib.load_events("data/slider_depth/events.txt")
 
 # Use filtering module for optimized operations
-result = evf.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
+result = evlib.filtering.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
 df = result.collect()
 
 # Or chain Polars operations
@@ -478,7 +496,7 @@ print(f"DataFrame schema: {df.schema}")
 print(f"Number of events: {len(df):,}")
 
 # Check format detection
-format_info = evlib.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
 print(f"Format: {format_info}")
 ```
 
@@ -502,27 +520,36 @@ import evlib.representations as evr
 events = evlib.load_events("data/slider_depth/events.txt")
 
 # Format detection and description
-format_info = evlib.detect_format("data/slider_depth/events.txt")
-description = evlib.get_format_description("HDF5")
+format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
+description = evlib.formats.get_format_description("HDF5")
 
 # Advanced filtering
-filtered = evf.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
-time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evlib.filtering.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
+time_filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
 
 # Event representations
-hist = evr.create_stacked_histogram("data/slider_depth/events.txt", height=480, width=640, nbins=10)
-# voxel = evr.create_voxel_grid("data/slider_depth/events.txt", height=480, width=640, nbins=5)  # API compatibility issue
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=10)
+mixed_df = evr.create_mixed_density_stack_py(events_df, _height=480, _width=640, nbins=10)
+print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
 # Neural network models (limited functionality)
-from evlib.models import ModelConfig  # If available
+# from evlib.models import ModelConfig  # If available - under development
 
 # Data saving (need to get arrays first)
+import numpy as np
 df = events.collect()
-x, y, t_us, p = df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
-# Convert microseconds to seconds for save functions
-t = t_us.astype('float64') / 1_000_000
-evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
-evlib.save_events_to_text(x, y, t, p, "output.txt")
+x, y, t_dur, p = df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+# Ensure correct dtypes for save functions
+x = x.astype(np.int64)
+y = y.astype(np.int64)
+p = p.astype(np.int64)
+# Convert Duration to seconds for save functions
+t = t_dur.astype('float64') / 1e6  # Convert microseconds to seconds
+evlib.formats.save_events_to_hdf5(x, y, t, p, "output.h5")
+evlib.formats.save_events_to_text(x, y, t, p, "output.txt")
+print(f"Successfully saved {len(x)} events to both HDF5 and text formats")
 ```
 
 ## Examples

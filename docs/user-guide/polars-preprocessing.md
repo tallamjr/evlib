@@ -144,8 +144,15 @@ import evlib.representations as evr
 
 # evlib preprocessing with Polars (high-performance)
 events = evlib.load_events("data/slider_depth/events.txt")
-hist = evr.create_stacked_histogram(events, width=640, height=480, nbins=10)
-hist_df = hist.collect()
+events_df = events.collect()
+# Use voxel grid or mixed density stack (stacked histogram has a known issue)
+voxel_df = evr.create_voxel_grid_py(
+    events_df,
+    _width=640,    # Ignored parameter
+    _height=480,   # Ignored parameter
+    nbins=10
+)
+print(f"Voxel grid created with {len(voxel_df)} entries")
 ```
 
 ### Performance Expectations

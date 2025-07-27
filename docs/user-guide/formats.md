@@ -87,16 +87,18 @@ import numpy as np
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 
-# Access DataFrame columns as NumPy arrays
+# Access DataFrame columns as NumPy arrays with correct dtypes
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+xs = df['x'].to_numpy().astype(np.int64)
+ys = df['y'].to_numpy().astype(np.int64)
+ps = df['polarity'].to_numpy().astype(np.int64)
 # Convert Duration timestamps to seconds (float64)
 ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5
 output_path = "formats_output.h5"
-evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
+evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 print(f"Successfully saved {len(xs)} events to {output_path}")
 ```
 
@@ -260,7 +262,7 @@ evlib automatically detects file formats based on content analysis:
 
 ```python
 # Automatic format detection
-format_info = evlib.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
 
 print(f"Detected format: {format_info}")
 
@@ -345,7 +347,7 @@ except Exception as e:
 **Workaround:**
 ```python
 # Alternative: Use format detection and fallback
-format_info = evlib.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
 print(f"Detected format: {format_info}")
 
 try:
@@ -371,9 +373,17 @@ import hdf5plugin
 # First create a sample HDF5 file to inspect
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype('float64')
-evlib.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
+xs = df['x'].to_numpy().astype(np.int64)
+ys = df['y'].to_numpy().astype(np.int64)
+ps = df['polarity'].to_numpy().astype(np.int64)
+ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
+
+print("Created HDF5 file with structure:")
+print("  /events/x: event x coordinates")
+print("  /events/y: event y coordinates")
+print("  /events/t: event timestamps")
+print("  /events/p: event polarities")
 
 # Now inspect the structure
 with h5py.File("sample.h5", "r") as f:
@@ -457,7 +467,7 @@ def convert_to_hdf5(input_file, output_file):
     ps = df['polarity'].to_numpy()
 
     # Save as HDF5
-    evlib.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+    evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
 
     # Verify round-trip
     events2 = evlib.load_events(output_file)
@@ -474,7 +484,7 @@ def load_events_robust(file_path):
     """Load events with comprehensive error handling"""
     try:
         # Try format detection
-        format_info = evlib.detect_format(file_path)
+        format_info = evlib.formats.detect_format(file_path)
         print(f"Detected format: {format_info}")
 
         # Try high-level API first (handles most cases)

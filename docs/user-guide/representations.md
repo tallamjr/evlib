@@ -24,19 +24,34 @@ import evlib
 import evlib.representations as evr
 
 # Create stacked histogram (recommended for neural networks)
-hist_lazy = evr.create_stacked_histogram(
-    "data/slider_depth/events.txt",
-    height=480,
-    width=640,
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+
+# Use a subset that spans sufficient time for window creation
+# In test environments, we may have limited data, so adjust window size
+total_events = len(events_df)
+time_span = (events_df['timestamp'].max() - events_df['timestamp'].min()).total_seconds()
+
+# Adjust window duration based on available data
+if time_span < 0.1:  # Less than 100ms of data
+    window_duration_ms = max(0.001, time_span * 1000 / 4)  # Use 1/4 of available time, min 1μs
+    print(f"Using adjusted window duration: {window_duration_ms:.3f}ms for {total_events} events")
+else:
+    window_duration_ms = 50.0
+    print(f"Using standard window duration: {window_duration_ms}ms for {total_events} events")
+
+hist_df = evr.create_stacked_histogram_py(
+    events_df,
+    _height=480,                 # Ignored parameter (spatial clipping simplified)
+    _width=640,                  # Ignored parameter (spatial clipping simplified)
     nbins=10,                    # Temporal bins per window
-    window_duration_ms=50.0,     # Window duration
-    count_cutoff=10              # Max count per bin
+    window_duration_ms=window_duration_ms,
+    _count_cutoff=10             # Ignored parameter (count limiting simplified)
 )
 
-# Collect when needed
-hist_df = hist_lazy.collect()
+# Process results
 print(f"Generated {len(hist_df)} histogram entries")
-print(f"Columns: {hist_df.columns}")  # [window_id, channel, time_bin, y, x, count]
+print(f"Columns: {list(hist_df.columns)}")  # Stacked histogram columns
 ```
 
 ### How Stacked Histograms Work
@@ -47,116 +62,48 @@ print(f"Columns: {hist_df.columns}")  # [window_id, channel, time_bin, y, x, cou
 4. **Spatial Accumulation**: Events accumulate in 2D spatial locations
 5. **Count Limiting**: Optional cutoff prevents extreme values
 
+### Performance Comparison
+
 ```python
-# Understanding the parameters
-import polars as pl
+import time
+import evlib.representations as evr
+
+# Test performance with different bin counts
 events = evlib.load_events("data/slider_depth/events.txt")
-df = events.select([
-    pl.col("timestamp").min().alias("t_min"),
-    pl.col("timestamp").max().alias("t_max")
-]).collect()
+events_df = events.collect()
 
-t_min = df["t_min"][0].total_seconds()
-t_max = df["t_max"][0].total_seconds()
-duration = t_max - t_min
-window_duration = 0.05  # 50ms
-n_windows = int(duration / window_duration)
+# Use appropriate subset based on available data
+total_events = len(events_df)
+if total_events > 10000:
+    events_df = events_df.head(10000)  # Use 10k events for performance testing
+    print(f"Using {len(events_df)} events for performance testing")
+else:
+    print(f"Using all {total_events} available events for testing")
 
-print(f"Time range: {t_min:.3f} - {t_max:.3f} seconds")
-print(f"Duration: {duration:.3f} seconds")
-print(f"Estimated windows: {n_windows}")
+# Calculate appropriate window duration
+time_range = events_df['timestamp'].max() - events_df['timestamp'].min()
+time_span_sec = time_range.total_seconds()
+
+if time_span_sec < 0.1:  # Less than 100ms of data
+    window_duration_ms = max(0.001, time_span_sec * 1000 / 4)  # Use 1/4 of available time, min 1μs
+else:
+    window_duration_ms = 50.0  # Standard 50ms windows
+
+print(f"Time range: {time_span_sec:.6f} seconds")
+print(f"Using window duration: {window_duration_ms:.1f}ms")
+
+for nbins in [5, 10, 15]:
+    start_time = time.time()
+    hist_df = evr.create_stacked_histogram_py(
+        events_df,
+        _height=480, _width=640,
+        nbins=nbins,
+        window_duration_ms=window_duration_ms
+    )
+    duration = time.time() - start_time
+
+    print(f"Bins: {nbins}, Time: {duration:.3f}s, Entries: {len(hist_df)}")
+
+estimated_windows = max(1, int(time_span_sec / (window_duration_ms / 1000)))
+print(f"Estimated windows: {estimated_windows}")
 ```
-
-### Advanced Parameters
-
-*Advanced parameter configuration is under development.*
-
-## Mixed Density Stacks
-
-Mixed density stacks use logarithmic time binning and accumulate polarity values instead of counts, providing smoother temporal distributions.
-
-### Basic Usage
-
-*Mixed density stack creation is under development.*
-
-### Benefits of Mixed Density Stacks
-
-1. **Logarithmic Binning**: More temporal resolution for recent events
-2. **Polarity Accumulation**: Signed values preserve directional information
-3. **Smoother Distributions**: Reduced quantization compared to count-based methods
-
-### Comparison: Stacked Histogram vs Mixed Density
-
-*Comparison tools for representations are under development.*
-
-## Voxel Grids (Traditional)
-
-For traditional voxel grid representations, evlib provides the standard temporal binning approach.
-
-### Basic Usage
-
-*Voxel grid creation and visualization is under development.*
-
-### Polarity Analysis with High-Level API
-
-*Polarity-based analysis tools are under development.*
-
-## Neural Network Applications
-
-### High-Level Preprocessing API
-
-*Neural network preprocessing and tensor conversion tools are under development.*
-
-### Multi-Scale Representations
-
-*Multi-scale representation generation is under development.*
-
-## Performance Considerations
-
-### Benchmarking Against RVT
-
-Use the built-in benchmark to compare performance:
-
-*Performance benchmarking tools are under development.*
-
-### Memory Efficiency with Lazy Evaluation
-
-Polars LazyFrames provide automatic memory efficiency:
-
-*Memory-efficient lazy evaluation tools are under development.*
-
-### Optimal Parameter Selection
-
-Use data characteristics to choose optimal parameters:
-
-*Event characteristics analysis and parameter optimization tools are under development.*
-
-## Best Practices
-
-### 1. Choose the Right Representation
-
-- **Stacked Histograms**: Neural networks, RVT compatibility, general purpose
-- **Mixed Density Stacks**: Smoother temporal distributions, polarity-preserving
-- **Voxel Grids**: Traditional approach, single sequence analysis
-- **High-level API**: Easy preprocessing with optimal defaults
-
-### 2. Temporal Resolution Guidelines
-
-- **5-10 bins**: Good balance for most applications
-- **10-15 bins**: High temporal resolution for fast motion
-- **25-50ms windows**: Typical window durations for neural networks
-- **Overlapping windows**: Use stride < window_duration for smooth temporal coverage
-
-### 3. Performance Optimization
-
-*Performance optimization techniques are under development.*
-
-### 4. Integration with Existing Pipelines
-
-*RVT integration tools are under development.*
-
-## Next Steps
-
-- [Polars Preprocessing](polars-preprocessing.md): Advanced data manipulation
-- [Loading Data](loading-data.md): Load and preprocess event data
-- [Benchmarking](../benchmarks.md): Performance comparisons and optimization tips

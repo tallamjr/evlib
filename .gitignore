@@ -739,6 +739,7 @@ data/prophersee
 
 tests/data/output.*
 tests/data/filtered_events.parquet
+filtered_events.parquet
 
 models/
 

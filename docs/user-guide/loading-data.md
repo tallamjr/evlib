@@ -53,25 +53,25 @@ ts = df['timestamp'].dt.total_seconds().to_numpy()
 Efficient binary format with fast loading:
 
 ```python
-# Load HDF5 file with Polars (create one first)
+# HDF5 format provides efficient binary storage
+# Load existing HDF5 datasets (e.g., from eTram dataset)
+# events = evlib.load_events("data/eTram/h5/val_2/val_night_011_td.h5")
+# df = events.collect()
+
+# To save events to HDF5 format:
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype('float64')
-evlib.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
+xs = df['x'].to_numpy().astype(np.int64)
+ys = df['y'].to_numpy().astype(np.int64)
+ps = df['polarity'].to_numpy().astype(np.int64)
+ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
 
-events = evlib.load_events("sample.h5")
-df = events.collect()
+# Save to HDF5 for efficient storage
+evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+print(f"Saved {len(xs)} events to HDF5 format")
 
-# Or access DataFrame columns as NumPy arrays
-events = evlib.load_events("sample.h5")
-df = events.collect()
-xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-# Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype('float64')
-
-# Save to HDF5 for faster future loading
-evlib.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+# Note: The save function uses internal type conversions (uint16/int8)
+# For loading, use existing dataset HDF5 files which are fully compatible
 ```
 
 **HDF5 advantages:**
@@ -88,7 +88,9 @@ Load only events within a specific time range:
 
 ```python
 # Load events between 1.0 and 5.0 seconds using filtering
-events = evlib.filter_by_time("data/slider_depth/events.txt", t_start=1.0, t_end=5.0)
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered_events = evf.filter_by_time(events, t_start=1.0, t_end=5.0)
 df = events.collect()
 
 # Or load with parameters
@@ -106,8 +108,10 @@ Filter events by pixel coordinates:
 
 ```python
 # Load events in center region only
-events = evlib.filter_by_roi("data/slider_depth/events.txt", x_min=200, x_max=440, y_min=120, y_max=360)
-df = events.collect()
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered_events = evf.filter_by_roi(events, x_min=200, x_max=440, y_min=120, y_max=360)
+df = filtered_events.collect()
 
 # Or use load_events with parameters
 events = evlib.load_events("data/slider_depth/events.txt", min_x=200, max_x=440, min_y=120, max_y=360)
@@ -124,11 +128,13 @@ Separate positive and negative events:
 
 ```python
 # Load only positive (ON) events
-pos_events = evlib.filter_by_polarity("data/slider_depth/events.txt", polarity=1)
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+pos_events = evf.filter_by_polarity(events, polarity=1)
 pos_df = pos_events.collect()
 
 # Load only negative (OFF) events
-neg_events = evlib.filter_by_polarity("data/slider_depth/events.txt", polarity=-1)
+neg_events = evf.filter_by_polarity(events, polarity=0)  # Note: using 0 for negative in this dataset
 neg_df = neg_events.collect()
 ```
 
@@ -143,7 +149,8 @@ All filters can be combined:
 
 ```python
 # Complex filtering example using preprocessing pipeline
-processed_events = evlib.preprocess_events(
+import evlib.filtering as evf
+processed_events = evf.preprocess_events(
     "data/slider_depth/events.txt",
     t_start=2.0, t_end=8.0,      # Time window
     roi=(100, 540, 50, 430),     # Spatial bounds (x_min, x_max, y_min, y_max)
@@ -236,8 +243,10 @@ Apply filters during loading, not after:
 
 ```python
 # GOOD: Filter during loading using high-level API
-events = evlib.filter_by_time("data/slider_depth/events.txt", t_start=1.0, t_end=2.0)
-df = events.collect()
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered_events = evf.filter_by_time(events, t_start=1.0, t_end=2.0)
+df = filtered_events.collect()
 
 # GOOD: Use Polars filtering (lazy evaluation)
 events = evlib.load_events("data/slider_depth/events.txt")
@@ -346,7 +355,7 @@ full_res = evlib.load_events("data/slider_depth/events.txt")
 full_df = full_res.collect()
 
 # Quarter resolution (downsample by 4)
-quarter_res = evlib.filter_by_roi("data/slider_depth/events.txt", x_min=0, x_max=159, y_min=0, y_max=119)
+quarter_res = evlib.filtering.filter_by_roi(evlib.load_events("data/slider_depth/events.txt"), x_min=0, x_max=159, y_min=0, y_max=119)
 quarter_df = quarter_res.collect()
 ```
 
@@ -378,7 +387,7 @@ def create_data_pipeline(input_file, output_dir):
     h5_file = f"{output_dir}/events.h5"
     # Convert timestamps to seconds for saving
     ts_seconds = df['timestamp'].dt.total_seconds().to_numpy()
-    evlib.save_events_to_hdf5(
+    evlib.formats.save_events_to_hdf5(
         df['x'].to_numpy(), df['y'].to_numpy(),
         ts_seconds, df['polarity'].to_numpy(),
         h5_file
@@ -390,7 +399,7 @@ def create_data_pipeline(input_file, output_dir):
     pos_df = pos_events.collect()
     # Convert timestamps to seconds for saving
     pos_ts_seconds = pos_df['timestamp'].dt.total_seconds().to_numpy()
-    evlib.save_events_to_hdf5(
+    evlib.formats.save_events_to_hdf5(
         pos_df['x'].to_numpy(), pos_df['y'].to_numpy(),
         pos_ts_seconds, pos_df['polarity'].to_numpy(),
         pos_file
@@ -472,7 +481,7 @@ ts = df['timestamp'].dt.total_seconds().to_numpy()
 **Problem**: Memory errors with large files
 ```python
 # Solution: Use time window filtering
-events = evlib.filter_by_time("data/slider_depth/events.txt", t_start=0.0, t_end=10.0)
+events = evlib.filtering.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=0.0, t_end=10.0)
 df = events.collect()  # Uses optimal engine for large data
 ```
 

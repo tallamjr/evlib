@@ -25,23 +25,30 @@ Creates stacked histogram representation with temporal binning.
 import evlib.representations as evr
 
 # Create stacked histogram (replaces RVT preprocessing)
-hist_lazy = evr.create_stacked_histogram(
-    "data/slider_depth/events.txt",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+
+# Create stacked histogram representation
+hist_df = evr.create_stacked_histogram_py(
+    events_df,
+    _height=480,    # Ignored parameter (spatial clipping simplified)
+    _width=640,     # Ignored parameter (spatial clipping simplified)
+    nbins=10,
+    window_duration_ms=50.0
 )
-# Returns Polars LazyFrame - call .collect() to materialize
-hist_df = hist_lazy.collect()
+# Returns Polars LazyFrame
+print(f"Generated stacked histogram with {len(hist_df)} entries")
+print(f"Columns: {list(hist_df.columns)}")  # ['window_id', 'channel', 'time_bin', 'y', 'x', 'count']
 ```
 
 **Parameters:**
-- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
-- `height` (int): Output image height
-- `width` (int): Output image width
-- `nbins` (int): Number of temporal bins per window
-- `window_duration_ms` (float): Duration of each window in milliseconds
-- `stride_ms` (float): Stride between windows (optional)
-- `count_cutoff` (int): Maximum count per bin (optional)
+- `events_pydf` (polars.DataFrame): Polars DataFrame with event data
+- `_height` (int): Ignored parameter (spatial clipping simplified)
+- `_width` (int): Ignored parameter (spatial clipping simplified)
+- `nbins` (int): Number of temporal bins per window (default: 10)
+- `window_duration_ms` (float): Duration of each window in milliseconds (default: 50.0)
+- `stride_ms` (float, optional): Stride between windows
+- `_count_cutoff` (int, optional): Ignored parameter (count limiting simplified)
 
 **Returns:**
 - `polars.LazyFrame`: LazyFrame with columns [window_id, channel, time_bin, y, x, count]
@@ -55,23 +62,27 @@ Creates traditional voxel grid representation.
 import evlib.representations as evr
 
 # Create voxel grid
-voxel_lazy = evr.create_voxel_grid(
-    "data/slider_depth/events.txt",
-    height=480, width=640,
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+voxel_df = evr.create_voxel_grid_py(
+    events_df,
+    _height=480,    # Ignored parameter
+    _width=640,     # Ignored parameter
     nbins=5
 )
-# Returns Polars LazyFrame - call .collect() to materialize
-voxel_df = voxel_lazy.collect()
+# Returns Polars DataFrame directly
+print(f"Generated voxel grid with {len(voxel_df)} entries")
+print(f"Columns: {list(voxel_df.columns)}")
 ```
 
 **Parameters:**
-- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
-- `height` (int): Output image height
-- `width` (int): Output image width
-- `nbins` (int): Number of temporal bins
+- `events_pydf` (polars.DataFrame): Polars DataFrame with event data
+- `_height` (int): Ignored parameter (spatial clipping simplified)
+- `_width` (int): Ignored parameter (spatial clipping simplified)
+- `nbins` (int): Number of temporal bins (default: 5)
 
 **Returns:**
-- `polars.LazyFrame`: LazyFrame with columns [time_bin, y, x, value]
+- `polars.DataFrame`: DataFrame with columns [time_bin, y, x, value]
 
 ### create_mixed_density_stack
 
@@ -82,25 +93,29 @@ Creates mixed density event stack representation.
 import evlib.representations as evr
 
 # Create mixed density stack
-stack_lazy = evr.create_mixed_density_stack(
-    "data/slider_depth/events.txt",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+stack_df = evr.create_mixed_density_stack_py(
+    events_df,
+    _height=480,    # Ignored parameter
+    _width=640,     # Ignored parameter
+    nbins=10,
+    window_duration_ms=50.0
 )
-# Returns Polars LazyFrame - call .collect() to materialize
-stack_df = stack_lazy.collect()
+# Returns Polars DataFrame directly
+print(f"Generated mixed density stack with {len(stack_df)} entries")
+print(f"Columns: {list(stack_df.columns)}")
 ```
 
 **Parameters:**
-- `events` (str|LazyFrame): Path to event file or Polars LazyFrame
-- `height` (int): Output image height
-- `width` (int): Output image width
-- `nbins` (int): Number of temporal bins
-- `window_duration_ms` (float): Duration of each window in milliseconds
-- `count_cutoff` (int): Maximum absolute value per bin (optional)
+- `events_pydf` (polars.DataFrame): Polars DataFrame with event data
+- `_height` (int): Ignored parameter (spatial clipping simplified)
+- `_width` (int): Ignored parameter (spatial clipping simplified)
+- `nbins` (int): Number of temporal bins (default: 10)
+- `window_duration_ms` (float): Duration of each window in milliseconds (default: 50.0)
 
 **Returns:**
-- `polars.LazyFrame`: LazyFrame with columns [window_id, time_bin, y, x, polarity_sum]
+- `polars.DataFrame`: DataFrame with mixed density stack representation
 
 ## High-Level API
 
@@ -112,15 +127,18 @@ High-level preprocessing function to replace RVT's preprocessing pipeline.
 ```python
 import evlib.representations as evr
 
-# Replace RVT preprocessing
-data_lazy = evr.preprocess_for_detection(
-    "data/slider_depth/events.txt",
-    representation="stacked_histogram",
-    height=480, width=640,
-    nbins=10, window_duration_ms=50
+# High-level preprocessing pipeline (under development)
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+# High-level preprocessing for neural networks
+data_df = evr.create_stacked_histogram_py(
+    events_df,
+    _height=480, _width=640,
+    nbins=10,
+    window_duration_ms=50.0
 )
-# Materialize when needed
-data_df = data_lazy.collect()
+print(f"Preprocessed {len(data_df)} stacked histogram entries for detection pipeline")
+# Data is ready for neural network input
 ```
 
 **Parameters:**
@@ -141,9 +159,19 @@ Benchmark the Polars-based implementation against RVT's approach.
 ```python
 import evlib.representations as evr
 
-# Benchmark performance
-results = evr.benchmark_vs_rvt("data/slider_depth/events.txt", height=480, width=640)
-print(f"Speedup: {results['speedup']:.1f}x")
+# Performance comparison with RVT (manual benchmarking available)
+import time
+
+# evlib approach (using voxel grid as workaround)
+start_time = time.time()
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=10)
+evlib_time = time.time() - start_time
+
+print(f"evlib processing time: {evlib_time:.3f}s")
+print(f"Generated {len(voxel_df)} voxel grid entries")
+print("For RVT comparison, implement equivalent PyTorch-based pipeline")
 ```
 
 **Parameters:**
@@ -164,8 +192,9 @@ import evlib.representations as evr
 # Prepare input for event-based neural networks
 def prepare_network_input(events_path):
     # Create voxel grid representation
-    voxel_lazy = evr.create_voxel_grid(events_path, height=480, width=640, nbins=5)
-    voxel_df = voxel_lazy.collect()
+    events = evlib.load_events(events_path)
+    events_df = events.collect()
+    voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=5)
 
     # Convert to NumPy for neural network processing
     voxel_array = voxel_df.to_numpy()
@@ -182,8 +211,9 @@ import polars as pl
 # Analyze temporal dynamics
 def analyze_temporal_activity(events_path, time_window=0.1):
     # Create high temporal resolution representation
-    voxel_lazy = evr.create_voxel_grid(events_path, height=480, width=640, nbins=20)
-    voxel_df = voxel_lazy.collect()
+    events = evlib.load_events(events_path)
+    events_df = events.collect()
+    voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=20)
 
     # Analyze activity over time (group by temporal bins)
     activity_per_bin = voxel_df.group_by("time_bin").agg([
@@ -202,8 +232,9 @@ import polars as pl
 # Create visualization-ready representations
 def create_event_image(events_path):
     # Single time bin for accumulated image
-    voxel_lazy = evr.create_voxel_grid(events_path, height=480, width=640, nbins=1)
-    voxel_df = voxel_lazy.collect()
+    events = evlib.load_events(events_path)
+    events_df = events.collect()
+    voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=1)
 
     # Convert to image format (group by spatial coordinates)
     event_image = voxel_df.group_by(["y", "x"]).agg([
@@ -238,8 +269,9 @@ def create_multiscale_voxels(events_path):
 
     multiscale_voxels = []
     for width, height, bins in scales:
-        voxel_lazy = evr.create_voxel_grid(events_path, width=width, height=height, nbins=bins)
-        voxel_df = voxel_lazy.collect()
+        events = evlib.load_events(events_path)
+        events_df = events.collect()
+        voxel_df = evr.create_voxel_grid_py(events_df, _width=width, _height=height, nbins=bins)
         multiscale_voxels.append(voxel_df)
 
     return multiscale_voxels
@@ -253,12 +285,13 @@ import evlib.representations as evr
 
 # Create voxel grid for specific time window
 def voxel_grid_time_window(events_path, t_start, t_end, bins=5):
-    # Filter events to time window using evlib filtering
-    filtered_events = evf.filter_by_time(events_path, t_start=t_start, t_end=t_end)
+    # Filter events by time window and create voxel grid
+    events = evlib.load_events(events_path)
+    filtered_events = evf.filter_by_time(events, t_start=t_start, t_end=t_end)
+    filtered_df = filtered_events.collect()
 
     # Create voxel grid from filtered events
-    voxel_lazy = evr.create_voxel_grid(filtered_events, width=640, height=480, nbins=bins)
-    voxel_df = voxel_lazy.collect()
+    voxel_df = evr.create_voxel_grid_py(filtered_df, _width=640, _height=480, nbins=bins)
 
     return voxel_df
 ```
@@ -271,15 +304,18 @@ import evlib.representations as evr
 
 # Create separate representations for positive and negative events
 def create_polarity_separated_voxels(events_path):
-    # Positive events
-    pos_events = evf.filter_by_polarity(events_path, polarity=1)
-    pos_voxel_lazy = evr.create_voxel_grid(pos_events, width=640, height=480, nbins=5)
-    pos_voxel = pos_voxel_lazy.collect()
+    # Filter and create voxel grids for each polarity
+    events = evlib.load_events(events_path)
 
-    # Negative events
-    neg_events = evf.filter_by_polarity(events_path, polarity=0)  # or -1 depending on encoding
-    neg_voxel_lazy = evr.create_voxel_grid(neg_events, width=640, height=480, nbins=5)
-    neg_voxel = neg_voxel_lazy.collect()
+    # Positive events (polarity = 1)
+    pos_events = evf.filter_by_polarity(events, polarity=1)
+    pos_df = pos_events.collect()
+    pos_voxel = evr.create_voxel_grid_py(pos_df, _width=640, _height=480, nbins=5)
+
+    # Negative events (polarity = -1)
+    neg_events = evf.filter_by_polarity(events, polarity=-1)
+    neg_df = neg_events.collect()
+    neg_voxel = evr.create_voxel_grid_py(neg_df, _width=640, _height=480, nbins=5)
 
     return pos_voxel, neg_voxel
 ```
@@ -309,12 +345,14 @@ import evlib.representations as evr
 # For very large datasets, use LazyFrames for memory efficiency
 def create_voxel_memory_efficient(events_path):
     # LazyFrames automatically handle memory efficiency
-    voxel_lazy = evr.create_voxel_grid(events_path, height=480, width=640, nbins=5)
+    events = evlib.load_events(events_path)  # Keep as LazyFrame
+    events_df = events.collect()
+    voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=5)
 
     # Only materialize when needed
-    # voxel_df = voxel_lazy.collect()
+    print(f"Voxel grid created with {len(voxel_df)} entries")
 
-    return voxel_lazy  # Return lazy for memory efficiency
+    return voxel_df
 ```
 
 ### Quality Validation
@@ -324,8 +362,9 @@ import evlib.representations as evr
 # Validate voxel grid quality
 def validate_voxel_grid(events_path):
     # Create voxel grid
-    voxel_lazy = evr.create_voxel_grid(events_path, height=480, width=640, nbins=5)
-    voxel_df = voxel_lazy.collect()
+    events = evlib.load_events(events_path)
+    events_df = events.collect()
+    voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=5)
 
     # Basic validation
     total_voxel_events = voxel_df["value"].sum()
@@ -344,7 +383,7 @@ def validate_voxel_grid(events_path):
 ### From dv-processing
 ```python
 # evlib provides a unified, high-performance API for event representations
-import evlib
+import evlib.representations as evr
 import evlib.representations as evr
 
 # Define parameters
@@ -353,17 +392,17 @@ width = 640
 height = 480
 bins = 10
 
-# Load events
+# Load and process events
 events = evlib.load_events(events_path)
+events_df = events.collect()
 
 # Create voxel grids
-voxel_lazy = evr.create_voxel_grid(events, width=width, height=height, nbins=bins)
-voxel_df = voxel_lazy.collect()
+voxel_df = evr.create_voxel_grid_py(events_df, _height=height, _width=width, nbins=bins)
+print(f"Voxel grid created with {len(voxel_df)} entries")
 
 # Create mixed density stacks
-mixed_lazy = evr.create_mixed_density_stack(events, width=width, height=height, nbins=bins)
-mixed_df = mixed_lazy.collect()
+mixed_df = evr.create_mixed_density_stack_py(events_df, _height=height, _width=width, nbins=bins)
+print(f"Mixed density stack created with {len(mixed_df)} entries")
 
-# Create stacked histograms
-hist_lazy = evr.create_stacked_histogram(events, width=width, height=height, nbins=bins)
-hist_df = hist_lazy.collect()
+# Note: Stacked histogram has a known filter predicate issue
+# Mixed density stack and voxel grid work correctly

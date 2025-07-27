@@ -12,9 +12,12 @@ evlib provides seamless integration with the Apache Arrow ecosystem through zero
 
 ```python
 import evlib
+import polars as pl
 
-# Load events directly to Apache Arrow format
-events = evlib.formats.load_events_to_arrow("/path/to/your/events.hdf5")
+# Load events as Polars DataFrame (Arrow integration coming soon)
+events_df = evlib.load_events("data/slider_depth/events.txt")
+# Convert to Arrow for DuckDB integration
+events = events_df.collect().to_arrow()
 ```
 
 ### DuckDB Integration
@@ -23,23 +26,27 @@ events = evlib.formats.load_events_to_arrow("/path/to/your/events.hdf5")
 import evlib
 import duckdb
 
-# Load events to Arrow format (zero-copy)
-events = evlib.formats.load_events_to_arrow("/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/hdf5/pedestrians.hdf5")
+# Load events and convert to Arrow format for DuckDB
+events_df = evlib.load_events("data/slider_depth/events.txt")
+
+# Register with DuckDB
+con = duckdb.connect()
+con.register("events", events_df.collect().to_arrow())
 
 # Basic queries
 print("=== Basic Event Statistics ===")
 
 # Total event count
-total_events = duckdb.sql("SELECT COUNT(*) as total_events FROM events").fetchone()[0]
+total_events = con.execute("SELECT COUNT(*) as total_events FROM events").fetchone()[0]
 print(f"Total events: {total_events:,}")
 
 # Event distribution by polarity
-polarity_dist = duckdb.sql("""
-    SELECT p as polarity, COUNT(*) as count,
+polarity_dist = con.execute("""
+    SELECT polarity, COUNT(*) as count,
            ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
     FROM events
-    GROUP BY p
-    ORDER BY p
+    GROUP BY polarity
+    ORDER BY polarity
 """).fetchall()
 
 print(f"\\nPolarity distribution:")
@@ -47,22 +54,22 @@ for pol, count, pct in polarity_dist:
     print(f"  Polarity {pol}: {count:,} events ({pct}%)")
 
 # Temporal statistics
-temporal_stats = duckdb.sql("""
+temporal_stats = con.execute("""
     SELECT
-        MIN(t) as min_timestamp,
-        MAX(t) as max_timestamp,
-        AVG(t) as avg_timestamp,
-        STDDEV(t) as std_timestamp
+        MIN(EXTRACT(microseconds FROM timestamp)) as min_timestamp,
+        MAX(EXTRACT(microseconds FROM timestamp)) as max_timestamp,
+        AVG(EXTRACT(microseconds FROM timestamp)) as avg_timestamp,
+        STDDEV(EXTRACT(microseconds FROM timestamp)) as std_timestamp
     FROM events
 """).fetchone()
 
 print(f"\\nTemporal statistics:")
-print(f"  Time range: {temporal_stats[0]:,} to {temporal_stats[1]:,}")
-print(f"  Average timestamp: {temporal_stats[2]:,.0f}")
-print(f"  Standard deviation: {temporal_stats[3]:,.0f}")
+print(f"  Time range: {temporal_stats[0]:,.0f} to {temporal_stats[1]:,.0f} microseconds")
+print(f"  Average timestamp: {temporal_stats[2]:,.0f} microseconds")
+print(f"  Standard deviation: {temporal_stats[3]:,.0f} microseconds")
 
 # Spatial statistics
-spatial_stats = duckdb.sql("""
+spatial_stats = con.execute("""
     SELECT
         MIN(x) as min_x, MAX(x) as max_x,
         MIN(y) as min_y, MAX(y) as max_y,
@@ -82,12 +89,17 @@ print(f"  Y range: {spatial_stats[2]} to {spatial_stats[3]} ({spatial_stats[5]} 
 
 ```python
 # Events per second
-events_per_second = duckdb.sql("""
+import duckdb
+con = duckdb.connect()
+events_df = evlib.load_events("data/slider_depth/events.txt")
+con.register("events", events_df.collect().to_arrow())
+
+events_per_second = con.execute("""
     SELECT
-        t // 1000000 as second,  -- Convert microseconds to seconds
+        EXTRACT(microseconds FROM timestamp) // 1000000 as second,  -- Convert microseconds to seconds
         COUNT(*) as events_count
     FROM events
-    GROUP BY t // 1000000
+    GROUP BY EXTRACT(microseconds FROM timestamp) // 1000000
     ORDER BY second
     LIMIT 10
 """).fetchall()
@@ -101,7 +113,12 @@ for second, count in events_per_second:
 
 ```python
 # Spatial density heatmap data
-density_map = duckdb.sql("""
+import duckdb
+con = duckdb.connect()
+events_df = evlib.load_events("data/slider_depth/events.txt")
+con.register("events", events_df.collect().to_arrow())
+
+density_map = con.execute("""
     SELECT
         x // 10 * 10 as x_bin,  -- 10x10 pixel bins
         y // 10 * 10 as y_bin,
@@ -131,15 +148,15 @@ The zero-copy Arrow integration provides significant performance benefits:
 The same Arrow data can be used with other analytics engines:
 
 ```python
-# With Polars
+# With Polars (already loaded as DataFrame)
 import polars as pl
-df = pl.from_arrow(events)
-result = df.group_by("p").agg(pl.count())
+events_df = evlib.load_events("data/slider_depth/events.txt")
+result = events_df.group_by("polarity").agg(pl.len())
 
 # With Pandas (includes copy overhead)
 import pandas as pd
-df = events.to_pandas()
-result = df.groupby("p").size()
+df = events_df.collect().to_pandas()
+result = df.groupby("polarity").size()
 ```
 
 ## Supported File Formats
@@ -164,12 +181,12 @@ evlib's Arrow integration supports all major event camera formats:
 To use DuckDB integration:
 
 ```bash
-pip install evlib[arrow] duckdb
+pip install evlib[polars] duckdb
 ```
 
 Or for development:
 
 ```bash
-maturin develop --features polars,arrow
+maturin develop --features polars
 pip install duckdb
 ```
