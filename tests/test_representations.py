@@ -22,10 +22,11 @@ def test_create_stacked_histogram():
         try:
             evlib.save_events_to_hdf5(x, y, t, p, tmp.name)
 
+            # Load events as DataFrame first
+            events_df = evlib.load_events(tmp.name)
+
             # Test create_stacked_histogram - returns Polars LazyFrame
-            hist_lf = evr.create_stacked_histogram(
-                tmp.name, height=64, width=64, nbins=5, window_duration_ms=100
-            )
+            hist_lf = evr.create_stacked_histogram(events_df, 64, 64, nbins=5, window_duration_ms=100)
 
             # Validate output is LazyFrame
             import polars as pl
@@ -70,8 +71,11 @@ def test_create_voxel_grid():
         try:
             evlib.save_events_to_hdf5(x, y, t, p, tmp.name)
 
+            # Load events as DataFrame first
+            events_df = evlib.load_events(tmp.name)
+
             # Test create_voxel_grid - returns Polars LazyFrame
-            voxel_lf = evr.create_voxel_grid(tmp.name, height=64, width=64, nbins=5)
+            voxel_lf = evr.create_voxel_grid(events_df, 64, 64, nbins=5)
 
             # Validate output is LazyFrame
             import polars as pl

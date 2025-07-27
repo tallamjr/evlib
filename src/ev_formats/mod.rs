@@ -1256,6 +1256,19 @@ pub mod python {
                     let py_type = polars_module.getattr("Int16")?;
                     (values.into_pyobject(py)?.into(), py_type)
                 }
+                DataType::Int32 => {
+                    let values: Vec<i32> = column
+                        .i32()
+                        .map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to extract i32 column: {e}"
+                            ))
+                        })?
+                        .into_no_null_iter()
+                        .collect();
+                    let py_type = polars_module.getattr("Int32")?;
+                    (values.into_pyobject(py)?.into(), py_type)
+                }
                 DataType::Int8 => {
                     let values: Vec<i8> = column
                         .i8()
