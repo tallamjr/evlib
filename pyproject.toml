@@ -71,7 +71,7 @@ strip = true
 include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", format = ["sdist", "wheel"]} ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "docs"]
+testpaths = ["tests", "docs", "examples"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
@@ -80,7 +80,21 @@ markers = [
 ]
 addopts = [
     "--markdown-docs",
-    "--markdown-docs-dir=docs",
+]
+log_cli = "true"
+log_cli_level = "INFO"
+log_cli_format = "%(message)s"
+python_files = ["test_*.py", "examples/*.py"]
+norecursedirs = ["examples/figures", ".ipynb_checkpoints"]
+
+[tool.pytest-markdown-docs]
+# Configuration for pytest-markdown-docs
+docs_dir = "docs"
+ignore_glob = [
+    "index.md",
+    "development/releases.md",
+    "development/contributing.md",
+    "development/testing.md",
 ]
 
 [tool.black]
@@ -94,15 +108,3 @@ remove_unused_imports = false
 [tool.ruff]
 ignore = ["F401"]  # F401 = unused imports
 line-length = 110
-
-[tool.pytest-markdown-docs]
-# Configuration for pytest-markdown-docs
-docs_dir = "docs"
-ignore_glob = [
-    "index.md",
-    "development/releases.md",
-    "development/contributing.md",
-    "development/testing.md",
-]
-# CI trigger
-# ci trigger

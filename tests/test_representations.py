@@ -23,32 +23,30 @@ def test_create_stacked_histogram():
             evlib.save_events_to_hdf5(x, y, t, p, tmp.name)
 
             # Load events as DataFrame first
-            events_df = evlib.load_events(tmp.name)
+            events_lf = evlib.load_events(tmp.name)
+            events_df = events_lf.collect()  # Convert LazyFrame to DataFrame
 
-            # Test create_stacked_histogram - returns Polars LazyFrame
-            hist_lf = evr.create_stacked_histogram(events_df, 64, 64, nbins=5, window_duration_ms=100)
+            # Test create_stacked_histogram - expects DataFrame, returns DataFrame
+            hist_df = evr.create_stacked_histogram(events_df, 64, 64, nbins=5, window_duration_ms=100)
 
-            # Validate output is LazyFrame
+            # Validate output is DataFrame
             import polars as pl
 
-            assert isinstance(hist_lf, pl.LazyFrame)
-
-            # Collect to DataFrame to check structure
-            hist_df = hist_lf.collect()
+            assert isinstance(hist_df, pl.DataFrame)
 
             # Should have columns: [window_id, channel, time_bin, y, x, count]
             expected_columns = ["window_id", "channel", "time_bin", "y", "x", "count"]
             assert all(col in hist_df.columns for col in expected_columns)
 
-            # Check data types
+            # Check data types (Rust uses efficient types)
             assert hist_df["window_id"].dtype == pl.Int64
-            assert hist_df["channel"].dtype == pl.Int32
-            assert hist_df["time_bin"].dtype == pl.Int32
-            assert hist_df["y"].dtype == pl.Int32
-            assert hist_df["x"].dtype == pl.Int32
+            assert hist_df["channel"].dtype == pl.Int8  # Polarity is -1/1, fits in Int8
+            assert hist_df["time_bin"].dtype == pl.Int16  # Time bins are small numbers, fits in Int16
+            assert hist_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
+            assert hist_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
             assert hist_df["count"].dtype == pl.UInt32
 
-            print(f"Success: create_stacked_histogram returned LazyFrame with {len(hist_df)} rows")
+            print(f"Success: create_stacked_histogram returned DataFrame with {len(hist_df)} rows")
 
         except Exception as e:
             # Function exists but has implementation issues - should fail
@@ -72,30 +70,28 @@ def test_create_voxel_grid():
             evlib.save_events_to_hdf5(x, y, t, p, tmp.name)
 
             # Load events as DataFrame first
-            events_df = evlib.load_events(tmp.name)
+            events_lf = evlib.load_events(tmp.name)
+            events_df = events_lf.collect()  # Convert LazyFrame to DataFrame
 
-            # Test create_voxel_grid - returns Polars LazyFrame
-            voxel_lf = evr.create_voxel_grid(events_df, 64, 64, nbins=5)
+            # Test create_voxel_grid - expects DataFrame, returns DataFrame
+            voxel_df = evr.create_voxel_grid(events_df, 64, 64, nbins=5)
 
-            # Validate output is LazyFrame
+            # Validate output is DataFrame
             import polars as pl
 
-            assert isinstance(voxel_lf, pl.LazyFrame)
-
-            # Collect to DataFrame to check structure
-            voxel_df = voxel_lf.collect()
+            assert isinstance(voxel_df, pl.DataFrame)
 
             # Should have columns: [time_bin, y, x, value]
             expected_columns = ["time_bin", "y", "x", "value"]
             assert all(col in voxel_df.columns for col in expected_columns)
 
-            # Check data types
-            assert voxel_df["time_bin"].dtype == pl.Int32
-            assert voxel_df["y"].dtype == pl.Int32
-            assert voxel_df["x"].dtype == pl.Int32
-            assert voxel_df["value"].dtype == pl.Int64  # Implementation returns Int64, not Float32
+            # Check data types (Rust uses efficient types)
+            assert voxel_df["time_bin"].dtype == pl.Int16  # Time bins are small numbers, fits in Int16
+            assert voxel_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
+            assert voxel_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
+            assert voxel_df["value"].dtype == pl.Int32  # Implementation returns Int32 for value
 
-            print(f"Success: create_voxel_grid returned LazyFrame with {len(voxel_df)} rows")
+            print(f"Success: create_voxel_grid returned DataFrame with {len(voxel_df)} rows")
 
         except Exception as e:
             # Function exists but has implementation issues - should fail
