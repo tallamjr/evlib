@@ -35,6 +35,9 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // PyO3 0.25 API compatible
     m.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, m)?)?;
 
+    // Add top-level detect_format function (wrapper around formats.detect_format)
+    m.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, m)?)?;
+
     // Register ev_core module as "core" in Python
     let core_submodule = PyModule::new(m.py(), "core")?;
     // PyO3 0.25 API compatible

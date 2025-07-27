@@ -374,13 +374,13 @@ pub mod python {
             )
             .with_columns([
                 // Cast spatial coordinates (clipping will be done in post-processing)
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
+                col("x").cast(DataType::Int16),
+                col("y").cast(DataType::Int16),
                 // Polarity channel (0 for negative/0, 1 for positive/1)
-                col("polarity").cast(DataType::Int32).alias("channel"),
+                col("polarity").cast(DataType::Int8).alias("channel"),
                 // Temporal binning within each window (simplified)
                 ((col("time_offset") % lit(stride_us)) * lit(nbins) / lit(window_duration_us))
-                    .cast(DataType::Int32)
+                    .cast(DataType::Int16)
                     .alias("time_bin"),
             ])
             .group_by([
@@ -436,8 +436,8 @@ pub mod python {
                 ((col("timestamp_us") - col("timestamp_us").min()) / lit(window_duration_us))
                     .alias("window_id"),
                 // Cast spatial coordinates (clipping simplified for now)
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
+                col("x").cast(DataType::Int16),
+                col("y").cast(DataType::Int16),
                 // Normalize timestamps within each window for log binning
                 ((col("timestamp_us") - col("timestamp_us").min()) % lit(window_duration_us))
                     .alias("window_offset_us"),
@@ -452,7 +452,7 @@ pub mod python {
             .with_columns([
                 // Linear temporal binning (simplified - logarithmic binning requires complex math functions)
                 (col("t_norm") * lit(nbins))
-                    .cast(DataType::Int32)
+                    .cast(DataType::Int16)
                     .alias("time_bin"),
                 // Convert polarity to -1/+1
                 (col("polarity") * lit(2) - lit(1)).alias("polarity_signed"),
@@ -494,11 +494,11 @@ pub mod python {
                 // Temporal binning across entire dataset (simplified)
                 ((col("timestamp_us") - col("timestamp_us").min()) * lit(nbins)
                     / (col("timestamp_us").max() - col("timestamp_us").min()))
-                .cast(DataType::Int32)
+                .cast(DataType::Int16)
                 .alias("time_bin"),
                 // Cast spatial coordinates (clipping simplified for now)
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
+                col("x").cast(DataType::Int16),
+                col("y").cast(DataType::Int16),
                 // Convert polarity to -1/+1 for voxel grid
                 (col("polarity") * lit(2) - lit(1)).alias("polarity_signed"),
             ])
