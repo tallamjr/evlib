@@ -53,7 +53,7 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
 
     // Read dataset filters to confirm ECF
     let filters = get_dataset_filters(&events_dataset)?;
-    let has_ecf = filters.iter().any(|&id| id == 36559);
+    let has_ecf = filters.contains(&36559);
 
     if !has_ecf {
         return Err(hdf5_metno::Error::Internal(
@@ -201,20 +201,14 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
     // Get dataspace to determine dimensions
     let space_id = unsafe { h5d::H5Dget_space(dataset_id) };
     if space_id < 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Failed to get dataset dataspace",
-        ));
+        return Err(io::Error::other("Failed to get dataset dataspace"));
     }
 
     // Get number of dimensions
     let ndims = unsafe { h5s::H5Sget_simple_extent_ndims(space_id) };
     if ndims < 0 {
         unsafe { h5s::H5Sclose(space_id) };
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Failed to get dataspace dimensions",
-        ));
+        return Err(io::Error::other("Failed to get dataspace dimensions"));
     }
 
     // Get total number of chunks
@@ -222,10 +216,7 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
     let status = unsafe { h5d::H5Dget_num_chunks(dataset_id, space_id, &mut num_chunks) };
     if status < 0 {
         unsafe { h5s::H5Sclose(space_id) };
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Failed to get number of chunks",
-        ));
+        return Err(io::Error::other("Failed to get number of chunks"));
     }
 
     // Validate chunk index
@@ -261,10 +252,10 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
 
     if status < 0 {
         unsafe { h5s::H5Sclose(space_id) };
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to get chunk {} info", chunk_idx),
-        ));
+        return Err(io::Error::other(format!(
+            "Failed to get chunk {} info",
+            chunk_idx
+        )));
     }
 
     // Check if ECF filter is applied (filter ID 36559 = 0x8ECF)
@@ -290,10 +281,10 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
     unsafe { h5s::H5Sclose(space_id) };
 
     if read_status < 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to read compressed chunk {} data", chunk_idx),
-        ));
+        return Err(io::Error::other(format!(
+            "Failed to read compressed chunk {} data",
+            chunk_idx
+        )));
     }
 
     Ok(compressed_data)

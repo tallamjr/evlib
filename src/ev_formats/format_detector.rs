@@ -529,7 +529,7 @@ impl FormatDetector {
     fn could_be_aer_format(buffer: &[u8], file_size: u64) -> bool {
         // AER format typically has 18-bit events, often stored as 32-bit values
         // Check if file size is consistent with 4-byte events
-        if file_size % 4 != 0 {
+        if !file_size.is_multiple_of(4) {
             return false;
         }
 
@@ -579,14 +579,14 @@ impl FormatDetector {
         // Check if file size is consistent with Event struct size
         const EVENT_SIZE: u64 = 17; // f64(8) + u16(2) + u16(2) + i8(1) + padding
 
-        if file_size % EVENT_SIZE == 0 {
+        if file_size.is_multiple_of(EVENT_SIZE) {
             return true;
         }
 
         // Check for other common binary event sizes
         let common_sizes = [8, 12, 16, 20, 24];
         for &size in &common_sizes {
-            if file_size % size == 0 {
+            if file_size.is_multiple_of(size) {
                 return true;
             }
         }
