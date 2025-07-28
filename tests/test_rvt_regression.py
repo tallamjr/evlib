@@ -223,7 +223,7 @@ class TestRVTRegression:
         assert count_diff_ratio < 0.3, f"Non-zero counts too different: {count_diff_ratio:.3f}"
         assert mean_diff < 0.5, f"Mean difference too high: {mean_diff:.3f}"
 
-        print("✅ Quick RVT comparison PASSED!")
+        print("Quick RVT comparison PASSED!")
         print(f"   - Exact match ratio: {exact_ratio:.3f} > 0.85")
         print(f"   - Max value difference: {max_diff} <= 15")
         print(f"   - Mean difference: {mean_diff:.3f} < 0.5")
@@ -231,13 +231,13 @@ class TestRVTRegression:
 
         # Report quality metrics
         if exact_ratio > 0.95:
-            print("🎯 EXCELLENT: >95% exact matches")
+            print("EXCELLENT: >95% exact matches")
         elif exact_ratio > 0.90:
-            print("✅ GOOD: >90% exact matches")
+            print("GOOD: >90% exact matches")
         elif exact_ratio > 0.85:
-            print("⚠️  ACCEPTABLE: >85% exact matches")
+            print("WARNING: ACCEPTABLE: >85% exact matches")
 
         if max_diff <= 10:
-            print("🎯 Count cutoff working well")
+            print("Count cutoff working well")
         else:
-            print("⚠️  Some count aggregation differences detected")
+            print("WARNING: Some count aggregation differences detected")

@@ -34,6 +34,7 @@ dependencies = [
   "hdf5plugin >= 5.1.0",
   "polars >= 1.30.0",
   "pyarrow >= 21.0.0",
+  "pandera[polars] >= 0.18.0",
 ]
 
 dynamic = ["version"]
@@ -62,7 +63,7 @@ all = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module", "python"]
+features = ["pyo3/extension-module", "python", "arrow"]
 python-source = "python"
 module-name = "evlib"
 # Strip the library for minimum file size
@@ -106,5 +107,7 @@ line_length = 110
 remove_unused_imports = false
 
 [tool.ruff]
-ignore = ["F401"]  # F401 = unused imports
 line-length = 110
+
+[tool.ruff.lint]
+ignore = ["F401"]  # F401 = unused imports

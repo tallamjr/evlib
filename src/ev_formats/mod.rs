@@ -319,18 +319,25 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             // Use our native Rust ECF decoder first - it now properly handles Prophesee format
             match hdf5_reader::read_prophesee_hdf5_native(path) {
                 Ok(events) => {
+                    // Success message already printed by read_prophesee_hdf5_native()
                     return Ok(events);
                 }
-                Err(_e) => {
+                Err(e) => {
+                    eprintln!("WARNING: Native ECF decoder failed: {}", e);
                     // Native ECF decoder failed, will try Python fallback
                 }
             }
 
             #[cfg(feature = "python")]
             {
+                eprintln!("Trying Python fallback for ECF decoding...");
                 match call_python_prophesee_fallback(path) {
-                    Ok(events) => return Ok(events),
+                    Ok(events) => {
+                        eprintln!("SUCCESS: Python fallback loaded {} events", events.len());
+                        return Ok(events);
+                    }
                     Err(e) => {
+                        eprintln!("Python fallback also failed: {}", e);
                         // Try Rust ECF decoder as fallback
                         match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                             Ok(events) => {
@@ -401,11 +408,22 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             let n = t_arr.len();
             let mut events = Vec::with_capacity(n);
 
+            // Detect timestamp units for f64 arrays
+            let conversion_factor = detect_timestamp_units_f64(&t_arr);
+
             for i in 0..n {
+                let x = x_arr[i];
+                let y = y_arr[i];
+
+                // Validate coordinates to filter out invalid events
+                if !validate_coordinates(x, y) {
+                    continue; // Skip invalid events
+                }
+
                 events.push(Event {
-                    t: t_arr[i] / 1_000_000.0, // Convert microseconds to seconds
-                    x: x_arr[i],
-                    y: y_arr[i],
+                    t: t_arr[i] / conversion_factor, // Use detected units
+                    x,
+                    y,
                     polarity: p_arr[i] != 0, // Convert i8 to bool
                 });
             }
@@ -433,21 +451,39 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 // Try to read timestamps as i64 first (new format), then fall back to f64 (old format)
                 if let Ok(t_arr) = t_dataset.read_raw::<i64>() {
                     let t_arr: Vec<i64> = t_arr.to_vec();
+                    let conversion_factor = detect_timestamp_units(&t_arr);
+
                     for i in 0..n {
+                        let x = x_arr[i];
+                        let y = y_arr[i];
+
+                        // Validate coordinates to filter out invalid events
+                        if !validate_coordinates(x, y) {
+                            continue; // Skip invalid events
+                        }
+
                         events.push(Event {
-                            t: t_arr[i] as f64 / 1_000_000.0, // Convert microseconds to seconds
-                            x: x_arr[i],
-                            y: y_arr[i],
+                            t: t_arr[i] as f64 / conversion_factor, // Use detected units
+                            x,
+                            y,
                             polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
                         });
                     }
                 } else if let Ok(t_arr) = t_dataset.read_raw::<f64>() {
                     let t_arr: Vec<f64> = t_arr.to_vec();
                     for i in 0..n {
+                        let x = x_arr[i];
+                        let y = y_arr[i];
+
+                        // Validate coordinates to filter out invalid events
+                        if !validate_coordinates(x, y) {
+                            continue; // Skip invalid events
+                        }
+
                         events.push(Event {
                             t: t_arr[i], // Already in seconds for f64 format
-                            x: x_arr[i],
-                            y: y_arr[i],
+                            x,
+                            y,
                             polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
                         });
                     }
@@ -466,6 +502,70 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
     Err(hdf5_metno::Error::Internal(format!(
         "Could not find event data in HDF5 file {path}"
     )))
+}
+
+/// Detect timestamp units based on magnitude of timestamps
+/// Returns the conversion factor to convert to seconds
+fn detect_timestamp_units(timestamps: &[i64]) -> f64 {
+    if timestamps.is_empty() {
+        return 1_000_000.0; // Default to microseconds
+    }
+
+    // Sample multiple timestamps to be more robust
+    let sample_size = std::cmp::min(10, timestamps.len());
+    let mut max_timestamp = 0i64;
+
+    for &ts in timestamps.iter().take(sample_size) {
+        max_timestamp = std::cmp::max(max_timestamp, ts.abs());
+    }
+
+    // Determine units based on timestamp magnitude
+    // Nanoseconds: typically > 10^15 for recent data (e.g., 1.6e18 for year 2021+)
+    // Microseconds: typically 10^9 to 10^15
+    // Seconds: typically < 10^9
+    if max_timestamp > 1_000_000_000_000_000 {
+        // > 10^15
+        1_000_000_000.0 // nanoseconds to seconds
+    } else if max_timestamp > 1_000_000_000 {
+        // > 10^9
+        1_000_000.0 // microseconds to seconds
+    } else {
+        1.0 // already in seconds
+    }
+}
+
+/// Detect timestamp units for f64 arrays
+/// Returns the conversion factor to convert to seconds
+fn detect_timestamp_units_f64(timestamps: &[f64]) -> f64 {
+    if timestamps.is_empty() {
+        return 1_000_000.0; // Default to microseconds
+    }
+
+    // Sample multiple timestamps to be more robust
+    let sample_size = std::cmp::min(10, timestamps.len());
+    let mut max_timestamp = 0.0f64;
+
+    for &ts in timestamps.iter().take(sample_size) {
+        max_timestamp = max_timestamp.max(ts.abs());
+    }
+
+    // Determine units based on timestamp magnitude
+    if max_timestamp > 1_000_000_000_000_000.0 {
+        // > 10^15
+        1_000_000_000.0 // nanoseconds to seconds
+    } else if max_timestamp > 1_000_000_000.0 {
+        // > 10^9
+        1_000_000.0 // microseconds to seconds
+    } else {
+        1.0 // already in seconds
+    }
+}
+
+/// Validate that coordinates are within reasonable bounds for event cameras
+fn validate_coordinates(x: u16, y: u16) -> bool {
+    // Most event cameras have resolutions <= 1280x720 (Gen4) or 640x480 (DAVIS)
+    // Allow some margin for unusual sensors, but reject clearly invalid values
+    x <= 2048 && y <= 2048
 }
 
 /// Call Python fallback for Prophesee HDF5 format
@@ -561,11 +661,22 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
         let num_events = x_array.len();
         let mut events = Vec::with_capacity(num_events);
 
+        // Detect timestamp units based on data magnitude
+        let conversion_factor = detect_timestamp_units(&t_array);
+
         for i in 0..num_events {
+            let x = x_array[i];
+            let y = y_array[i];
+
+            // Validate coordinates to filter out invalid events
+            if !validate_coordinates(x, y) {
+                continue; // Skip invalid events
+            }
+
             events.push(Event {
-                t: t_array[i] as f64 / 1_000_000.0, // Convert microseconds to seconds
-                x: x_array[i],
-                y: y_array[i],
+                t: t_array[i] as f64 / conversion_factor, // Use detected units
+                x,
+                y,
                 polarity: p_array[i] > 0, // Convert to bool
             });
         }

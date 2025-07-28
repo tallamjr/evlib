@@ -85,11 +85,11 @@ evlib includes a complete Rust implementation of the ECF codec:
 - `src/ev_formats/hdf5_reader.rs` - HDF5 integration
 
 **Features:**
-- ✅ Complete ECF decoder implementation
-- ✅ Support for all compression modes (packed coordinates, delta compression)
-- ✅ Coordinate scaling from 11-bit to full sensor resolution (1280x720)
-- ✅ Microsecond-level performance
-- ✅ No external dependencies
+- Complete ECF decoder implementation
+- Support for all compression modes (packed coordinates, delta compression)
+- Coordinate scaling from 11-bit to full sensor resolution (1280x720)
+- Microsecond-level performance
+- No external dependencies
 
 **Compression Techniques Handled:**
 1. **Delta timestamp encoding** - Reconstruct absolute timestamps from deltas
@@ -276,9 +276,9 @@ print(f"Detected format: {format_info}")
 try:
     events = evlib.load_events(test_file)
     df = events.collect()
-    print(f"✅ Success: {len(df)} events loaded from {test_file}")
+    print(f"Success: {len(df)} events loaded from {test_file}")
 except Exception as e:
-    print(f"❌ Failed: {e}")
+    print(f"Failed: {e}")
 ```
 
 ## Performance Characteristics
@@ -344,7 +344,7 @@ print("Processing pipeline example - replace with actual file paths")
 
 ## Implementation Status
 
-### ✅ Fully Working
+### Fully Working
 - Complete Rust ECF decoder/encoder
 - Multi-layer fallback system
 - Official plugin integration
@@ -352,7 +352,7 @@ print("Processing pipeline example - replace with actual file paths")
 - Comprehensive error handling
 - Python fallback decoder
 
-### 🚧 In Development
+### In Development
 - Advanced ECF compression modes
 - Memory-mapped chunk reading
 - Streaming support for very large files

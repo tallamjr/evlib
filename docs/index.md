@@ -508,7 +508,7 @@ evlib provides several Python modules for different aspects of event processing:
 - **`evlib.formats`**: Direct Rust access for format loading and detection
 - **`evlib.filtering`**: High-performance event filtering with Polars
 - **`evlib.representations`**: Event representations (stacked histograms, voxel grids)
-- **`evlib.models`**: Neural network model loading and inference (🚧 Under construction)
+- **`evlib.models`**: Neural network model loading and inference (Under construction)
 
 ### Module Overview
 ```python

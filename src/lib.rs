@@ -38,6 +38,15 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add top-level detect_format function (wrapper around formats.detect_format)
     m.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, m)?)?;
 
+    // Add top-level arrow functions (requires both python and arrow features)
+    #[cfg(all(feature = "python", feature = "arrow"))]
+    {
+        m.add_function(wrap_pyfunction!(
+            ev_formats::python::load_events_to_pyarrow,
+            m
+        )?)?;
+    }
+
     // Add top-level save functions (wrappers around formats functions)
     m.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
