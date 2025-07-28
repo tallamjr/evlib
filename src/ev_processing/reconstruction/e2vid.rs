@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use tracing::{error, info};
 
 /// Represents the configuration parameters for E2VID reconstruction
 #[derive(Debug, Clone)]
@@ -124,9 +125,9 @@ impl E2Vid {
 
     /// Load neural network from PyTorch model file using proper architecture
     pub fn load_model_from_file(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
-        println!(
-            "INFO: Loading PyTorch model with E2VID Recurrent architecture: {}",
-            model_path.display()
+        info!(
+            path = %model_path.display(),
+            "Loading PyTorch model with E2VID Recurrent architecture"
         );
 
         // Use the unified loader to get the weights
@@ -139,9 +140,9 @@ impl E2Vid {
 
         match load_model(model_path, Some(model_config)) {
             Ok(loaded_model) => {
-                println!(
-                    "Successfully loaded weights from {:?} model",
-                    loaded_model.format
+                info!(
+                    format = ?loaded_model.format,
+                    "Successfully loaded weights from model"
                 );
 
                 // Create E2VID Recurrent model with loaded weights
@@ -150,20 +151,20 @@ impl E2Vid {
                 match E2VidRecurrent::load_from_varbuilder(vs) {
                     Ok(model) => {
                         self.model = Some(ModelBackend::CandleRecurrent(model));
-                        println!("Successfully created E2VID Recurrent model with proper architecture matching");
-                        println!("Model weights loaded successfully - outputs should now be deterministic");
+                        info!("Successfully created E2VID Recurrent model with proper architecture matching");
+                        info!("Model weights loaded successfully - outputs should now be deterministic");
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("Failed to create E2VID Recurrent model: {:?}", e);
-                        eprintln!("Falling back to basic UNet with random weights");
+                        error!(error = ?e, "Failed to create E2VID Recurrent model");
+                        info!("Falling back to basic UNet with random weights");
                         self.create_default_network()
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to load model weights: {:?}", e);
-                eprintln!("Falling back to basic UNet with random weights");
+                error!(error = ?e, "Failed to load model weights");
+                info!("Falling back to basic UNet with random weights");
                 self.create_default_network()
             }
         }
@@ -179,7 +180,7 @@ impl E2Vid {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Failed to load ONNX model: {:?}", e);
+                error!(error = ?e, "Failed to load ONNX model");
                 Err(candle_core::Error::Msg(format!(
                     "Failed to load ONNX model: {}",
                     e
@@ -207,7 +208,7 @@ impl E2Vid {
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("Failed to create default network: {:?}", e);
+                        error!(error = ?e, "Failed to create default network");
                         Err(candle_core::Error::Msg(
                             "Failed to initialize network".to_string(),
                         ))
@@ -220,7 +221,7 @@ impl E2Vid {
                     Ok(())
                 }
                 Err(e) => {
-                    eprintln!("Failed to create UNet: {:?}", e);
+                    error!(error = ?e, "Failed to create UNet");
                     Err(e)
                 }
             },
@@ -230,7 +231,7 @@ impl E2Vid {
                     Ok(())
                 }
                 Err(e) => {
-                    eprintln!("Failed to create FireNet: {:?}", e);
+                    error!(error = ?e, "Failed to create FireNet");
                     Err(e)
                 }
             },
@@ -247,14 +248,14 @@ impl E2Vid {
             fs::create_dir_all(parent)?;
         }
 
-        println!("Downloading E2VID model from {}...", self.config.model_url);
+        info!(url = %self.config.model_url, "Downloading E2VID model");
 
         // In a real implementation, this would download and convert the model
         // For this simplified version, we'll just create a placeholder file
         let mut file = fs::File::create(&self.config.model_path)?;
         file.write_all(b"E2VID model placeholder")?;
 
-        println!("Model downloaded to {:?}", self.config.model_path);
+        info!(path = ?self.config.model_path, "Model downloaded");
         Ok(())
     }
 

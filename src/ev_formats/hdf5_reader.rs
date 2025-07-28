@@ -10,6 +10,7 @@ use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
 use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use std::io;
+use tracing::info;
 
 /// Read raw chunk data from an HDF5 dataset
 /// This bypasses the HDF5 filter pipeline to get compressed chunks directly
@@ -152,9 +153,9 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
         ))
     } else {
         // Log success message only when events are actually loaded
-        eprintln!(
-            "SUCCESS: Native Rust ECF decoder loaded {} events",
-            all_events.len()
+        info!(
+            events = all_events.len(),
+            "Native Rust ECF decoder loaded events"
         );
         Ok(all_events)
     }

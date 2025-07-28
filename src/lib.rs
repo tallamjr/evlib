@@ -3,6 +3,9 @@ pub mod ev_core;
 pub mod ev_formats;
 pub mod ev_representations;
 
+// Tracing configuration for structured logging
+pub mod tracing_config;
+
 // Removed modules with non-working implementations
 // pub mod ev_processing;    // Removed - broken neural network implementations
 // pub mod ev_visualization; // Removed - limited/broken functionality
@@ -152,6 +155,36 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     m.add_submodule(&formats_submodule)?;
+
+    // Register tracing_config module for Python logging control
+    let tracing_submodule = PyModule::new(m.py(), "tracing_config")?;
+    #[cfg(feature = "python")]
+    {
+        tracing_submodule.add_function(wrap_pyfunction!(
+            tracing_config::python::init_py,
+            &tracing_submodule
+        )?)?;
+        tracing_submodule.add_function(wrap_pyfunction!(
+            tracing_config::python::init_debug_py,
+            &tracing_submodule
+        )?)?;
+        tracing_submodule.add_function(wrap_pyfunction!(
+            tracing_config::python::init_with_filter_py,
+            &tracing_submodule
+        )?)?;
+        tracing_submodule.add_function(wrap_pyfunction!(
+            tracing_config::python::init_production_py,
+            &tracing_submodule
+        )?)?;
+        tracing_submodule.add_function(wrap_pyfunction!(
+            tracing_config::python::init_development_py,
+            &tracing_submodule
+        )?)?;
+
+        // Functions are already exported with clean names via #[pyo3(name = "...")] attributes
+        // No need for additional aliases
+    }
+    m.add_submodule(&tracing_submodule)?;
 
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

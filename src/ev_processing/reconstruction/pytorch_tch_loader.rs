@@ -7,6 +7,7 @@ use tch::{nn, Device as TchDevice, Kind, Tensor as TchTensor};
 use candle_core::{Device, Tensor};
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::info;
 
 /// Error types for tch-rs PyTorch operations
 #[derive(Debug)]
@@ -71,7 +72,7 @@ impl TchModelLoader {
         // Load state dict
         vs.load(model_path.as_ref())?;
 
-        println!("Successfully loaded PyTorch model using tch-rs");
+        info!("Successfully loaded PyTorch model using tch-rs");
 
         Ok(TchModel {
             vs,
