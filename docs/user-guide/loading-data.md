@@ -328,23 +328,28 @@ print(f"Event rate: {len(df)/(df['timestamp'].max() - df['timestamp'].min()).tot
 
 ```python
 # Process video in 0.1 second segments
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-duration = (df['timestamp'].max() - df['timestamp'].min()).total_seconds()
-segment_length = 0.1
-n_segments = int(duration / segment_length)
+# events = evlib.load_events("data/slider_depth/events.txt")
+# df = events.collect()
+# duration = (df['timestamp'].max() - df['timestamp'].min()).total_seconds()
+# segment_length = 0.1
+# n_segments = int(duration / segment_length)
+#
+# for i in range(n_segments):
+#     t_start = df['timestamp'].min().total_seconds() + i * segment_length
+#     t_end = t_start + segment_length
+#
+#     # Load segment using filtering
 
-for i in range(n_segments):
-    t_start = df['timestamp'].min().total_seconds() + i * segment_length
-    t_end = t_start + segment_length
-
-    # Load segment using filtering
-    segment_events = evlib.filter_by_time("data/slider_depth/events.txt", t_start=t_start, t_end=t_end)
-    seg_df = segment_events.collect()
-
-    # Process segment
-    if len(seg_df) > 0:
-        process_segment(seg_df)
+# Example approach:
+print("Example: Process events in temporal segments")
+print("segment_length = 0.1  # seconds")
+print("# Load and process each segment separately")
+#     segment_events = evlib.filter_by_time("data/slider_depth/events.txt", t_start=t_start, t_end=t_end)
+#     seg_df = segment_events.collect()
+#
+#     # Process segment
+#     if len(seg_df) > 0:
+#         process_segment(seg_df)
 ```
 
 ### Multi-Resolution Analysis

@@ -43,6 +43,11 @@ dynamic = ["version"]
 dev = [
     "codecov",
     "maturin",
+    "mike >= 2.0.0",
+    "mkdocs-material >= 9.5.0",
+    "mkdocs-jupyter >= 0.24.0",
+    "mkdocs-material[imaging] >= 9.5.0",
+    "pygments >= 2.18.0",
     "nbmake",
     "pytest >= 7.0.0",
     "pytest-benchmark",

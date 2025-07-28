@@ -13,7 +13,7 @@ use evlib::tracing_config;
 tracing_config::init();
 
 // Now load events - logging will be structured and configurable
-let events = evlib::ev_formats::load_events_with_config("data.h5", &config)?;
+let events = evlib::ev_formats::load_events_with_config("tests/data/eTram/h5/val_2/val_night_011_td.h5", &config)?;
 ```
 
 ### Environment Variable Control
@@ -200,7 +200,7 @@ mod tests {
         tracing_config::init_test();
 
         // Test code here - logs will be captured in test output
-        let events = evlib::ev_formats::load_events_from_text("test.txt")?;
+        let events = evlib::ev_formats::load_events_from_text("tests/data/test.txt")?;
     }
 }
 ```
@@ -218,10 +218,11 @@ os.environ['RUST_LOG'] = 'evlib=debug'
 
 # Initialize tracing from Python (if exposed)
 # Note: This requires exposing tracing_config functions to Python
-evlib.tracing_config.init()
+# evlib.tracing_config.init()
 
 # Load events - Rust logs will be controlled by RUST_LOG
-events = evlib.load_events('data.h5')
+events = evlib.load_events('tests/data/eTram/h5/val_2/val_night_011_td.h5')
+print(f"Loaded events with shape: {events.collect().shape}")
 ```
 
 ## Performance Considerations

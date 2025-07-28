@@ -170,40 +170,18 @@ def setup_global_namespace():
     _global_namespace["numpy"] = np
     _global_namespace["time"] = time
 
-    # Create mock data directory
-    temp_dir = tempfile.mkdtemp()
-    data_dir = Path(temp_dir) / "data"
-    data_dir.mkdir(parents=True)
+    # Use real project data directory
+    project_root = Path(__file__).parent.parent
 
-    # Create slider_depth directory
-    slider_depth_dir = data_dir / "slider_depth"
-    slider_depth_dir.mkdir(parents=True)
-
-    # Create mock events.txt file
-    events_file = slider_depth_dir / "events.txt"
-    events_content = """# Mock events file for testing
-# timestamp x y polarity
-0.000100 320 240 1
-0.000200 321 241 -1
-0.000300 319 239 1
-0.000400 322 242 1
-0.000500 318 238 -1
-"""
-    events_file.write_text(events_content)
-
-    # Store temp dir for cleanup
-    _global_namespace["_temp_dir"] = temp_dir
-
-    # Change to temp directory
+    # Change to project root directory so relative paths work
     original_cwd = os.getcwd()
-    os.chdir(temp_dir)
+    os.chdir(project_root)
     _global_namespace["_original_cwd"] = original_cwd
 
     yield _global_namespace
 
     # Cleanup
     os.chdir(original_cwd)
-    shutil.rmtree(temp_dir)
 
 
 @pytest.fixture(autouse=True)
