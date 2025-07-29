@@ -1,6 +1,7 @@
 //! Hardware acceleration optimizations for real-time event processing
 
 use candle_core::{Device, Result as CandleResult, Tensor};
+use tracing::info;
 
 /// Hardware acceleration configuration
 #[derive(Debug, Clone)]
@@ -53,12 +54,11 @@ impl AccelerationContext {
         // Check SIMD availability
         let simd_enabled = config.enable_simd && Self::check_simd_support();
 
-        println!("Acceleration context initialized:");
-        println!("  Device: {:?}", device);
-        println!("  SIMD enabled: {}", simd_enabled);
-        println!(
-            "  Memory pool: {} MB",
-            config.memory_pool_size / (1024 * 1024)
+        info!(
+            device = ?device,
+            simd_enabled = simd_enabled,
+            memory_pool_mb = config.memory_pool_size / (1024 * 1024),
+            "Acceleration context initialized"
         );
 
         Ok(Self {

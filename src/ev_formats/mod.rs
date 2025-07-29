@@ -7,6 +7,7 @@ use hdf5_metno::File as H5File;
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
+use tracing::{error, info, warn};
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -294,7 +295,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     if total_events > 10_000_000 {
                         let progress = (end_idx as f64 / total_events as f64) * 100.0;
                         if end_idx % 50_000_000 == 0 || end_idx == total_events {
-                            eprintln!("Loading HDF5: {progress:.1}% ({end_idx}/{total_events})");
+                            info!(progress = %format!("{:.1}%", progress), current = end_idx, total = total_events, "Loading HDF5");
                         }
                     }
                 }
@@ -323,29 +324,29 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     return Ok(events);
                 }
                 Err(e) => {
-                    eprintln!("WARNING: Native ECF decoder failed: {}", e);
+                    warn!("Native ECF decoder failed: {}", e);
                     // Native ECF decoder failed, will try Python fallback
                 }
             }
 
             #[cfg(feature = "python")]
             {
-                eprintln!("Trying Python fallback for ECF decoding...");
+                info!("Trying Python fallback for ECF decoding");
                 match call_python_prophesee_fallback(path) {
                     Ok(events) => {
-                        eprintln!("SUCCESS: Python fallback loaded {} events", events.len());
+                        info!(events = events.len(), "Python fallback loaded events");
                         return Ok(events);
                     }
                     Err(e) => {
-                        eprintln!("Python fallback also failed: {}", e);
+                        error!("Python fallback failed: {}", e);
                         // Try Rust ECF decoder as fallback
                         match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                             Ok(events) => {
-                                eprintln!("Rust ECF decoder succeeded!");
+                                info!("Rust ECF decoder succeeded");
                                 return Ok(events);
                             }
                             Err(ecf_error) => {
-                                eprintln!("Rust ECF decoder failed: {}", ecf_error);
+                                error!("Rust ECF decoder failed: {}", ecf_error);
                                 // Return the original Python error
                                 return Err(e);
                             }
@@ -356,18 +357,18 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
 
             #[cfg(not(feature = "python"))]
             {
-                eprintln!("Python fallback not available - using native Rust ECF decoder only");
+                info!("Python fallback not available - using native Rust ECF decoder only");
 
                 // Our native ECF decoder was already tried above, so if we get here it failed
                 // Try the old experimental approach as final fallback
                 match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                     Ok(events) => {
-                        eprintln!("Rust ECF decoder succeeded!");
+                        info!("Rust ECF decoder succeeded");
                         return Ok(events);
                     }
                     Err(ecf_error) => {
-                        eprintln!("Rust ECF decoder failed: {}", ecf_error);
-                        eprintln!("Note: evlib includes native ECF support and should handle this automatically.");
+                        error!("Rust ECF decoder failed: {}", ecf_error);
+                        warn!("evlib includes native ECF support and should handle this automatically. Please report as a bug if this error persists");
 
                         return Err(hdf5_metno::Error::Internal(format!(
                             "Prophesee ECF decoding failed: {}. evlib includes native ECF support - this should work automatically. Please report as a bug if this error persists.",
@@ -383,7 +384,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
     if let Ok(_dataset) = file.dataset(dataset_name) {
         // For compound datasets, we'll skip this for now since the separate field approach
         // works better with different HDF5 layouts and hdf5-metno
-        eprintln!("Found compound dataset at root level - this layout is not yet supported with hdf5-metno");
+        warn!("Found compound dataset at root level - this layout is not yet supported with hdf5-metno");
     }
 
     // Fallback: check for separate datasets
@@ -693,10 +694,7 @@ fn try_rust_ecf_decoder(
 ) -> Result<Events, Box<dyn std::error::Error>> {
     use crate::ev_formats::hdf5_reader;
 
-    eprintln!(
-        "Attempting native Rust ECF decode for {} events...",
-        total_events
-    );
+    info!(events = total_events, "Attempting native Rust ECF decode");
 
     // Use our integrated HDF5 + ECF reader that we've already implemented and tested
     // This calls the hdf5_reader::read_prophesee_hdf5_native function which:
@@ -710,9 +708,9 @@ fn try_rust_ecf_decoder(
 
     match hdf5_reader::read_prophesee_hdf5_native(&filename) {
         Ok(events) => {
-            eprintln!(
-                "Native Rust ECF decoder successfully loaded {} events",
-                events.len()
+            info!(
+                events = events.len(),
+                "Native Rust ECF decoder successfully loaded events"
             );
             Ok(events)
         }

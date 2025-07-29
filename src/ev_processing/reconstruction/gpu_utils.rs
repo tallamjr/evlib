@@ -3,6 +3,7 @@
 
 use candle_core::{Device, Result};
 use std::sync::Once;
+use tracing::info;
 
 static INIT: Once = Once::new();
 static mut GPU_AVAILABLE: bool = false;
@@ -247,8 +248,7 @@ mod tests {
         let gpu_available = is_gpu_available();
         let gpu_type = get_gpu_type();
 
-        println!("GPU Available: {}", gpu_available);
-        println!("GPU Type: {:?}", gpu_type);
+        info!(gpu_available = gpu_available, gpu_type = ?gpu_type, "GPU detection results");
 
         // Test should pass regardless of GPU availability
         assert!(true);
@@ -259,9 +259,9 @@ mod tests {
         let device = get_best_device().unwrap();
 
         match device {
-            Device::Cpu => println!("Using CPU"),
-            Device::Cuda(_) => println!("Using CUDA GPU"),
-            Device::Metal(_) => println!("Using Metal GPU"),
+            Device::Cpu => info!("Using CPU"),
+            Device::Cuda(_) => info!("Using CUDA GPU"),
+            Device::Metal(_) => info!("Using Metal GPU"),
         }
     }
 

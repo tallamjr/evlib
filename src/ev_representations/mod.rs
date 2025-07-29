@@ -1,25 +1,46 @@
-// Representations module
-// Converting event streams into different tensor representations for ML and visualization
+/*!
+Event Representations Module
 
-// Smooth voxel grid module has been removed
+This module provides two complementary APIs for converting event streams into tensor representations:
+
+## Rust Core API (Direct ndarray operations)
+- **Functions**: Standard Rust functions returning `Array3<f32>`
+- **Use case**: High-performance Rust applications, internal processing
+- **Data types**: `Events` → `Array3<f32>`
+- **Available representations**: Timestamp images, count images, event frames, time windows
+
+## Python Bindings API (Polars DataFrame processing)
+- **Functions**: `*_py()` suffix, decorated with `#[pyfunction]`
+- **Use case**: Python users requiring DataFrame-based preprocessing
+- **Data types**: `PyDataFrame` → `PyDataFrame`
+- **Available representations**: Stacked histograms, mixed density stacks, voxel grids
+
+## Architecture Notes
+- **Smooth voxel grids**: Removed from Rust core due to complexity
+- **Standard voxel grids**: Available via Python bindings using Polars operations
+- **Performance**: Rust core functions are optimised for tensor operations, Python bindings optimised for DataFrame workflows
+*/
 
 use crate::ev_core::Events;
 use crate::ev_core::{TensorError, TensorResult};
 use ndarray::Array3;
 
-// Voxel grid functionality has been removed
-
 /// Create a timestamp image (time surface) representation of events
+///
+/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
 ///
 /// A timestamp image is a 2D grid where each pixel's value represents
 /// the timestamp of the most recent event at that location. This can be used
-/// to visualize the temporal dynamics and for creating time-based features.
+/// to visualise the temporal dynamics and for creating time-based features.
 ///
 /// # Arguments
 /// * `events` - Event stream to convert
 /// * `resolution` - Sensor resolution (width, height)
-/// * `normalize` - If true, normalize timestamps to [0,1] range
+/// * `normalize` - If true, normalise timestamps to [0,1] range
 /// * `polarity_separate` - If true, create separate time surfaces for positive and negative events
+///
+/// # Returns
+/// * `Array3<f32>` with shape (channels, height, width) where channels = 1 or 2 depending on `polarity_separate`
 pub fn events_to_timestamp_image(
     events: &Events,
     resolution: (u16, u16),
@@ -99,10 +120,15 @@ pub fn events_to_timestamp_image(
 
 /// Create an event count image (spatial histogram of events)
 ///
+/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
+///
 /// # Arguments
 /// * `events` - Event stream to convert
 /// * `resolution` - Sensor resolution (width, height)
 /// * `polarity_as_channel` - If true, create a 2-channel image with positive and negative events separated
+///
+/// # Returns
+/// * `Array3<f32>` with shape (channels, height, width) where channels = 1 or 2 depending on `polarity_as_channel`
 pub fn events_to_count_image(
     events: &Events,
     resolution: (u16, u16),
@@ -150,14 +176,19 @@ pub fn events_to_count_image(
 
 /// Create an event frame by accumulating events into an image
 ///
-/// Similar to a count image but optionally applies normalization and
+/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
+///
+/// Similar to a count image but optionally applies normalisation and
 /// can be configured to use different accumulation methods.
 ///
 /// # Arguments
 /// * `events` - Event stream to convert
 /// * `resolution` - Sensor resolution (width, height)
 /// * `method` - Accumulation method: "count", "polarity", or "times"
-/// * `normalize` - If true, normalize the output to [0,1] range
+/// * `normalize` - If true, normalise the output to [0,1] range
+///
+/// # Returns
+/// * `Array3<f32>` with shape (1, height, width)
 pub fn events_to_frame(
     events: &Events,
     resolution: (u16, u16),
@@ -226,6 +257,8 @@ pub fn events_to_frame(
 
 /// Create a time window representation of events
 ///
+/// **Rust Core API Function**: Returns `Vec<Array3<f32>>` for direct tensor operations.
+///
 /// This splits the event stream into time windows and creates a representation
 /// for each window, allowing time-based processing of events.
 ///
@@ -234,6 +267,9 @@ pub fn events_to_frame(
 /// * `resolution` - Sensor resolution (width, height)
 /// * `window_duration` - Duration of each time window in seconds
 /// * `representation` - Type of representation to use for each window ("count", "polarity")
+///
+/// # Returns
+/// * `Vec<Array3<f32>>` where each element is a tensor for one time window
 pub fn events_to_time_windows(
     events: &Events,
     resolution: (u16, u16),
@@ -304,22 +340,24 @@ pub mod python {
     use pyo3::prelude::*;
     use pyo3_polars::PyDataFrame;
 
-    /// Create stacked histogram representation with temporal binning (Rust implementation)
+    /// Create stacked histogram representation with temporal binning
     ///
-    /// This is a high-performance Rust implementation that replaces the Python version.
-    /// It processes events into temporal windows and creates histograms for each polarity.
+    /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
     ///
-    /// Args:
-    ///     events_pydf: Polars DataFrame with columns [x, y, timestamp, polarity]
-    ///     height: Output height dimension
-    ///     width: Output width dimension
-    ///     nbins: Number of temporal bins per window (default: 10)
-    ///     window_duration_ms: Duration of each window in milliseconds (default: 50.0)
-    ///     stride_ms: Stride between windows in milliseconds (default: window_duration_ms)
-    ///     count_cutoff: Maximum count per bin (default: 10)
+    /// This processes events into temporal windows and creates histograms for each polarity,
+    /// optimised for DataFrame-based preprocessing workflows.
     ///
-    /// Returns:
-    ///     Polars DataFrame with columns [window_id, channel, time_bin, y, x, count, channel_time_bin]
+    /// # Arguments
+    /// * `events_pydf` - Polars DataFrame with columns [x, y, timestamp, polarity]
+    /// * `_height` - Output height dimension (used for compatibility)
+    /// * `_width` - Output width dimension (used for compatibility)
+    /// * `nbins` - Number of temporal bins per window (default: 10)
+    /// * `window_duration_ms` - Duration of each window in milliseconds (default: 50.0)
+    /// * `stride_ms` - Stride between windows in milliseconds (default: window_duration_ms)
+    /// * `_count_cutoff` - Maximum count per bin (default: 10)
+    ///
+    /// # Returns
+    /// * `PyDataFrame` with columns [window_id, channel, time_bin, y, x, count, channel_time_bin]
     #[pyfunction]
     #[pyo3(signature = (events_pydf, _height, _width, nbins=10, window_duration_ms=50.0, stride_ms=None, _count_cutoff=Some(10)))]
     pub fn create_stacked_histogram_py(
@@ -408,7 +446,23 @@ pub mod python {
         Ok(PyDataFrame(result))
     }
 
-    /// Create mixed density event stack representation (Rust implementation)
+    /// Create mixed density event stack representation
+    ///
+    /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
+    ///
+    /// This creates a mixed density representation with temporal binning, optimised
+    /// for DataFrame-based preprocessing workflows.
+    ///
+    /// # Arguments
+    /// * `events_pydf` - Polars DataFrame with columns [x, y, timestamp, polarity]
+    /// * `_height` - Output height dimension (used for compatibility)
+    /// * `_width` - Output width dimension (used for compatibility)
+    /// * `nbins` - Number of temporal bins (default: 10)
+    /// * `window_duration_ms` - Duration of each window in milliseconds (default: 50.0)
+    /// * `_count_cutoff` - Maximum count per bin (default: None)
+    ///
+    /// # Returns
+    /// * `PyDataFrame` with columns [window_id, time_bin, y, x, polarity_sum]
     #[pyfunction]
     #[pyo3(signature = (events_pydf, _height, _width, nbins=10, window_duration_ms=50.0, _count_cutoff=None))]
     pub fn create_mixed_density_stack_py(
@@ -471,7 +525,24 @@ pub mod python {
         Ok(PyDataFrame(result))
     }
 
-    /// Create traditional voxel grid representation (Rust implementation)
+    /// Create traditional voxel grid representation
+    ///
+    /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
+    ///
+    /// This creates a standard voxel grid representation with temporal binning across
+    /// the entire dataset, optimised for DataFrame-based preprocessing workflows.
+    ///
+    /// Note: Smooth voxel grids were removed from the Rust core due to complexity,
+    /// but standard voxel grids remain available via this Python binding.
+    ///
+    /// # Arguments
+    /// * `events_pydf` - Polars DataFrame with columns [x, y, timestamp, polarity]
+    /// * `_height` - Output height dimension (used for compatibility)
+    /// * `_width` - Output width dimension (used for compatibility)
+    /// * `nbins` - Number of temporal bins (default: 5)
+    ///
+    /// # Returns
+    /// * `PyDataFrame` with columns [time_bin, y, x, value] where value is polarity sum
     #[pyfunction]
     #[pyo3(signature = (events_pydf, _height, _width, nbins=5))]
     pub fn create_voxel_grid_py(

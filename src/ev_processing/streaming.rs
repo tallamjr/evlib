@@ -4,6 +4,7 @@ use candle_core::{Device, Result as CandleResult, Tensor};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 use super::reconstruction::unified_loader::{load_model, LoadedModel, ModelLoadConfig};
 use crate::ev_core::Event;
@@ -164,12 +165,12 @@ impl StreamingProcessor {
 
     /// Load model for reconstruction
     pub fn load_model(&mut self, model_path: &std::path::Path) -> CandleResult<()> {
-        println!("Loading model for streaming: {}", model_path.display());
+        info!(model_path = %model_path.display(), "Loading model for streaming");
 
         let model = load_model(model_path, Some(self.config.model_config.clone()))?;
         self.model = Some(model);
 
-        println!("Model loaded successfully for streaming processing");
+        info!("Model loaded successfully for streaming processing");
         Ok(())
     }
 
@@ -254,9 +255,9 @@ impl StreamingProcessor {
         let result = self.process_events(events);
 
         if start.elapsed() > timeout {
-            println!(
-                "Warning: Processing exceeded timeout of {}ms",
-                self.config.timeout_ms
+            warn!(
+                timeout_ms = self.config.timeout_ms,
+                "Processing exceeded timeout"
             );
         }
 
@@ -346,14 +347,14 @@ impl EventStream {
         }
 
         self.is_running = true;
-        println!("Event stream started");
+        info!("Event stream started");
         Ok(())
     }
 
     /// Stop streaming processing
     pub fn stop(&mut self) {
         self.is_running = false;
-        println!("Event stream stopped");
+        info!("Event stream stopped");
     }
 
     /// Process a batch of events

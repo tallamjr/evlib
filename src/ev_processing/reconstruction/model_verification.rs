@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use tracing::info;
 
 /// Verification results for model comparison
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,27 +50,39 @@ impl VerificationResults {
 
     /// Print verification summary
     pub fn print_summary(&self) {
-        println!("=== Model Verification Results ===");
-        println!("Model: {}", self.model_name);
-        println!("PyTorch shape: {:?}", self.pytorch_shape);
-        println!("Candle shape: {:?}", self.candle_shape);
-        println!("Max absolute error: {:.8}", self.max_absolute_error);
-        println!("Mean absolute error: {:.8}", self.mean_absolute_error);
-        println!("Max relative error: {:.8}", self.max_relative_error);
-        println!("Mean relative error: {:.8}", self.mean_relative_error);
-        println!("RMSE: {:.8}", self.rmse);
-        println!("PSNR: {:.2} dB", self.psnr);
+        info!("Model Verification Results");
+        info!(model = %self.model_name, "Model");
+        info!(pytorch_shape = ?self.pytorch_shape, "PyTorch shape");
+        info!(candle_shape = ?self.candle_shape, "Candle shape");
+        info!(
+            max_abs_error = self.max_absolute_error,
+            "Max absolute error"
+        );
+        info!(
+            mean_abs_error = self.mean_absolute_error,
+            "Mean absolute error"
+        );
+        info!(
+            max_rel_error = self.max_relative_error,
+            "Max relative error"
+        );
+        info!(
+            mean_rel_error = self.mean_relative_error,
+            "Mean relative error"
+        );
+        info!(rmse = self.rmse, "RMSE");
+        info!(psnr_db = self.psnr, "PSNR");
         if let Some(ssim) = self.ssim {
-            println!("SSIM: {:.4}", ssim);
+            info!(ssim = ssim, "SSIM");
         }
-        println!(
-            "Tolerance check: {} (tolerance: {:.8})",
-            if self.passed_tolerance {
+        info!(
+            status = if self.passed_tolerance {
                 "PASSED"
             } else {
                 "FAILED"
             },
-            self.tolerance
+            tolerance = self.tolerance,
+            "Tolerance check"
         );
     }
 }
@@ -286,7 +299,7 @@ pub fn verify_model_with_inputs(
     let mut results = Vec::new();
 
     for (i, input) in test_inputs.iter().enumerate() {
-        println!("Verifying model with test input {}", i + 1);
+        info!(test_input = i + 1, "Verifying model with test input");
         let result = verifier.verify_model_outputs(
             &format!("{}_{}", model_name, i),
             checkpoint_path,

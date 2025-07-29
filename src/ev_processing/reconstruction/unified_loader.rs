@@ -3,6 +3,7 @@
 use candle_core::{Device, Result as CandleResult, Tensor};
 use candle_nn::VarMap;
 use std::path::Path;
+use tracing::{info, warn};
 
 use super::model_verification::{ModelVerifier, VerificationResults};
 use super::pytorch_bridge::load_pytorch_weights_into_varmap;
@@ -83,9 +84,10 @@ impl UnifiedModelLoader {
         // Detect format
         let format = ModelFormat::from_path(model_path)?;
 
-        println!(
-            "Loading model: {path} (format: {format:?})",
-            path = model_path.display()
+        info!(
+            path = %model_path.display(),
+            format = ?format,
+            "Loading model"
         );
 
         match format {
@@ -118,7 +120,7 @@ impl UnifiedModelLoader {
         // In a real implementation, you might convert ONNX to VarMap or handle separately
         let varmap = VarMap::new();
 
-        println!("ONNX model loading - using ONNX Runtime backend");
+        info!("ONNX model loading - using ONNX Runtime backend");
 
         Ok(LoadedModel {
             format: ModelFormat::Onnx,
@@ -149,7 +151,7 @@ impl UnifiedModelLoader {
         }
 
         if loaded_model.format != ModelFormat::PyTorch {
-            println!("Model verification only supported for PyTorch models currently");
+            warn!("Model verification only supported for PyTorch models currently");
             return Ok(None);
         }
 
@@ -176,7 +178,7 @@ impl UnifiedModelLoader {
                 Ok(Some(verification))
             }
             Err(e) => {
-                println!("Model verification failed: {e}");
+                warn!(error = ?e, "Model verification failed");
                 Ok(None)
             }
         }
@@ -269,9 +271,10 @@ pub fn auto_load_model(
         let candidate_path_str = format!("{base_path}{extension}");
         let candidate_path = Path::new(&candidate_path_str);
         if candidate_path.exists() {
-            println!(
-                "Found model: {path} (format: {format:?})",
-                path = candidate_path.display()
+            info!(
+                path = %candidate_path.display(),
+                format = ?format,
+                "Found model"
             );
 
             let config = ModelLoadConfig {

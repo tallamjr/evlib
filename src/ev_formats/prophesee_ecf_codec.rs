@@ -11,6 +11,7 @@ written in Rust for seamless integration with evlib.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor, Read, Write};
+use tracing::{debug, warn};
 
 /// Maximum number of events that can be processed in one chunk (official ECF specification)
 const MAX_BUFFER_SIZE: usize = 65535;
@@ -98,9 +99,10 @@ impl PropheseeECFDecoder {
 
         // Decode based on header flags
         if self.debug {
-            eprintln!(
-                "ECF header: use_delta_timestamps = {}, num_events = {}",
-                header.use_delta_timestamps, header.num_events
+            debug!(
+                use_delta_timestamps = header.use_delta_timestamps,
+                num_events = header.num_events,
+                "ECF header"
             );
         }
 
@@ -108,7 +110,7 @@ impl PropheseeECFDecoder {
             self.decode_with_delta_timestamps(&mut cursor, &header)
         } else {
             if self.debug {
-                eprintln!("Using raw events decoding (no delta timestamps)");
+                debug!("Using raw events decoding (no delta timestamps)");
             }
             self.decode_raw_events(&mut cursor, &header)
         }
@@ -139,9 +141,12 @@ impl PropheseeECFDecoder {
         // Check if bit-packed interpretation gives reasonable values (official ECF max: 65535)
         if num_events_bitpacked > 0 && num_events_bitpacked <= 65535 {
             if self.debug {
-                eprintln!(
-                    "Using bit-packed ECF header: num_events={}, delta_ts={}, ys_xs_ps_packed={}, xs_ps_packed={}",
-                    num_events_bitpacked, use_delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
+                debug!(
+                    num_events = num_events_bitpacked,
+                    delta_ts = use_delta_timestamps,
+                    ys_xs_ps_packed = ys_xs_and_ps_packed,
+                    xs_ps_packed = xs_and_ps_packed,
+                    "Using bit-packed ECF header"
                 );
             }
 
@@ -170,10 +175,7 @@ impl PropheseeECFDecoder {
 
         // Check for Prophesee format signature
         if format_id == 0x00010002 && flags == 0x00000000 && num_events_prophesee <= 100000 {
-            eprintln!(
-                "Using Prophesee ECF header: format_id=0x{:08X}, num_events={}, flags=0x{:08X}",
-                format_id, num_events_prophesee, flags
-            );
+            debug!(format_id = %format!("0x{:08X}", format_id), num_events = num_events_prophesee, flags = %format!("0x{:08X}", flags), "Using Prophesee ECF header");
 
             return Ok(ChunkHeader {
                 num_events: num_events_prophesee,
@@ -285,10 +287,7 @@ impl PropheseeECFDecoder {
         let delta_bits = cursor.read_u8()?;
 
         if self.debug {
-            eprintln!(
-                "ECF timestamp encoding: delta_bits = {}, base_timestamp = {}",
-                delta_bits, base_timestamp
-            );
+            debug!(delta_bits, base_timestamp, "ECF timestamp encoding");
         }
 
         if delta_bits == 0 {
@@ -361,7 +360,7 @@ impl PropheseeECFDecoder {
             _ => {
                 // Unknown delta_bits, try the old fallback logic
                 if self.debug {
-                    eprintln!("WARNING: Unknown delta_bits value: {}", delta_bits);
+                    warn!(delta_bits, "Unknown delta_bits value in ECF decoder");
                 }
             }
         }
@@ -375,8 +374,10 @@ impl PropheseeECFDecoder {
             let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
             if remaining_bytes < 1 {
                 if self.debug {
-                    eprintln!("ECF: No more timestamp data, using sequential fallback for remaining {} events",
-                             num_events - events_decoded);
+                    warn!(
+                        remaining_events = num_events - events_decoded,
+                        "ECF: No more timestamp data, using sequential fallback"
+                    );
                 }
                 // Fill remaining with sequential timestamps
                 for i in events_decoded..num_events {
@@ -616,9 +617,9 @@ impl PropheseeECFDecoder {
             let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
             if remaining_bytes < 12 {
                 if self.debug {
-                    eprintln!(
-                        "ECF: Not enough data for packed group: need 12 bytes, have {}",
-                        remaining_bytes
+                    debug!(
+                        remaining_bytes,
+                        "ECF: Not enough data for packed group - need 12 bytes"
                     );
                 }
                 break;
@@ -695,7 +696,7 @@ impl PropheseeECFDecoder {
             let t = cursor.read_i64::<LittleEndian>()?;
 
             if i < 3 {
-                eprintln!("Raw event {}: x={}, y={}, p={}, t={}", i, x, y, p, t);
+                debug!(event_index = i, x, y, p, t, "Raw event");
             }
 
             // Validate event values based on official ECF specification
@@ -1025,17 +1026,14 @@ mod tests {
 
         // Encode
         let compressed = encoder.encode(&events).unwrap();
-        println!(
-            "Compressed {} events to {} bytes",
-            events.len(),
-            compressed.len()
+        debug!(
+            events = events.len(),
+            bytes = compressed.len(),
+            "Compressed events"
         );
 
         // Debug: Print the compressed data
-        println!(
-            "Compressed bytes: {:02x?}",
-            &compressed[..compressed.len().min(64)]
-        );
+        debug!(bytes = ?&compressed[..compressed.len().min(64)], "Compressed bytes");
 
         // Decode
         let decoded = decoder.decode(&compressed).unwrap();
@@ -1043,10 +1041,7 @@ mod tests {
         // Verify
         assert_eq!(events.len(), decoded.len());
         for (i, (original, decoded)) in events.iter().zip(decoded.iter()).enumerate() {
-            println!(
-                "Event {}: Original: {:?}, Decoded: {:?}",
-                i, original, decoded
-            );
+            debug!(event_index = i, original = ?original, decoded = ?decoded, "Event comparison");
             assert_eq!(*original, *decoded);
         }
     }
@@ -1092,14 +1087,14 @@ mod tests {
 
         // Encode
         let compressed = encoder.encode(&events).unwrap();
-        println!(
-            "1-bit encoding: Compressed {} events to {} bytes",
-            events.len(),
-            compressed.len()
+        debug!(
+            events = events.len(),
+            bytes = compressed.len(),
+            "1-bit encoding: Compressed events"
         );
 
         // Debug: Print the compressed data
-        println!("Compressed bytes: {:02x?}", &compressed);
+        debug!(bytes = ?compressed, "Compressed bytes");
 
         // Decode
         let decoded = decoder.decode(&compressed).unwrap();
@@ -1107,10 +1102,7 @@ mod tests {
         // Verify
         assert_eq!(events.len(), decoded.len());
         for (i, (original, decoded)) in events.iter().zip(decoded.iter()).enumerate() {
-            println!(
-                "Event {}: Original: {:?}, Decoded: {:?}",
-                i, original, decoded
-            );
+            debug!(event_index = i, original = ?original, decoded = ?decoded, "Event comparison");
             assert_eq!(*original, *decoded);
         }
     }

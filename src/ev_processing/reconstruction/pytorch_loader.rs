@@ -8,6 +8,7 @@ use candle_nn::{
 };
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::{error, info, warn};
 
 /// Errors that can occur during PyTorch model loading
 #[derive(Debug)]
@@ -78,7 +79,7 @@ impl LoadedModel {
         config: ModelLoaderConfig,
     ) -> Result<Self, ModelLoadError> {
         if config.verbose {
-            println!("Loading PyTorch model from {:?}", path.as_ref());
+            info!(path = ?path.as_ref(), "Loading PyTorch model");
         }
 
         // Check if file exists
@@ -93,7 +94,7 @@ impl LoadedModel {
         #[cfg(feature = "pytorch")]
         {
             if config.verbose {
-                println!("Attempting to load PyTorch model using tch-rs...");
+                info!("Attempting to load PyTorch model using tch-rs");
             }
 
             match super::pytorch_tch_loader::ModelConverter::convert_e2vid_model(
@@ -102,16 +103,16 @@ impl LoadedModel {
             ) {
                 Ok(state_dict) => {
                     if config.verbose {
-                        println!(
-                            "Successfully loaded PyTorch model with tch-rs: {} tensors",
-                            state_dict.len()
+                        info!(
+                            tensor_count = state_dict.len(),
+                            "Successfully loaded PyTorch model with tch-rs"
                         );
                     }
                     return Ok(Self { state_dict, config });
                 }
                 Err(e) => {
                     if config.verbose {
-                        println!("tch-rs loading failed: {}, trying PyO3 bridge...", e);
+                        warn!(error = %e, "tch-rs loading failed, trying PyO3 bridge");
                     }
                 }
             }
@@ -124,9 +125,9 @@ impl LoadedModel {
         match bridge_result {
             Ok(state_dict) => {
                 if config.verbose {
-                    println!(
-                        "Successfully loaded PyTorch checkpoint with PyO3 bridge: {} tensors",
-                        state_dict.len()
+                    info!(
+                        tensor_count = state_dict.len(),
+                        "Successfully loaded PyTorch checkpoint with PyO3 bridge"
                     );
                 }
                 Ok(Self { state_dict, config })
@@ -134,14 +135,12 @@ impl LoadedModel {
             Err(e) => {
                 if config.verbose {
                     #[cfg(feature = "pytorch")]
-                    println!("Warning: Both tch-rs and PyO3 bridge failed to load PyTorch weights");
+                    warn!("Both tch-rs and PyO3 bridge failed to load PyTorch weights");
                     #[cfg(not(feature = "pytorch"))]
-                    println!("Warning: PyO3 bridge failed to load PyTorch weights");
-                    println!(
-                        "Consider converting your model to ONNX format for better compatibility."
-                    );
-                    println!(
-                        "ONNX models provide better cross-platform compatibility and performance."
+                    warn!("PyO3 bridge failed to load PyTorch weights");
+                    info!("Consider converting your model to ONNX format for better compatibility");
+                    info!(
+                        "ONNX models provide better cross-platform compatibility and performance"
                     );
                 }
 
@@ -175,10 +174,10 @@ impl LoadedModel {
                 .to_dtype(self.config.dtype)?;
 
             if self.config.verbose {
-                println!(
-                    "Loading tensor: {} with shape {:?}",
-                    key,
-                    converted_tensor.shape()
+                info!(
+                    tensor_key = %key,
+                    shape = ?converted_tensor.shape(),
+                    "Loading tensor"
                 );
             }
         }

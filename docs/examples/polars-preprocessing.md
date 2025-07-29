@@ -26,7 +26,7 @@ The `evlib.representations` module provides high-performance Polars-based implem
 The following datasets are available for testing and examples:
 
 - `data/slider_depth/events.txt` - Text format (22MB, 1.1M events)
-- `../tests/data/eTram/h5/val_2/val_night_011_td.h5` - HDF5 format (14MB, small dataset)
+- `../tests/data/eTram/h5/val_2/val_night_011_td.h5` - HDF5 format (14MB, 3.4M events)
 
 ## Basic Usage Examples
 

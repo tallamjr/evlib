@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::{error, info};
 
 /// Information about a pre-trained model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,11 +240,11 @@ impl ModelZoo {
         let model_path = self.cache_dir.join(format!("{}.{}", info.name, extension));
 
         if model_path.exists() {
-            println!("Model '{}' already downloaded", name);
+            info!(model = %name, "Model already downloaded");
             return Ok(model_path);
         }
 
-        println!("Downloading model '{}' from {}", name, info.url);
+        info!(model = %name, url = %info.url, "Downloading model");
 
         // Download the model
         let response = reqwest::get(&info.url)
@@ -259,7 +260,7 @@ impl ModelZoo {
         fs::write(&model_path, bytes)
             .map_err(|e| candle_core::Error::Msg(format!("Failed to save model: {}", e)))?;
 
-        println!("Model '{}' downloaded successfully", name);
+        info!(model = %name, "Model downloaded successfully");
         Ok(model_path)
     }
 
@@ -289,9 +290,9 @@ impl ModelZoo {
                 // as ONNX loading is handled separately
                 let varmap = VarMap::new();
                 let vb = VarBuilder::from_varmap(&varmap, DType::F32, &self.device);
-                eprintln!(
-                    "Note: ONNX model at {:?} - use events_to_video_advanced() for ONNX inference",
-                    model_path
+                info!(
+                    model_path = ?model_path,
+                    "ONNX model - use events_to_video_advanced() for ONNX inference"
                 );
                 Ok(vb)
             }
@@ -331,7 +332,7 @@ impl ModelZoo {
             &self.device,
         ) {
             Ok(varmap) => {
-                eprintln!("Successfully loaded PyTorch weights from {:?}", model_path);
+                info!(model_path = ?model_path, "Successfully loaded PyTorch weights");
                 Ok(VarBuilder::from_varmap(&varmap, DType::F32, &self.device))
             }
             Err(e) => {

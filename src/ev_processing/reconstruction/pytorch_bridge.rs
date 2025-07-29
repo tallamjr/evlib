@@ -6,6 +6,7 @@ use candle_nn::VarMap;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::{error, info, warn};
 
 /// Error types for PyTorch bridge operations
 #[derive(Debug)]
@@ -76,11 +77,11 @@ impl PyTorchLoader {
                     .get_item("state_dict")
                     .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
-                println!("Found nested state_dict, extracting model weights...");
+                info!("Found nested state_dict, extracting model weights");
                 nested_state_dict
             } else {
                 // Assume checkpoint is already a state dict
-                println!("Treating checkpoint as direct state dict...");
+                info!("Treating checkpoint as direct state dict");
                 checkpoint
             };
 
@@ -102,10 +103,7 @@ impl PyTorchLoader {
             .call_method0("keys")
             .map_err(|e| PyTorchBridgeError::PythonError(e.to_string()))?;
 
-        println!(
-            "Processing state dict with {} keys",
-            keys.len().unwrap_or(0)
-        );
+        info!(key_count = keys.len().unwrap_or(0), "Processing state dict");
 
         for key in keys.iter()? {
             let key = key?;
@@ -123,20 +121,21 @@ impl PyTorchLoader {
                 // Convert to Candle tensor
                 match self.pytorch_to_candle(py, value) {
                     Ok(candle_tensor) => {
-                        println!("Converted tensor: {}", key_str);
+                        info!(key = %key_str, "Converted tensor");
                         candle_state_dict.insert(key_str, candle_tensor);
                     }
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to convert tensor for key '{}': {}",
-                            key_str, e
+                        warn!(
+                            key = %key_str,
+                            error = %e,
+                            "Failed to convert tensor for key"
                         );
                         // Skip this key rather than failing entirely
                     }
                 }
             } else {
                 // Skip non-tensor values (e.g., strings, metadata)
-                eprintln!("Skipping non-tensor key: {}", key_str);
+                warn!(key = %key_str, "Skipping non-tensor key");
             }
         }
 
@@ -361,7 +360,7 @@ impl ModelWeightMapper {
                 candle_state_dict.insert(candle_key.clone(), tensor);
             } else {
                 // Keep unmapped keys as-is (might be useful for debugging)
-                eprintln!("Warning: No mapping found for key: {}", pytorch_key);
+                warn!(key = %pytorch_key, "No mapping found for key");
                 candle_state_dict.insert(pytorch_key, tensor);
             }
         }

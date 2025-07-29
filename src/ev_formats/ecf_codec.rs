@@ -16,6 +16,7 @@ but integrated directly into evlib's Rust backend for optimal performance.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor};
+use tracing::debug;
 
 /// Type alias for decoded coordinate data
 type CoordinateData = (Vec<u16>, Vec<u16>, Vec<i16>);
@@ -108,10 +109,7 @@ impl ECFDecoder {
         };
 
         if self.debug {
-            println!(
-                "ECF: Header=0x{:08x}, Events={}, Delta={}, Y/X/P packed={}, X/P packed={}",
-                header, num_events, delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
-            );
+            debug!(header = %format!("0x{:08x}", header), num_events, delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed, "ECF header");
         }
 
         if num_events == 0 {
@@ -147,7 +145,7 @@ impl ECFDecoder {
         let base_timestamp = cursor.read_i64::<LittleEndian>()?;
 
         if self.debug {
-            println!("ECF: Base timestamp: {}", base_timestamp);
+            debug!(base_timestamp, "ECF base timestamp");
         }
 
         // Decode coordinates and polarities
@@ -457,10 +455,10 @@ mod tests {
 
         // Encode
         let compressed = encoder.encode(&events).unwrap();
-        println!(
-            "Compressed {} events to {} bytes",
-            events.len(),
-            compressed.len()
+        debug!(
+            events = events.len(),
+            bytes = compressed.len(),
+            "Compressed events"
         );
 
         // Decode

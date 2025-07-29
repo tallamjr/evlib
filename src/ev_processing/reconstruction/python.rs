@@ -6,6 +6,7 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::path::PathBuf;
+use tracing::{error, info};
 
 /// Python wrapper to create video reconstructions from events using E2VID
 #[pyfunction]
@@ -243,15 +244,15 @@ pub fn events_to_video_advanced_py(
     // If model_path is provided, load the model from file
     if let Some(path) = model_path {
         let model_path_buf = PathBuf::from(path);
-        println!("INFO: Attempting to load model from: {path}");
+        info!(path = %path, "Attempting to load model");
 
         match e2vid.load_model_from_file(&model_path_buf) {
             Ok(()) => {
-                println!("Successfully loaded model from file");
+                info!("Successfully loaded model from file");
             }
             Err(e) => {
-                eprintln!("Failed to load model from file: {e:?}");
-                eprintln!("Falling back to default model creation");
+                error!(error = ?e, "Failed to load model from file");
+                info!("Falling back to default model creation");
             }
         }
     }

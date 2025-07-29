@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
@@ -77,11 +78,11 @@ impl EventBroadcaster {
                 let message = Self::serialize_events(&batch);
                 if batch.len() > 50 {
                     // Only log larger batches to reduce spam
-                    println!(
-                        "Broadcasting {batch_len} events ({message_len} bytes) to {clients_len} clients",
+                    debug!(
                         batch_len = batch.len(),
                         message_len = message.len(),
-                        clients_len = self.clients.len()
+                        clients_len = self.clients.len(),
+                        "Broadcasting events to clients"
                     );
                 }
 
@@ -91,11 +92,11 @@ impl EventBroadcaster {
                     .filter_map(|(id, client)| {
                         match client.tx.send(Message::binary(message.clone())) {
                             Ok(_) => {
-                                println!("  OK: Sent to client {id}");
+                                debug!(client_id = %id, "Message sent to client");
                                 None
                             }
                             Err(e) => {
-                                println!("  FAIL: Failed to send to client {id}: {e}");
+                                warn!(client_id = %id, error = ?e, "Failed to send message to client");
                                 Some(*id)
                             }
                         }
@@ -109,10 +110,11 @@ impl EventBroadcaster {
         } else {
             // Only log buffering for significant accumulations
             if self.event_buffer.len() % 100 == 0 && !self.event_buffer.is_empty() {
-                println!(
-                    "Buffering {event_count} events (total: {total}, clients: {clients})",
+                debug!(
+                    event_count = event_count,
                     total = self.event_buffer.len(),
-                    clients = self.clients.len()
+                    clients = self.clients.len(),
+                    "Buffering events"
                 );
             }
         }
@@ -180,10 +182,10 @@ impl EventWebServer {
 
         let routes = websocket_route.or(static_route);
 
-        println!(
-            "WebSocket server listening on {host}:{port}",
-            host = self.config.host,
-            port = self.config.port
+        info!(
+            host = %self.config.host,
+            port = self.config.port,
+            "WebSocket server listening"
         );
         warp::serve(routes)
             .run(([127, 0, 0, 1], self.config.port))
@@ -206,9 +208,10 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
     };
 
     broadcaster.lock().await.add_client(client).unwrap();
-    println!(
-        "Client {client_id} connected (total clients: {total})",
-        total = broadcaster.lock().await.clients.len()
+    info!(
+        client_id = %client_id,
+        total = broadcaster.lock().await.clients.len(),
+        "Client connected"
     );
 
     // Spawn task to forward messages from channel to websocket
@@ -242,9 +245,10 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
     }
 
     broadcaster.lock().await.remove_client(&client_id);
-    println!(
-        "Client {client_id} disconnected (remaining clients: {remaining})",
-        remaining = broadcaster.lock().await.clients.len()
+    info!(
+        client_id = %client_id,
+        remaining = broadcaster.lock().await.clients.len(),
+        "Client disconnected"
     );
 }
 

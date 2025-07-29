@@ -7,6 +7,7 @@ use ort::{
 };
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::{error, info, warn};
 
 /// Errors that can occur during ONNX model operations
 #[derive(Debug)]
@@ -131,7 +132,7 @@ impl OnnxE2VidModel {
         config: OnnxModelConfig,
     ) -> Result<Self, OnnxLoadError> {
         if config.verbose {
-            println!("Loading ONNX model from {:?}", path.as_ref());
+            info!(path = ?path.as_ref(), "Loading ONNX model");
         }
 
         // Check if file exists
@@ -174,12 +175,12 @@ impl OnnxE2VidModel {
         // Configure execution providers
         if config.use_gpu {
             if config.verbose {
-                println!("GPU acceleration requested, attempting to enable CUDA...");
+                info!("GPU acceleration requested, attempting to enable CUDA");
             }
             // Note: Specific execution provider configuration may vary by ort version
             // For now, rely on ort's automatic provider selection
             if config.verbose {
-                println!("Using ort's automatic execution provider selection");
+                info!("Using ort's automatic execution provider selection");
             }
         }
 
@@ -218,9 +219,11 @@ impl OnnxE2VidModel {
             .collect();
 
         if config.verbose {
-            println!("Model loaded successfully:");
-            println!("  Inputs: {:?}", input_specs);
-            println!("  Outputs: {:?}", output_specs);
+            info!(
+                inputs = ?input_specs,
+                outputs = ?output_specs,
+                "Model loaded successfully"
+            );
         }
 
         Ok(Self {
@@ -235,9 +238,9 @@ impl OnnxE2VidModel {
     /// Perform inference on a batch of voxel grids
     pub fn forward(&self, input: &Tensor) -> Result<Tensor, OnnxLoadError> {
         if self.config.verbose {
-            println!(
-                "Running ONNX inference with input shape: {:?}",
-                input.dims()
+            info!(
+                input_shape = ?input.dims(),
+                "Running ONNX inference"
             );
         }
 
@@ -308,7 +311,7 @@ impl OnnxE2VidModel {
         inputs: HashMap<String, &Tensor>,
     ) -> Result<HashMap<String, Tensor>, OnnxLoadError> {
         if self.config.verbose {
-            println!("Running ONNX inference with {} inputs", inputs.len());
+            info!(input_count = inputs.len(), "Running ONNX inference");
         }
 
         // Convert all inputs to ONNX format
@@ -432,7 +435,11 @@ impl OnnxE2VidModel {
             results.push(batch_result);
 
             if self.config.verbose && batch_idx % 10 == 0 {
-                println!("Processed batch {}/{}", batch_idx + 1, total_batches);
+                info!(
+                    batch = batch_idx + 1,
+                    total = total_batches,
+                    "Processed batch"
+                );
             }
         }
 
@@ -578,9 +585,10 @@ quantize_dynamic(
         // Check for common E2VID input structure
         let first_input = &model.input_specs[0];
         if first_input.shape.len() != 4 {
-            eprintln!(
-                "Warning: Expected 4D input (NCHW), got {}D",
-                first_input.shape.len()
+            warn!(
+                expected_dims = 4,
+                actual_dims = first_input.shape.len(),
+                "Expected 4D input (NCHW)"
             );
         }
 

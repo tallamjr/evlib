@@ -67,6 +67,8 @@ plugins:
   - search:
       lang: en
   - tags
+  - mike:
+      canonical_version: latest
 
 markdown_extensions:
   - pymdownx.highlight:
