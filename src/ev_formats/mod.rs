@@ -1280,7 +1280,8 @@ pub mod python {
                         when(col("polarity").eq(lit(0)))
                             .then(lit(-1i8))
                             .otherwise(lit(1i8))
-                            .alias("polarity"),
+                            .alias("polarity")
+                            .cast(DataType::Int8),
                     )
                     .collect()?
             }
@@ -1291,13 +1292,16 @@ pub mod python {
                         when(col("polarity").eq(lit(0)))
                             .then(lit(-1i8))
                             .otherwise(lit(1i8))
-                            .alias("polarity"),
+                            .alias("polarity")
+                            .cast(DataType::Int8),
                     )
                     .collect()?
             }
             _ => {
-                // Text and other formats: Keep 0/1 encoding as-is
-                df
+                // Text and other formats: Keep 0/1 encoding as-is, but ensure Int8 type
+                df.lazy()
+                    .with_column(col("polarity").cast(DataType::Int8))
+                    .collect()?
             }
         };
 

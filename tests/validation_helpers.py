@@ -42,6 +42,7 @@ def create_event_schema(
     strict_timestamps: bool = False,  # Changed default to False
     allow_negative_timestamps: bool = False,
     data_format: str = "duration",  # "duration" for Duration type, "float" for seconds
+    polarity_encoding: str = "minus_one_one",  # "minus_one_one" or "zero_one"
 ) -> pa.DataFrameSchema:
     """
     Create a Pandera validation schema for event data.
@@ -111,14 +112,14 @@ def create_event_schema(
             ),
             # Timestamp: format-dependent
             "timestamp": timestamp_column,
-            # Polarity: Int8 with strict [-1, 1] values (evlib format)
+            # Polarity: Int8 with encoding-specific values
             "polarity": pa.Column(
                 pl.Int8,
                 checks=[
-                    pa.Check.isin([-1, 1]),  # Only -1 and 1, no 0
+                    pa.Check.isin([-1, 1] if polarity_encoding == "minus_one_one" else [0, 1]),
                 ],
                 nullable=False,
-                description="Event polarity (-1=negative, 1=positive)",
+                description=f"Event polarity ({polarity_encoding} encoding)",
             ),
         },
         strict=True,  # Only allow specified columns
@@ -195,6 +196,7 @@ def validate_events(
     strict: bool = True,
     data_format: str = None,
     sample_size: Optional[int] = None,
+    polarity_encoding: str = "minus_one_one",
 ) -> Dict[str, Any]:
     """
     Validate event data and return validation results.
@@ -235,7 +237,9 @@ def validate_events(
 
         # Create appropriate schema
         if strict:
-            schema = create_event_schema(sensor_type, data_format=data_format)
+            schema = create_event_schema(
+                sensor_type, data_format=data_format, polarity_encoding=polarity_encoding
+            )
         else:
             schema = create_raw_event_schema(data_format=data_format)
 
@@ -290,7 +294,7 @@ def _collect_event_statistics(events_df: pl.LazyFrame) -> Dict[str, Any]:
                 pl.col("y").max().alias("y_max"),
                 timestamp_expr.min().alias("timestamp_min"),
                 timestamp_expr.max().alias("timestamp_max"),
-                pl.col("polarity").unique().sort().alias("unique_polarities"),
+                pl.col("polarity").n_unique().alias("unique_polarity_count"),
                 (pl.col("polarity") == 1).sum().alias("positive_events"),
                 (pl.col("polarity") == -1).sum().alias("negative_events"),
             ]
@@ -308,11 +312,7 @@ def _collect_event_statistics(events_df: pl.LazyFrame) -> Dict[str, Any]:
             },
             "timestamp_range": (stats_df["timestamp_min"][0], stats_df["timestamp_max"][0]),
             "duration_seconds": stats_df["timestamp_max"][0] - stats_df["timestamp_min"][0],
-            "unique_polarities": (
-                stats_df["unique_polarities"][0].to_list()
-                if hasattr(stats_df["unique_polarities"][0], "to_list")
-                else list(stats_df["unique_polarities"][0])
-            ),
+            "unique_polarity_count": stats_df["unique_polarity_count"][0],
             "polarity_distribution": {
                 "positive": positive_events,
                 "negative": negative_events,
