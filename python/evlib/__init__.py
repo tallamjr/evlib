@@ -135,11 +135,13 @@ try:
         core = rust_module.core
         formats = rust_module.formats
         representations = rust_module.representations
+        filtering = rust_module.filtering
 
         # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
         sys.modules[__name__ + ".core"] = core
         sys.modules[__name__ + ".formats"] = formats
         sys.modules[__name__ + ".representations"] = representations
+        sys.modules[__name__ + ".filtering"] = filtering
 
         # Make key functions directly accessible
         save_events_to_hdf5 = formats.save_events_to_hdf5
@@ -205,35 +207,10 @@ try:
 except ImportError:
     models = None
 
-# Import validation module
-try:
-    from . import validation
-    from .validation import validate_events, quick_validate_events
 
-    # Import validation_demo functions
-    try:
-        from .validation_demo import validate_loaded_events
-    except ImportError:
-        validate_loaded_events = None
-except ImportError:
-    validation = None
-    validate_events = None
-    quick_validate_events = None
-    validate_loaded_events = None
-
-# Import Python filtering module (not yet implemented in Rust)
-try:
-    from . import filtering
-    from .filtering import (
-        filter_by_time,
-        filter_by_roi,
-        filter_by_polarity,
-        filter_hot_pixels,
-        filter_noise,
-        preprocess_events,
-    )
-except ImportError:
-    filtering = None
+# Rust filtering functions are available via evlib.filtering submodule
+# They work with numpy arrays: evlib.filtering.filter_by_time(xs, ys, ts, ps, t_start, t_end)
+# For LazyFrame usage examples, see tests/test_ev_filtering_pandera.py
 
 # Use Rust representations submodule (no Python representations.py)
 # Import individual functions from Rust submodules for convenience
@@ -383,36 +360,25 @@ def diagnose_hdf5(file_path=None):
         pass
 
 
-def load_events(path, validate=None, **kwargs):
+def load_events(path, **kwargs):
     """
-    Load events as Polars LazyFrame with optional validation.
+    Load events as Polars LazyFrame.
 
     Args:
         path: Path to event file
-        validate: Optional validation mode:
-            - None (default): No validation
-            - 'quick': Fast validation for obvious errors
-            - 'strict': Full validation with sensor-specific constraints
-            - 'prophesee_gen4': Strict validation for Prophesee Gen4 (1280x720)
-            - 'davis346': Strict validation for DAVIS346 (346x240)
         **kwargs: Additional arguments (t_start, t_end, min_x, max_x, min_y, max_y, polarity, sort, etc.)
 
     Returns:
         Polars LazyFrame with columns [x, y, timestamp, polarity]
         - timestamp is always converted to Duration type in microseconds
 
-    Raises:
-        ValueError: If validation fails and validate is specified
-
     Example:
-        # Basic loading (no validation)
+        # Basic loading
         events = evlib.load_events("data.h5")
 
-        # With validation for data quality assurance
-        events = evlib.load_events("data.h5", validate='prophesee_gen4')
-
-        # Quick validation for garbage detection
-        events = evlib.load_events("data.h5", validate='quick')
+        # For validation, use the validation module explicitly:
+        # from evlib.validation import quick_validate_events
+        # is_valid = quick_validate_events(events)
     """
     # Load data using Rust formats module
     data_dict = formats.load_events(path, **kwargs)
@@ -433,32 +399,7 @@ def load_events(path, validate=None, **kwargs):
         df = pl.DataFrame(data_dict, schema=schema)
         # The timestamp is already converted to microseconds in Rust
         df = df.with_columns([pl.col("timestamp").cast(pl.Duration(time_unit="us"))])
-        lazy_df = df.lazy()
-
-        # Apply validation if requested
-        if validate and validation:
-            # Convert timestamp back to float seconds for validation
-            validation_df = lazy_df.with_columns(
-                [pl.col("timestamp").dt.total_microseconds().cast(pl.Float64) / 1_000_000.0]
-            )
-
-            if validate == "quick":
-                if not quick_validate_events(validation_df):
-                    raise ValueError(
-                        "Quick validation failed - data contains obvious errors (coordinates out of bounds, invalid polarities, etc.)"
-                    )
-
-            elif validate in ["strict", "prophesee_gen4", "davis346"]:
-                sensor_type = "generic_large" if validate == "strict" else validate
-                result = validate_events(validation_df, sensor_type=sensor_type, strict=True)
-
-                if not result["valid"]:
-                    error_msg = f"Validation failed for {sensor_type} sensor constraints:"
-                    for error in result["errors"]:
-                        error_msg += f"\n  - {error['type']}: {error['message'][:100]}..."
-                    raise ValueError(error_msg)
-
-        return lazy_df
+        return df.lazy()
     else:
         # Empty case - use same schema for consistency
         schema = {
@@ -489,8 +430,6 @@ __all__ = [
 # Add optional modules to exports if available
 if models:
     __all__.append("models")
-if validation:
-    __all__.extend(["validation", "validate_events", "quick_validate_events", "validate_loaded_events"])
 if representations:
     __all__.extend(
         [
