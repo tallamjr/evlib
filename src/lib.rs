@@ -1,5 +1,6 @@
 // Core modules (only working functionality)
 pub mod ev_core;
+pub mod ev_filtering;
 pub mod ev_formats;
 pub mod ev_representations;
 
@@ -185,6 +186,14 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // No need for additional aliases
     }
     m.add_submodule(&tracing_submodule)?;
+
+    // Register ev_filtering module as "filtering" in Python - NEW HIGH-PERFORMANCE FILTERING
+    let filtering_submodule = PyModule::new(m.py(), "filtering")?;
+    #[cfg(feature = "python")]
+    {
+        ev_filtering::python::register_filtering_functions(&filtering_submodule)?;
+    }
+    m.add_submodule(&filtering_submodule)?;
 
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
