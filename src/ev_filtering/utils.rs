@@ -13,7 +13,7 @@ use tracing::{debug, instrument, warn};
 /// Polars column names (consistent across all filtering modules)
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "t";
+pub const COL_T: &str = "timestamp";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Comprehensive event statistics computed using Polars aggregations

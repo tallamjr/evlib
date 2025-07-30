@@ -21,7 +21,7 @@ Note: This test uses validation helpers from tests/validation_helpers.py
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import polars as pl
 import pytest
@@ -201,30 +201,45 @@ def sample_events_df(sample_events):
 # =============================================================================
 
 
-def validate_event_schema(df: pl.LazyFrame, schema_class, name: str = "events") -> bool:
+def validate_event_schema(df: Union[pl.LazyFrame, pl.DataFrame], schema_class, name: str = "events") -> bool:
     """Validate event data against pandera schema."""
     if not PANDERA_AVAILABLE:
         print(f"WARNING:  Pandera not available, skipping schema validation for {name}")
         return True
 
     try:
-        schema_class.validate(df.collect(), lazy=True)
+        # Handle both LazyFrame and DataFrame inputs
+        if isinstance(df, pl.LazyFrame):
+            df_collected = df.collect()
+        else:
+            df_collected = df
+
+        schema_class.validate(df_collected, lazy=True)
         print(f" Schema validation passed for {name}")
         return True
     except pa.errors.SchemaError as e:
         print(f" Schema validation failed for {name}: {e}")
         # Show first few problematic rows for debugging
         print("First 5 rows of data:")
-        print(df.limit(5).collect())
+        if isinstance(df, pl.LazyFrame):
+            print(df.limit(5).collect())
+        else:
+            print(df.head(5))
         return False
 
 
-def validate_monotonic_timestamps(df: pl.LazyFrame, name: str = "events") -> bool:
+def validate_monotonic_timestamps(df: Union[pl.LazyFrame, pl.DataFrame], name: str = "events") -> bool:
     """Validate that timestamps are monotonically increasing."""
     print(f"Validating timestamp monotonicity for {name}...")
 
+    # Handle both LazyFrame and DataFrame inputs
+    if isinstance(df, pl.DataFrame):
+        df_lazy = df.lazy()
+    else:
+        df_lazy = df
+
     # Check for non-monotonic timestamps
-    check_df = df.select(
+    check_df = df_lazy.select(
         [
             pl.col("timestamp"),
             (pl.col("timestamp").diff() < pl.duration(microseconds=0)).sum().alias("backward_jumps"),
@@ -324,44 +339,15 @@ class TestTemporalFiltering:
 
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API - no numpy conversion needed!
+        df = sample_events_df.collect()
 
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_by_time(
-            xs, ys, ts, ps, window_start, window_end
-        )
+        filtered_df = evlib.filtering.filter_by_time(df, window_start, window_end)
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        # The filtered_df is already a DataFrame with proper schema
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         filter_time = time.time() - start_time
 
         print(f"Filtering completed in {filter_time:.3f}s")
@@ -437,44 +423,14 @@ class TestSpatialFiltering:
 
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_by_roi(
-            xs, ys, ts, ps, roi_x_min, roi_x_max, roi_y_min, roi_y_max
-        )
+        filtered_df = evlib.filtering.filter_by_roi(df, roi_x_min, roi_x_max, roi_y_min, roi_y_max)
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         filter_time = time.time() - start_time
 
         print(f"Filtering completed in {filter_time:.3f}s")
@@ -532,42 +488,14 @@ class TestPolarityFiltering:
         # Test positive events only
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_by_polarity(xs, ys, ts, ps, polarity=1)
+        filtered_df = evlib.filtering.filter_by_polarity(df, polarity=1)
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         filter_time = time.time() - start_time
 
         print(f"Filtering completed in {filter_time:.3f}s")
@@ -626,44 +554,14 @@ class TestHotPixelFiltering:
 
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_hot_pixels(
-            xs, ys, ts, ps, threshold_percentile=95.0
-        )
+        filtered_df = evlib.filtering.filter_hot_pixels(df, threshold_percentile=95.0)
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         filter_time = time.time() - start_time
 
         print(f"Filtering completed in {filter_time:.3f}s")
@@ -700,44 +598,14 @@ class TestNoiseFiltering:
         # Use refractory period filtering
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_noise(
-            xs, ys, ts, ps, method="refractory", refractory_period_us=1000.0
-        )
+        filtered_df = evlib.filtering.filter_noise(df, method="refractory", refractory_period_us=1000.0)
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         filter_time = time.time() - start_time
 
         print(f"Filtering completed in {filter_time:.3f}s")
@@ -801,63 +669,39 @@ class TestCombinedFiltering:
         print(f"Time range: [{t_min:.3f}, {t_max:.3f}]s (duration: {duration:.3f}s)")
         print(f"Coordinate ranges: X=[{x_min}, {x_max}], Y=[{y_min}, {y_max}]")
 
-        # Create comprehensive filtering pipeline using preprocess_events
+        # Create comprehensive filtering pipeline using individual filters
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
         print("\nApplying combined filtering pipeline...")
         start_time = time.time()
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.preprocess_events(
-            xs,
-            ys,
-            ts,
-            ps,
-            t_start=t_min + duration * 0.1,
-            t_end=t_max - duration * 0.1,
-            roi=(
-                int(x_min + (x_max - x_min) * 0.2),
-                int(x_max - (x_max - x_min) * 0.2),
-                int(y_min + (y_max - y_min) * 0.2),
-                int(y_max - (y_max - y_min) * 0.2),
-            ),
-            remove_hot_pixels=True,
-            remove_noise=True,
-            hot_pixel_threshold=90.0,
-            refractory_period_us=500.0,
+
+        # Apply filters in sequence
+        # 1. Temporal filter
+        filtered_df = evlib.filtering.filter_by_time(
+            df, t_start=t_min + duration * 0.1, t_end=t_max - duration * 0.1
         )
 
-        # Convert back to Polars LazyFrame with proper polarity encoding (0/1 -> -1/1)
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
+        # 2. Spatial filter (ROI)
+        roi_x_min = int(x_min + (x_max - x_min) * 0.2)
+        roi_x_max = int(x_max - (x_max - x_min) * 0.2)
+        roi_y_min = int(y_min + (y_max - y_min) * 0.2)
+        roi_y_max = int(y_max - (y_max - y_min) * 0.2)
+
+        filtered_df = evlib.filtering.filter_by_roi(filtered_df, roi_x_min, roi_x_max, roi_y_min, roi_y_max)
+
+        # 3. Hot pixel filter
+        filtered_df = evlib.filtering.filter_hot_pixels(filtered_df, threshold_percentile=90.0)
+
+        # 4. Noise filter
+        filtered_df = evlib.filtering.filter_noise(
+            filtered_df, method="refractory", refractory_period_us=500.0
         )
+
+        # Convert to LazyFrame for subsequent operations
+        filtered_df = filtered_df.lazy()
         total_filter_time = time.time() - start_time
 
         print(f"Complete pipeline executed in {total_filter_time:.3f}s")
@@ -898,42 +742,11 @@ class TestCombinedFiltering:
         # Step 1: Temporal filter
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
-        xs_step1, ys_step1, ts_step1, ps_step1 = evlib.filtering.filter_by_time(
-            xs, ys, ts, ps, t_start=0.1, t_end=None
-        )
-        step1_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_step1, dtype=pl.Int16),
-                    "y": pl.Series(ys_step1, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_step1 * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_step1, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
-        step1_count = step1_df.select(pl.len()).collect()["len"][0]
+        step1_df = evlib.filtering.filter_by_time(df, t_start=0.1, t_end=None)
+        step1_count = len(step1_df)
         print(f"After temporal filter: {step1_count:,} events")
 
         # Step 2: Add spatial filter
@@ -949,70 +762,19 @@ class TestCombinedFiltering:
         x_min, x_max = stats["x_min"][0], stats["x_max"][0]
         y_min, y_max = stats["y_min"][0], stats["y_max"][0]
 
-        xs_step2, ys_step2, ts_step2, ps_step2 = evlib.filtering.filter_by_roi(
-            xs_step1,
-            ys_step1,
-            ts_step1,
-            ps_step1,
+        step2_df = evlib.filtering.filter_by_roi(
+            step1_df,
             x_min=int(x_min + (x_max - x_min) * 0.1),
             x_max=int(x_max - (x_max - x_min) * 0.1),
             y_min=int(y_min + (y_max - y_min) * 0.1),
             y_max=int(y_max - (y_max - y_min) * 0.1),
         )
-        step2_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_step2, dtype=pl.Int16),
-                    "y": pl.Series(ys_step2, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_step2 * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_step2, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
-        step2_count = step2_df.select(pl.len()).collect()["len"][0]
+        step2_count = len(step2_df)
         print(f"After spatial filter: {step2_count:,} events")
 
         # Step 3: Add hot pixel filter
-        xs_step3, ys_step3, ts_step3, ps_step3 = evlib.filtering.filter_hot_pixels(
-            xs_step2, ys_step2, ts_step2, ps_step2, threshold_percentile=95.0
-        )
-        step3_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_step3, dtype=pl.Int16),
-                    "y": pl.Series(ys_step3, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_step3 * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_step3, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
-        step3_count = step3_df.select(pl.len()).collect()["len"][0]
+        step3_df = evlib.filtering.filter_hot_pixels(step2_df, threshold_percentile=95.0)
+        step3_count = len(step3_df)
         print(f"After hot pixel filter: {step3_count:,} events")
 
         # Assertions for progressive reduction
@@ -1043,8 +805,11 @@ class TestPerformanceAndEdgeCases:
         # Benchmark simple temporal filter
         import evlib.filtering
 
+        # Collect DataFrame for filtering
+        df = sample_events_df.collect()
+
         start_time = time.time()
-        filtered_df = evlib.filtering.filter_by_time(sample_events_df, t_start=0.1)
+        filtered_df = evlib.filtering.filter_by_time(df, t_start=0.1, t_end=None)
         filter_time = time.time() - start_time
 
         events_per_second = original_count / filter_time if filter_time > 0 else float("inf")
@@ -1062,49 +827,16 @@ class TestPerformanceAndEdgeCases:
         # Create filter that should remove all events (impossible time window)
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_by_time(
-            xs, ys, ts, ps, t_start=99999.0, t_end=99999.1
-        )
-        filtered_df = (
-            pl.DataFrame(
-                {
-                    "x": pl.Series(xs_out, dtype=pl.Int16),
-                    "y": pl.Series(ys_out, dtype=pl.Int16),
-                    "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                        pl.Duration(time_unit="us")
-                    ),
-                    "polarity": pl.Series(ps_out, dtype=pl.Int8),
-                }
-            )
-            .with_columns(
-                [
-                    # Convert 0/1 polarity to -1/1 for schema validation
-                    pl.when(pl.col("polarity") == 0)
-                    .then(-1)
-                    .otherwise(1)
-                    .alias("polarity")
-                    .cast(pl.Int8)
-                ]
-            )
-            .lazy()
-        )
+        filtered_df = evlib.filtering.filter_by_time(df, t_start=99999.0, t_end=99999.1)
 
         # Should handle empty result gracefully
-        filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
-        assert filtered_count == 0, "Should have no events for impossible time window"
+        assert len(filtered_df) == 0, "Should have no events for impossible time window"
 
-        # Empty LazyFrame should work
-        empty_df = filtered_df.collect()
-        assert len(empty_df) == 0, "Empty DataFrame should have 0 rows"
+        # Empty DataFrame should work
+        assert len(filtered_df) == 0, "Empty DataFrame should have 0 rows"
 
         # Schema validation should work with empty DataFrames
         if PANDERA_AVAILABLE:
@@ -1129,37 +861,13 @@ class TestPerformanceAndEdgeCases:
 
         import evlib.filtering
 
-        # Convert LazyFrame to numpy arrays for Rust filtering (rename timestamp to t for Rust compatibility)
-        df = sample_events_df.with_columns(
-            [(pl.col("timestamp").dt.total_microseconds() / 1_000_000).alias("t")]
-        ).collect()
-        xs = df["x"].to_numpy().astype("int64")
-        ys = df["y"].to_numpy().astype("int64")
-        ts = df["t"].to_numpy().astype("float64")
-        ps = df["polarity"].to_numpy().astype("int64")
+        # Use the new polars-first API
+        df = sample_events_df.collect()
 
-        xs_out, ys_out, ts_out, ps_out = evlib.filtering.filter_by_time(
-            xs, ys, ts, ps, t_start=t_min + duration * 0.01, t_end=t_max - duration * 0.01
+        filtered_df = evlib.filtering.filter_by_time(
+            df, t_start=t_min + duration * 0.01, t_end=t_max - duration * 0.01
         )
-        filtered_df = pl.DataFrame(
-            {
-                "x": pl.Series(xs_out, dtype=pl.Int16),
-                "y": pl.Series(ys_out, dtype=pl.Int16),
-                "timestamp": pl.Series((ts_out * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
-                    pl.Duration(time_unit="us")
-                ),
-                "polarity": pl.Series(ps_out, dtype=original_df["polarity"].dtype),
-            }
-        ).with_columns(
-            [
-                # Convert 0/1 polarity to -1/1 for schema validation
-                pl.when(pl.col("polarity") == 0)
-                .then(-1)
-                .otherwise(1)
-                .alias("polarity")
-                .cast(original_df["polarity"].dtype)
-            ]
-        )
+        # The filtered_df is already a DataFrame with proper schema
 
         if len(filtered_df) > 0:
             # Check data types are preserved

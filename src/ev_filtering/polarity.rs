@@ -431,7 +431,7 @@ impl PolaritySelection {
     pub fn to_polars_expr(&self) -> Option<Expr> {
         match self {
             PolaritySelection::PositiveOnly => Some(col(COL_POLARITY).gt(lit(0))),
-            PolaritySelection::NegativeOnly => Some(col(COL_POLARITY).eq(lit(0))),
+            PolaritySelection::NegativeOnly => Some(col(COL_POLARITY).lt(lit(0))),
             PolaritySelection::Both => None, // No filtering needed
             PolaritySelection::Alternating => None, // Requires special handling
             PolaritySelection::Balanced => None, // Requires special handling

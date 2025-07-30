@@ -854,10 +854,29 @@ pub fn apply_hot_pixel_filter(df: LazyFrame, filter: &HotPixelFilter) -> PolarsR
     // Convert hot pixel coordinates to a set for filtering
     let hot_pixel_coords: Vec<(i64, i64)> = hot_pixel_coords_df
         .iter()
-        .map(|row| {
-            let x = row.get(0).unwrap().try_extract::<i64>().unwrap();
-            let y = row.get(1).unwrap().try_extract::<i64>().unwrap();
-            (x, y)
+        .filter_map(|row| {
+            if row.len() < 2 {
+                warn!(
+                    "Hot pixel row has {} columns, expected 2 - skipping",
+                    row.len()
+                );
+                return None;
+            }
+            match (row.get(0), row.get(1)) {
+                (Ok(x_val), Ok(y_val)) => {
+                    match (x_val.try_extract::<i64>(), y_val.try_extract::<i64>()) {
+                        (Ok(x), Ok(y)) => Some((x, y)),
+                        _ => {
+                            warn!("Failed to extract x,y coordinates as i64 - skipping pixel");
+                            None
+                        }
+                    }
+                }
+                _ => {
+                    warn!("Failed to get x,y values from hot pixel row - skipping");
+                    None
+                }
+            }
         })
         .collect();
 

@@ -40,7 +40,7 @@ use tracing::{debug, info, instrument, warn};
 /// Polars column names for event data
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "t";
+pub const COL_T: &str = "timestamp";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Temporal filtering configuration optimized for Polars operations
@@ -154,7 +154,9 @@ impl TemporalFilter {
 
         // Handle start time condition
         if let Some(t_start) = self.t_start {
-            let start_expr = col(COL_T).gt_eq(lit(t_start));
+            // Convert Duration timestamp to seconds for comparison
+            let start_expr =
+                (col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).gt_eq(lit(t_start));
             conditions.push(start_expr);
         }
 
@@ -166,7 +168,9 @@ impl TemporalFilter {
         };
 
         if let Some(end_time) = t_end {
-            let end_expr = col(COL_T).lt_eq(lit(end_time));
+            // Convert Duration timestamp to seconds for comparison
+            let end_expr =
+                (col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).lt_eq(lit(end_time));
             conditions.push(end_expr);
         }
 
@@ -203,8 +207,12 @@ impl TemporalFilter {
         let time_bounds = df
             .clone()
             .select([
-                col(COL_T).min().alias("t_min"),
-                col(COL_T).max().alias("t_max"),
+                (col(COL_T).dt().total_microseconds() / lit(1_000_000.0))
+                    .min()
+                    .alias("t_min"),
+                (col(COL_T).dt().total_microseconds() / lit(1_000_000.0))
+                    .max()
+                    .alias("t_max"),
             ])
             .collect()?;
 
@@ -222,9 +230,9 @@ impl TemporalFilter {
         );
 
         Ok(Some(
-            col(COL_T)
+            (col(COL_T).dt().total_microseconds() / lit(1_000_000.0))
                 .gt_eq(lit(t_start))
-                .and(col(COL_T).lt_eq(lit(t_end))),
+                .and((col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).lt_eq(lit(t_end))),
         ))
     }
 }
@@ -377,11 +385,12 @@ pub fn filter_time_window(
     let mut conditions = Vec::new();
 
     if let Some(start) = t_start {
-        conditions.push(col(COL_T).gt_eq(lit(start)));
+        conditions
+            .push((col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).gt_eq(lit(start)));
     }
 
     if let Some(end) = t_end {
-        conditions.push(col(COL_T).lt_eq(lit(end)));
+        conditions.push((col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).lt_eq(lit(end)));
     }
 
     match conditions.len() {

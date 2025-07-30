@@ -195,6 +195,12 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     m.add_submodule(&filtering_submodule)?;
 
+    // Also add filtering functions to top-level module for convenience
+    #[cfg(feature = "python")]
+    {
+        ev_filtering::python::register_filtering_functions(m)?;
+    }
+
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
 
