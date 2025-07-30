@@ -10,7 +10,7 @@ use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
 use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use std::io;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Read raw chunk data from an HDF5 dataset
 /// This bypasses the HDF5 filter pipeline to get compressed chunks directly
@@ -72,8 +72,17 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
     let num_chunks = total_events.div_ceil(chunk_size);
 
     // Process all chunks
-    let mut _chunks_processed = 0;
-    let mut _total_decoded_events = 0;
+    let mut chunks_processed = 0;
+    let mut chunks_failed_extraction = 0;
+    let mut chunks_failed_decoding = 0;
+    let mut chunks_failed_reading = 0;
+
+    info!(
+        total_events = total_events,
+        chunk_size = chunk_size,
+        num_chunks = num_chunks,
+        "Starting ECF chunk processing"
+    );
 
     for chunk_idx in 0..num_chunks {
         match read_compressed_chunk(&events_dataset, chunk_idx) {
@@ -83,8 +92,13 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
 
                 let ecf_payload = match extract_ecf_payload_from_chunk(&compressed_data) {
                     Ok(payload) => payload,
-                    Err(_e) => {
-                        // Silently skip chunks without ECF data - this is normal in HDF5 files
+                    Err(e) => {
+                        chunks_failed_extraction += 1;
+                        warn!(
+                            chunk_idx = chunk_idx,
+                            error = %e,
+                            "Failed to extract ECF payload from chunk"
+                        );
                         continue; // Skip this chunk and move to the next one
                     }
                 };
@@ -118,16 +132,28 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                             });
                         }
 
-                        _total_decoded_events += event_count;
-                        _chunks_processed += 1;
+                        chunks_processed += 1;
+
+                        info!(
+                            chunk_idx = chunk_idx,
+                            events_in_chunk = event_count,
+                            total_events_so_far = all_events.len(),
+                            "Successfully processed ECF chunk"
+                        );
                     }
-                    Err(_e) => {
-                        // Silently continue with other chunks - some chunks may contain partial data
+                    Err(e) => {
+                        chunks_failed_decoding += 1;
+                        warn!(
+                            chunk_idx = chunk_idx,
+                            error = %e,
+                            "Failed to decode ECF chunk"
+                        );
                         continue;
                     }
                 }
             }
             Err(e) => {
+                chunks_failed_reading += 1;
                 // For the first chunk failure, return a helpful error
                 if chunk_idx == 0 {
                     return Err(hdf5_metno::Error::Internal(format!(
@@ -138,6 +164,11 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                     )));
                 }
                 // For subsequent chunks, continue processing
+                warn!(
+                    chunk_idx = chunk_idx,
+                    error = %e,
+                    "Failed to read compressed chunk"
+                );
             }
         }
 
@@ -152,10 +183,42 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
             "No valid ECF event data found in HDF5 file".to_string(),
         ))
     } else {
-        // Log success message only when events are actually loaded
+        // Validate that we loaded a reasonable proportion of the expected events
+        let loaded_ratio = all_events.len() as f64 / total_events as f64;
+
+        // Check for incomplete ECF decoding (first chunk only)
+        if loaded_ratio < 0.1 && all_events.len() == 16384 {
+            warn!(
+                "ECF decoding incomplete: only loaded {} of {} events ({:.2}%). \
+                 Successfully decoded first chunk but failed on subsequent chunks. \
+                 This indicates a bug in the ECF chunk iteration logic.",
+                all_events.len(),
+                total_events,
+                loaded_ratio * 100.0
+            );
+            // Continue for now to allow debugging, but this should be fixed
+            // return Err(...) once the chunk iteration is working
+        } else if loaded_ratio < 0.5 {
+            // Loaded less than 50% - warn but continue
+            warn!(
+                "Partial ECF data loaded: {} of {} events ({:.1}%)",
+                all_events.len(),
+                total_events,
+                loaded_ratio * 100.0
+            );
+        }
+
+        // Log success message with chunk processing statistics
         info!(
             events = all_events.len(),
-            "Native Rust ECF decoder loaded events"
+            total = total_events,
+            ratio = format!("{:.2}%", loaded_ratio * 100.0),
+            chunks_total = num_chunks,
+            chunks_successful = chunks_processed,
+            chunks_failed_reading = chunks_failed_reading,
+            chunks_failed_extraction = chunks_failed_extraction,
+            chunks_failed_decoding = chunks_failed_decoding,
+            "Native Rust ECF decoder completed with chunk statistics"
         );
         Ok(all_events)
     }
@@ -363,8 +426,8 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
         let potential_size =
             u32::from_le_bytes([chunk_data[0], chunk_data[1], chunk_data[2], chunk_data[3]]);
 
-        // If this looks like a reasonable uncompressed size (not too small, not too large)
-        if potential_size > 100 && potential_size < 10_000_000 {
+        // If this looks like a reasonable uncompressed size (expanded range for large chunks)
+        if potential_size > 10 && potential_size < 100_000_000 {
             // The ECF data likely starts at offset 4 (after the size header)
             if chunk_data.len() > 4 {
                 let ecf_data = &chunk_data[4..];
@@ -407,32 +470,63 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
         }
     }
 
-    // Silently return error - most chunks in HDF5 files don't contain ECF event data
+    // Return detailed error for debugging ECF payload extraction failures
+    // First 16 bytes for debugging (safely truncated)
+    let debug_bytes = if chunk_data.len() >= 16 {
+        format!("{:02x?}", &chunk_data[0..16])
+    } else {
+        format!("{:02x?}", chunk_data)
+    };
+
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "No valid ECF header found in chunk",
+        format!(
+            "No valid ECF header found in chunk of {} bytes. First bytes: {}",
+            chunk_data.len(),
+            debug_bytes
+        ),
     ))
 }
 
 /// Check if data starts with a valid ECF header
 fn is_valid_ecf_header(data: &[u8]) -> bool {
-    if data.len() < 12 {
+    if data.len() < 4 {
         return false;
     }
 
-    // Prophesee ECF format has a specific 12-byte header:
-    // Bytes 0-3: Format ID [02, 00, 01, 00] = 0x00010002
-    // Bytes 4-7: Event count (little-endian u32)
-    // Bytes 8-11: Flags/padding [00, 00, 00, 00] = 0x00000000
+    // Prophesee ECF format header is a single 32-bit word:
+    // Bits 2-31: Number of events (num_events = header >> 2)
+    // Bit 1: YS+XS+PS packing flag
+    // Bit 0: XS+PS packing flag
+    //
+    // Based on the official ECF codec implementation:
+    // https://github.com/prophesee-ai/hdf5_ecf/blob/main/ecf_codec.cpp#L24-L28
 
-    let format_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-    let num_events = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
-    let flags = u32::from_le_bytes([data[8], data[9], data[10], data[11]]);
+    let header = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let num_events = (header >> 2) as usize;
+    let _ys_xs_and_ps_packed = (header >> 1) & 1;
+    let _xs_and_ps_packed = header & 1;
 
-    // Check for Prophesee ECF format signature
-    if format_id == 0x00010002 && flags == 0x00000000 && num_events > 0 && num_events <= 100000 {
-        // Valid header found - no need to log for every chunk
-        return true;
+    // Validate event count - should be reasonable for a chunk
+    // ECF codec has a maximum buffer size of 65535 events per chunk
+    if num_events > 0 && num_events <= 65535 {
+        // Additional validation: if data is long enough, check if timestamp section looks valid
+        // The ECF format continues with an 8-byte timestamp origin after the 4-byte header
+        if data.len() >= 12 {
+            // Read timestamp origin (should be a reasonable timestamp)
+            let timestamp_origin = u64::from_le_bytes([
+                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+            ]);
+
+            // Timestamps should be reasonable (not zero, not extremely large)
+            // Prophesee timestamps are typically in nanoseconds
+            if timestamp_origin > 0 && timestamp_origin < u64::MAX / 2 {
+                return true;
+            }
+        } else {
+            // For short data, just validate the event count
+            return true;
+        }
     }
 
     false
