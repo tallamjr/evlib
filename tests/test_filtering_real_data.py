@@ -245,21 +245,16 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     t_start = t_min + duration * 0.2
     t_end = t_min + duration * 0.8
 
-    # Extract arrays for filtering API
-    xs = raw_df["x"].to_numpy()
-    ys = raw_df["y"].to_numpy()
-    ts = timestamps_sec.to_numpy()
-    ps = raw_df["polarity"].to_numpy()
+    filtered = filtering_module.filter_by_time(small_raw_events, t_start=t_start, t_end=t_end)
+    filtered_df = filtered.collect()
 
-    filtered_arrays = filtering_module.filter_by_time(xs, ys, ts, ps, t_start=t_start, t_end=t_end)
-    filtered_xs, filtered_ys, filtered_ts, filtered_ps = filtered_arrays
-
-    assert len(filtered_xs) > 0, "Should have events in filtered time range"
-    assert len(filtered_xs) < len(xs), "Should filter out some events"
+    assert len(filtered_df) > 0, "Should have events in filtered time range"
+    assert len(filtered_df) < len(raw_df), "Should filter out some events"
 
     # Verify time bounds
-    assert filtered_ts.min() >= t_start, "All events should be after t_start"
-    assert filtered_ts.max() <= t_end, "All events should be before t_end"
+    filtered_timestamps = filtered_df["timestamp"].dt.total_microseconds() / 1_000_000
+    assert filtered_timestamps.min() >= t_start, "All events should be after t_start"
+    assert filtered_timestamps.max() <= t_end, "All events should be before t_end"
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
@@ -268,19 +263,13 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     h5_t_max = h5_timestamps.max()
     h5_duration = h5_t_max - h5_t_min
 
-    # Extract H5 arrays for filtering API
-    h5_xs = h5_df["x"].to_numpy()
-    h5_ys = h5_df["y"].to_numpy()
-    h5_ts = h5_timestamps.to_numpy()
-    h5_ps = h5_df["polarity"].to_numpy()
-
-    h5_filtered_arrays = filtering_module.filter_by_time(
-        h5_xs, h5_ys, h5_ts, h5_ps, t_start=h5_t_min + h5_duration * 0.1, t_end=h5_t_min + h5_duration * 0.9
+    h5_filtered = filtering_module.filter_by_time(
+        small_h5_events, t_start=h5_t_min + h5_duration * 0.1, t_end=h5_t_min + h5_duration * 0.9
     )
-    h5_filtered_xs, h5_filtered_ys, h5_filtered_ts, h5_filtered_ps = h5_filtered_arrays
+    h5_filtered_df = h5_filtered.collect()
 
-    assert len(h5_filtered_xs) > 0, "H5 file should have events in filtered range"
-    assert len(h5_filtered_xs) < len(h5_xs), "H5 filtering should remove some events"
+    assert len(h5_filtered_df) > 0, "H5 file should have events in filtered range"
+    assert len(h5_filtered_df) < len(h5_df), "H5 filtering should remove some events"
 
     print("PASS: Temporal filtering with real data passed")
 
@@ -305,32 +294,26 @@ def test_spatial_filtering_real_data(filtering_module, small_raw_events, small_h
     center_y_min = ETRAM_HEIGHT // 4
     center_y_max = 3 * ETRAM_HEIGHT // 4
 
-    # Extract arrays for filtering API
-    xs = raw_df["x"].to_numpy()
-    ys = raw_df["y"].to_numpy()
-    ts = (raw_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    ps = raw_df["polarity"].to_numpy()
-
-    center_roi_arrays = filtering_module.filter_by_roi(
-        xs, ys, ts, ps, x_min=center_x_min, x_max=center_x_max, y_min=center_y_min, y_max=center_y_max
+    center_roi = filtering_module.filter_by_roi(
+        small_raw_events, x_min=center_x_min, x_max=center_x_max, y_min=center_y_min, y_max=center_y_max
     )
-    center_roi_xs, center_roi_ys, center_roi_ts, center_roi_ps = center_roi_arrays
+    center_df = center_roi.collect()
 
-    assert len(center_roi_xs) > 0, "Center ROI should contain events"
-    assert len(center_roi_xs) < len(xs), "ROI should filter out some events"
+    assert len(center_df) > 0, "Center ROI should contain events"
+    assert len(center_df) < len(raw_df), "ROI should filter out some events"
 
     # Verify ROI bounds
-    assert center_roi_xs.min() >= center_x_min, "All x coordinates should be >= x_min"
-    assert center_roi_xs.max() <= center_x_max, "All x coordinates should be <= x_max"
-    assert center_roi_ys.min() >= center_y_min, "All y coordinates should be >= y_min"
-    assert center_roi_ys.max() <= center_y_max, "All y coordinates should be <= y_max"
+    assert center_df["x"].min() >= center_x_min, "All x coordinates should be >= x_min"
+    assert center_df["x"].max() <= center_x_max, "All x coordinates should be <= x_max"
+    assert center_df["y"].min() >= center_y_min, "All y coordinates should be >= y_min"
+    assert center_df["y"].max() <= center_y_max, "All y coordinates should be <= y_max"
 
     # Test small corner ROI
-    corner_roi_arrays = filtering_module.filter_by_roi(xs, ys, ts, ps, x_min=0, x_max=100, y_min=0, y_max=100)
-    corner_roi_xs, corner_roi_ys, corner_roi_ts, corner_roi_ps = corner_roi_arrays
+    corner_roi = filtering_module.filter_by_roi(small_raw_events, x_min=0, x_max=100, y_min=0, y_max=100)
+    corner_df = corner_roi.collect()
 
     # Should have fewer events than center ROI
-    assert len(corner_roi_xs) <= len(center_roi_xs), "Corner ROI should have fewer events"
+    assert len(corner_df) <= len(center_df), "Corner ROI should have fewer events"
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
@@ -341,26 +324,13 @@ def test_spatial_filtering_real_data(filtering_module, small_raw_events, small_h
     assert h5_df["y"].min() >= 0, "H5 Y coordinates should be non-negative"
     assert h5_df["y"].max() < ETRAM_HEIGHT, f"H5 Y coordinates should be < {ETRAM_HEIGHT}"
 
-    # Extract H5 arrays for filtering API
-    h5_xs = h5_df["x"].to_numpy()
-    h5_ys = h5_df["y"].to_numpy()
-    h5_ts = (h5_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    h5_ps = h5_df["polarity"].to_numpy()
-
-    h5_center_roi_arrays = filtering_module.filter_by_roi(
-        h5_xs,
-        h5_ys,
-        h5_ts,
-        h5_ps,
-        x_min=center_x_min,
-        x_max=center_x_max,
-        y_min=center_y_min,
-        y_max=center_y_max,
+    h5_center_roi = filtering_module.filter_by_roi(
+        small_h5_events, x_min=center_x_min, x_max=center_x_max, y_min=center_y_min, y_max=center_y_max
     )
-    h5_center_roi_xs, h5_center_roi_ys, h5_center_roi_ts, h5_center_roi_ps = h5_center_roi_arrays
+    h5_center_df = h5_center_roi.collect()
 
-    assert len(h5_center_roi_xs) > 0, "H5 center ROI should contain events"
-    assert len(h5_center_roi_xs) < len(h5_xs), "H5 ROI should filter out some events"
+    assert len(h5_center_df) > 0, "H5 center ROI should contain events"
+    assert len(h5_center_df) < len(h5_df), "H5 ROI should filter out some events"
 
     print("PASS: Spatial filtering with real data passed")
 
@@ -380,32 +350,26 @@ def test_polarity_filtering_real_data(filtering_module, small_raw_events, small_
     print(f"Raw file polarities: {unique_polarities.to_list()}")
     print(f"Polarity counts: {polarity_counts}")
 
-    # Extract arrays for filtering API
-    xs = raw_df["x"].to_numpy()
-    ys = raw_df["y"].to_numpy()
-    ts = (raw_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    ps = raw_df["polarity"].to_numpy()
-
     # Test filtering by each polarity
     for polarity in unique_polarities.to_list():
-        filtered_arrays = filtering_module.filter_by_polarity(xs, ys, ts, ps, polarity=polarity)
-        filtered_xs, filtered_ys, filtered_ts, filtered_ps = filtered_arrays
+        filtered = filtering_module.filter_by_polarity(small_raw_events, polarity=polarity)
+        filtered_df = filtered.collect()
 
-        assert len(filtered_xs) > 0, f"Should have events with polarity {polarity}"
-        assert all(filtered_ps == polarity), f"All events should have polarity {polarity}"
+        assert len(filtered_df) > 0, f"Should have events with polarity {polarity}"
+        assert all(filtered_df["polarity"] == polarity), f"All events should have polarity {polarity}"
 
         # Check that filtered count matches original count for this polarity
         expected_count = polarity_counts.filter(pl.col("polarity") == polarity)["count"].sum()
         assert (
-            len(filtered_xs) == expected_count
+            len(filtered_df) == expected_count
         ), f"Filtered count should match original count for polarity {polarity}"
 
     # Test filtering with both polarities
     all_polarities = unique_polarities.to_list()
-    both_filtered_arrays = filtering_module.filter_by_polarity(xs, ys, ts, ps, polarity=all_polarities)
-    both_filtered_xs, both_filtered_ys, both_filtered_ts, both_filtered_ps = both_filtered_arrays
+    both_filtered = filtering_module.filter_by_polarity(small_raw_events, polarity=all_polarities)
+    both_df = both_filtered.collect()
 
-    assert len(both_filtered_xs) == len(xs), "Filtering with all polarities should keep all events"
+    assert len(both_df) == len(raw_df), "Filtering with all polarities should keep all events"
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
@@ -415,21 +379,13 @@ def test_polarity_filtering_real_data(filtering_module, small_raw_events, small_
     print(f"H5 file polarities: {h5_unique_polarities.to_list()}")
     print(f"H5 polarity counts: {h5_polarity_counts}")
 
-    # Extract H5 arrays for filtering API
-    h5_xs = h5_df["x"].to_numpy()
-    h5_ys = h5_df["y"].to_numpy()
-    h5_ts = (h5_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    h5_ps = h5_df["polarity"].to_numpy()
-
     # Test H5 polarity filtering
     for polarity in h5_unique_polarities.to_list():
-        h5_filtered_arrays = filtering_module.filter_by_polarity(
-            h5_xs, h5_ys, h5_ts, h5_ps, polarity=polarity
-        )
-        h5_filtered_xs, h5_filtered_ys, h5_filtered_ts, h5_filtered_ps = h5_filtered_arrays
+        h5_filtered = filtering_module.filter_by_polarity(small_h5_events, polarity=polarity)
+        h5_filtered_df = h5_filtered.collect()
 
-        assert len(h5_filtered_xs) > 0, f"H5 should have events with polarity {polarity}"
-        assert all(h5_filtered_ps == polarity), f"All H5 events should have polarity {polarity}"
+        assert len(h5_filtered_df) > 0, f"H5 should have events with polarity {polarity}"
+        assert all(h5_filtered_df["polarity"] == polarity), f"All H5 events should have polarity {polarity}"
 
     print("PASS: Polarity filtering with real data passed")
 
@@ -443,52 +399,36 @@ def test_hot_pixel_filtering_real_data(filtering_module, small_raw_events, small
     raw_df = small_raw_events.collect()
     original_count = len(raw_df)
 
-    # Extract arrays for filtering API
-    xs = raw_df["x"].to_numpy()
-    ys = raw_df["y"].to_numpy()
-    ts = (raw_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    ps = raw_df["polarity"].to_numpy()
-
     # Test conservative hot pixel removal
-    conservative_filtered_arrays = filtering_module.filter_hot_pixels(
-        xs, ys, ts, ps, threshold_percentile=99.9
-    )
-    conservative_xs, conservative_ys, conservative_ts, conservative_ps = conservative_filtered_arrays
+    conservative_filtered = filtering_module.filter_hot_pixels(small_raw_events, threshold_percentile=99.9)
+    conservative_df = conservative_filtered.collect()
 
     # Should remove some events but not too many
-    assert len(conservative_xs) <= original_count, "Should not increase event count"
-    removal_ratio = (original_count - len(conservative_xs)) / original_count
+    assert len(conservative_df) <= original_count, "Should not increase event count"
+    removal_ratio = (original_count - len(conservative_df)) / original_count
     assert removal_ratio < 0.1, "Conservative filtering should remove < 10% of events"
 
     # Test more aggressive hot pixel removal
-    aggressive_filtered_arrays = filtering_module.filter_hot_pixels(xs, ys, ts, ps, threshold_percentile=95.0)
-    aggressive_xs, aggressive_ys, aggressive_ts, aggressive_ps = aggressive_filtered_arrays
+    aggressive_filtered = filtering_module.filter_hot_pixels(small_raw_events, threshold_percentile=95.0)
+    aggressive_df = aggressive_filtered.collect()
 
     # Should remove more events than conservative
-    assert len(aggressive_xs) <= len(conservative_xs), "Aggressive filtering should remove more events"
+    assert len(aggressive_df) <= len(conservative_df), "Aggressive filtering should remove more events"
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
     h5_original_count = len(h5_df)
 
-    # Extract H5 arrays for filtering API
-    h5_xs = h5_df["x"].to_numpy()
-    h5_ys = h5_df["y"].to_numpy()
-    h5_ts = (h5_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    h5_ps = h5_df["polarity"].to_numpy()
+    h5_filtered = filtering_module.filter_hot_pixels(small_h5_events, threshold_percentile=99.5)
+    h5_filtered_df = h5_filtered.collect()
 
-    h5_filtered_arrays = filtering_module.filter_hot_pixels(
-        h5_xs, h5_ys, h5_ts, h5_ps, threshold_percentile=99.5
-    )
-    h5_filtered_xs, h5_filtered_ys, h5_filtered_ts, h5_filtered_ps = h5_filtered_arrays
-
-    assert len(h5_filtered_xs) <= h5_original_count, "H5 filtering should not increase event count"
+    assert len(h5_filtered_df) <= h5_original_count, "H5 filtering should not increase event count"
 
     # Verify spatial distribution is preserved
-    if len(h5_filtered_xs) > 0:
+    if len(h5_filtered_df) > 0:
         # Check that we still have events across the sensor
-        x_range = h5_filtered_xs.max() - h5_filtered_xs.min()
-        y_range = h5_filtered_ys.max() - h5_filtered_ys.min()
+        x_range = h5_filtered_df["x"].max() - h5_filtered_df["x"].min()
+        y_range = h5_filtered_df["y"].max() - h5_filtered_df["y"].min()
 
         assert x_range > ETRAM_WIDTH * 0.3, "Should preserve spatial distribution in x"
         assert y_range > ETRAM_HEIGHT * 0.3, "Should preserve spatial distribution in y"
@@ -505,52 +445,41 @@ def test_noise_filtering_real_data(filtering_module, small_raw_events, small_h5_
     raw_df = small_raw_events.collect()
     original_count = len(raw_df)
 
-    # Extract arrays for filtering API
-    xs = raw_df["x"].to_numpy()
-    ys = raw_df["y"].to_numpy()
-    ts = (raw_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    ps = raw_df["polarity"].to_numpy()
-
     # Test moderate refractory period
-    moderate_filtered_arrays = filtering_module.filter_noise(
-        xs, ys, ts, ps, method="refractory", refractory_period_us=1000  # 1ms
+    moderate_filtered = filtering_module.filter_noise(
+        small_raw_events, method="refractory", refractory_period_us=1000  # 1ms
     )
-    moderate_xs, moderate_ys, moderate_ts, moderate_ps = moderate_filtered_arrays
+    moderate_df = moderate_filtered.collect()
 
-    assert len(moderate_xs) <= original_count, "Should not increase event count"
+    assert len(moderate_df) <= original_count, "Should not increase event count"
 
     # Test aggressive refractory period
-    aggressive_filtered_arrays = filtering_module.filter_noise(
-        xs, ys, ts, ps, method="refractory", refractory_period_us=10000  # 10ms
+    aggressive_filtered = filtering_module.filter_noise(
+        small_raw_events, method="refractory", refractory_period_us=10000  # 10ms
     )
-    aggressive_xs, aggressive_ys, aggressive_ts, aggressive_ps = aggressive_filtered_arrays
+    aggressive_df = aggressive_filtered.collect()
 
     # Should remove more events than moderate
-    assert len(aggressive_xs) <= len(moderate_xs), "Aggressive filtering should remove more events"
+    assert len(aggressive_df) <= len(moderate_df), "Aggressive filtering should remove more events"
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
     h5_original_count = len(h5_df)
 
-    # Extract H5 arrays for filtering API
-    h5_xs = h5_df["x"].to_numpy()
-    h5_ys = h5_df["y"].to_numpy()
-    h5_ts = (h5_df["timestamp"].dt.total_microseconds() / 1_000_000).to_numpy()
-    h5_ps = h5_df["polarity"].to_numpy()
-
-    h5_filtered_arrays = filtering_module.filter_noise(
-        h5_xs, h5_ys, h5_ts, h5_ps, method="refractory", refractory_period_us=2000  # 2ms
+    h5_filtered = filtering_module.filter_noise(
+        small_h5_events, method="refractory", refractory_period_us=2000  # 2ms
     )
-    h5_filtered_xs, h5_filtered_ys, h5_filtered_ts, h5_filtered_ps = h5_filtered_arrays
+    h5_filtered_df = h5_filtered.collect()
 
-    assert len(h5_filtered_xs) <= h5_original_count, "H5 filtering should not increase event count"
+    assert len(h5_filtered_df) <= h5_original_count, "H5 filtering should not increase event count"
 
     # Verify temporal ordering is preserved (or can be sorted)
-    if len(h5_filtered_xs) > 0:
+    if len(h5_filtered_df) > 0:
+        timestamps = h5_filtered_df["timestamp"].dt.total_microseconds()
         # After filtering, events might not be sorted, but should be sortable
         # Let's just verify there are no invalid timestamps
-        assert h5_filtered_ts.min() >= 0, "Timestamps should be non-negative"
-        assert h5_filtered_ts.max() > h5_filtered_ts.min(), "Should have valid time range"
+        assert timestamps.min() >= 0, "Timestamps should be non-negative"
+        assert timestamps.max() > timestamps.min(), "Should have valid time range"
 
     print("PASS: Noise filtering with real data passed")
 
