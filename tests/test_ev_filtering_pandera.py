@@ -597,7 +597,6 @@ class TestPolarityFiltering:
 class TestHotPixelFiltering:
     """Test hot pixel filtering with pandera validation."""
 
-    @pytest.mark.skip("Hot pixel filtering has join compatibility issue with Polars 1.30.0")
     def test_statistical_threshold_filter(self, sample_events_df):
         """Test statistical hot pixel filtering."""
         print("\n" + "=" * 60)
@@ -771,7 +770,6 @@ class TestNoiseFiltering:
 class TestCombinedFiltering:
     """Test combined filtering pipeline with pandera validation."""
 
-    @pytest.mark.skip("Complete pipeline uses hot pixel filtering which has join compatibility issue")
     def test_complete_pipeline(self, sample_events_df):
         """Test combined filtering pipeline maintains data integrity."""
         print("\n" + "=" * 60)
@@ -987,16 +985,45 @@ class TestCombinedFiltering:
         step2_count = step2_df.select(pl.len()).collect()["len"][0]
         print(f"After spatial filter: {step2_count:,} events")
 
-        # Step 3: Skip hot pixel filter due to join compatibility issue
-        print("Skipping hot pixel filter - known issue with Polars 1.30.0 joins")
+        # Step 3: Add hot pixel filter
+        xs_step3, ys_step3, ts_step3, ps_step3 = evlib.filtering.filter_hot_pixels(
+            xs_step2, ys_step2, ts_step2, ps_step2, threshold_percentile=95.0
+        )
+        step3_df = (
+            pl.DataFrame(
+                {
+                    "x": pl.Series(xs_step3, dtype=pl.Int16),
+                    "y": pl.Series(ys_step3, dtype=pl.Int16),
+                    "timestamp": pl.Series((ts_step3 * 1_000_000).astype("int64"), dtype=pl.Int64).cast(
+                        pl.Duration(time_unit="us")
+                    ),
+                    "polarity": pl.Series(ps_step3, dtype=pl.Int8),
+                }
+            )
+            .with_columns(
+                [
+                    # Convert 0/1 polarity to -1/1 for schema validation
+                    pl.when(pl.col("polarity") == 0)
+                    .then(-1)
+                    .otherwise(1)
+                    .alias("polarity")
+                    .cast(pl.Int8)
+                ]
+            )
+            .lazy()
+        )
+        step3_count = step3_df.select(pl.len()).collect()["len"][0]
+        print(f"After hot pixel filter: {step3_count:,} events")
 
-        # Assertions for progressive reduction (without step 3)
+        # Assertions for progressive reduction
         assert step1_count <= original_count, "Step 1 should not increase count"
         assert step2_count <= step1_count, "Step 2 should not increase count"
+        assert step3_count <= step2_count, "Step 3 should not increase count"
 
         # Validate schemas at each step
         assert validate_event_schema(step1_df, FilteredEventSchema, "step 1 filtered events")
         assert validate_event_schema(step2_df, FilteredEventSchema, "step 2 filtered events")
+        assert validate_event_schema(step3_df, FilteredEventSchema, "step 3 filtered events")
 
 
 # =============================================================================

@@ -850,17 +850,42 @@ pub fn apply_hot_pixel_filter(df: LazyFrame, filter: &HotPixelFilter) -> PolarsR
 
     debug!("Detected {} hot pixels", hot_pixel_coords_df.height());
 
-    // Create anti-join expression to filter out hot pixel events (Polars 0.49.1 compatible)
-    // This joins the main events DataFrame with hot pixel coordinates
-    // and keeps only events NOT from hot pixels
-    let filtered_df = df
-        .join(
+    // Create anti-join expression to filter out hot pixel events
+    // Convert hot pixel coordinates to a set for filtering
+    let hot_pixel_coords: Vec<(i64, i64)> = hot_pixel_coords_df
+        .iter()
+        .map(|row| {
+            let x = row.get(0).unwrap().try_extract::<i64>().unwrap();
+            let y = row.get(1).unwrap().try_extract::<i64>().unwrap();
+            (x, y)
+        })
+        .collect();
+
+    // Use direct filtering instead of problematic join
+    let filtered_df = if hot_pixel_coords.len() < 1000 {
+        // For small sets, use direct expression filtering
+        let mut filter_expr: Option<Expr> = None;
+        for (x, y) in hot_pixel_coords {
+            let pixel_expr = col(COL_X).eq(lit(x)).and(col(COL_Y).eq(lit(y)));
+            filter_expr = match filter_expr {
+                None => Some(pixel_expr.not()),
+                Some(existing) => Some(existing.and(pixel_expr.not())),
+            };
+        }
+        match filter_expr {
+            Some(expr) => df.filter(expr),
+            None => df, // No hot pixels to filter
+        }
+    } else {
+        // For large sets, fall back to the join approach
+        df.join(
             hot_pixel_coords_df.lazy(),
             [col(COL_X), col(COL_Y)],
             [col(COL_X), col(COL_Y)],
             JoinArgs::new(JoinType::Left).with_suffix(Some("_right".into())),
         )
-        .filter(col(format!("{}_right", COL_X)).is_null());
+        .filter(col(format!("{}_right", COL_X)).is_null())
+    };
 
     let processing_time = start_time.elapsed().as_secs_f64();
     debug!("Hot pixel filtering completed in {:.3}s", processing_time);
