@@ -574,7 +574,10 @@ pub mod python {
                 (col("polarity") * lit(2) - lit(1)).alias("polarity_signed"),
             ])
             .group_by([col("time_bin"), col("y"), col("x")])
-            .agg([col("polarity_signed").sum().alias("value")])
+            .agg([col("polarity_signed")
+                .sum()
+                .cast(DataType::Int32)
+                .alias("value")])
             .collect()
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Polars error: {}", e))

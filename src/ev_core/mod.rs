@@ -4,6 +4,9 @@
 use ndarray::Array2;
 // Remove candle dependencies - replaced with ndarray
 
+#[cfg(feature = "polars")]
+use polars::prelude::*;
+
 // Python bindings module (optional)
 #[cfg(feature = "python")]
 pub mod python;
@@ -26,7 +29,7 @@ impl std::error::Error for TensorError {}
 
 /// Core event data structure.
 /// Represents a single event from an event camera.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Event {
     pub t: f64,         // timestamp (in seconds or microseconds, depending on dataset)
     pub x: u16,         // x coordinate (pixel column)
@@ -95,6 +98,156 @@ pub fn from_numpy_arrays(
     }
 
     events
+}
+
+/// Convert Events to Polars DataFrame for high-performance operations
+#[cfg(feature = "polars")]
+pub fn events_to_dataframe(events: &Events) -> PolarsResult<DataFrame> {
+    use polars::prelude::*;
+
+    let n = events.len();
+
+    // Pre-allocate vectors
+    let mut xs = Vec::with_capacity(n);
+    let mut ys = Vec::with_capacity(n);
+    let mut ts = Vec::with_capacity(n);
+    let mut ps = Vec::with_capacity(n);
+
+    // Convert events to vectors
+    for event in events {
+        xs.push(event.x as i64);
+        ys.push(event.y as i64);
+        ts.push(event.t);
+        ps.push(if event.polarity { 1i64 } else { 0i64 });
+    }
+
+    // Create Polars DataFrame
+    DataFrame::new(vec![
+        Series::new("x".into(), xs).into(),
+        Series::new("y".into(), ys).into(),
+        Series::new("t".into(), ts).into(),
+        Series::new("polarity".into(), ps).into(),
+    ])
+}
+
+/// Convert Events to Polars DataFrame and then to Python numpy arrays using Polars' efficient conversion
+#[cfg(all(feature = "python", feature = "polars"))]
+pub fn events_to_numpy_via_polars(
+    events: &Events,
+) -> pyo3::PyResult<(
+    pyo3::PyObject,
+    pyo3::PyObject,
+    pyo3::PyObject,
+    pyo3::PyObject,
+)> {
+    use pyo3::prelude::*;
+
+    // Convert to Polars DataFrame
+    let df = events_to_dataframe(events)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Polars error: {}", e)))?;
+
+    Python::with_gil(|py| {
+        // Use Polars' efficient to_numpy conversion
+        let x_series = df.column("x").unwrap();
+        let y_series = df.column("y").unwrap();
+        let t_series = df.column("t").unwrap();
+        let p_series = df.column("polarity").unwrap();
+
+        // Convert each series to numpy array using fallback method
+        // TODO: Update when to_numpy is available for newer Polars versions
+        use numpy::IntoPyArray;
+        let x_values: Vec<i64> = x_series
+            .as_materialized_series()
+            .i64()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Polars error: {}", e)))?
+            .into_no_null_iter()
+            .collect();
+        let y_values: Vec<i64> = y_series
+            .as_materialized_series()
+            .i64()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Polars error: {}", e)))?
+            .into_no_null_iter()
+            .collect();
+        let t_values: Vec<f64> = t_series
+            .as_materialized_series()
+            .f64()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Polars error: {}", e)))?
+            .into_no_null_iter()
+            .collect();
+        let p_values: Vec<i64> = p_series
+            .as_materialized_series()
+            .i64()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Polars error: {}", e)))?
+            .into_no_null_iter()
+            .collect();
+
+        let xs_numpy = x_values.into_pyarray(py).into();
+        let ys_numpy = y_values.into_pyarray(py).into();
+        let ts_numpy = t_values.into_pyarray(py).into();
+        let ps_numpy = p_values.into_pyarray(py).into();
+
+        Ok((xs_numpy, ys_numpy, ts_numpy, ps_numpy))
+    })
+}
+
+/// Fallback manual conversion for when Polars feature is not available
+#[cfg(all(feature = "python", not(feature = "polars")))]
+pub fn events_to_numpy_fallback(
+    events: &Events,
+) -> (
+    ndarray::Array1<i64>,
+    ndarray::Array1<i64>,
+    ndarray::Array1<f64>,
+    ndarray::Array1<i64>,
+) {
+    let n = events.len();
+
+    let mut xs = ndarray::Array1::<i64>::zeros(n);
+    let mut ys = ndarray::Array1::<i64>::zeros(n);
+    let mut ts = ndarray::Array1::<f64>::zeros(n);
+    let mut ps = ndarray::Array1::<i64>::zeros(n);
+
+    for (i, event) in events.iter().enumerate() {
+        xs[i] = event.x as i64;
+        ys[i] = event.y as i64;
+        ts[i] = event.t;
+        ps[i] = if event.polarity { 1 } else { 0 };
+    }
+
+    (xs, ys, ts, ps)
+}
+
+/// Primary function to convert Events to numpy arrays - uses Polars if available, fallback otherwise
+#[cfg(feature = "python")]
+pub fn to_numpy_arrays(
+    events: &Events,
+) -> Result<
+    (
+        pyo3::PyObject,
+        pyo3::PyObject,
+        pyo3::PyObject,
+        pyo3::PyObject,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    #[cfg(feature = "polars")]
+    {
+        events_to_numpy_via_polars(events).map_err(|e| e.into())
+    }
+
+    #[cfg(not(feature = "polars"))]
+    {
+        use numpy::IntoPyArray;
+        let (xs, ys, ts, ps) = events_to_numpy_fallback(events);
+        Python::with_gil(|py| {
+            Ok((
+                xs.into_pyarray(py).into(),
+                ys.into_pyarray(py).into(),
+                ts.into_pyarray(py).into(),
+                ps.into_pyarray(py).into(),
+            ))
+        })
+    }
 }
 
 /// Split events by polarity into positive and negative sets

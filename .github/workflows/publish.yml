@@ -91,7 +91,7 @@ jobs:
       - name: Install maturin (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          source .venv/Scripts/activate
+          .venv/Scripts/activate
           uv pip install maturin>=1.7.4
 
       - name: Publish to PyPI (Unix)
@@ -115,7 +115,7 @@ jobs:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           TEST_MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
-          source .venv/Scripts/activate
+          .venv/Scripts/activate
           if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
             echo "TEST MODE: Uploading to TestPyPI"
             maturin publish --no-sdist -u __token__ -p "$TEST_MATURIN_PYPI_TOKEN" --repository testpypi --features python --interpreter python${{ matrix.python-version }}

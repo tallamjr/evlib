@@ -433,3 +433,57 @@ pub fn merge_events(py: Python<'_>, event_sets: &Bound<'_, PyTuple>) -> PyResult
     let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
     Ok(tuple.into())
 }
+
+/// Extract LazyFrame from Python object for polars-first filtering
+#[cfg(all(feature = "polars", feature = "python"))]
+pub fn extract_lazy_frame(
+    events_lf: &Bound<'_, pyo3::types::PyAny>,
+) -> PyResult<polars::prelude::LazyFrame> {
+    use polars::prelude::IntoLazy;
+
+    // Try PyDataFrame first (pyo3-polars wrapped DataFrame)
+    if let Ok(py_df) = events_lf.extract::<pyo3_polars::PyDataFrame>() {
+        // PyDataFrame is a tuple struct: PyDataFrame(DataFrame)
+        return Ok(py_df.0.lazy());
+    }
+
+    // Try to handle Python polars LazyFrame by calling .collect() first
+    // This handles the case where a Python LazyFrame is passed in
+    if events_lf.hasattr("collect")? {
+        // It's likely a LazyFrame - collect it to DataFrame first
+        let collected = events_lf.call_method0("collect")?;
+        if let Ok(py_df) = collected.extract::<pyo3_polars::PyDataFrame>() {
+            return Ok(py_df.0.lazy());
+        }
+    }
+
+    // Try to handle Python polars DataFrame by converting to pyo3_polars::PyDataFrame
+    if events_lf.hasattr("lazy")? {
+        // It's likely a DataFrame - try to extract it directly
+        // This is a fallback for cases where the DataFrame isn't wrapped properly
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "Unable to convert Python polars object. Please pass a polars DataFrame or ensure proper pyo3-polars conversion."
+        ));
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "Input must be a polars DataFrame or LazyFrame. Received an unsupported type.",
+    ))
+}
+
+/// Convert Rust LazyFrame back to Python DataFrame
+#[cfg(all(feature = "polars", feature = "python"))]
+pub fn lazy_frame_to_python(
+    lazy_frame: polars::prelude::LazyFrame,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    use pyo3::IntoPyObject;
+
+    // Since pyo3-polars 0.22.0 doesn't have PyLazyFrame, we collect the LazyFrame to DataFrame
+    let dataframe = lazy_frame.collect().map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to collect LazyFrame: {}", e))
+    })?;
+
+    let py_df = pyo3_polars::PyDataFrame(dataframe);
+    Ok(py_df.into_pyobject(py)?.into())
+}
