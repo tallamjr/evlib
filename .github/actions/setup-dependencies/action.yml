@@ -47,21 +47,21 @@ runs:
 
     - name: Install system dependencies (Windows)
       if: startsWith(inputs.os, 'windows')
-      shell: bash
+      shell: pwsh
       run: |
         # Install dependencies using vcpkg
         vcpkg install hdf5[cpp]:x64-windows
         vcpkg install pkgconf:x64-windows
 
         # Set HDF5 environment variables for Windows
-        echo "HDF5_DIR=C:/vcpkg/installed/x64-windows" >> $GITHUB_ENV
-        echo "HDF5_ROOT=C:/vcpkg/installed/x64-windows" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig" >> $GITHUB_ENV
-        echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_ENV
+        echo "HDF5_DIR=C:/vcpkg/installed/x64-windows" >> $env:GITHUB_ENV
+        echo "HDF5_ROOT=C:/vcpkg/installed/x64-windows" >> $env:GITHUB_ENV
+        echo "PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig" >> $env:GITHUB_ENV
+        echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
 
-        if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
+        if ("${{ inputs.enable-gstreamer }}" -eq "true") {
           vcpkg install gstreamer:x64-windows
-        fi
+        }
 
     - name: Install UV
       uses: astral-sh/setup-uv@v5
@@ -77,9 +77,9 @@ runs:
 
     - name: Setup Python with UV (Windows)
       if: startsWith(inputs.os, 'windows')
-      shell: bash
+      shell: pwsh
       run: |
         uv venv --python "${{ inputs.python-version }}"
-        source .venv/Scripts/activate
-        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
-        echo "$VIRTUAL_ENV/Scripts" >> $GITHUB_PATH
+        .venv/Scripts/Activate.ps1
+        echo "VIRTUAL_ENV=$env:VIRTUAL_ENV" >> $env:GITHUB_ENV
+        echo "$env:VIRTUAL_ENV/Scripts" >> $env:GITHUB_PATH
