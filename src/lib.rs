@@ -92,6 +92,26 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
             ev_representations::python::create_voxel_grid_py,
             &representations_submodule
         )?)?;
+        representations_submodule.add_function(wrap_pyfunction!(
+            ev_representations::python::create_enhanced_voxel_grid_py,
+            &representations_submodule
+        )?)?;
+        representations_submodule.add_function(wrap_pyfunction!(
+            ev_representations::python::create_enhanced_frame_py,
+            &representations_submodule
+        )?)?;
+        representations_submodule.add_function(wrap_pyfunction!(
+            ev_representations::python::create_timesurface_py,
+            &representations_submodule
+        )?)?;
+        representations_submodule.add_function(wrap_pyfunction!(
+            ev_representations::python::create_averaged_timesurface_py,
+            &representations_submodule
+        )?)?;
+        representations_submodule.add_function(wrap_pyfunction!(
+            ev_representations::python::create_bina_rep_py,
+            &representations_submodule
+        )?)?;
 
         // Add clean aliases without _py suffix for better API
         representations_submodule.add(
@@ -105,6 +125,26 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         representations_submodule.add(
             "create_voxel_grid",
             representations_submodule.getattr("create_voxel_grid_py")?,
+        )?;
+        representations_submodule.add(
+            "create_enhanced_voxel_grid",
+            representations_submodule.getattr("create_enhanced_voxel_grid_py")?,
+        )?;
+        representations_submodule.add(
+            "create_enhanced_frame",
+            representations_submodule.getattr("create_enhanced_frame_py")?,
+        )?;
+        representations_submodule.add(
+            "create_timesurface",
+            representations_submodule.getattr("create_timesurface_py")?,
+        )?;
+        representations_submodule.add(
+            "create_averaged_timesurface",
+            representations_submodule.getattr("create_averaged_timesurface_py")?,
+        )?;
+        representations_submodule.add(
+            "create_bina_rep",
+            representations_submodule.getattr("create_bina_rep_py")?,
         )?;
     }
 
