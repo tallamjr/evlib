@@ -171,110 +171,99 @@ pub fn geometric_transforms_py(
 /// Python wrapper for AugmentationConfig
 #[cfg(feature = "python")]
 #[pyclass]
+#[derive(Default)]
 pub struct AugmentationConfig {
     inner: RustAugmentationConfig,
 }
 
 #[cfg(feature = "python")]
-impl Default for AugmentationConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(feature = "python")]
 #[pymethods]
 impl AugmentationConfig {
-    #[new]
-    pub fn new() -> Self {
-        Self {
-            inner: RustAugmentationConfig::new(),
-        }
-    }
-
-    pub fn with_spatial_jitter(&mut self, var_x: f64, var_y: f64) -> PyResult<()> {
+    pub fn with_spatial_jitter(mut slf: PyRefMut<Self>, var_x: f64, var_y: f64) -> PyRefMut<Self> {
         let spatial_jitter = SpatialJitterAugmentation::new(var_x, var_y);
-        self.inner.spatial_jitter = Some(spatial_jitter);
-        Ok(())
+        slf.inner.spatial_jitter = Some(spatial_jitter);
+        slf
     }
 
-    pub fn with_time_jitter(&mut self, std_us: f64) -> PyResult<()> {
+    pub fn with_time_jitter(mut slf: PyRefMut<Self>, std_us: f64) -> PyRefMut<Self> {
         let time_jitter = TimeJitterAugmentation::new(std_us);
-        self.inner.time_jitter = Some(time_jitter);
-        Ok(())
+        slf.inner.time_jitter = Some(time_jitter);
+        slf
     }
 
-    pub fn with_time_skew(&mut self, coefficient: f64) -> PyResult<()> {
+    pub fn with_time_skew(mut slf: PyRefMut<Self>, coefficient: f64) -> PyRefMut<Self> {
         let time_skew = TimeSkewAugmentation::new(coefficient);
-        self.inner.time_skew = Some(time_skew);
-        Ok(())
+        slf.inner.time_skew = Some(time_skew);
+        slf
     }
 
     pub fn with_geometric_transforms(
-        &mut self,
+        mut slf: PyRefMut<Self>,
         sensor_width: u16,
         sensor_height: u16,
         flip_lr_prob: f64,
         flip_ud_prob: f64,
         flip_polarity_prob: f64,
-    ) -> PyResult<()> {
+    ) -> PyRefMut<Self> {
         let geometric = GeometricTransformAugmentation::new(sensor_width, sensor_height)
             .with_flip_lr_probability(flip_lr_prob)
             .with_flip_ud_probability(flip_ud_prob)
             .with_flip_polarity_probability(flip_polarity_prob);
-        self.inner.geometric_transforms = Some(geometric);
-        Ok(())
+        slf.inner.geometric_transforms = Some(geometric);
+        slf
     }
 
     // Additional methods expected by tests (simplified implementations)
     pub fn with_uniform_noise(
-        &mut self,
+        slf: PyRefMut<Self>,
         _num_events: u32,
         _sensor_width: u16,
         _sensor_height: u16,
-    ) -> PyResult<()> {
+    ) -> PyRefMut<Self> {
         // TODO: Implement uniform noise augmentation
-        Ok(())
+        slf
     }
 
-    pub fn with_drop_time(&mut self, _ratio: f64) -> PyResult<()> {
+    pub fn with_drop_time(slf: PyRefMut<Self>, _ratio: f64) -> PyRefMut<Self> {
         // TODO: Implement drop time augmentation
-        Ok(())
+        slf
     }
 
     pub fn with_drop_area(
-        &mut self,
+        slf: PyRefMut<Self>,
         _ratio: f64,
         _sensor_width: u16,
         _sensor_height: u16,
-    ) -> PyResult<()> {
+    ) -> PyRefMut<Self> {
         // TODO: Implement drop area augmentation
-        Ok(())
+        slf
     }
 
-    pub fn with_drop_event(&mut self, _ratio: f64) -> PyResult<()> {
+    pub fn with_drop_event(slf: PyRefMut<Self>, _ratio: f64) -> PyRefMut<Self> {
         // TODO: Implement drop event augmentation
-        Ok(())
+        slf
     }
 
-    pub fn with_center_crop(&mut self, _width: u16, _height: u16) -> PyResult<()> {
+    pub fn with_center_crop(slf: PyRefMut<Self>, _width: u16, _height: u16) -> PyRefMut<Self> {
         // TODO: Implement center crop augmentation
-        Ok(())
+        slf
     }
 
-    pub fn with_random_crop(&mut self, _width: u16, _height: u16) -> PyResult<()> {
+    pub fn with_random_crop(slf: PyRefMut<Self>, _width: u16, _height: u16) -> PyRefMut<Self> {
         // TODO: Implement random crop augmentation
-        Ok(())
+        slf
     }
 
-    pub fn with_time_reversal(&mut self, _probability: f64) -> PyResult<()> {
+    pub fn with_time_reversal(slf: PyRefMut<Self>, _probability: f64) -> PyRefMut<Self> {
         // TODO: Implement time reversal augmentation
-        Ok(())
+        slf
     }
 
     #[staticmethod]
-    pub fn new_static() -> Self {
-        Self::new()
+    pub fn new() -> Self {
+        Self {
+            inner: RustAugmentationConfig::new(),
+        }
     }
 
     pub fn augment_events(
@@ -300,23 +289,53 @@ impl AugmentationConfig {
 /// Apply augmentations using config
 #[cfg(feature = "python")]
 #[pyfunction]
+#[pyo3(name = "augment_events")]
 pub fn augment_events_py(
-    events: Vec<(f64, u16, u16, bool)>,
+    py: Python,
+    events: &Bound<'_, pyo3::types::PyList>,
     config: &AugmentationConfig,
-) -> PyResult<Vec<(f64, u16, u16, bool)>> {
-    let rust_events: Events = events
-        .into_iter()
-        .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
-        .collect();
+) -> PyResult<Vec<PyObject>> {
+    // Convert Python events (dicts or tuples) to Rust Events
+    let mut rust_events = Vec::with_capacity(events.len());
+
+    for event in events.iter() {
+        // Try to extract as dictionary first
+        if let Ok(t) = event.get_item("t") {
+            let t: f64 = t.extract()?;
+            let x: u16 = event.get_item("x")?.extract()?;
+            let y: u16 = event.get_item("y")?.extract()?;
+            let polarity: bool = event.get_item("polarity")?.extract()?;
+
+            rust_events.push(crate::ev_core::Event { t, x, y, polarity });
+        }
+        // Try as tuple
+        else if let Ok((t, x, y, polarity)) = event.extract::<(f64, u16, u16, bool)>() {
+            rust_events.push(crate::ev_core::Event { t, x, y, polarity });
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Events must be dictionaries with keys 't', 'x', 'y', 'polarity' or tuples (t, x, y, polarity)"
+            ));
+        }
+    }
 
     let augmented_events = augment_events(&rust_events, &config.inner).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Augmentation error: {}", e))
     })?;
 
-    Ok(augmented_events
+    // Convert back to Python dictionaries
+    let result: Vec<PyObject> = augmented_events
         .into_iter()
-        .map(|event| (event.t, event.x, event.y, event.polarity))
-        .collect())
+        .map(|event| {
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("t", event.t).unwrap();
+            dict.set_item("x", event.x).unwrap();
+            dict.set_item("y", event.y).unwrap();
+            dict.set_item("polarity", event.polarity).unwrap();
+            dict.into()
+        })
+        .collect();
+
+    Ok(result)
 }
 
 /// Register all augmentation functions in a Python module
