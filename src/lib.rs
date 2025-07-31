@@ -1,4 +1,5 @@
 // Core modules (only working functionality)
+pub mod ev_augmentation;
 pub mod ev_core;
 pub mod ev_filtering;
 pub mod ev_formats;
