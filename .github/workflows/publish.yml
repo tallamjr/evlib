@@ -90,8 +90,9 @@ jobs:
 
       - name: Install maturin (Windows)
         if: startsWith(matrix.os, 'windows')
+        shell: pwsh
         run: |
-          .venv/Scripts/activate
+          .venv/Scripts/Activate.ps1
           uv pip install maturin>=1.7.4
 
       - name: Publish to PyPI (Unix)
@@ -111,18 +112,19 @@ jobs:
 
       - name: Publish to PyPI (Windows)
         if: startsWith(matrix.os, 'windows')
+        shell: pwsh
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           TEST_MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
-          .venv/Scripts/activate
-          if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
-            echo "TEST MODE: Uploading to TestPyPI"
-            maturin publish --no-sdist -u __token__ -p "$TEST_MATURIN_PYPI_TOKEN" --repository testpypi --features python --interpreter python${{ matrix.python-version }}
-          else
-            echo "Uploading to PyPI"
-            maturin publish --no-sdist -u __token__ -p "$MATURIN_PYPI_TOKEN" --features python --interpreter python${{ matrix.python-version }}
-          fi
+          .venv/Scripts/Activate.ps1
+          if ("${{ github.event.inputs.test_mode }}" -eq "true") {
+            Write-Host "TEST MODE: Uploading to TestPyPI"
+            maturin publish --no-sdist -u __token__ -p "$env:TEST_MATURIN_PYPI_TOKEN" --repository testpypi --features python --interpreter python${{ matrix.python-version }}
+          } else {
+            Write-Host "Uploading to PyPI"
+            maturin publish --no-sdist -u __token__ -p "$env:MATURIN_PYPI_TOKEN" --features python --interpreter python${{ matrix.python-version }}
+          }
 
   publish-crates:
     runs-on: ubuntu-latest
