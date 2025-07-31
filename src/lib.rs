@@ -202,6 +202,14 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ev_filtering::python::register_filtering_functions(m)?;
     }
 
+    // Register ev_augmentation module as "ev_augmentation" in Python - NEW AUGMENTATION FUNCTIONALITY
+    let augmentation_submodule = PyModule::new(m.py(), "ev_augmentation")?;
+    #[cfg(feature = "python")]
+    {
+        ev_augmentation::python::register_augmentation_functions(&augmentation_submodule)?;
+    }
+    m.add_submodule(&augmentation_submodule)?;
+
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
 

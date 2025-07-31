@@ -1199,11 +1199,14 @@ pub mod python {
 
     /// Convert timestamp to microseconds for Polars Duration type
     fn convert_timestamp(timestamp: f64) -> i64 {
-        if timestamp > 1_000_000.0 {
-            // Already in microseconds
+        if timestamp >= 1_000_000_000.0 {
+            // Likely nanoseconds, convert to microseconds
+            (timestamp / 1_000.0) as i64
+        } else if timestamp >= 1_000.0 {
+            // Likely already in microseconds
             timestamp as i64
         } else {
-            // Convert seconds to microseconds
+            // Likely in seconds, convert to microseconds
             (timestamp * 1_000_000.0) as i64
         }
     }

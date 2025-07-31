@@ -4,11 +4,13 @@
 //! to event timestamps, effectively stretching or compressing time.
 
 use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable, COL_POLARITY, COL_T,
-    COL_X, COL_Y,
+    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
 };
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
+
+#[cfg(feature = "polars")]
+use crate::ev_augmentation::COL_T;
 use rand_distr::{Distribution, Uniform};
 use tracing::{debug, info, instrument};
 

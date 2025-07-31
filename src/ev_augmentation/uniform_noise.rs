@@ -4,9 +4,11 @@
 //! synthetic events across the sensor dimensions and time range.
 
 use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable, COL_POLARITY, COL_T,
-    COL_X, COL_Y,
+    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
 };
+
+#[cfg(feature = "polars")]
+use crate::ev_augmentation::COL_T;
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Uniform};
@@ -286,8 +288,8 @@ pub fn apply_uniform_noise_polars(
         ])
         .collect()?;
 
-    let min_time = time_stats.column("min_time")?.f64()?.get(0).unwrap_or(0.0);
-    let max_time = time_stats.column("max_time")?.f64()?.get(0).unwrap_or(1.0);
+    let _min_time = time_stats.column("min_time")?.f64()?.get(0).unwrap_or(0.0);
+    let _max_time = time_stats.column("max_time")?.f64()?.get(0).unwrap_or(1.0);
 
     // For now, use the Vec implementation and convert
     // A fully vectorized Polars implementation would require creating a new DataFrame

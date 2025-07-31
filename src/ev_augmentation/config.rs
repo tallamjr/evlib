@@ -4,9 +4,10 @@
 //! allowing flexible composition of different augmentation strategies.
 
 use crate::ev_augmentation::{
-    DecimateAugmentation, DropAreaAugmentation, DropEventAugmentation, DropTimeAugmentation,
-    SpatialJitterAugmentation, TimeJitterAugmentation, TimeSkewAugmentation,
-    UniformNoiseAugmentation,
+    CenterCropAugmentation, DecimateAugmentation, DropAreaAugmentation, DropEventAugmentation,
+    DropTimeAugmentation, GeometricTransformAugmentation, RandomCropAugmentation,
+    SpatialJitterAugmentation, TimeJitterAugmentation, TimeReversalAugmentation,
+    TimeSkewAugmentation, UniformNoiseAugmentation,
 };
 use std::fmt;
 use thiserror::Error;
@@ -64,8 +65,12 @@ pub trait Validatable {
 pub struct AugmentationConfig {
     /// Spatial jitter augmentation
     pub spatial_jitter: Option<SpatialJitterAugmentation>,
+    /// Geometric transformations (flips and polarity reversal)
+    pub geometric_transforms: Option<GeometricTransformAugmentation>,
     /// Time jitter augmentation
     pub time_jitter: Option<TimeJitterAugmentation>,
+    /// Time reversal augmentation
+    pub time_reversal: Option<TimeReversalAugmentation>,
     /// Time skew augmentation
     pub time_skew: Option<TimeSkewAugmentation>,
     /// Drop event augmentation
@@ -78,6 +83,10 @@ pub struct AugmentationConfig {
     pub uniform_noise: Option<UniformNoiseAugmentation>,
     /// Decimate augmentation
     pub decimate: Option<DecimateAugmentation>,
+    /// Center crop augmentation
+    pub center_crop: Option<CenterCropAugmentation>,
+    /// Random crop augmentation
+    pub random_crop: Option<RandomCropAugmentation>,
     /// Whether to ensure temporal order after augmentation
     pub ensure_temporal_order: bool,
     /// Whether to validate configuration before applying
@@ -98,12 +107,16 @@ impl AugmentationConfig {
         Self {
             spatial_jitter: None,
             time_jitter: None,
+            time_reversal: None,
             time_skew: None,
             drop_event: None,
             drop_time: None,
             drop_area: None,
             uniform_noise: None,
             decimate: None,
+            geometric_transforms: None,
+            center_crop: None,
+            random_crop: None,
             ensure_temporal_order: true,
             validate_config: true,
             random_seed: None,
@@ -134,6 +147,106 @@ impl AugmentationConfig {
         self
     }
 
+    /// Add geometric transformations
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_width` - Sensor width in pixels
+    /// * `sensor_height` - Sensor height in pixels
+    pub fn with_geometric_transforms(mut self, sensor_width: u16, sensor_height: u16) -> Self {
+        self.geometric_transforms = Some(GeometricTransformAugmentation::new(
+            sensor_width,
+            sensor_height,
+        ));
+        self
+    }
+
+    /// Add geometric transformations with horizontal flip probability
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_width` - Sensor width in pixels
+    /// * `sensor_height` - Sensor height in pixels
+    /// * `flip_lr_probability` - Probability of horizontal flip (0.0 to 1.0)
+    pub fn with_horizontal_flip(
+        mut self,
+        sensor_width: u16,
+        sensor_height: u16,
+        flip_lr_probability: f64,
+    ) -> Self {
+        self.geometric_transforms = Some(
+            GeometricTransformAugmentation::new(sensor_width, sensor_height)
+                .with_flip_lr_probability(flip_lr_probability),
+        );
+        self
+    }
+
+    /// Add geometric transformations with vertical flip probability
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_width` - Sensor width in pixels
+    /// * `sensor_height` - Sensor height in pixels
+    /// * `flip_ud_probability` - Probability of vertical flip (0.0 to 1.0)
+    pub fn with_vertical_flip(
+        mut self,
+        sensor_width: u16,
+        sensor_height: u16,
+        flip_ud_probability: f64,
+    ) -> Self {
+        self.geometric_transforms = Some(
+            GeometricTransformAugmentation::new(sensor_width, sensor_height)
+                .with_flip_ud_probability(flip_ud_probability),
+        );
+        self
+    }
+
+    /// Add geometric transformations with polarity flip probability
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_width` - Sensor width in pixels
+    /// * `sensor_height` - Sensor height in pixels
+    /// * `flip_polarity_probability` - Probability of polarity reversal (0.0 to 1.0)
+    pub fn with_polarity_flip(
+        mut self,
+        sensor_width: u16,
+        sensor_height: u16,
+        flip_polarity_probability: f64,
+    ) -> Self {
+        self.geometric_transforms = Some(
+            GeometricTransformAugmentation::new(sensor_width, sensor_height)
+                .with_flip_polarity_probability(flip_polarity_probability),
+        );
+        self
+    }
+
+    /// Add complete geometric transformations with all flip probabilities
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor_width` - Sensor width in pixels
+    /// * `sensor_height` - Sensor height in pixels
+    /// * `flip_lr_probability` - Probability of horizontal flip (0.0 to 1.0)
+    /// * `flip_ud_probability` - Probability of vertical flip (0.0 to 1.0)
+    /// * `flip_polarity_probability` - Probability of polarity reversal (0.0 to 1.0)
+    pub fn with_all_geometric_flips(
+        mut self,
+        sensor_width: u16,
+        sensor_height: u16,
+        flip_lr_probability: f64,
+        flip_ud_probability: f64,
+        flip_polarity_probability: f64,
+    ) -> Self {
+        self.geometric_transforms = Some(
+            GeometricTransformAugmentation::new(sensor_width, sensor_height)
+                .with_flip_lr_probability(flip_lr_probability)
+                .with_flip_ud_probability(flip_ud_probability)
+                .with_flip_polarity_probability(flip_polarity_probability),
+        );
+        self
+    }
+
     /// Add time jitter augmentation
     ///
     /// # Arguments
@@ -141,6 +254,16 @@ impl AugmentationConfig {
     /// * `std_us` - Standard deviation in microseconds
     pub fn with_time_jitter(mut self, std_us: f64) -> Self {
         self.time_jitter = Some(TimeJitterAugmentation::new(std_us));
+        self
+    }
+
+    /// Add time reversal augmentation
+    ///
+    /// # Arguments
+    ///
+    /// * `probability` - Probability of applying time reversal (0.0 to 1.0)
+    pub fn with_time_reversal(mut self, probability: f64) -> Self {
+        self.time_reversal = Some(TimeReversalAugmentation::new(probability));
         self
     }
 
@@ -237,6 +360,54 @@ impl AugmentationConfig {
         self
     }
 
+    /// Add center crop augmentation
+    ///
+    /// # Arguments
+    ///
+    /// * `crop_width` - Width of cropped region
+    /// * `crop_height` - Height of cropped region
+    /// * `sensor_width` - Original sensor width
+    /// * `sensor_height` - Original sensor height
+    pub fn with_center_crop(
+        mut self,
+        crop_width: u16,
+        crop_height: u16,
+        sensor_width: u16,
+        sensor_height: u16,
+    ) -> Self {
+        self.center_crop = Some(CenterCropAugmentation::new(
+            crop_width,
+            crop_height,
+            sensor_width,
+            sensor_height,
+        ));
+        self
+    }
+
+    /// Add random crop augmentation
+    ///
+    /// # Arguments
+    ///
+    /// * `crop_width` - Width of cropped region
+    /// * `crop_height` - Height of cropped region
+    /// * `sensor_width` - Original sensor width
+    /// * `sensor_height` - Original sensor height
+    pub fn with_random_crop(
+        mut self,
+        crop_width: u16,
+        crop_height: u16,
+        sensor_width: u16,
+        sensor_height: u16,
+    ) -> Self {
+        self.random_crop = Some(RandomCropAugmentation::new(
+            crop_width,
+            crop_height,
+            sensor_width,
+            sensor_height,
+        ));
+        self
+    }
+
     /// Set whether to ensure temporal order after augmentation
     pub fn with_temporal_order(mut self, ensure: bool) -> Self {
         self.ensure_temporal_order = ensure;
@@ -259,12 +430,16 @@ impl AugmentationConfig {
     pub fn is_empty(&self) -> bool {
         self.spatial_jitter.is_none()
             && self.time_jitter.is_none()
+            && self.time_reversal.is_none()
             && self.time_skew.is_none()
             && self.drop_event.is_none()
             && self.drop_time.is_none()
             && self.drop_area.is_none()
             && self.uniform_noise.is_none()
             && self.decimate.is_none()
+            && self.geometric_transforms.is_none()
+            && self.center_crop.is_none()
+            && self.random_crop.is_none()
     }
 
     /// Get description of configured augmentations
@@ -274,8 +449,14 @@ impl AugmentationConfig {
         if let Some(ref aug) = self.spatial_jitter {
             parts.push(format!("spatial_jitter({})", aug.description()));
         }
+        if let Some(ref aug) = self.geometric_transforms {
+            parts.push(format!("geometric_transforms({})", aug.description()));
+        }
         if let Some(ref aug) = self.time_jitter {
             parts.push(format!("time_jitter({})", aug.description()));
+        }
+        if let Some(ref aug) = self.time_reversal {
+            parts.push(format!("time_reversal({})", aug.description()));
         }
         if let Some(ref aug) = self.time_skew {
             parts.push(format!("time_skew({})", aug.description()));
@@ -295,6 +476,12 @@ impl AugmentationConfig {
         if let Some(ref aug) = self.decimate {
             parts.push(format!("decimate({})", aug.description()));
         }
+        if let Some(ref aug) = self.center_crop {
+            parts.push(format!("center_crop({})", aug.description()));
+        }
+        if let Some(ref aug) = self.random_crop {
+            parts.push(format!("random_crop({})", aug.description()));
+        }
 
         if parts.is_empty() {
             "No augmentations configured".to_string()
@@ -310,7 +497,13 @@ impl Validatable for AugmentationConfig {
         if let Some(ref aug) = self.spatial_jitter {
             aug.validate()?;
         }
+        if let Some(ref aug) = self.geometric_transforms {
+            aug.validate()?;
+        }
         if let Some(ref aug) = self.time_jitter {
+            aug.validate()?;
+        }
+        if let Some(ref aug) = self.time_reversal {
             aug.validate()?;
         }
         if let Some(ref aug) = self.time_skew {
@@ -329,6 +522,12 @@ impl Validatable for AugmentationConfig {
             aug.validate()?;
         }
         if let Some(ref aug) = self.decimate {
+            aug.validate()?;
+        }
+        if let Some(ref aug) = self.center_crop {
+            aug.validate()?;
+        }
+        if let Some(ref aug) = self.random_crop {
             aug.validate()?;
         }
 
@@ -380,6 +579,7 @@ pub mod presets {
     pub fn temporal_only() -> AugmentationConfig {
         AugmentationConfig::new()
             .with_time_jitter(1000.0)
+            .with_time_reversal(0.5) // 50% chance of reversal
             .with_time_skew(1.1) // 10% time stretch
     }
 

@@ -60,23 +60,29 @@ pub const COL_POLARITY: &str = "polarity";
 
 // Sub-modules
 pub mod config;
+pub mod crop;
 pub mod decimate;
 pub mod drop_event;
+pub mod geometric_transforms;
 pub mod python;
 pub mod spatial_jitter;
 pub mod time_jitter;
+pub mod time_reversal;
 pub mod time_skew;
 pub mod uniform_noise;
 
 // Re-export core types and functions for convenience
 pub use config::{AugmentationConfig, AugmentationError, AugmentationResult, Validatable};
+pub use crop::{center_crop, random_crop, CenterCropAugmentation, RandomCropAugmentation};
 pub use decimate::{decimate_events, DecimateAugmentation};
 pub use drop_event::{
     drop_by_area, drop_by_probability, drop_by_time, DropAreaAugmentation, DropEventAugmentation,
     DropTimeAugmentation,
 };
+pub use geometric_transforms::{geometric_transforms, GeometricTransformAugmentation};
 pub use spatial_jitter::{spatial_jitter, SpatialJitterAugmentation};
 pub use time_jitter::{time_jitter, TimeJitterAugmentation};
+pub use time_reversal::{time_reversal, TimeReversalAugmentation};
 pub use time_skew::{time_skew, TimeSkewAugmentation};
 pub use uniform_noise::{uniform_noise, UniformNoiseAugmentation};
 
@@ -143,39 +149,59 @@ pub fn augment_events(events: &Events, config: &AugmentationConfig) -> Augmentat
             augmented_events = spatial_jitter.apply(&augmented_events)?;
         }
 
-        // 2. Time jitter - modifies timestamps
+        // 2. Geometric transforms - modifies spatial coordinates and polarity
+        if let Some(geometric_transforms) = &config.geometric_transforms {
+            augmented_events = geometric_transforms.apply(&augmented_events)?;
+        }
+
+        // 3. Center crop - crops events to centered region
+        if let Some(center_crop) = &config.center_crop {
+            augmented_events = center_crop.apply(&augmented_events)?;
+        }
+
+        // 4. Random crop - crops events to random region
+        if let Some(random_crop) = &config.random_crop {
+            augmented_events = random_crop.apply(&augmented_events)?;
+        }
+
+        // 5. Time jitter - modifies timestamps
         if let Some(time_jitter) = &config.time_jitter {
             augmented_events = time_jitter.apply(&augmented_events)?;
         }
 
-        // 3. Time skew - linear transformation of timestamps
+        // 6. Time skew - linear transformation of timestamps
         if let Some(time_skew) = &config.time_skew {
             augmented_events = time_skew.apply(&augmented_events)?;
         }
 
-        // 4. Event dropping - removes events
+        // 7. Time reversal - reverses temporal order
+        if let Some(time_reversal) = &config.time_reversal {
+            augmented_events = time_reversal.apply(&augmented_events)?;
+        }
+
+        // 8. Event dropping - removes events
         if let Some(drop_event) = &config.drop_event {
             augmented_events = drop_event.apply(&augmented_events)?;
         }
 
-        // 5. Drop by time - removes events in time interval
+        // 9. Drop by time - removes events in time interval
         if let Some(drop_time) = &config.drop_time {
             augmented_events = drop_time.apply(&augmented_events)?;
         }
 
-        // 6. Drop by area - removes events in spatial area
+        // 10. Drop by area - removes events in spatial area
         if let Some(drop_area) = &config.drop_area {
             augmented_events = drop_area.apply(&augmented_events)?;
         }
 
-        // 7. Uniform noise - adds noise events (should be last)
-        if let Some(uniform_noise) = &config.uniform_noise {
-            augmented_events = uniform_noise.apply(&augmented_events)?;
-        }
-
-        // 8. Decimate - filters events per pixel
+        // 11. Decimate - filters events per pixel
         if let Some(decimate) = &config.decimate {
             augmented_events = decimate.apply(&augmented_events)?;
+        }
+
+        // 12. Uniform noise - adds noise events (should be last)
+        if let Some(uniform_noise) = &config.uniform_noise {
+            augmented_events = uniform_noise.apply(&augmented_events)?;
         }
 
         Ok(augmented_events)
@@ -210,48 +236,79 @@ pub fn augment_events_polars(
             })?;
     }
 
-    // 2. Time jitter - modifies timestamps
+    // 2. Geometric transforms - modifies spatial coordinates and polarity
+    if let Some(geometric_transforms) = &config.geometric_transforms {
+        augmented_df = geometric_transforms::apply_geometric_transforms_polars(
+            augmented_df,
+            geometric_transforms,
+        )
+        .map_err(|e| {
+            AugmentationError::ProcessingError(format!("Geometric transforms error: {}", e))
+        })?;
+    }
+
+    // 3. Center crop - crops to center region and remaps coordinates
+    if let Some(center_crop) = &config.center_crop {
+        augmented_df = crop::apply_center_crop_polars(augmented_df, center_crop)
+            .map_err(|e| AugmentationError::ProcessingError(format!("Center crop error: {}", e)))?;
+    }
+
+    // 4. Random crop - crops to random region and remaps coordinates
+    if let Some(random_crop) = &config.random_crop {
+        augmented_df = crop::apply_random_crop_polars(augmented_df, random_crop)
+            .map_err(|e| AugmentationError::ProcessingError(format!("Random crop error: {}", e)))?;
+    }
+
+    // 5. Time jitter - modifies timestamps
     if let Some(time_jitter) = &config.time_jitter {
         augmented_df = time_jitter::apply_time_jitter_polars(augmented_df, time_jitter)
             .map_err(|e| AugmentationError::ProcessingError(format!("Time jitter error: {}", e)))?;
     }
 
-    // 3. Time skew - linear transformation of timestamps
+    // 6. Time skew - linear transformation of timestamps
     if let Some(time_skew) = &config.time_skew {
         augmented_df = time_skew::apply_time_skew_polars(augmented_df, time_skew)
             .map_err(|e| AugmentationError::ProcessingError(format!("Time skew error: {}", e)))?;
     }
 
-    // 4. Event dropping - removes events
+    // 7. Time reversal - reverses temporal order
+    if let Some(time_reversal) = &config.time_reversal {
+        augmented_df = time_reversal::apply_time_reversal_polars(augmented_df, time_reversal)
+            .map_err(|e| {
+                AugmentationError::ProcessingError(format!("Time reversal error: {}", e))
+            })?;
+    }
+
+    // 8. Event dropping - removes events
     if let Some(drop_event) = &config.drop_event {
         augmented_df = drop_event::apply_drop_event_polars(augmented_df, drop_event)
             .map_err(|e| AugmentationError::ProcessingError(format!("Drop event error: {}", e)))?;
     }
 
-    // 5. Drop by time - removes events in time interval
+    // 9. Drop by time - removes events in time interval
     if let Some(drop_time) = &config.drop_time {
         augmented_df = drop_event::apply_drop_time_polars(augmented_df, drop_time)
             .map_err(|e| AugmentationError::ProcessingError(format!("Drop time error: {}", e)))?;
     }
 
-    // 6. Drop by area - removes events in spatial area
+    // 10. Drop by area - removes events in spatial area
     if let Some(drop_area) = &config.drop_area {
         augmented_df = drop_event::apply_drop_area_polars(augmented_df, drop_area)
             .map_err(|e| AugmentationError::ProcessingError(format!("Drop area error: {}", e)))?;
     }
 
-    // 7. Uniform noise - adds noise events (should be last)
+    // 11. Decimate - filters events per pixel
+    if let Some(decimate) = &config.decimate {
+        augmented_df = decimate::apply_decimate_polars(augmented_df, decimate)
+            .map_err(|e| AugmentationError::ProcessingError(format!("Decimate error: {}", e)))?;
+    }
+
+    // 12. Uniform noise - adds noise events (should be last)
     if let Some(uniform_noise) = &config.uniform_noise {
         augmented_df = uniform_noise::apply_uniform_noise_polars(augmented_df, uniform_noise)
             .map_err(|e| {
                 AugmentationError::ProcessingError(format!("Uniform noise error: {}", e))
             })?;
-    }
-
-    // 8. Decimate - filters events per pixel
-    if let Some(decimate) = &config.decimate {
-        augmented_df = decimate::apply_decimate_polars(augmented_df, decimate)
-            .map_err(|e| AugmentationError::ProcessingError(format!("Decimate error: {}", e)))?;
     }
 
     // Only convert back to Vec<Event> at the very end for legacy compatibility

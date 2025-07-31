@@ -4,11 +4,13 @@
 //! distribution to event timestamps, simulating timing uncertainty and sensor noise.
 
 use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable, COL_POLARITY, COL_T,
-    COL_X, COL_Y,
+    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
 };
 use crate::ev_core::{Event, Events};
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+
+#[cfg(feature = "polars")]
+use crate::ev_augmentation::COL_T;
 use rand_distr::{Distribution, Normal};
 use tracing::{debug, info, instrument};
 
@@ -206,7 +208,7 @@ pub fn apply_time_jitter_polars(
     debug!("Applying time jitter with Polars: {:?}", config);
 
     // Convert standard deviation to seconds
-    let std_seconds = config.std_us / 1_000_000.0;
+    let _std_seconds = config.std_us / 1_000_000.0;
 
     // Generate random jitter values
     let jittered_df = df.with_columns([

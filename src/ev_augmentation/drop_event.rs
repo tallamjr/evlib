@@ -6,12 +6,12 @@
 //! - drop_by_area: Drop events within a spatial region
 
 use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable, COL_POLARITY, COL_T,
-    COL_X, COL_Y,
+    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
 };
-use crate::ev_core::{Event, Events};
-use crate::ev_filtering::downsampling::{DownsamplingFilter, DownsamplingStrategy};
-use rand::{Rng, SeedableRng};
+use crate::ev_core::Events;
+use crate::ev_filtering::downsampling::DownsamplingFilter;
+use rand::SeedableRng;
+
 use rand_distr::{Distribution, Uniform};
 use tracing::{debug, info, instrument};
 
@@ -334,7 +334,7 @@ pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> Augmentat
         if event.t >= drop_start && event.t <= drop_end {
             dropped_count += 1;
         } else {
-            filtered_events.push(event.clone());
+            filtered_events.push(*event);
         }
     }
 
@@ -410,7 +410,7 @@ pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> Augmentat
         if event.x >= box_x && event.x < box_x_end && event.y >= box_y && event.y < box_y_end {
             dropped_count += 1;
         } else {
-            filtered_events.push(event.clone());
+            filtered_events.push(*event);
         }
     }
 

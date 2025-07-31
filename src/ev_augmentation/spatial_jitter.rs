@@ -5,9 +5,9 @@
 //! movements.
 
 use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable, COL_POLARITY, COL_T,
-    COL_X, COL_Y,
+    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
 };
+
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Normal};
