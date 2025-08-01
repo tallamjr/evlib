@@ -1,10 +1,10 @@
 name: Publish
 
 on:
-  workflow_run:
-    workflows: ["Python Tests"]
-    types: [completed]
-    branches: [main, master]
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       publish_to:
