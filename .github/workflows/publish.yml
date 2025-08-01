@@ -1,10 +1,10 @@
 name: Publish
 
 on:
-  workflow_run:
-    workflows: ["Python Tests"]
-    types: [completed]
-    branches: [main, master]
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       publish_to:
@@ -82,11 +82,11 @@ jobs:
         with:
           key: publish-${{ matrix.os }}-${{ matrix.python-version }}
 
-      # --- ADD THIS STEP for Windows builds ---
+      # --- FIX: Add this step for Windows builds ---
       - name: Add vcpkg binaries to PATH (Windows only)
         if: startsWith(matrix.os, 'windows')
         run: echo "C:\vcpkg\installed\x64-windows\bin" >> $GITHUB_PATH
-      # ---------------------------------------
+      # --------------------------------------------
 
       - name: Install maturin (Unix)
         if: "!startsWith(matrix.os, 'windows')"
