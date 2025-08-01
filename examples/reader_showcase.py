@@ -6,15 +6,10 @@ This script demonstrates various ways to read event data using evlib
 across different formats and datasets available in the data directory.
 """
 
-import sys
 from pathlib import Path
 import numpy as np
 
-# Add the project root to the path so we can import evlib
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-import evlib  # noqa: E402
+import evlib
 
 
 def read_large_hdf5_file():
@@ -228,15 +223,7 @@ def read_with_format_detection():
         if Path(file_path).exists():
             print(f"\nAnalyzing: {file_path}")
 
-            # Detect format
-            detected_format = evlib.detect_format(file_path)
-            print(f"  Detected format: {detected_format}")
-
-            # Get format description
-            description = evlib.get_format_description(detected_format)
-            print(f"  Description: {description}")
-
-            # Load with detected format
+            # Auto-detect format and load events
             events = evlib.load_events(file_path)
             timestamps, x_coords, y_coords, polarities = events
 
