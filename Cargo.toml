@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.5.7"
+version         = "0.5.10"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -104,7 +104,7 @@ thiserror      = "1.0"
 
 # Structured logging and tracing
 tracing        = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "time", "local-time", "json"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
 
 # WebSocket server
 warp           = "0.3"
