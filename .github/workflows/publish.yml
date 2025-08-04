@@ -59,7 +59,7 @@ jobs:
     needs: [check-version]
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
-      (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
+      (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -137,7 +137,7 @@ jobs:
     needs: [check-version]
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
-      (github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'crates' || github.event.inputs.publish_to == '')
+      (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'crates' || github.event.inputs.publish_to == '')
     steps:
       - uses: actions/checkout@v4
 
