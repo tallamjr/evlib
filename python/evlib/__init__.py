@@ -243,6 +243,11 @@ try:
 except ImportError:
     streaming_utils = None
 
+try:
+    from . import pytorch
+except ImportError:
+    pytorch = None
+
 # Import version
 try:
     __version__ = getattr(formats, "__version__", None)
@@ -596,3 +601,5 @@ if ecf_decoder:
     __all__.append("ecf_decoder")
 if hdf5_diagnostic:
     __all__.append("hdf5_diagnostic")
+if pytorch:
+    __all__.append("pytorch")

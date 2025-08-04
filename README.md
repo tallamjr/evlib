@@ -222,6 +222,9 @@ pip install evlib
 
 # For Polars DataFrame support (recommended)
 pip install evlib[polars]
+
+# For PyTorch integration
+pip install evlib[pytorch]
 ```
 
 ### Development Installation
@@ -623,12 +626,20 @@ evlib includes an optimized PyTorch dataloader implementation that showcases bes
 
 ### Quick Start
 ```python
-from examples.polars_pytorch_simplified import PolarsDataset, load_real_rvt_data
-import torch
-from torch.utils.data import DataLoader
+# New: Use the built-in PyTorch integration
+from evlib.pytorch import create_dataloader, load_rvt_data
 
-# Load RVT preprocessed event data
-lazy_df = load_real_rvt_data(max_samples=1000)
+# Option 1: One-liner for RVT data
+dataloader = create_dataloader("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000",
+                              data_type="rvt", batch_size=256)
+
+# Option 2: Manual setup for custom transforms
+lazy_df = load_rvt_data("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000")
+
+# Option 3: Raw event data
+import evlib
+events = evlib.load_events("path/to/events.h5")
+dataloader = create_dataloader(events, data_type="events")
 
 # Define transform to extract features and labels from LazyFrame
 def split_features_labels(batch):

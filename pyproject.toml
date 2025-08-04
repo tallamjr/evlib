@@ -61,10 +61,11 @@ duckdb = ["duckdb >= 1.3.2"]
 jupyter = ["jupyter >= 1.0.0"]
 plot = ["matplotlib >= 3.7.0", "opencv-python>=4.8.0", "seaborn>=0.13.2",]
 torch = ["torch >= 2.0.0"]
+pytorch = ["torch >= 2.0.0"]
 
 # All
 all = [
-  "evlib[dev,duckdb,plot,jupyter,torch]",
+  "evlib[dev,duckdb,plot,jupyter,torch,pytorch]",
 ]
 
 [tool.maturin]
