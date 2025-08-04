@@ -96,10 +96,10 @@ representations.
 import evlib
 
 # Load events from any supported format (automatic detection)
-df = evlib.load_events("data/slider_depth/events.txt").collect(engine='streaming')
+df = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw").collect(engine='streaming')
 
 # Or load as LazyFrame for memory-efficient processing
-lf = evlib.load_events("data/slider_depth/events.txt")
+lf = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 
 # Basic event information
 print(f"Loaded {len(df)} events")
@@ -119,7 +119,7 @@ import evlib
 import polars as pl
 
 # Load events as LazyFrame for efficient processing
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
 
 # Time filtering using Polars operations
 time_filtered = events.with_columns([
@@ -143,16 +143,20 @@ print(f"Filtered to {len(filtered_df)} events")
 ```
 
 ### Event Representations
+
+evlib provides comprehensive event representation functions for computer vision and neural network applications:
+
 ```python
 import evlib
 import evlib.representations as evr
+import polars as pl
 
 # Load events and create representations
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 events_df = events.collect()
 
 # Create stacked histogram (replaces RVT preprocessing)
-hist = evr.create_stacked_histogram_py(
+hist = evr.create_stacked_histogram(
     events_df,
     _height=180, _width=240,
     nbins=5, window_duration_ms=50.0,
@@ -161,7 +165,7 @@ hist = evr.create_stacked_histogram_py(
 print(f"Created stacked histogram with {len(hist)} spatial bins")
 
 # Create mixed density stack representation
-density = evr.create_mixed_density_stack_py(
+density = evr.create_mixed_density_stack(
     events_df,
     _height=180, _width=240,
     nbins=5, window_duration_ms=50.0
@@ -169,16 +173,40 @@ density = evr.create_mixed_density_stack_py(
 print(f"Created mixed density stack with {len(density)} entries")
 
 # Create voxel grid representation
-voxel = evr.create_voxel_grid_py(
+voxel = evr.create_voxel_grid(
     events_df,
     _height=180, _width=240,
     nbins=3
 )
 print(f"Created voxel grid with {len(voxel)} voxels")
 
-# For neural networks, work with smaller subsets for memory efficiency
+# Advanced representations (require data type conversion)
+# Convert timestamp and ensure proper dtypes for advanced functions
 small_events = events.limit(10000).collect()
-voxel_grid = evr.create_voxel_grid_py(small_events, _height=180, _width=240, nbins=5)
+converted_events = small_events.with_columns([
+    pl.col('timestamp').dt.total_microseconds().cast(pl.Float64).alias('t'),
+    pl.col('x').cast(pl.Int64),
+    pl.col('y').cast(pl.Int64),
+    pl.col('polarity').cast(pl.Int64)
+]).drop('timestamp')
+
+# Create time surface representation
+time_surface = evr.create_timesurface(
+    converted_events,
+    height=180, width=240,
+    dt=50000.0,    # time step in microseconds
+    tau=10000.0    # decay constant in microseconds
+)
+print(f"Created time surface with {len(time_surface)} pixels")
+
+# Create averaged time surface
+avg_time_surface = evr.create_averaged_timesurface(
+    converted_events,
+    height=180, width=240,
+    cell_size=1, surface_size=1,
+    time_window=50000.0, tau=10000.0
+)
+print(f"Created averaged time surface with {len(avg_time_surface)} pixels")
 ```
 
 ## Installation
@@ -266,12 +294,12 @@ evlib provides comprehensive Polars DataFrame support for high-performance event
 import evlib
 
 # Load as LazyFrame (recommended)
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 df = events.collect()  # Collect to DataFrame when needed
 
 # Automatic format detection and optimization
-events = evlib.load_events("data/slider_depth/events.txt")  # EVT2 format automatically detected
-print(f"Format: {evlib.formats.detect_format('data/slider_depth/events.txt')}")
+events = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")  # EVT2 format automatically detected
+print(f"Format: {evlib.formats.detect_format('data/prophersee/samples/evt2/80_balls.raw')}")
 print(f"Description: {evlib.formats.get_format_description('EVT2')}")
 
 ```
@@ -282,7 +310,7 @@ import evlib
 import polars as pl
 
 # Chain operations with LazyFrames for optimal performance
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 result = events.filter(pl.col("polarity") == 1).with_columns([
     pl.col("timestamp").dt.total_microseconds().alias("time_us"),
     (pl.col("x") + pl.col("y")).alias("diagonal_pos")
@@ -316,11 +344,11 @@ import polars as pl
 import evlib.filtering as evf
 
 # Built-in format detection
-format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/prophersee/samples/evt3/pedestrians.raw")
 print(f"Detected format: {format_info}")
 
 # Spatial filtering using Polars operations
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
 spatial_filtered = events.filter(
     (pl.col("x") >= 100) & (pl.col("x") <= 200) &
     (pl.col("y") >= 50) & (pl.col("y") <= 150)
@@ -383,10 +411,10 @@ python -c "
 import evlib
 import time
 start = time.time()
-events = evlib.load_events('data/slider_depth/events.txt')
+events = evlib.load_events('data/prophersee/samples/evt2/80_balls.raw')
 df = events.collect()
 print(f'Loaded {len(df):,} events in {time.time()-start:.2f}s')
-print(f'Format: {evlib.detect_format(\"data/slider_depth/events.txt\")}')
+print(f'Format: {evlib.detect_format(\"data/prophersee/samples/evt2/80_balls.raw\")}')
 print(f'Memory per event: {df.estimated_size() / len(df):.1f} bytes')
 "
 ```
@@ -400,11 +428,11 @@ import evlib.filtering as evf
 import polars as pl
 
 # Small files (<5M events) - Direct loading
-events_small = evlib.load_events("data/slider_depth/events.txt")
+events_small = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 df_small = events_small.collect()
 
 # Large files (>5M events) - Automatic streaming
-events_large = evlib.load_events("data/slider_depth/events.txt")
+events_large = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 # Same API, automatically uses streaming for memory efficiency
 
 # Memory-efficient filtering on large datasets using Polars
@@ -432,7 +460,7 @@ def monitor_memory():
 
 # Monitor memory usage during loading
 initial_mem = monitor_memory()
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
 df = events.collect()
 peak_mem = monitor_memory()
 
@@ -463,7 +491,7 @@ import evlib
 import evlib.filtering as evf
 
 # Solution: Use filtering before collecting (streaming activates automatically)
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 # Streaming activates automatically for files >5M events
 
 # Apply filtering before collecting to reduce memory usage
@@ -485,7 +513,7 @@ import evlib.filtering as evf
 import polars as pl
 
 # Solution: Use LazyFrame for complex operations
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 
 # Use Polars operations for optimized filtering
 result = events.filter(
@@ -503,14 +531,14 @@ result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).
 import evlib
 
 # Solution: Monitor and verify optimization
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
 df = events.collect()
 print(f"Memory efficiency: {df.estimated_size() / len(df)} bytes/event")
 print(f"DataFrame schema: {df.schema}")
 print(f"Number of events: {len(df):,}")
 
 # Check format detection
-format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/prophersee/samples/evt3/pedestrians.raw")
 print(f"Format: {format_info}")
 ```
 
@@ -531,10 +559,10 @@ import evlib.filtering as evf
 import evlib.representations as evr
 
 # Core event loading (returns Polars LazyFrame)
-events = evlib.load_events("data/slider_depth/events.txt")
+events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 
 # Format detection and description
-format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
+format_info = evlib.formats.detect_format("data/prophersee/samples/hdf5/pedestrians.hdf5")
 description = evlib.formats.get_format_description("HDF5")
 
 # Advanced filtering using Polars operations
@@ -547,8 +575,18 @@ time_filtered = filtered.collect()
 
 # Event representations (working examples)
 events_df = events.collect()
-hist = evr.create_stacked_histogram_py(events_df, _height=180, _width=240, nbins=5)
-voxel = evr.create_voxel_grid_py(events_df, _height=180, _width=240, nbins=3)
+hist = evr.create_stacked_histogram(events_df, _height=180, _width=240, nbins=5)
+voxel = evr.create_voxel_grid(events_df, _height=180, _width=240, nbins=3)
+
+# Advanced representations (with proper data conversion)
+small_events = events.limit(10000).collect()
+converted_events = small_events.with_columns([
+    pl.col('timestamp').dt.total_microseconds().cast(pl.Float64).alias('t'),
+    pl.col('x').cast(pl.Int64),
+    pl.col('y').cast(pl.Int64),
+    pl.col('polarity').cast(pl.Int64)
+]).drop('timestamp')
+time_surface = evr.create_timesurface(converted_events, height=180, width=240, dt=50000.0, tau=10000.0)
 
 # Neural network models (limited functionality)
 from evlib.models import ModelConfig  # If available
