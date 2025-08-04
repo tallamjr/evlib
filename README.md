@@ -220,17 +220,21 @@ pip install evlib[polars]
 ```
 
 ### Development Installation
+
+We recommend using [uv](https://docs.astral.sh/uv/getting-started/installation/) for fast, reliable Python package management:
+
 ```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Clone the repository
 git clone https://github.com/tallamjr/evlib.git
 cd evlib
 
-# Create virtual environment
-python -m venv .venv
+# Create virtual environment and install dependencies
+uv venv --python 3.12
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install in development mode with all features
-pip install -e ".[dev,polars]"
+uv pip install -e ".[dev,polars]"
 
 # Build the Rust extensions
 maturin develop
@@ -259,8 +263,8 @@ For optimal performance, ensure you have the recommended system configuration:
 # Install with Polars support (recommended)
 pip install "evlib[polars]"
 
-# For development with all performance features
-pip install "evlib[dev,polars]"
+# For development with all performance features (using uv)
+uv pip install "evlib[dev,polars]"
 
 # Verify installation with benchmark
 python -c "import evlib; print('evlib installed successfully')"
@@ -270,10 +274,10 @@ python benchmark_memory.py  # Test memory efficiency
 **Optional Performance Dependencies:**
 ```bash
 # For advanced memory monitoring
-pip install psutil
+uv pip install psutil
 
 # For parallel processing (already included in dev)
-pip install multiprocessing-logging
+uv pip install multiprocessing-logging
 ```
 
 ## Polars DataFrame Integration

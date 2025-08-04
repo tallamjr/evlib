@@ -151,9 +151,21 @@ class PolarsDataset(IterableDataset):
 
 
 def load_real_rvt_data(max_samples: int = 1000) -> Optional[pl.LazyFrame]:
-    """Load real RVT preprocessed event representations with labels"""
+    """Load real RVT preprocessed event representations with labels
+
+    Data structure:
+    - Event representations: (N, 20, 360, 640) stacked histograms with 20 bins
+    - Labels: Structured array with class_id, bounding boxes, timestamps
+    - Timestamps: Microsecond timestamps for each representation
+    """
     import h5py
     import numpy as np
+    import os
+
+    # Set HDF5 plugin path for compressed data
+    os.environ["HDF5_PLUGIN_PATH"] = str(
+        Path(__file__).parent.parent / ".venv/lib/python3.10/site-packages/hdf5plugin/plugins"
+    )
 
     # Try to find RVT data files
     rvt_base_paths = [
@@ -164,7 +176,7 @@ def load_real_rvt_data(max_samples: int = 1000) -> Optional[pl.LazyFrame]:
     for base_path in rvt_base_paths:
         if base_path.exists():
             try:
-                # Load event representations
+                # File paths
                 repr_file = (
                     base_path
                     / "event_representations_v2"
@@ -172,97 +184,163 @@ def load_real_rvt_data(max_samples: int = 1000) -> Optional[pl.LazyFrame]:
                     / "event_representations_ds2_nearest.h5"
                 )
                 labels_file = base_path / "labels_v2" / "labels.npz"
+                timestamps_file = (
+                    base_path
+                    / "event_representations_v2"
+                    / "stacked_histogram_dt50_nbins10"
+                    / "timestamps_us.npy"
+                )
+                mapping_file = (
+                    base_path
+                    / "event_representations_v2"
+                    / "stacked_histogram_dt50_nbins10"
+                    / "objframe_idx_2_repr_idx.npy"
+                )
 
-                if not repr_file.exists() or not labels_file.exists():
+                if not all([f.exists() for f in [repr_file, labels_file, timestamps_file, mapping_file]]):
                     logger.warning(f"Missing files in {base_path}")
                     continue
 
                 logger.info(f"Loading RVT data from {base_path}")
 
-                # Load event representations
+                # Load event representations (1198, 20, 360, 640)
                 with h5py.File(repr_file, "r") as f:
-                    logger.info(f"Available keys in HDF5: {list(f.keys())}")
-                    if "data" in f:
-                        representations = f["data"][:max_samples]  # Shape: (N, bins, height, width)
-                        logger.info(f"Loaded representations shape: {representations.shape}")
-                    else:
+                    if "data" not in f:
                         logger.warning(f"'data' key not found in {repr_file}")
                         continue
 
-                # Load labels
+                    total_samples = f["data"].shape[0]
+                    actual_samples = min(max_samples, total_samples)
+
+                    # Load representations
+                    representations = f["data"][:actual_samples]  # Shape: (N, 20, 360, 640)
+                    logger.info(f"Loaded representations shape: {representations.shape}")
+                    logger.info(f"Data range: [{representations.min()}, {representations.max()}]")
+
+                # Load timestamps for representations
+                repr_timestamps = np.load(timestamps_file)[:actual_samples]
+                logger.info(f"Loaded {len(repr_timestamps)} representation timestamps")
+
+                # Load labels and mapping
                 labels_data = np.load(labels_file)
-                logger.info(f"Available keys in labels: {list(labels_data.keys())}")
+                mapping = np.load(mapping_file)
 
-                if "labels" in labels_data:
-                    raw_labels = labels_data["labels"][:max_samples]
-                    logger.info(f"Loaded raw labels shape: {raw_labels.shape}, dtype: {raw_labels.dtype}")
+                # Extract labels - RVT uses structured arrays
+                raw_labels = labels_data["labels"]
+                logger.info(f"Available label fields: {raw_labels.dtype.names}")
 
-                    # Handle structured array labels
-                    if raw_labels.dtype.names is not None:
-                        # Structured array - extract class_id field
-                        if "class_id" in raw_labels.dtype.names:
-                            labels = raw_labels["class_id"].astype(np.int32)
-                            logger.info(f"Extracted class_id labels, shape: {labels.shape}")
-                            logger.info(f"Label unique values: {np.unique(labels)}")
-                            logger.info(f"Label value range: [{labels.min()}, {labels.max()}]")
-                        else:
-                            # Use first field as fallback
-                            field_name = raw_labels.dtype.names[0]
-                            labels = raw_labels[field_name].astype(np.int32)
-                            logger.info(f"Using field '{field_name}' as labels, shape: {labels.shape}")
-                    else:
-                        # Simple array
-                        labels = raw_labels.astype(np.int32)
-                        logger.info(f"Using simple labels, shape: {labels.shape}")
+                # Extract class IDs and other relevant fields
+                class_ids = raw_labels["class_id"]
+                confidences = raw_labels["class_confidence"]
+                bboxes = np.column_stack([raw_labels["x"], raw_labels["y"], raw_labels["w"], raw_labels["h"]])
 
-                elif "y" in labels_data:
-                    labels = labels_data["y"][:max_samples].astype(np.int32)
-                    logger.info(f"Loaded labels from 'y' key, shape: {labels.shape}")
-                else:
-                    # Create mock labels if not found
-                    labels = np.random.randint(0, 5, max_samples)
-                    logger.warning(f"No labels found, created mock labels shape: {labels.shape}")
+                logger.info(f"Class distribution: {np.bincount(class_ids)}")
+                logger.info(f"Unique classes: {np.unique(class_ids)}")
 
-                # Flatten representations for easier handling (convert to features per sample)
-                n_samples = min(len(representations), len(labels))
-                representations = representations[:n_samples]
-                labels = labels[:n_samples]
+                # Create training samples by matching representations to labels via mapping
+                # The mapping relates object frames to representation indices
+                training_samples = []
+                training_labels = []
+                training_timestamps = []
+                training_confidences = []
+                training_bboxes = []
 
-                # Flatten each representation to a feature vector
-                flattened_repr = representations.reshape(n_samples, -1)
-                logger.info(f"Flattened representations to shape: {flattened_repr.shape}")
+                # Use mapping to match representations with labels
+                for i in range(min(actual_samples, len(mapping))):
+                    repr_idx = mapping[i] if i < len(mapping) else i
+                    if repr_idx < len(representations):
+                        # Find corresponding labels for this time frame
+                        # For simplicity, use the primary object in each frame
+                        label_start_idx = (
+                            labels_data["objframe_idx_2_label_idx"][i]
+                            if i < len(labels_data["objframe_idx_2_label_idx"])
+                            else 0
+                        )
 
-                # Create sample indices and metadata
-                sample_indices = np.arange(n_samples)
+                        if label_start_idx < len(class_ids):
+                            training_samples.append(representations[repr_idx])
+                            training_labels.append(class_ids[label_start_idx])
+                            training_timestamps.append(repr_timestamps[repr_idx])
+                            training_confidences.append(confidences[label_start_idx])
+                            training_bboxes.append(bboxes[label_start_idx])
 
-                # Create Polars DataFrame
-                data_dict = {
-                    "sample_idx": sample_indices,
-                    "label": labels.astype(np.int32),
-                }
+                training_samples = np.array(training_samples)
+                training_labels = np.array(training_labels, dtype=np.int32)
+                training_timestamps = np.array(training_timestamps)
+                training_confidences = np.array(training_confidences)
+                training_bboxes = np.array(training_bboxes)
 
-                # Add flattened features as columns (first 100 features to keep manageable)
-                n_features = min(100, flattened_repr.shape[1])
-                for i in range(n_features):
-                    data_dict[f"feature_{i:03d}"] = flattened_repr[:, i].astype(np.float32)
+                logger.info(f"Created {len(training_samples)} training samples")
+                logger.info(f"Representation shape per sample: {training_samples[0].shape}")
+                logger.info(f"Label distribution: {np.bincount(training_labels)}")
 
-                df = pl.DataFrame(data_dict)
+                # Create features from the stacked histograms
+                # Option 1: Flatten the entire representation (20 * 360 * 640 = 4.6M features - too many)
+                # Option 2: Use spatial pooling to reduce dimensionality
+                # Option 3: Use statistical features per bin
 
-                # Add derived features for demo
+                # Use Option 3: Statistical features per temporal bin (more manageable)
+                n_samples = len(training_samples)
+                feature_data = {}
+
+                # Basic metadata
+                feature_data["sample_idx"] = np.arange(n_samples)
+                feature_data["label"] = training_labels
+                feature_data["timestamp"] = training_timestamps.astype(np.float64)
+                feature_data["confidence"] = training_confidences.astype(np.float32)
+
+                # Bounding box features
+                feature_data["bbox_x"] = training_bboxes[:, 0].astype(np.float32)
+                feature_data["bbox_y"] = training_bboxes[:, 1].astype(np.float32)
+                feature_data["bbox_w"] = training_bboxes[:, 2].astype(np.float32)
+                feature_data["bbox_h"] = training_bboxes[:, 3].astype(np.float32)
+                feature_data["bbox_area"] = (training_bboxes[:, 2] * training_bboxes[:, 3]).astype(np.float32)
+
+                # Statistical features from each temporal bin (20 bins)
+                for bin_idx in range(20):
+                    bin_data = training_samples[:, bin_idx, :, :]  # (N, 360, 640)
+
+                    # Compute statistics for each bin
+                    feature_data[f"bin_{bin_idx:02d}_mean"] = bin_data.mean(axis=(1, 2)).astype(np.float32)
+                    feature_data[f"bin_{bin_idx:02d}_std"] = bin_data.std(axis=(1, 2)).astype(np.float32)
+                    feature_data[f"bin_{bin_idx:02d}_max"] = bin_data.max(axis=(1, 2)).astype(np.float32)
+                    feature_data[f"bin_{bin_idx:02d}_nonzero"] = (
+                        (bin_data > 0).sum(axis=(1, 2)).astype(np.float32)
+                    )
+
+                # Additional derived features
+                feature_data["total_activity"] = training_samples.sum(axis=(1, 2, 3)).astype(np.float32)
+                feature_data["active_pixels"] = (training_samples > 0).sum(axis=(1, 2, 3)).astype(np.float32)
+                feature_data["temporal_center"] = np.array(
+                    [
+                        np.average(range(20), weights=sample.sum(axis=(1, 2)) + 1e-8)
+                        for sample in training_samples
+                    ]
+                ).astype(np.float32)
+
+                # Create DataFrame
+                df = pl.DataFrame(feature_data)
+
+                # Add normalized features
                 df = df.with_columns(
                     [
-                        (pl.col("sample_idx") / n_samples).alias("sample_norm"),
-                        (pl.col("label").cast(pl.Float32) / pl.col("label").max()).alias("label_norm"),
+                        (pl.col("timestamp") / pl.col("timestamp").max()).alias("timestamp_norm"),
+                        (pl.col("bbox_area") / pl.col("bbox_area").max()).alias("bbox_area_norm"),
+                        (pl.col("total_activity") / pl.col("total_activity").max()).alias("activity_norm"),
                     ]
                 )
 
-                logger.info(f"Created DataFrame with {len(df)} samples and {len(df.columns)} columns")
-                logger.info(f"Label distribution: {df['label'].value_counts().sort('label').to_dict()}")
+                logger.info(f"Created DataFrame with {len(df)} samples and {len(df.columns)} features")
+                logger.info(f"Feature columns: {len([col for col in df.columns if col.startswith('bin_')])}")
+                logger.info(f"Label distribution: {df['label'].value_counts().sort('label')}")
 
                 return df.lazy()
 
             except Exception as e:
                 logger.warning(f"Failed to load RVT data from {base_path}: {e}")
+                import traceback
+
+                logger.debug(traceback.format_exc())
                 continue
 
     logger.warning("No RVT data files found")
@@ -296,14 +374,27 @@ def create_synthetic_data(n_events: int = 10000) -> pl.LazyFrame:
 
 
 def demo_basic_usage():
-    """Demonstrate basic usage with real data"""
-    logger.info("Starting basic usage demo")
+    """Demonstrate basic usage with real RVT data"""
+    logger.info("Starting basic usage demo with RVT preprocessed data")
     logger.info("=" * 60)
 
-    # Try to load real data first, fall back to synthetic
+    # Try to load real RVT data first, fall back to synthetic
     lazy_df = load_real_rvt_data(max_samples=500)
+    data_type = "RVT" if lazy_df is not None else "Synthetic"
+
     if lazy_df is None:
+        logger.info("RVT data not found, using synthetic data")
         lazy_df = create_synthetic_data(10000)
+    else:
+        logger.info("Successfully loaded RVT preprocessed data")
+
+    # Show data info
+    sample_df = lazy_df.head(3).collect()
+    logger.info(f"Data type: {data_type}")
+    logger.info(f"Dataset shape: {len(sample_df)} samples x {len(sample_df.columns)} features")
+    logger.info(f"Feature columns: {[col for col in sample_df.columns if col.startswith('bin_')][:5]}...")
+    if "label" in sample_df.columns:
+        logger.info(f"Label distribution: {sample_df['label'].value_counts().sort('label')}")
 
     # Create dataset
     dataset = PolarsDataset(lazy_df, batch_size=128, shuffle=True)
@@ -316,6 +407,8 @@ def demo_basic_usage():
     for i, batch in enumerate(dataloader):
         logger.info(f"Batch {i}:")
         for key, tensor in batch.items():
+            if key.startswith("bin_") and i > 0:  # Skip bin features after first batch to reduce output
+                continue
             logger.info(f"  {key}: {tensor.shape} ({tensor.dtype})")
 
         if i >= 2:  # Show first 3 batches
@@ -323,15 +416,33 @@ def demo_basic_usage():
 
 
 def demo_training_pipeline():
-    """Demonstrate complete training pipeline with real data"""
+    """Demonstrate complete training pipeline with real RVT data"""
     logger.info("")
-    logger.info("Starting training pipeline demo")
+    logger.info("Starting training pipeline demo with RVT preprocessed data")
     logger.info("=" * 60)
 
-    # Try to load real data, otherwise use synthetic
-    lazy_df = load_real_rvt_data(max_samples=10000)
+    # Try to load real RVT data, otherwise use synthetic
+    lazy_df = load_real_rvt_data(max_samples=1000)  # Use more samples for training
+    data_type = "RVT" if lazy_df is not None else "Synthetic"
+
     if lazy_df is None:
+        logger.info("RVT data not found, using synthetic data")
         lazy_df = create_synthetic_data(50000)
+    else:
+        logger.info("Successfully loaded RVT preprocessed data for training")
+        # Show the actual features we're working with
+        sample_df = lazy_df.head(5).collect()
+        logger.info(f"Training with {data_type} data:")
+        logger.info(
+            f"  Features per sample: {len([col for col in sample_df.columns if col.startswith('bin_')])} temporal bins"
+        )
+        logger.info(
+            f"  Additional features: {len([col for col in sample_df.columns if col.startswith('bbox_')])} bbox features"
+        )
+        logger.info(
+            f"  Activity features: {len([col for col in sample_df.columns if col in ['total_activity', 'active_pixels', 'temporal_center']])}"
+        )
+        logger.info(f"  Classes: {sorted(sample_df['label'].unique())}")
 
     # RVT data already has real labels, no need to add synthetic ones
     # If we're using synthetic data, add labels
@@ -346,22 +457,54 @@ def demo_training_pipeline():
     def split_features_labels(batch):
         """Transform to separate features and labels"""
         # Check if we have RVT features or synthetic features
-        feature_keys = [k for k in batch.keys() if k.startswith("feature_")]
+        bin_feature_keys = [k for k in batch.keys() if k.startswith("bin_") and k.endswith("_mean")]
 
-        if feature_keys:
-            # RVT data with flattened representation features
-            feature_tensors = [batch[k] for k in sorted(feature_keys)]
+        if bin_feature_keys:
+            # RVT data with statistical features from temporal bins
+            feature_tensors = []
+
+            # Add all temporal bin features (mean, std, max, nonzero for each bin)
+            for bin_idx in range(20):
+                for stat in ["mean", "std", "max", "nonzero"]:
+                    key = f"bin_{bin_idx:02d}_{stat}"
+                    if key in batch:
+                        feature_tensors.append(batch[key])
+
+            # Add bounding box features
+            for key in ["bbox_x", "bbox_y", "bbox_w", "bbox_h", "bbox_area"]:
+                if key in batch:
+                    feature_tensors.append(batch[key])
+
+            # Add activity features
+            for key in ["total_activity", "active_pixels", "temporal_center"]:
+                if key in batch:
+                    feature_tensors.append(batch[key])
+
+            # Add normalized features
+            for key in ["timestamp_norm", "bbox_area_norm", "activity_norm"]:
+                if key in batch:
+                    feature_tensors.append(batch[key])
+
             features = torch.stack(feature_tensors, dim=1)
+            logger.debug(f"RVT features shape: {features.shape}")
+
         elif "x_norm" in batch and "y_norm" in batch and "polarity_signed" in batch:
             # Synthetic event data
             features = torch.stack([batch["x_norm"], batch["y_norm"], batch["polarity_signed"]], dim=1)
+            logger.debug(f"Synthetic features shape: {features.shape}")
+
         else:
-            # Fallback: use first 3 numeric columns as features
+            # Fallback: use all available numeric columns except label and metadata
+            exclude_keys = {"label", "sample_idx", "timestamp", "confidence"}
             numeric_keys = [
-                k for k in batch.keys() if k != "label" and batch[k].dtype in [torch.float32, torch.float64]
-            ][:3]
+                k
+                for k in batch.keys()
+                if k not in exclude_keys and batch[k].dtype in [torch.float32, torch.float64]
+            ]
+
             if len(numeric_keys) >= 3:
-                features = torch.stack([batch[k] for k in numeric_keys], dim=1)
+                features = torch.stack([batch[k] for k in sorted(numeric_keys)], dim=1)
+                logger.debug(f"Fallback features shape: {features.shape} from keys: {numeric_keys[:10]}...")
             else:
                 raise ValueError(f"Not enough numeric features found. Available keys: {list(batch.keys())}")
 
@@ -388,16 +531,37 @@ def demo_training_pipeline():
     n_classes = len(torch.unique(test_batch["labels"]))
 
     logger.info(f"Input size: {input_size}, Number of classes: {n_classes}")
+    logger.info(f"Sample batch shape: {test_batch['features'].shape}")
+    logger.info(f"Label distribution in test batch: {torch.bincount(test_batch['labels'])}")
 
     # Create model based on actual data dimensions
-    model = torch.nn.Sequential(
-        torch.nn.Linear(input_size, 64),
-        torch.nn.ReLU(),
-        torch.nn.Dropout(0.2),
-        torch.nn.Linear(64, 32),
-        torch.nn.ReLU(),
-        torch.nn.Linear(32, max(n_classes, 3)),  # At least 3 classes for demo
-    )
+    # For RVT data, we have many features (~93), so use a deeper network
+    if input_size > 50:
+        # RVT data with many features - use deeper network
+        model = torch.nn.Sequential(
+            torch.nn.Linear(input_size, 256),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(256),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(256, 128),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(128),
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(0.1),
+            torch.nn.Linear(64, max(n_classes, 3)),
+        )
+    else:
+        # Simpler network for synthetic data
+        model = torch.nn.Sequential(
+            torch.nn.Linear(input_size, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(64, 32),
+            torch.nn.ReLU(),
+            torch.nn.Linear(32, max(n_classes, 3)),
+        )
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -489,13 +653,15 @@ def demo_advanced_features():
             ]
         )
     else:
-        # This is RVT preprocessed data with features
+        # This is RVT preprocessed data with bin features
         lazy_df = lazy_df.with_columns(
             [
                 (pl.col("sample_idx").cast(pl.Float32) / pl.col("sample_idx").max()).alias(
                     "sample_norm_advanced"
                 ),
-                (pl.col("feature_000") + pl.col("feature_001")).alias("combined_feature_01"),
+                (pl.col("bin_00_mean") + pl.col("bin_01_mean")).alias("combined_bin_01"),
+                (pl.col("total_activity") / pl.col("active_pixels")).alias("activity_density"),
+                (pl.col("bbox_w") * pl.col("bbox_h")).alias("bbox_area_calc"),
             ]
         )
 
