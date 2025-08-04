@@ -49,13 +49,10 @@ runs:
       if: startsWith(inputs.os, 'windows')
       shell: pwsh
       run: |
-        # Install dependencies using vcpkg
-        vcpkg install hdf5[cpp]:x64-windows
+        # Install minimal dependencies for Windows (HDF5 excluded due to build complexity)
         vcpkg install pkgconf:x64-windows
 
-        # Set HDF5 environment variables for Windows
-        echo "HDF5_DIR=C:/vcpkg/installed/x64-windows" >> $env:GITHUB_ENV
-        echo "HDF5_ROOT=C:/vcpkg/installed/x64-windows" >> $env:GITHUB_ENV
+        # Set minimal environment variables for Windows
         echo "PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig" >> $env:GITHUB_ENV
         echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
 

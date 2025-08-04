@@ -82,11 +82,7 @@ jobs:
         with:
           key: publish-${{ matrix.os }}-${{ matrix.python-version }}
 
-      # --- FIX: Add this step for Windows builds ---
-      - name: Add vcpkg binaries to PATH (Windows only)
-        if: startsWith(matrix.os, 'windows')
-        run: echo "C:\vcpkg\installed\x64-windows\bin" >> $GITHUB_PATH
-      # --------------------------------------------
+      # Note: HDF5 dependencies excluded on Windows due to build complexity (see Cargo.toml)
 
       - name: Install maturin (Unix)
         if: "!startsWith(matrix.os, 'windows')"
