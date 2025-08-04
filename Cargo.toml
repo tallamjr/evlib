@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.5.4"
+version         = "0.5.5"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -82,9 +82,12 @@ memmap2        = "0.5"
 image          = "0.24"
 async-channel  = "1.6"
 lazy_static    = "1.4"
+byteorder      = "1.5"
+
+# HDF5 dependencies - excluded on Windows due to build complexity
+[target.'cfg(not(windows))'.dependencies]
 hdf5-metno     = { version = "0.10.1", features = ["blosc-all"] }
 hdf5-metno-sys = "0.10.1"
-byteorder      = "1.5"
 
 # GStreamer for video processing
 gstreamer      = { version = "0.22", optional = true }

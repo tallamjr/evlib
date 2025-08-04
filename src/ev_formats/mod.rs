@@ -2,6 +2,7 @@
 // Handles reading and writing events from various file formats
 
 use crate::ev_core::{Event, Events};
+#[cfg(not(windows))]
 use hdf5_metno::File as H5File;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
@@ -68,7 +69,8 @@ pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 pub mod prophesee_ecf_codec;
 pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, PropheseeEvent};
 
-// Native HDF5 reader with ECF support
+// Native HDF5 reader with ECF support (disabled on Windows)
+#[cfg(not(windows))]
 pub mod hdf5_reader;
 
 // Polars support integrated directly into file readers
@@ -230,6 +232,7 @@ impl LoadConfig {
 /// # Arguments
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
+#[cfg(not(windows))]
 pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_metno::Result<Events> {
     // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
 
@@ -317,17 +320,20 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
 
             // This is a Prophesee HDF5 format - try multiple approaches
 
-            // Use our native Rust ECF decoder first - it now properly handles Prophesee format
-            info!("Attempting native Rust ECF decoder for {}", path);
-            match hdf5_reader::read_prophesee_hdf5_native(path) {
-                Ok(events) => {
-                    // Success message already printed by read_prophesee_hdf5_native()
-                    info!("Native ECF decoder succeeded with {} events", events.len());
-                    return Ok(events);
-                }
-                Err(e) => {
-                    warn!("Native ECF decoder failed: {}", e);
-                    // Native ECF decoder failed, will try Python fallback
+            #[cfg(not(windows))]
+            {
+                // Use our native Rust ECF decoder first - it now properly handles Prophesee format
+                info!("Attempting native Rust ECF decoder for {}", path);
+                match hdf5_reader::read_prophesee_hdf5_native(path) {
+                    Ok(events) => {
+                        // Success message already printed by read_prophesee_hdf5_native()
+                        info!("Native ECF decoder succeeded with {} events", events.len());
+                        return Ok(events);
+                    }
+                    Err(e) => {
+                        warn!("Native ECF decoder failed: {}", e);
+                        // Native ECF decoder failed, will try Python fallback
+                    }
                 }
             }
 
@@ -341,17 +347,26 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     }
                     Err(e) => {
                         error!("Python fallback failed: {}", e);
-                        // Try Rust ECF decoder as fallback
-                        match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
-                            Ok(events) => {
-                                info!("Rust ECF decoder succeeded");
-                                return Ok(events);
+                        #[cfg(not(windows))]
+                        {
+                            // Try Rust ECF decoder as fallback
+                            match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
+                                Ok(events) => {
+                                    info!("Rust ECF decoder succeeded");
+                                    return Ok(events);
+                                }
+                                Err(ecf_error) => {
+                                    error!("Rust ECF decoder failed: {}", ecf_error);
+                                    // Return the original Python error
+                                    return Err(e);
+                                }
                             }
-                            Err(ecf_error) => {
-                                error!("Rust ECF decoder failed: {}", ecf_error);
-                                // Return the original Python error
-                                return Err(e);
-                            }
+                        }
+                        #[cfg(windows)]
+                        {
+                            // HDF5 disabled on Windows, return the Python error
+                            error!("HDF5 disabled on Windows, cannot use Rust ECF decoder");
+                            return Err(e);
                         }
                     }
                 }
@@ -361,22 +376,32 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             {
                 info!("Python fallback not available - using native Rust ECF decoder only");
 
-                // Our native ECF decoder was already tried above, so if we get here it failed
-                // Try the old experimental approach as final fallback
-                match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
-                    Ok(events) => {
-                        info!("Rust ECF decoder succeeded");
-                        return Ok(events);
-                    }
-                    Err(ecf_error) => {
-                        error!("Rust ECF decoder failed: {}", ecf_error);
-                        warn!("evlib includes native ECF support and should handle this automatically. Please report as a bug if this error persists");
+                #[cfg(not(windows))]
+                {
+                    // Our native ECF decoder was already tried above, so if we get here it failed
+                    // Try the old experimental approach as final fallback
+                    match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
+                        Ok(events) => {
+                            info!("Rust ECF decoder succeeded");
+                            return Ok(events);
+                        }
+                        Err(ecf_error) => {
+                            error!("Rust ECF decoder failed: {}", ecf_error);
+                            warn!("evlib includes native ECF support and should handle this automatically. Please report as a bug if this error persists");
 
-                        return Err(hdf5_metno::Error::Internal(format!(
-                            "Prophesee ECF decoding failed: {}. evlib includes native ECF support - this should work automatically. Please report as a bug if this error persists.",
-                            ecf_error
-                        )));
+                            return Err(hdf5_metno::Error::Internal(format!(
+                                "Prophesee ECF decoding failed: {}. evlib includes native ECF support - this should work automatically. Please report as a bug if this error persists.",
+                                ecf_error
+                            )));
+                        }
                     }
+                }
+                #[cfg(windows)]
+                {
+                    error!("HDF5 disabled on Windows, cannot use Rust ECF decoder");
+                    return Err(hdf5_metno::Error::Internal(
+                        "HDF5 disabled on Windows - no decoding methods available".to_string(),
+                    ));
                 }
             }
         }
@@ -572,7 +597,7 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
 }
 
 /// Call Python fallback for Prophesee HDF5 format
-#[cfg(feature = "python")]
+#[cfg(all(feature = "python", not(windows)))]
 fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
     Python::with_gil(|py| {
         // Import the Python fallback module
@@ -689,6 +714,7 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
 }
 
 /// Try to decode Prophesee HDF5 data using our Rust ECF decoder
+#[cfg(not(windows))]
 fn try_rust_ecf_decoder(
     _cd_group: &hdf5_metno::Group,
     _events_dataset: &hdf5_metno::Dataset,
@@ -883,6 +909,7 @@ pub fn load_events_with_config(
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
+        #[cfg(not(windows))]
         EventFormat::HDF5 => {
             let mut events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
@@ -893,6 +920,11 @@ pub fn load_events_with_config(
             }
             Ok(events)
         }
+        #[cfg(windows)]
+        EventFormat::HDF5 => Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "HDF5 support is disabled on Windows due to build complexity.",
+        ))),
         EventFormat::Text => Ok(load_events_from_text(path, config)?),
         EventFormat::AEDAT1 | EventFormat::AEDAT2 | EventFormat::AEDAT3 | EventFormat::AEDAT4 => {
             // Use comprehensive AEDAT reader
@@ -1290,6 +1322,7 @@ pub mod python {
                     )
                     .collect()?
             }
+            #[cfg(not(windows))]
             EventFormat::HDF5 => {
                 // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
                 df.lazy()
@@ -1301,6 +1334,12 @@ pub mod python {
                             .cast(DataType::Int8),
                     )
                     .collect()?
+            }
+            #[cfg(windows)]
+            EventFormat::HDF5 => {
+                return Err(PolarsError::ComputeError(
+                    "HDF5 support is disabled on Windows due to build complexity.".into(),
+                ));
             }
             _ => {
                 // Text and other formats: Keep 0/1 encoding as-is, but ensure Int8 type
@@ -1550,6 +1589,7 @@ pub mod python {
     /// Save events to an HDF5 file
     #[pyfunction]
     #[pyo3(name = "save_events_to_hdf5")]
+    #[cfg(not(windows))]
     pub fn save_events_to_hdf5_py(
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
