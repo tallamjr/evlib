@@ -745,6 +745,6 @@ output.*
 output_example.*
 events.parquet
 
-models/
+python/evlib/models/weights
 
 libs/

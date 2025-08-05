@@ -34,6 +34,34 @@ if _torch_available:
     except ImportError as e:
         print(f"Warning: Could not import E2VID model: {e}")
 
+    try:
+        from .rvt import RVT, RVTModelConfig
+        from .rvt_backbone import RVTBackbone, RVTConfig
+        from .yolox_blocks import BaseConv, DWConv, CSPLayer, Focus, SPPBottleneck
+        from .yolox_fpn import PAFPN, YoloXFPN, create_yolox_fpn
+        from .yolox_head import YOLOXHead, postprocess
+
+        __all__.extend(
+            [
+                "RVT",
+                "RVTModelConfig",
+                "RVTBackbone",
+                "RVTConfig",
+                "BaseConv",
+                "DWConv",
+                "CSPLayer",
+                "Focus",
+                "SPPBottleneck",
+                "PAFPN",
+                "YoloXFPN",
+                "create_yolox_fpn",
+                "YOLOXHead",
+                "postprocess",
+            ]
+        )
+    except ImportError as e:
+        print(f"Warning: Could not import RVT/YOLOX models: {e}")
+
 if not _torch_available:
     print("Warning: PyTorch not available. Deep learning models will not be available.")
     print("Install PyTorch with: pip install torch")
