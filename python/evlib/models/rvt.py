@@ -242,9 +242,9 @@ class RVT(BaseModel, nn.Module):
                     print(f"  - {key}")
             if unexpected_keys:
                 print(f"Unexpected keys: {len(unexpected_keys)}")
-                # Show first few unexpected keys
-                print("First 10 unexpected keys:")
-                for key in sorted(unexpected_keys)[:10]:
+                # Show all unexpected keys to understand the mismatch
+                print("All unexpected keys:")
+                for key in sorted(unexpected_keys):
                     print(f"  - {key}")
 
             return  # Skip the old loading logic
@@ -341,9 +341,12 @@ class RVT(BaseModel, nn.Module):
         # Keep downsample_cf2cl naming to match checkpoint structure
         # Our model should now use downsample_cf2cl naming to match reference
 
-        # Step 5: Handle layer scaling parameters - keep original naming
-        # Checkpoint has ls1.gamma/ls2.gamma, not layer_scale1/layer_scale2
-        # Keep the original ls1/ls2 naming since that's what the checkpoint provides
+        # Step 5: Handle LayerScale parameters - remove .gamma suffix
+        # Checkpoint has ls1.gamma/ls2.gamma, our model expects ls1/ls2
+        if ".ls1.gamma" in converted_key:
+            converted_key = converted_key.replace(".ls1.gamma", ".ls1")
+        if ".ls2.gamma" in converted_key:
+            converted_key = converted_key.replace(".ls2.gamma", ".ls2")
 
         # Step 7: YOLOX head mapping
         if key.startswith("yolox_head."):

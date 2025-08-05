@@ -253,6 +253,7 @@ class PartitionAttention(nn.Module):
         drop_path: float = 0.0,
         norm_layer: nn.Module = nn.LayerNorm,
         skip_first_norm: bool = False,
+        init_values: Optional[float] = 1e-5,  # LayerScale init value
     ):
         super().__init__()
         self.partition_type = partition_type
@@ -264,6 +265,14 @@ class PartitionAttention(nn.Module):
         self.attn = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop
         )
+
+        # LayerScale parameters (ls1 for attention, ls2 for MLP)
+        if init_values is not None:
+            self.ls1 = nn.Parameter(init_values * torch.ones(dim))
+            self.ls2 = nn.Parameter(init_values * torch.ones(dim))
+        else:
+            self.ls1 = None
+            self.ls2 = None
 
         self.drop_path = nn.Identity() if drop_path <= 0.0 else nn.Dropout(drop_path)
         self.norm2 = norm_layer(dim)
@@ -315,11 +324,18 @@ class PartitionAttention(nn.Module):
             # Reverse partition
             x = grid_reverse(x_partitioned, grid_size, padded_H, padded_W, H, W)
 
-        # Residual connection
-        x = shortcut + self.drop_path(x)
+        # Residual connection with LayerScale
+        if self.ls1 is not None:
+            x = shortcut + self.drop_path(self.ls1 * x)
+        else:
+            x = shortcut + self.drop_path(x)
 
-        # MLP block
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        # MLP block with LayerScale
+        mlp_out = self.mlp(self.norm2(x))
+        if self.ls2 is not None:
+            x = x + self.drop_path(self.ls2 * mlp_out)
+        else:
+            x = x + self.drop_path(mlp_out)
 
         return x
 
@@ -339,6 +355,7 @@ class MaxViTBlock(nn.Module):
         attn_drop: float = 0.0,
         drop_path: float = 0.0,
         skip_first_norm: bool = False,
+        init_values: Optional[float] = 1e-5,  # LayerScale init value
     ):
         super().__init__()
 
@@ -353,6 +370,7 @@ class MaxViTBlock(nn.Module):
             attn_drop=attn_drop,
             drop_path=drop_path,
             skip_first_norm=skip_first_norm,
+            init_values=init_values,
         )
 
         self.grid_attn = PartitionAttention(
@@ -366,6 +384,7 @@ class MaxViTBlock(nn.Module):
             attn_drop=attn_drop,
             drop_path=drop_path,
             skip_first_norm=False,  # Always apply norm for grid attention
+            init_values=init_values,
         )
 
     def forward(self, x: Tensor) -> Tensor:

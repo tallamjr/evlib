@@ -44,6 +44,9 @@ class RVTConfig:
     attn_drop_rate: float = 0.0
     drop_path_rate: float = 0.0
 
+    # LayerScale configuration
+    init_values: Optional[float] = 1e-5  # LayerScale init value, None to disable
+
     # LSTM configuration
     lstm_kernel_size: int = 3
     dws_conv: bool = False
@@ -125,6 +128,7 @@ class RVTStage(nn.Module):
                 attn_drop=config.attn_drop_rate,
                 drop_path=config.drop_path_rate,
                 skip_first_norm=skip_first_norm,
+                init_values=config.init_values,
             )
             self.attention_blocks.append(block)
 
