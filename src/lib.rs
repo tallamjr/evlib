@@ -151,6 +151,34 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_submodule(&representations_submodule)?;
 
+    // Also add key representation functions to top-level module for convenience
+    #[cfg(feature = "python")]
+    {
+        m.add_function(wrap_pyfunction!(
+            ev_representations::python::create_stacked_histogram_py,
+            m
+        )?)?;
+        m.add_function(wrap_pyfunction!(
+            ev_representations::python::create_mixed_density_stack_py,
+            m
+        )?)?;
+        m.add_function(wrap_pyfunction!(
+            ev_representations::python::create_voxel_grid_py,
+            m
+        )?)?;
+
+        // Add clean aliases without _py suffix for top-level access
+        m.add(
+            "create_stacked_histogram",
+            m.getattr("create_stacked_histogram_py")?,
+        )?;
+        m.add(
+            "create_mixed_density_stack",
+            m.getattr("create_mixed_density_stack_py")?,
+        )?;
+        m.add("create_voxel_grid", m.getattr("create_voxel_grid_py")?)?;
+    }
+
     // Register ev_formats module as "formats" in Python - CORE WORKING FUNCTIONALITY
     let formats_submodule = PyModule::new(m.py(), "formats")?;
     // PyO3 0.25 API compatible bindings

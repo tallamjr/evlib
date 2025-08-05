@@ -13,98 +13,37 @@ A robust event camera processing library with Rust backend and Python bindings.
 
 ## Quick Start
 
-### Polars LazyFrames (High-Performance)
 ```python
 import evlib
 import polars as pl
 
 # Load events as Polars LazyFrame
-lf = evlib.load_events("path/to/your/data.h5")
+events = evlib.load_events("path/to/your/data.h5")
 
-# Fast filtering and analysis with Polars (lazy evaluation)
-filtered = lf.filter(
+# Fast filtering using Polars expressions
+filtered = events.filter(
     (pl.col("timestamp") > 0.1) &
     (pl.col("timestamp") < 0.2) &
     (pl.col("polarity") == 1)
 )
 
-# Or use high-level filtering functions
-filtered = evlib.filter_by_time(lf, t_start=0.1, t_end=0.2)
-filtered = evlib.filter_by_polarity(filtered, polarity=1)
+# Or use Rust filtering functions directly
+filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.2)
+filtered = evlib.filtering.filter_by_polarity(filtered, polarity=1)
 
-# Complete preprocessing pipeline
-processed = evlib.preprocess_events(
-    "path/to/your/data.h5",
-    t_start=0.1, t_end=0.5,
-    roi=(100, 500, 100, 400),
-    polarity=1,
-    remove_hot_pixels=True,
-    remove_noise=True
-)
-
-# Collect to DataFrame when needed
-df = processed.collect()
-
-# Direct access to Rust formats module if needed
-# x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
-```
-
-### Direct Rust Access (Advanced)
-```python
-import evlib
+# Create representations
+histogram = evlib.create_stacked_histogram(filtered, height=480, width=640)
 
 # Direct access to Rust formats module (returns NumPy arrays)
 x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
-
-# Create stacked histogram representation
-histogram = evlib.create_event_histogram(x, y, t, p, height=480, width=640)
 ```
 
-### Event Filtering (New)
-```python
-import evlib
+## Available Modules
 
-# Apply temporal and spatial filtering
-filtered_events = evlib.filter_by_time("path/to/data.h5", t_start=0.1, t_end=1.0)
-roi_events = evlib.filter_by_roi(filtered_events, x_min=100, x_max=500, y_min=100, y_max=400)
-
-# Complete preprocessing pipeline
-processed_events = evlib.preprocess_events(
-    "path/to/data.h5",
-    t_start=0.1, t_end=1.0,
-    roi=(100, 500, 100, 400),
-    polarity=1,
-    remove_hot_pixels=True,
-    remove_noise=True
-)
-
-# Use with representations
-histogram = evlib.create_stacked_histogram(processed_events, height=480, width=640)
-```
-
-## Available Functions
-
-### Data Loading Functions
-- `load_events()`: Load events as Polars LazyFrame (main function)
-- `formats.load_events()`: Direct Rust access returning NumPy arrays (advanced)
-- `detect_format()`: Automatic format detection
-- `save_events_to_hdf5()`: Save events in HDF5 format
-- `save_events_to_text()`: Save events as text
-
-### High-Performance Representation Functions
-- `create_stacked_histogram()`: Create stacked histogram representations (Polars-based)
-- `create_mixed_density_stack()`: Create mixed density event stacks (Polars-based)
-- `create_voxel_grid()`: Create voxel grid representations (Polars-based)
-- `preprocess_for_detection()`: High-level API for neural network preprocessing
-- `benchmark_vs_rvt()`: Performance comparison with PyTorch approaches
-
-### Event Filtering Functions
-- `filter_by_time()`: Filter events by time range (start/end times)
-- `filter_by_roi()`: Filter events by spatial region of interest
-- `filter_by_polarity()`: Filter events by polarity (positive/negative)
-- `filter_hot_pixels()`: Remove hot pixels using statistical detection
-- `filter_noise()`: Apply noise filtering (refractory period, etc.)
-- `preprocess_events()`: Complete preprocessing pipeline with all filters
+- `evlib.formats`: Data loading and format detection
+- `evlib.filtering`: High-performance event filtering
+- `evlib.representations`: Event-to-representation conversion
+- `evlib.core`: Core data structures and utilities
 
 """
 
@@ -208,35 +147,11 @@ except ImportError:
     models = None
 
 
-# Rust filtering functions are available via evlib.filtering submodule
-# They work with numpy arrays: evlib.filtering.filter_by_time(xs, ys, ts, ps, t_start, t_end)
-# For LazyFrame usage examples, see tests/test_ev_filtering_pandera.py
+# Representation functions are now available directly from Rust module
+# evlib.create_stacked_histogram() and evlib.representations.create_stacked_histogram()
+# evlib.create_mixed_density_stack() and evlib.representations.create_mixed_density_stack()
+# evlib.create_voxel_grid() and evlib.representations.create_voxel_grid()
 
-# Use Rust representations submodule (no Python representations.py)
-# Import individual functions from Rust submodules for convenience
-# Import from Rust representations submodule (functions have _py suffix)
-create_mixed_density_stack = representations.create_mixed_density_stack_py
-create_stacked_histogram = representations.create_stacked_histogram_py
-create_voxel_grid = representations.create_voxel_grid_py
-
-# These were in the Python version but not yet in Rust
-# preprocess_for_detection = representations.preprocess_for_detection
-# benchmark_vs_rvt = representations.benchmark_vs_rvt
-
-try:
-    from . import hdf5_prophesee
-except ImportError:
-    hdf5_prophesee = None
-
-try:
-    from . import ecf_decoder
-except ImportError:
-    ecf_decoder = None
-
-try:
-    from . import hdf5_diagnostic
-except ImportError:
-    hdf5_diagnostic = None
 
 try:
     from . import streaming_utils
@@ -344,25 +259,54 @@ def diagnose_hdf5(file_path=None):
     Args:
         file_path: Optional path to Prophesee HDF5 file to test
     """
+    print("HDF5 Plugin Diagnostic")
+    print("=" * 50)
+
+    # Check if hdf5plugin is available
     try:
-        from .hdf5_diagnostic import (
-            diagnose_hdf5_plugins,
-            setup_hdf5_plugins as diag_setup,
-            test_prophesee_file,
-            print_solutions,
-        )
+        import hdf5plugin
 
-        plugins_ok = diagnose_hdf5_plugins()
+        print("✓ hdf5plugin is installed")
+        print(f"  Version: {hdf5plugin.version}")
+        print(f"  Plugin path: {hdf5plugin.PLUGIN_PATH}")
 
-        if plugins_ok:
-            diag_setup()
-            if file_path:
-                test_prophesee_file(file_path)
-
-        print_solutions()
+        # Set up environment
+        os.environ["HDF5_PLUGIN_PATH"] = hdf5plugin.PLUGIN_PATH
+        if hasattr(hdf5plugin, "register"):
+            hdf5plugin.register()
+        print("✓ HDF5 plugins configured")
 
     except ImportError:
-        pass
+        print("✗ hdf5plugin not installed")
+        print("  Fix: pip install hdf5plugin")
+        return
+
+    # Check h5py
+    try:
+        import h5py
+
+        print(f"✓ h5py version: {h5py.version.version}")
+    except ImportError:
+        print("✗ h5py not installed")
+        print("  Fix: pip install h5py")
+        return
+
+    # Test file if provided
+    if file_path:
+        try:
+            with h5py.File(file_path, "r") as f:
+                if "CD" in f and "events" in f["CD"]:
+                    print(f"✓ Successfully opened Prophesee file: {file_path}")
+                    print(f"  Events: {len(f['CD']['events']):,}")
+                else:
+                    print(f"✓ Opened HDF5 file (not Prophesee format): {file_path}")
+        except Exception as e:
+            print(f"✗ Cannot read file: {e}")
+
+    print("\nFor Prophesee files, ensure:")
+    print("  1. pip install hdf5plugin h5py")
+    print("  2. Set HDF5_PLUGIN_PATH environment variable")
+    print("  3. Use evlib.setup_hdf5_plugins() before loading")
 
 
 def load_events(path, **kwargs):
@@ -447,159 +391,10 @@ if representations:
         ]
     )
 if filtering:
-    __all__.extend(
-        [
-            "filtering",
-            "filter_by_time",
-            "filter_by_roi",
-            "filter_by_polarity",
-            "filter_hot_pixels",
-            "filter_noise",
-            "preprocess_events",
-        ]
-    )
-
-    # Add convenience wrappers for filtering functions that accept file paths
-    def filter_by_time(events_or_path, t_start=None, t_end=None):
-        """Filter events by time range.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            t_start: Start time in seconds (None for no lower bound)
-            t_end: End time in seconds (None for no upper bound)
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-        return filtering.filter_by_time(events, t_start, t_end)
-
-    def filter_by_roi(events_or_path, x_min=None, x_max=None, y_min=None, y_max=None):
-        """Filter events by region of interest.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            x_min, x_max, y_min, y_max: ROI boundaries
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-        return filtering.filter_by_roi(events, x_min, x_max, y_min, y_max)
-
-    def filter_by_polarity(events_or_path, polarity):
-        """Filter events by polarity.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            polarity: Polarity value to keep (1 or -1)
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-        return filtering.filter_by_polarity(events, polarity)
-
-    def filter_hot_pixels(events_or_path, threshold_percentile=99.9):
-        """Filter hot pixels.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            threshold_percentile: Percentile threshold for hot pixel detection
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-        return filtering.filter_hot_pixels(events, threshold_percentile)
-
-    def filter_noise(
-        events_or_path, method="refractory", refractory_period_us=1000, hot_pixel_threshold=99.9
-    ):
-        """Filter noise events.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            method: Noise filtering method
-            refractory_period_us: Refractory period in microseconds
-            hot_pixel_threshold: Hot pixel threshold percentile
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-        return filtering.filter_noise(events, method, refractory_period_us, hot_pixel_threshold)
-
-    def preprocess_events(
-        events_or_path,
-        t_start=None,
-        t_end=None,
-        roi=None,
-        polarity=None,
-        remove_hot_pixels=False,
-        remove_noise=False,
-    ):
-        """Complete preprocessing pipeline.
-
-        Args:
-            events_or_path: Either a file path (str) or a Polars LazyFrame
-            t_start: Start time in seconds
-            t_end: End time in seconds
-            roi: Tuple of (x_min, x_max, y_min, y_max)
-            polarity: Polarity to keep (1 or -1)
-            remove_hot_pixels: Whether to remove hot pixels
-            remove_noise: Whether to apply noise filtering
-
-        Returns:
-            Polars LazyFrame with filtered events
-        """
-        if isinstance(events_or_path, str):
-            events = load_events(events_or_path)
-        else:
-            events = events_or_path
-
-        # Apply filters in sequence
-        if t_start is not None or t_end is not None:
-            events = filtering.filter_by_time(events, t_start, t_end)
-
-        if roi is not None:
-            x_min, x_max, y_min, y_max = roi
-            events = filtering.filter_by_roi(events, x_min, x_max, y_min, y_max)
-
-        if polarity is not None:
-            events = filtering.filter_by_polarity(events, polarity)
-
-        if remove_hot_pixels:
-            events = filtering.filter_hot_pixels(events)
-
-        if remove_noise:
-            events = filtering.filter_noise(events)
-
-        return events
+    __all__.append("filtering")
 
 
 if streaming_utils:
     __all__.append("streaming_utils")
-if hdf5_prophesee:
-    __all__.append("hdf5_prophesee")
-if ecf_decoder:
-    __all__.append("ecf_decoder")
-if hdf5_diagnostic:
-    __all__.append("hdf5_diagnostic")
 if pytorch:
     __all__.append("pytorch")

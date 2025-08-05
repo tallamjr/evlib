@@ -5,36 +5,15 @@ High-performance PyTorch dataloader and utilities for event camera data processi
 Showcases best practices for Polars → PyTorch integration with real event data.
 """
 
-import logging
-import time
-import numpy as np
 from pathlib import Path
+from torch.utils.data import IterableDataset, DataLoader
 from typing import Optional, Callable, Union, Dict, Any
+import logging
+import numpy as np
+import polars as pl
+import time
+import torch
 import warnings
-
-# Optional PyTorch import
-try:
-    import torch
-    from torch.utils.data import IterableDataset, DataLoader
-
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-
-    # Create mock classes for type hints
-    class IterableDataset:
-        pass
-
-    class DataLoader:
-        pass
-
-
-try:
-    import polars as pl
-
-    POLARS_AVAILABLE = True
-except ImportError:
-    POLARS_AVAILABLE = False
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -105,10 +84,6 @@ class PolarsDataset(IterableDataset):
             drop_last: Whether to drop incomplete batches
             seed: Random seed for shuffling
         """
-        if not TORCH_AVAILABLE:
-            raise ImportError("PyTorch is required for PolarsDataset. Install with: pip install torch")
-        if not POLARS_AVAILABLE:
-            raise ImportError("Polars is required for PolarsDataset. Install with: pip install polars")
 
         self.lazy_df = lazy_df
         self.batch_size = batch_size
@@ -557,9 +532,6 @@ def create_dataloader(
             # ... training loop
         ```
     """
-    if not TORCH_AVAILABLE:
-        raise ImportError("PyTorch is required. Install with: pip install torch")
-
     # Load data if path provided
     if isinstance(data_source, (str, Path)):
         if data_type == "rvt":
@@ -602,22 +574,3 @@ __all__ = [
     "create_basic_event_transform",
     "create_dataloader",
 ]
-
-
-def _check_dependencies():
-    """Check if required dependencies are available"""
-    missing = []
-    if not TORCH_AVAILABLE:
-        missing.append("torch")
-    if not POLARS_AVAILABLE:
-        missing.append("polars")
-
-    if missing:
-        warnings.warn(
-            f"evlib.pytorch requires additional dependencies: {', '.join(missing)}. "
-            f"Install with: pip install {' '.join(missing)}"
-        )
-
-
-# Check dependencies when module is imported
-_check_dependencies()
