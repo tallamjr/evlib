@@ -86,6 +86,42 @@ class UpsampleConvLayer(nn.Module):
         return out
 
 
+class TransposedConvLayer(nn.Module):
+    """Transposed convolution layer (matches pretrained model architecture)."""
+
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+    ):
+        super().__init__()
+
+        bias = False if norm == "BN" else True
+        self.transposed_conv2d = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, stride=2, padding=padding, output_padding=1, bias=bias
+        )
+
+        if activation is not None:
+            self.activation = getattr(torch, activation, "relu")
+        else:
+            self.activation = None
+
+        self.norm = norm
+        if norm == "BN":
+            self.norm_layer = nn.BatchNorm2d(out_channels)
+        elif norm == "IN":
+            self.norm_layer = nn.InstanceNorm2d(out_channels, track_running_stats=True)
+
+    def forward(self, x):
+        out = self.transposed_conv2d(x)
+
+        if self.norm in ["BN", "IN"]:
+            out = self.norm_layer(out)
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
+
+
 class ResidualBlock(nn.Module):
     """Residual block with two conv layers."""
 
@@ -133,7 +169,7 @@ class UNet(nn.Module):
         if use_upsample_conv:
             self.UpsampleLayer = UpsampleConvLayer
         else:
-            self.UpsampleLayer = nn.ConvTranspose2d
+            self.UpsampleLayer = TransposedConvLayer
 
         self.max_num_channels = self.base_num_channels * pow(2, self.num_encoders)
 
@@ -176,25 +212,24 @@ class UNet(nn.Module):
 
     def _build_decoders(self):
         """Build decoder layers."""
+        decoder_input_sizes = list(
+            reversed([self.base_num_channels * pow(2, i + 1) for i in range(self.num_encoders)])
+        )
+
         self.decoders = nn.ModuleList()
-        for i in range(self.num_encoders):
-            input_size = self.base_num_channels * pow(2, self.num_encoders - i)
+        for input_size in decoder_input_sizes:
+            # Apply skip connection logic to input size (matching reference implementation)
+            decoder_input_size = input_size if self.skip_type == "sum" else 2 * input_size
             output_size = input_size // 2
 
-            # Account for skip connections
-            if self.skip_type == "concat":
-                input_size = input_size * 2
-
             self.decoders.append(
-                self.UpsampleLayer(input_size, output_size, kernel_size=5, padding=2, norm=self.norm)
+                self.UpsampleLayer(decoder_input_size, output_size, kernel_size=5, padding=2, norm=self.norm)
             )
 
     def _build_prediction_layer(self):
         """Build final prediction layer."""
-        input_size = self.base_num_channels
-        if self.skip_type == "concat":
-            input_size = input_size * 2
-
+        # Apply skip connection logic to prediction layer input size (matching reference)
+        input_size = self.base_num_channels if self.skip_type == "sum" else 2 * self.base_num_channels
         self.pred = ConvLayer(input_size, self.num_output_channels, 1, activation=None, norm=self.norm)
 
     def _apply_skip_connection(self, x1, x2):
@@ -235,9 +270,10 @@ class UNet(nn.Module):
         for resblock in self.resblocks:
             x = resblock(x)
 
-        # Decoder with skip connections
+        # Decoder with skip connections (matching reference implementation)
         for i, decoder in enumerate(self.decoders):
             skip_idx = self.num_encoders - i - 1
+            # Apply skip connection BEFORE decoder (as in reference)
             x = decoder(self._apply_skip_connection(x, blocks[skip_idx]))
 
         # Final prediction with skip to head
@@ -259,9 +295,9 @@ class E2VID(BaseModel):
         config: Optional[ModelConfig] = None,
         pretrained: bool = False,
         skip_type: str = "sum",
-        num_encoders: int = 4,
-        num_residual_blocks: int = 2,
-        norm: Optional[str] = None,
+        num_encoders: int = 4,  # Original RPG E2VID default
+        num_residual_blocks: int = 2,  # Original RPG E2VID default
+        norm: Optional[str] = None,  # Original RPG E2VID default (None, not BN)
     ):
         """Initialize E2VID model.
 
@@ -327,22 +363,68 @@ class E2VID(BaseModel):
             else:
                 state_dict = checkpoint
 
-            # Check if we need to adjust model architecture to match pretrained weights
-            # Look at head weight shape to determine base_channels
+            # Detect architecture from pretrained weights
             head_weight_key = None
             for key in state_dict.keys():
                 if "head.conv2d.weight" in key or "head.weight" in key:
                     head_weight_key = key
                     break
 
+            # Count number of encoders from state dict
+            encoder_count = len(
+                [k for k in state_dict.keys() if "encoders." in k and "conv.conv2d.weight" in k]
+            )
+
+            # Detect base channels and architecture
+            architecture_changed = False
             if head_weight_key:
                 pretrained_base_channels = state_dict[head_weight_key].shape[0]
                 if pretrained_base_channels != self.config.base_channels:
                     print(
-                        f"Adjusting model architecture: base_channels {self.config.base_channels} → {pretrained_base_channels}"
+                        f"Adjusting base_channels: {self.config.base_channels} → {pretrained_base_channels}"
                     )
-                    # Rebuild model with correct architecture
                     self.config.base_channels = pretrained_base_channels
+                    architecture_changed = True
+
+            if encoder_count > 0 and encoder_count != self.num_encoders:
+                print(
+                    f"Adjusting num_encoders: {self.num_encoders} → {encoder_count} (pretrained model is 'lite' variant)"
+                )
+                self.num_encoders = encoder_count
+                architecture_changed = True
+
+            # Check for normalization layers
+            has_norm = any("norm_layer" in key for key in state_dict.keys())
+            if has_norm and self.norm is None:
+                print(
+                    "Detected normalization layers, enabling batch normalization (pretrained model uses BN)"
+                )
+                self.norm = "BN"
+                architecture_changed = True
+
+            # Check if pretrained model uses transposed convolutions
+            has_transposed_conv = any("transposed_conv2d" in key for key in state_dict.keys())
+            if has_transposed_conv:
+                print("Detected TransposedConv layers, adjusting architecture for pretrained compatibility")
+                # Rebuild with TransposedConvLayer for exact weight compatibility
+                architecture_changed = True
+
+            # Rebuild model if architecture changed
+            if architecture_changed:
+                # For pretrained models, use TransposedConvLayer to match weight structure exactly
+                if has_transposed_conv:
+                    self._model = UNet(
+                        num_input_channels=self.config.num_bins,
+                        num_output_channels=1,
+                        skip_type=self.skip_type,
+                        activation="sigmoid",
+                        num_encoders=self.num_encoders,
+                        base_num_channels=self.config.base_channels,
+                        num_residual_blocks=self.num_residual_blocks,
+                        norm=self.norm,
+                        use_upsample_conv=False,  # Use TransposedConvLayer for pretrained compatibility
+                    ).to(self._device)
+                else:
                     self._build_model()
 
             # The pretrained model uses 'unetrecurrent.' prefix, but our model doesn't
@@ -358,13 +440,18 @@ class E2VID(BaseModel):
                     # Skip recurrent block weights for now as our UNet doesn't have them
                     continue
                 elif new_key.startswith("encoders.") and ".conv." in new_key:
-                    # Map encoder conv weights
+                    # Map encoder conv weights: encoders.0.conv.conv2d.weight -> encoders.0.conv2d.weight
                     new_key = new_key.replace(".conv.", ".")
                 elif new_key.startswith("decoders.") and ".transposed_conv2d." in new_key:
                     # Map decoder weights - our model uses UpsampleConvLayer with .conv2d
                     new_key = new_key.replace(".transposed_conv2d.", ".conv2d.")
 
-                model_state_dict[new_key] = value
+                # Only include keys that match our model structure
+                if any(
+                    pattern in new_key
+                    for pattern in ["head.", "encoders.", "decoders.", "resblocks.", "pred."]
+                ):
+                    model_state_dict[new_key] = value
 
             # Try to load compatible weights
             missing_keys, unexpected_keys = self._model.load_state_dict(model_state_dict, strict=False)

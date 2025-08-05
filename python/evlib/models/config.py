@@ -34,7 +34,7 @@ class ModelConfig:
 
     in_channels: int = 5
     out_channels: int = 1
-    base_channels: int = 64
+    base_channels: int = 32
     num_layers: int = 4
     num_bins: int = 5
     use_gpu: bool = True
@@ -77,9 +77,10 @@ class ModelInfo:
 
 # Pre-defined configurations for common use cases
 CONFIGS = {
-    "default": ModelConfig(),
-    "high_res": ModelConfig(base_channels=128, num_layers=5),
-    "fast": ModelConfig(base_channels=32, num_layers=3),
+    "default": ModelConfig(),  # Now matches original E2VID: base_channels=32, num_layers=4
+    "lite": ModelConfig(base_channels=32, num_layers=3),  # Matches pretrained e2vid-lite.pth
+    "high_res": ModelConfig(base_channels=64, num_layers=5),  # Higher capacity variant
+    "fast": ModelConfig(base_channels=16, num_layers=3),  # Ultra-fast variant
     "temporal": ModelConfig(num_bins=10, extra_params={"use_lstm": True}),
     "spade": ModelConfig(extra_params={"use_skip_connections": True, "spade_layers": [2, 3]}),
     "ssl": ModelConfig(extra_params={"use_momentum": True, "temperature": 0.07}),

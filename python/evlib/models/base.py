@@ -2,7 +2,10 @@
 
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import polars
 
 from .config import ModelConfig
 import evlib
@@ -60,14 +63,14 @@ class BaseModel(ABC):
 
     def preprocess_events(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], Any],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int]:
         """Preprocess events into standard format.
 
         Args:
-            events: Either a structured array or tuple of arrays
+            events: Either a structured array, tuple of arrays, or Polars LazyFrame
             height: Image height
             width: Image width
 
@@ -82,8 +85,35 @@ class BaseModel(ABC):
             ys = events["y"]
             ts = events["t"]
             ps = events["p"]
+        elif hasattr(events, "collect") or hasattr(events, "columns"):
+            # Polars LazyFrame or DataFrame
+            try:
+                import polars as pl
+            except ImportError:
+                raise ImportError("Polars is required for LazyFrame/DataFrame input")
+
+            # Convert LazyFrame to DataFrame if needed
+            if hasattr(events, "collect"):
+                events_df = events.collect()
+            else:
+                events_df = events
+
+            # Extract arrays
+            xs = events_df["x"].to_numpy()
+            ys = events_df["y"].to_numpy()
+
+            # Handle timestamp conversion from Duration to seconds
+            if events_df["timestamp"].dtype == pl.Duration:
+                # Convert from microseconds to seconds
+                ts = events_df["timestamp"].to_numpy().astype(np.float64) / 1e6
+            else:
+                ts = events_df["timestamp"].to_numpy().astype(np.float64)
+
+            ps = events_df["polarity"].to_numpy()
         else:
-            raise ValueError("Events must be either a structured array or tuple of (x, y, t, p)")
+            raise ValueError(
+                "Events must be either a structured array, tuple of (x, y, t, p), or Polars LazyFrame/DataFrame"
+            )
 
         # Ensure correct dtypes
         xs = np.asarray(xs, dtype=np.int64)
@@ -118,7 +148,10 @@ class BaseModel(ABC):
         Returns:
             Voxel grid of shape (num_bins, height, width)
         """
-        import polars as pl
+        try:
+            import polars as pl
+        except ImportError:
+            raise ImportError("Polars is required for voxel grid creation")
 
         # Convert to Polars DataFrame for voxel grid creation
         events_df = pl.DataFrame(
