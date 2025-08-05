@@ -715,7 +715,7 @@ dkms.conf
 
 *.local.*
 
-tests/*.mp4
+*.mp4
 tests/*.png
 
 # Temporary Cargo config for Python linking
@@ -724,6 +724,7 @@ tests/*.png
 data/eTram
 
 data/etap
+data/dynamic*
 
 data/gen1_original
 data/gen1_processed_EVLIB
