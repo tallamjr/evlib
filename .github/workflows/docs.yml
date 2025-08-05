@@ -32,7 +32,7 @@ jobs:
           os: ubuntu-latest
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Install dependencies
         run: |

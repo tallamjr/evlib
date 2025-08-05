@@ -40,6 +40,37 @@ pub enum AugmentationError {
     InsufficientEvents(usize, usize),
 }
 
+// Manual Display implementation as fallback for Windows compatibility
+// Only used if thiserror derive macro fails (which happens on some Windows CI environments)
+#[cfg(windows)]
+impl fmt::Display for AugmentationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AugmentationError::InvalidConfig(msg) => write!(f, "Invalid configuration: {}", msg),
+            AugmentationError::ProcessingError(msg) => write!(f, "Processing error: {}", msg),
+            AugmentationError::InvalidSensorSize(w, h) => {
+                write!(f, "Invalid sensor size: width={}, height={}", w, h)
+            }
+            AugmentationError::InvalidProbability(p) => {
+                write!(f, "Invalid probability: {} (must be between 0 and 1)", p)
+            }
+            AugmentationError::InvalidTimeRange(start, end) => {
+                write!(f, "Invalid time range: start={}, end={}", start, end)
+            }
+            AugmentationError::InvalidSpatialBounds(x1, x2, y1, y2) => write!(
+                f,
+                "Invalid spatial bounds: x={}-{}, y={}-{}",
+                x1, x2, y1, y2
+            ),
+            AugmentationError::InsufficientEvents(req, avail) => write!(
+                f,
+                "Insufficient events for operation: required={}, available={}",
+                req, avail
+            ),
+        }
+    }
+}
+
 /// Trait for validatable configurations
 pub trait Validatable {
     /// Validate this configuration

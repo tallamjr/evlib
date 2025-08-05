@@ -75,7 +75,7 @@ jobs:
           os: ${{ matrix.os }}
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -144,7 +144,7 @@ jobs:
           os: ubuntu-latest
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -217,7 +217,7 @@ jobs:
           os: ubuntu-latest
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Install documentation dependencies
         run: |
