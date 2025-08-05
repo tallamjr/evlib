@@ -8,7 +8,42 @@ use crate::ev_core::Events;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::collections::HashMap;
+#[cfg(feature = "tracing")]
 use tracing::{debug, instrument, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 /// Polars column names (consistent across all filtering modules)
 pub const COL_X: &str = "x";
@@ -36,7 +71,7 @@ impl EventStats {
     ///
     /// This function leverages Polars' optimized aggregation functions to compute
     /// all statistics in a single pass, which is much faster than manual iteration.
-    #[instrument(skip(df))]
+    #[cfg_attr(feature = "tracing", instrument(skip(df)))]
     pub fn calculate_from_dataframe(df: LazyFrame) -> PolarsResult<Self> {
         let stats_df = df
             .select([
@@ -209,7 +244,7 @@ pub struct PixelStats {
 ///
 /// This function is much faster than the manual HashMap approach as it leverages
 /// Polars' optimized group operations and vectorized aggregations.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn calculate_pixel_stats_polars(df: LazyFrame) -> PolarsResult<DataFrame> {
     df.group_by([col(COL_X), col(COL_Y)])
         .agg([
@@ -334,13 +369,13 @@ fn calculate_pixel_stats_legacy(events: &Events) -> HashMap<(u16, u16), PixelSta
 }
 
 /// Sort DataFrame by timestamp using Polars operations
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn sort_events_by_time_polars(df: LazyFrame) -> PolarsResult<LazyFrame> {
     Ok(df.sort([COL_T], SortMultipleOptions::default()))
 }
 
 /// Check if events are sorted using Polars expressions
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn is_sorted_by_time_polars(df: LazyFrame) -> PolarsResult<bool> {
     let result = df
         .select([(col(COL_T) - col(COL_T).shift(lit(1)))
@@ -363,7 +398,7 @@ pub fn is_sorted_by_time_polars(df: LazyFrame) -> PolarsResult<bool> {
 ///
 /// This function uses Polars' vectorized operations to check for various
 /// data quality issues much faster than manual iteration.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn validate_events_polars(df: LazyFrame, strict: bool) -> PolarsResult<FilterResult<()>> {
     let validation_df = df
         .select([
@@ -532,7 +567,7 @@ pub mod performance {
     use super::*;
 
     /// Estimate optimal processing strategy based on data characteristics
-    #[instrument(skip(df))]
+    #[cfg_attr(feature = "tracing", instrument(skip(df)))]
     pub fn analyze_processing_requirements(df: &LazyFrame) -> PolarsResult<ProcessingStrategy> {
         let analysis = df
             .clone()

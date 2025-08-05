@@ -16,7 +16,14 @@ but integrated directly into evlib's Rust backend for optimal performance.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor};
+
+#[cfg(feature = "tracing")]
 use tracing::debug;
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
 
 /// Type alias for decoded coordinate data
 type CoordinateData = (Vec<u16>, Vec<u16>, Vec<i16>);

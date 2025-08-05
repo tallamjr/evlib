@@ -11,7 +11,19 @@ use crate::ev_augmentation::{
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Normal};
+
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -192,7 +204,7 @@ impl SingleAugmentation for SpatialJitterAugmentation {
 /// # Returns
 ///
 /// * `AugmentationResult<Events>` - Jittered events
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn spatial_jitter(
     events: &Events,
     config: &SpatialJitterAugmentation,
@@ -273,7 +285,7 @@ pub fn spatial_jitter(
 ///
 /// * `PolarsResult<LazyFrame>` - Jittered events as LazyFrame
 #[cfg(feature = "polars")]
-#[instrument(skip(df), fields(config = ?config))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
 pub fn apply_spatial_jitter_polars(
     df: LazyFrame,
     config: &SpatialJitterAugmentation,

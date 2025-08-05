@@ -16,7 +16,42 @@ use crate::ev_augmentation::{
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Uniform};
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_X, COL_Y};
@@ -238,7 +273,7 @@ impl SingleAugmentation for RandomCropAugmentation {
 }
 
 /// Apply center crop to events
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -289,7 +324,7 @@ pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> Augmenta
 }
 
 /// Apply random crop to events
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 

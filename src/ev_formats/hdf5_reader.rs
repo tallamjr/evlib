@@ -10,7 +10,21 @@ use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
 use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use std::io;
+
+#[cfg(feature = "tracing")]
 use tracing::{info, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
 
 /// Read raw chunk data from an HDF5 dataset
 /// This bypasses the HDF5 filter pipeline to get compressed chunks directly
@@ -95,9 +109,8 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                     Err(e) => {
                         chunks_failed_extraction += 1;
                         warn!(
-                            chunk_idx = chunk_idx,
-                            error = %e,
-                            "Failed to extract ECF payload from chunk"
+                            "Failed to extract ECF payload from chunk {}: {}",
+                            chunk_idx, e
                         );
                         continue; // Skip this chunk and move to the next one
                     }
@@ -143,11 +156,7 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                     }
                     Err(e) => {
                         chunks_failed_decoding += 1;
-                        warn!(
-                            chunk_idx = chunk_idx,
-                            error = %e,
-                            "Failed to decode ECF chunk"
-                        );
+                        warn!("Failed to decode ECF chunk {}: {}", chunk_idx, e);
                         continue;
                     }
                 }
@@ -164,11 +173,7 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                     )));
                 }
                 // For subsequent chunks, continue processing
-                warn!(
-                    chunk_idx = chunk_idx,
-                    error = %e,
-                    "Failed to read compressed chunk"
-                );
+                warn!("Failed to read compressed chunk {}: {}", chunk_idx, e);
             }
         }
 

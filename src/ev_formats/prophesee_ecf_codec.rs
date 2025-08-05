@@ -11,7 +11,21 @@ written in Rust for seamless integration with evlib.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor, Read, Write};
+
+#[cfg(feature = "tracing")]
 use tracing::{debug, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
 
 /// Maximum number of events that can be processed in one chunk (official ECF specification)
 const MAX_BUFFER_SIZE: usize = 65535;
@@ -360,7 +374,7 @@ impl PropheseeECFDecoder {
             _ => {
                 // Unknown delta_bits, try the old fallback logic
                 if self.debug {
-                    warn!(delta_bits, "Unknown delta_bits value in ECF decoder");
+                    warn!("Unknown delta_bits value in ECF decoder: {}", delta_bits);
                 }
             }
         }
@@ -374,10 +388,7 @@ impl PropheseeECFDecoder {
             let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
             if remaining_bytes < 1 {
                 if self.debug {
-                    warn!(
-                        remaining_events = num_events - events_decoded,
-                        "ECF: No more timestamp data, using sequential fallback"
-                    );
+                    warn!("ECF: No more timestamp data, using sequential fallback. Remaining events: {}", num_events - events_decoded);
                 }
                 // Fill remaining with sequential timestamps
                 for i in events_decoded..num_events {

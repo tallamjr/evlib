@@ -8,7 +8,27 @@ use hdf5_metno::File as H5File;
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
+#[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};

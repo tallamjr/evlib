@@ -23,7 +23,25 @@ use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
 use polars::prelude::*;
 use std::collections::HashMap;
+#[cfg(feature = "tracing")]
 use tracing::{debug, instrument, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 // Use consistent column names from utils
 use crate::ev_filtering::utils::{COL_POLARITY, COL_T, COL_X, COL_Y};
@@ -821,7 +839,7 @@ impl SingleFilter for PolarityFilter {
 /// let filter = PolarityFilter::positive_only();
 /// let filtered = apply_polarity_filter(events_df, &filter)?;
 /// ```
-#[instrument(skip(df), fields(filter = ?filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_polarity_filter(df: LazyFrame, filter: &PolarityFilter) -> PolarsResult<LazyFrame> {
     debug!("Applying polarity filter: {:?}", filter);
 
@@ -853,7 +871,7 @@ pub fn apply_polarity_filter(df: LazyFrame, filter: &PolarityFilter) -> PolarsRe
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn filter_by_polarity_polars(df: LazyFrame, positive: bool) -> PolarsResult<LazyFrame> {
     let expr = if positive {
         col(COL_POLARITY).gt(lit(0))
@@ -890,7 +908,7 @@ pub struct PolarityStats {
 
 impl PolarityStats {
     /// Calculate polarity statistics using Polars aggregations
-    #[instrument(skip(df))]
+    #[cfg_attr(feature = "tracing", instrument(skip(df)))]
     pub fn calculate_from_dataframe(df: LazyFrame) -> PolarsResult<Self> {
         let stats_df = df
             .select([
@@ -1019,7 +1037,7 @@ impl std::fmt::Display for PolarityStats {
 ///
 /// This function uses Polars' shift() and window operations to efficiently
 /// identify events that alternate in polarity with minimum time intervals.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn apply_alternating_polarity_filter_polars(
     df: LazyFrame,
     min_interval_us: f64,
@@ -1048,7 +1066,7 @@ pub fn apply_alternating_polarity_filter_polars(
 ///
 /// This function uses Polars aggregations to check polarity balance in
 /// spatial and temporal neighborhoods efficiently using vectorized operations.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn apply_balanced_polarity_filter_polars(
     df: LazyFrame,
     radius: u16,
@@ -1091,7 +1109,7 @@ pub fn apply_balanced_polarity_filter_polars(
 ///
 /// This function computes various polarity statistics and patterns
 /// using efficient Polars aggregations and window functions.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn analyze_polarity_patterns_polars(df: LazyFrame) -> PolarsResult<DataFrame> {
     // Sort by time first for pattern analysis
     let sorted_df = df.sort([COL_T], SortMultipleOptions::default());
@@ -1242,7 +1260,7 @@ fn analyze_polarity_patterns_legacy(events: &Events) -> FilterResult<HashMap<Str
 ///
 /// This function splits events into positive and negative groups using
 /// efficient Polars filtering operations.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn separate_polarities_polars(df: LazyFrame) -> PolarsResult<(LazyFrame, LazyFrame)> {
     let positive_df = df.clone().filter(col(COL_POLARITY).gt(lit(0)));
     let negative_df = df.filter(col(COL_POLARITY).eq(lit(0)));

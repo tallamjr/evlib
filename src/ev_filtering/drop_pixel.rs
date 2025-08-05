@@ -38,7 +38,42 @@ use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
 use polars::prelude::*;
 use std::collections::HashSet;
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 /// Polars column names for event data
 pub const COL_X: &str = "x";
@@ -471,7 +506,7 @@ impl SingleFilter for DropPixelFilter {
 /// let filter = DropPixelFilter::exclude(bad_pixels);
 /// let filtered = apply_drop_pixel_filter(events_df, &filter)?;
 /// ```
-#[instrument(skip(df), fields(filter = ?filter.description()))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter.description())))]
 pub fn apply_drop_pixel_filter(df: LazyFrame, filter: &DropPixelFilter) -> PolarsResult<LazyFrame> {
     debug!("Applying drop pixel filter: {:?}", filter.description());
 
@@ -541,7 +576,7 @@ pub fn apply_drop_pixel_filter(df: LazyFrame, filter: &DropPixelFilter) -> Polar
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn filter_excluded_pixels(
     df: LazyFrame,
     excluded_pixels: &HashSet<(u16, u16)>,
@@ -587,7 +622,7 @@ pub fn filter_excluded_pixels(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn filter_included_pixels(
     df: LazyFrame,
     included_pixels: &HashSet<(u16, u16)>,
@@ -814,7 +849,7 @@ pub fn create_sensor_mask(
 /// # Returns
 ///
 /// DataFrame containing per-pixel statistics
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn get_pixel_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
     df.group_by([col(COL_X), col(COL_Y)])
         .agg([

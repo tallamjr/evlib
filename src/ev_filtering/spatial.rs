@@ -37,7 +37,30 @@ use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
 use polars::prelude::*;
 use std::collections::HashSet;
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 /// Polars column names for event data (consistent with temporal.rs and utils.rs)
 pub const COL_X: &str = "x";
@@ -1082,7 +1105,7 @@ impl SingleFilter for SpatialFilter {
 /// let filter = SpatialFilter::roi(100, 200, 150, 250);
 /// let filtered = apply_spatial_filter(events_df, &filter)?;
 /// ```
-#[instrument(skip(df), fields(filter = ?filter.description()))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter.description())))]
 pub fn apply_spatial_filter(df: LazyFrame, filter: &SpatialFilter) -> PolarsResult<LazyFrame> {
     debug!("Applying spatial filter: {}", filter.description());
 
@@ -1114,7 +1137,7 @@ pub fn apply_spatial_filter(df: LazyFrame, filter: &SpatialFilter) -> PolarsResu
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df, filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df, filter)))]
 fn apply_pixel_based_filter_polars(
     df: LazyFrame,
     filter: &SpatialFilter,
@@ -1249,7 +1272,7 @@ fn apply_pixel_based_filter_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn filter_roi_polars(
     df: LazyFrame,
     min_x: u16,
@@ -1275,7 +1298,7 @@ pub fn filter_roi_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn filter_circular_roi_polars(
     df: LazyFrame,
     center_x: u16,
@@ -1298,7 +1321,7 @@ pub fn filter_circular_roi_polars(
 /// # Returns
 ///
 /// DataFrame containing spatial statistics
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn get_spatial_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
     df.select([
         col(COL_X).min().alias("min_x"),
@@ -1334,7 +1357,7 @@ pub fn get_spatial_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
 /// # Returns
 ///
 /// DataFrame with spatial bins and event counts
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn create_spatial_histogram(
     df: LazyFrame,
     bin_size_x: u16,
@@ -1381,7 +1404,7 @@ pub fn create_spatial_histogram(
 /// # Returns
 ///
 /// DataFrame containing hotspot locations and statistics
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn find_spatial_hotspots_polars(
     df: LazyFrame,
     grid_size: u16,
@@ -1424,7 +1447,7 @@ pub fn find_spatial_hotspots_polars(
 ///
 /// This function divides events into multiple spatial regions using efficient
 /// Polars operations, which is useful for parallel processing or region-specific analysis.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn split_by_spatial_grid_polars(
     df: LazyFrame,
     grid_width: u16,
@@ -1464,7 +1487,7 @@ pub fn split_by_spatial_grid_polars(
 ///
 /// This function creates a DataFrame indicating which pixels have generated events,
 /// which is useful for hot pixel detection and spatial analysis.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn create_pixel_mask_polars(
     df: LazyFrame,
     _sensor_width: u16,
@@ -1480,7 +1503,7 @@ pub fn create_pixel_mask_polars(
 ///
 /// This function groups nearby events into spatial clusters using efficient
 /// Polars operations, which is useful for object detection and spatial analysis.
-#[instrument(skip(df))]
+#[cfg_attr(feature = "tracing", instrument(skip(df)))]
 pub fn find_spatial_clusters_polars(
     df: LazyFrame,
     cluster_distance: u16,

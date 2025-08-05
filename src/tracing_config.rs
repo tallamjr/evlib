@@ -3,7 +3,40 @@
 //! This module provides utilities for configuring structured logging using the `tracing` crate.
 //! evlib uses tracing for all internal logging, allowing users to control verbosity and output format.
 
+#[cfg(feature = "tracing")]
 use tracing_subscriber::{filter::EnvFilter, fmt, prelude::*};
+
+// Fallback implementations when tracing is disabled
+#[cfg(not(feature = "tracing"))]
+pub fn init() {
+    // No-op when tracing is disabled
+}
+
+#[cfg(not(feature = "tracing"))]
+pub fn init_debug() {
+    // No-op when tracing is disabled
+}
+
+#[cfg(not(feature = "tracing"))]
+pub fn init_with_filter(_filter: &str) {
+    // No-op when tracing is disabled
+}
+
+#[cfg(not(feature = "tracing"))]
+pub fn init_test() {
+    // No-op when tracing is disabled
+}
+
+#[cfg(not(feature = "tracing"))]
+pub mod examples {
+    pub fn init_production() {
+        // No-op when tracing is disabled
+    }
+
+    pub fn init_development() {
+        // No-op when tracing is disabled
+    }
+}
 
 /// Initialize tracing with default configuration
 ///
@@ -25,6 +58,7 @@ use tracing_subscriber::{filter::EnvFilter, fmt, prelude::*};
 /// // RUST_LOG=evlib=debug cargo run    # Enable debug logging for evlib
 /// // RUST_LOG=evlib=warn cargo run     # Only show warnings and errors
 /// ```
+#[cfg(feature = "tracing")]
 pub fn init() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         // Default: INFO level for evlib, WARN for everything else
@@ -59,6 +93,7 @@ pub fn init() {
 /// // Enable debug logging
 /// tracing_config::init_debug();
 /// ```
+#[cfg(feature = "tracing")]
 pub fn init_debug() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         // Debug level for evlib, INFO for everything else
@@ -100,6 +135,7 @@ pub fn init_debug() {
 /// // Specific module debugging
 /// tracing_config::init_with_filter("evlib::ev_processing=debug,evlib::ev_formats=info");
 /// ```
+#[cfg(feature = "tracing")]
 pub fn init_with_filter(filter: &str) {
     let filter = EnvFilter::new(filter);
 
@@ -137,6 +173,7 @@ pub fn init_with_filter(filter: &str) {
 ///     }
 /// }
 /// ```
+#[cfg(feature = "tracing")]
 pub fn init_test() {
     let _ = tracing_subscriber::registry()
         .with(fmt::layer().compact().with_target(false).with_test_writer())
@@ -145,6 +182,7 @@ pub fn init_test() {
 }
 
 /// Common logging examples and patterns
+#[cfg(feature = "tracing")]
 pub mod examples {
     /// Example logging configurations for different use cases
     use tracing_subscriber::prelude::*;
@@ -155,6 +193,7 @@ pub mod examples {
     /// - JSON formatted logs for structured parsing
     /// - INFO level for application logs
     /// - WARN level for dependencies
+    #[cfg(feature = "tracing")]
     pub fn init_production() {
         use tracing_subscriber::{fmt, EnvFilter};
 
@@ -179,6 +218,7 @@ pub mod examples {
     /// - Pretty-printed output with colors
     /// - DEBUG level for evlib
     /// - File/line information included
+    #[cfg(feature = "tracing")]
     pub fn init_development() {
         use tracing_subscriber::{fmt, EnvFilter};
 
@@ -212,6 +252,7 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "init")]
     pub fn init_py() -> PyResult<()> {
+        #[cfg(feature = "tracing")]
         crate::tracing_config::init();
         Ok(())
     }
@@ -224,6 +265,7 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "init_debug")]
     pub fn init_debug_py() -> PyResult<()> {
+        #[cfg(feature = "tracing")]
         crate::tracing_config::init_debug();
         Ok(())
     }
@@ -239,6 +281,7 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "init_with_filter")]
     pub fn init_with_filter_py(filter: &str) -> PyResult<()> {
+        #[cfg(feature = "tracing")]
         crate::tracing_config::init_with_filter(filter);
         Ok(())
     }
@@ -251,6 +294,7 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "init_production")]
     pub fn init_production_py() -> PyResult<()> {
+        #[cfg(feature = "tracing")]
         crate::tracing_config::examples::init_production();
         Ok(())
     }
@@ -263,17 +307,19 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "init_development")]
     pub fn init_development_py() -> PyResult<()> {
+        #[cfg(feature = "tracing")]
         crate::tracing_config::examples::init_development();
         Ok(())
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tracing"))]
 mod tests {
     use super::*;
     use tracing::{debug, error, info, warn};
 
     #[test]
+    #[cfg(feature = "tracing")]
     fn test_tracing_initialization() {
         // Test that we can initialize tracing without panicking
         init_test();
@@ -286,6 +332,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tracing")]
     fn test_structured_logging() {
         init_test();
 

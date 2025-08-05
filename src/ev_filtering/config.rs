@@ -6,6 +6,16 @@
 use std::error::Error;
 use std::fmt;
 
+#[cfg(feature = "tracing")]
+use tracing::warn;
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
 use crate::ev_filtering::{
     DenoiseFilter, DownsamplingFilter, DropPixelFilter, HotPixelFilter, PolarityFilter,
     SingleFilter, SpatialFilter, TemporalFilter,
@@ -607,15 +617,13 @@ impl FilterConfig {
             (&self.temporal_filter, &self.downsampling_filter)
         {
             // Warn about potential issues, but don't fail validation
-            tracing::warn!(
-                "Temporal filtering followed by downsampling may produce unexpected results"
-            );
+            warn!("Temporal filtering followed by downsampling may produce unexpected results");
         }
 
         // Validate memory limit is reasonable
         if self.memory_limit > 0 && self.memory_limit < 1024 * 1024 {
             // Less than 1MB
-            tracing::warn!(
+            warn!(
                 "Memory limit of {} bytes is very low and may cause performance issues",
                 self.memory_limit
             );
@@ -623,7 +631,7 @@ impl FilterConfig {
 
         // Check for potentially conflicting parallel and chunk settings
         if !self.enable_parallel && self.chunk_size > 1_000_000 {
-            tracing::warn!(
+            warn!(
                 "Large chunk size ({}) with parallel processing disabled may cause memory issues",
                 self.chunk_size
             );

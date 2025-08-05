@@ -8,7 +8,42 @@ use crate::ev_augmentation::{
 };
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_POLARITY, COL_T};
@@ -85,7 +120,7 @@ impl Validatable for TimeReversalAugmentation {
 }
 
 impl SingleAugmentation for TimeReversalAugmentation {
-    #[instrument(skip(events), level = "debug")]
+    #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         if events.is_empty() {
             return Ok(events.clone());
@@ -166,7 +201,7 @@ impl SingleAugmentation for TimeReversalAugmentation {
 /// # Returns
 ///
 /// * `AugmentationResult<Events>` - Time-reversed events
-#[instrument(skip(events), level = "debug")]
+#[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
 pub fn time_reversal(
     events: &Events,
     config: &TimeReversalAugmentation,
@@ -176,7 +211,7 @@ pub fn time_reversal(
 
 /// Apply time reversal using Polars operations
 #[cfg(feature = "polars")]
-#[instrument(skip(df), level = "debug")]
+#[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
 pub fn apply_time_reversal_polars(
     df: LazyFrame,
     config: &TimeReversalAugmentation,

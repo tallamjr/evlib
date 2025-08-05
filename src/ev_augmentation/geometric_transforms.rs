@@ -8,7 +8,42 @@ use crate::ev_augmentation::{
 };
 use crate::ev_core::{Event, Events};
 use rand::{Rng, SeedableRng};
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_POLARITY, COL_X, COL_Y};
@@ -131,7 +166,7 @@ impl Validatable for GeometricTransformAugmentation {
 }
 
 impl SingleAugmentation for GeometricTransformAugmentation {
-    #[instrument(skip(events), level = "debug")]
+    #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         if events.is_empty() {
             return Ok(events.clone());
@@ -201,7 +236,7 @@ impl SingleAugmentation for GeometricTransformAugmentation {
 /// # Returns
 ///
 /// * `AugmentationResult<Events>` - Transformed events
-#[instrument(skip(events), level = "debug")]
+#[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
 pub fn geometric_transforms(
     events: &Events,
     config: &GeometricTransformAugmentation,
@@ -295,7 +330,7 @@ pub fn geometric_transforms(
 
 /// Apply geometric transforms using Polars operations
 #[cfg(feature = "polars")]
-#[instrument(skip(df), level = "debug")]
+#[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
 pub fn apply_geometric_transforms_polars(
     df: LazyFrame,
     config: &GeometricTransformAugmentation,

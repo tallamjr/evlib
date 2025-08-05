@@ -36,7 +36,42 @@ use crate::ev_core::{Event, Events};
 use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{utils, FilterError, FilterResult, SingleFilter};
 use polars::prelude::*;
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 /// Polars column names for event data (consistent across all filtering modules)
 pub const COL_X: &str = "x";
@@ -554,7 +589,7 @@ pub fn apply_denoise_filter(events: &Events, filter: &DenoiseFilter) -> FilterRe
 /// # Returns
 ///
 /// Filtered LazyFrame with refractory period constraints applied
-#[instrument(skip(df), fields(filter = ?filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_refractory_filter_polars(
     df: LazyFrame,
     filter: &RefractoryFilter,
@@ -634,7 +669,7 @@ fn apply_refractory_period_filter(
 /// # Returns
 ///
 /// Filtered LazyFrame with temporal correlation constraints applied
-#[instrument(skip(df), fields(filter = ?filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_temporal_correlation_filter_polars(
     df: LazyFrame,
     filter: &TemporalCorrelationFilter,
@@ -752,7 +787,7 @@ fn apply_temporal_correlation_filter(
 /// # Returns
 ///
 /// Filtered LazyFrame with spatial-temporal correlation constraints applied
-#[instrument(skip(df), fields(filter = ?filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_spatial_temporal_filter_polars(
     df: LazyFrame,
     filter: &SpatialTemporalFilter,
@@ -907,7 +942,7 @@ fn apply_spatial_temporal_filter(
 /// # Returns
 ///
 /// Filtered LazyFrame with low-activity pixels removed
-#[instrument(skip(df), fields(threshold = threshold_events_per_sec))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(threshold = threshold_events_per_sec)))]
 pub fn apply_background_activity_filter_polars(
     df: LazyFrame,
     threshold_events_per_sec: f64,
@@ -1016,7 +1051,7 @@ fn apply_background_activity_filter(
 /// # Returns
 ///
 /// Filtered LazyFrame with multi-scale denoising applied
-#[instrument(skip(df), fields(filter = ?filter))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_multi_scale_filter_polars(
     df: LazyFrame,
     filter: &DenoiseFilter,
@@ -1266,7 +1301,7 @@ fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
 ///     .filter(col("t").gt(lit(start_time)))
 ///     .select([col("*")]);
 /// ```
-#[instrument(skip(df), fields(method = ?filter.method))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(method = ?filter.method)))]
 pub fn apply_denoise_filter_polars(
     df: LazyFrame,
     filter: &DenoiseFilter,

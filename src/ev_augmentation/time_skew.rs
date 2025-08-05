@@ -12,7 +12,42 @@ use rand::{Rng, SeedableRng};
 #[cfg(feature = "polars")]
 use crate::ev_augmentation::COL_T;
 use rand_distr::{Distribution, Uniform};
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -222,7 +257,7 @@ impl SingleAugmentation for TimeSkewAugmentation {
 /// # Returns
 ///
 /// * `AugmentationResult<Events>` - Skewed events
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn time_skew(events: &Events, config: &TimeSkewAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -297,7 +332,7 @@ pub fn time_skew(events: &Events, config: &TimeSkewAugmentation) -> Augmentation
 ///
 /// * `PolarsResult<LazyFrame>` - Skewed events as LazyFrame
 #[cfg(feature = "polars")]
-#[instrument(skip(df), fields(config = ?config))]
+#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
 pub fn apply_time_skew_polars(
     df: LazyFrame,
     config: &TimeSkewAugmentation,

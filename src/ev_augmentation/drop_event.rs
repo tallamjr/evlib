@@ -13,7 +13,42 @@ use crate::ev_filtering::downsampling::DownsamplingFilter;
 use rand::SeedableRng;
 
 use rand_distr::{Distribution, Uniform};
+#[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($args:tt)*) => {
+        eprintln!("[WARN] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! trace {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! error {
+    ($($args:tt)*) => {
+        eprintln!("[ERROR] {}", format!($($args)*))
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! instrument {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -273,7 +308,7 @@ pub fn drop_by_probability(events: &Events, probability: f64) -> AugmentationRes
 }
 
 /// Drop events within a time interval
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -354,7 +389,7 @@ pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> Augmentat
 }
 
 /// Drop events within a spatial area
-#[instrument(skip(events), fields(n_events = events.len()))]
+#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
