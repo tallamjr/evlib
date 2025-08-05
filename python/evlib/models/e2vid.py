@@ -273,14 +273,21 @@ class E2VID(BaseModel):
             num_residual_blocks: Number of residual blocks in bottleneck
             norm: Normalization type ('BN', 'IN', or None)
         """
-        super().__init__(config, pretrained)
-        self._model = None
+        # Initialize config first
+        self.config = config or ModelConfig()
+        self.pretrained = pretrained
+
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.skip_type = skip_type
         self.num_encoders = num_encoders
         self.num_residual_blocks = num_residual_blocks
         self.norm = norm
+        self._model = None
+
+        # Build model, then load pretrained weights if requested
         self._build_model()
+        if pretrained:
+            self._load_pretrained_weights()
 
     def _build_model(self):
         """Build the E2VID model."""
@@ -298,9 +305,83 @@ class E2VID(BaseModel):
 
     def _load_pretrained_weights(self):
         """Load pretrained weights."""
-        # Placeholder for pretrained weight loading
-        print("Warning: Pretrained weight loading not yet implemented.")
-        print("Using randomly initialized weights.")
+
+        # Look for weights in the models/weights directory
+        weights_dir = Path(__file__).parent / "weights"
+        weight_files = list(weights_dir.glob("*.pth*"))
+
+        if not weight_files:
+            print("Warning: No pretrained weights found in models/weights/")
+            print("Using randomly initialized weights.")
+            return
+
+        # Use the first weight file found
+        weight_file = weight_files[0]
+        print(f"Loading pretrained weights from {weight_file.name}")
+
+        try:
+            checkpoint = torch.load(weight_file, map_location=self._device)
+
+            if "state_dict" in checkpoint:
+                state_dict = checkpoint["state_dict"]
+            else:
+                state_dict = checkpoint
+
+            # Check if we need to adjust model architecture to match pretrained weights
+            # Look at head weight shape to determine base_channels
+            head_weight_key = None
+            for key in state_dict.keys():
+                if "head.conv2d.weight" in key or "head.weight" in key:
+                    head_weight_key = key
+                    break
+
+            if head_weight_key:
+                pretrained_base_channels = state_dict[head_weight_key].shape[0]
+                if pretrained_base_channels != self.config.base_channels:
+                    print(
+                        f"Adjusting model architecture: base_channels {self.config.base_channels} → {pretrained_base_channels}"
+                    )
+                    # Rebuild model with correct architecture
+                    self.config.base_channels = pretrained_base_channels
+                    self._build_model()
+
+            # The pretrained model uses 'unetrecurrent.' prefix, but our model doesn't
+            # We need to map the keys appropriately
+            model_state_dict = {}
+
+            for key, value in state_dict.items():
+                # Remove 'unetrecurrent.' prefix if present
+                new_key = key.replace("unetrecurrent.", "")
+
+                # Map encoder keys (our model structure may differ)
+                if new_key.startswith("encoders.") and ".recurrent_block." in new_key:
+                    # Skip recurrent block weights for now as our UNet doesn't have them
+                    continue
+                elif new_key.startswith("encoders.") and ".conv." in new_key:
+                    # Map encoder conv weights
+                    new_key = new_key.replace(".conv.", ".")
+                elif new_key.startswith("decoders.") and ".transposed_conv2d." in new_key:
+                    # Map decoder weights - our model uses UpsampleConvLayer with .conv2d
+                    new_key = new_key.replace(".transposed_conv2d.", ".conv2d.")
+
+                model_state_dict[new_key] = value
+
+            # Try to load compatible weights
+            missing_keys, unexpected_keys = self._model.load_state_dict(model_state_dict, strict=False)
+
+            loaded_keys = len(model_state_dict) - len(unexpected_keys)
+            total_model_keys = len(self._model.state_dict())
+
+            if loaded_keys > total_model_keys * 0.5:  # At least 50% compatibility
+                print(
+                    f"✓ Pretrained weights loaded successfully ({loaded_keys}/{total_model_keys} parameters)"
+                )
+            else:
+                print(f"⚠ Partial weight loading ({loaded_keys}/{total_model_keys} parameters)")
+
+        except Exception as e:
+            print(f"Error loading pretrained weights: {e}")
+            print("Using randomly initialized weights.")
 
     def reconstruct(
         self,
