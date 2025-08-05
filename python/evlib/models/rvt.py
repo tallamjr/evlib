@@ -313,7 +313,7 @@ class RVT(BaseModel, nn.Module):
 
         # Step 1: Basic module name conversions
         converted_key = converted_key.replace("att_blocks", "attention_blocks")
-        
+
         # Step 2: Handle attention parameters that need attn. prefix BEFORE converting att_grid
         # Map attention parameters (qkv, proj) to be under attn module
         if ".att_grid." in converted_key:
@@ -322,11 +322,11 @@ class RVT(BaseModel, nn.Module):
             for param in attn_params:
                 if f".{param}" in converted_key:
                     converted_key = converted_key.replace(f".att_grid.{param}", f".att_grid.attn.{param}")
-        
+
         # Step 2b: Now convert module names
         converted_key = converted_key.replace("att_grid", "grid_attn")
         converted_key = converted_key.replace("att_window", "window_attn")
-        
+
         # Step 2c: Fix attention module structure mismatch - checkpoint has self_attn, model expects attn
         if ".grid_attn.self_attn." in converted_key:
             converted_key = converted_key.replace(".grid_attn.self_attn.", ".grid_attn.attn.")
@@ -340,8 +340,8 @@ class RVT(BaseModel, nn.Module):
         # Step 4: Handle downsample parameter mapping
         # Keep downsample_cf2cl naming to match checkpoint structure
         # Our model should now use downsample_cf2cl naming to match reference
-        
-        # Step 5: Handle layer scaling parameters - keep original naming 
+
+        # Step 5: Handle layer scaling parameters - keep original naming
         # Checkpoint has ls1.gamma/ls2.gamma, not layer_scale1/layer_scale2
         # Keep the original ls1/ls2 naming since that's what the checkpoint provides
 
@@ -362,10 +362,18 @@ class RVT(BaseModel, nn.Module):
             for pattern in conv_patterns:
                 if f".{pattern}" in converted_key:
                     # Add .conv. before weight/bias ONLY for conv layers, NOT for BatchNorm or prediction layers
-                    if (".weight" in converted_key or ".bias" in converted_key) and ".bn." not in converted_key:
+                    if (
+                        ".weight" in converted_key or ".bias" in converted_key
+                    ) and ".bn." not in converted_key:
                         # Don't add .conv. to prediction layers (cls_preds, reg_preds, obj_preds)
-                        is_pred_layer = any(pred in converted_key for pred in ["cls_preds.", "reg_preds.", "obj_preds."])
-                        if not is_pred_layer and ".conv.weight" not in converted_key and ".conv.bias" not in converted_key:
+                        is_pred_layer = any(
+                            pred in converted_key for pred in ["cls_preds.", "reg_preds.", "obj_preds."]
+                        )
+                        if (
+                            not is_pred_layer
+                            and ".conv.weight" not in converted_key
+                            and ".conv.bias" not in converted_key
+                        ):
                             converted_key = converted_key.replace(".weight", ".conv.weight")
                             converted_key = converted_key.replace(".bias", ".conv.bias")
 
@@ -419,7 +427,11 @@ class RVT(BaseModel, nn.Module):
         # Ensure we have events
         if len(xs) == 0:
             channels = 2 * self.temporal_bins
-            return torch.zeros((channels, height, width), dtype=torch.float32, device=self._device), height, width
+            return (
+                torch.zeros((channels, height, width), dtype=torch.float32, device=self._device),
+                height,
+                width,
+            )
 
         # Convert to integer tensors as expected by reference implementation
         xs = xs.long()
@@ -432,11 +444,11 @@ class RVT(BaseModel, nn.Module):
         # This is the CRITICAL fix: normalize time relative to window start
         t0_int = ts_int[0]  # First timestamp in window
         t1_int = ts_int[-1]  # Last timestamp in window
-        
+
         # Reference normalization: t_norm = (time - time[0]) / max((time[-1] - time[0]), 1)
         t_norm = (ts_int - t0_int).float()
         t_norm = t_norm / max((t1_int - t0_int).float(), 1.0)
-        
+
         # Map normalized time to temporal bins
         t_norm = t_norm * self.temporal_bins
         t_idx = torch.floor(t_norm)
@@ -447,11 +459,7 @@ class RVT(BaseModel, nn.Module):
         histogram = torch.zeros((channels, height, width), dtype=torch.float32, device=self._device)
 
         # Filter valid events (within image bounds)
-        valid_mask = (
-            (xs >= 0) & (xs < width) &
-            (ys >= 0) & (ys < height) &
-            (ps >= 0) & (ps <= 1)
-        )
+        valid_mask = (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height) & (ps >= 0) & (ps <= 1)
 
         if valid_mask.any():
             xs_valid = xs[valid_mask]
@@ -466,17 +474,13 @@ class RVT(BaseModel, nn.Module):
 
             # Use advanced indexing for efficient histogram accumulation
             # Create linear indices for put_ operation (reference approach)
-            linear_indices = (
-                xs_valid + 
-                width * ys_valid + 
-                height * width * channel_indices
-            )
+            linear_indices = xs_valid + width * ys_valid + height * width * channel_indices
 
             # Accumulate events into histogram (matches reference implementation)
             values = torch.ones_like(linear_indices, dtype=torch.float32, device=self._device)
             histogram_flat = histogram.view(-1)
             histogram_flat.put_(linear_indices, values, accumulate=True)
-            
+
             # Apply count cutoff like reference (clip high event counts)
             histogram = torch.clamp(histogram, min=0, max=10)  # Reference uses count_cutoff=10
 

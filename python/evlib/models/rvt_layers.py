@@ -391,7 +391,7 @@ class PatchEmbed(nn.Module):
         super().__init__()
         self.patch_size = patch_size
         self.stride = stride or patch_size
-        
+
         # Use reference implementation's overlapping patch approach
         if overlap:
             kernel_size = (patch_size - 1) * 2 + 1  # Reference formula
@@ -478,7 +478,7 @@ class DWSConvLSTM2d(nn.Module):
         dws_conv: bool = True,
         dws_conv_only_hidden: bool = True,
         dws_conv_kernel_size: int = 3,
-        cell_update_dropout: float = 0.,
+        cell_update_dropout: float = 0.0,
     ):
         super().__init__()
         assert isinstance(dws_conv, bool)
@@ -488,33 +488,35 @@ class DWSConvLSTM2d(nn.Module):
         xh_dim = dim * 2
         gates_dim = dim * 4
         conv3x3_dws_dim = dim if dws_conv_only_hidden else xh_dim
-        
+
         # Depthwise separable conv for spatial mixing (matches reference)
-        self.conv3x3_dws = nn.Conv2d(
-            in_channels=conv3x3_dws_dim,
-            out_channels=conv3x3_dws_dim,
-            kernel_size=dws_conv_kernel_size,
-            padding=dws_conv_kernel_size // 2,
-            groups=conv3x3_dws_dim
-        ) if dws_conv else nn.Identity()
-        
-        # 1x1 conv for gate computation (matches reference checkpoint structure)
-        self.conv1x1 = nn.Conv2d(
-            in_channels=xh_dim,
-            out_channels=gates_dim,
-            kernel_size=1
+        self.conv3x3_dws = (
+            nn.Conv2d(
+                in_channels=conv3x3_dws_dim,
+                out_channels=conv3x3_dws_dim,
+                kernel_size=dws_conv_kernel_size,
+                padding=dws_conv_kernel_size // 2,
+                groups=conv3x3_dws_dim,
+            )
+            if dws_conv
+            else nn.Identity()
         )
-        
+
+        # 1x1 conv for gate computation (matches reference checkpoint structure)
+        self.conv1x1 = nn.Conv2d(in_channels=xh_dim, out_channels=gates_dim, kernel_size=1)
+
         self.conv_only_hidden = dws_conv_only_hidden
         self.cell_update_dropout = nn.Dropout(p=cell_update_dropout)
 
-    def forward(self, x: torch.Tensor, h_and_c_previous: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, h_and_c_previous: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass matching reference RVT implementation.
-        
+
         Args:
             x: Input tensor (N, C, H, W)
             h_and_c_previous: Previous (hidden, cell) state tuple ((N, C, H, W), (N, C, H, W))
-            
+
         Returns:
             Tuple of (hidden, cell) tensors ((N, C, H, W), (N, C, H, W))
         """
@@ -527,13 +529,13 @@ class DWSConvLSTM2d(nn.Module):
 
         if self.conv_only_hidden:
             h_tm1 = self.conv3x3_dws(h_tm1)
-        
+
         # Concatenate input and hidden (reference approach)
         xh = torch.cat((x, h_tm1), dim=1)
-        
+
         if not self.conv_only_hidden:
             xh = self.conv3x3_dws(xh)
-        
+
         # Single conv1x1 for all gates (matches checkpoint structure)
         mix = self.conv1x1(xh)
 

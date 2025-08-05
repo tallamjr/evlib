@@ -2288,7 +2288,7 @@ pub mod python {
     /// # Returns
     /// * `PyDataFrame` with columns [window_id, channel, time_bin, y, x, count, channel_time_bin]
     #[pyfunction]
-    #[pyo3(signature = (events_pydf, _height, _width, nbins=10, window_duration_ms=50.0, stride_ms=None, _count_cutoff=Some(10)))]
+    #[pyo3(signature = (events_pydf, _height, _width, nbins=10, window_duration_ms=50.0, stride_ms=None, count_cutoff=Some(10)))]
     pub fn create_stacked_histogram_py(
         events_pydf: PyDataFrame,
         _height: i32,
@@ -2296,7 +2296,7 @@ pub mod python {
         nbins: i32,
         window_duration_ms: f64,
         stride_ms: Option<f64>,
-        _count_cutoff: Option<i32>,
+        count_cutoff: Option<i32>,
     ) -> PyResult<PyDataFrame> {
         // Extract Polars DataFrame from Python
         let df: DataFrame = events_pydf.into();
@@ -2359,8 +2359,15 @@ pub mod python {
             ])
             .agg([len().alias("count")])
             .with_columns([
-                // Apply count cutoff if specified (simplified for now)
-                col("count"),
+                // Apply count cutoff if specified (CRITICAL for RVT compatibility)
+                if let Some(cutoff) = count_cutoff {
+                    when(col("count").gt(lit(cutoff)))
+                        .then(lit(cutoff))
+                        .otherwise(col("count"))
+                } else {
+                    col("count")
+                }
+                .alias("count"),
             ])
             .with_columns([
                 // Add combined channel-time dimension for compatibility
