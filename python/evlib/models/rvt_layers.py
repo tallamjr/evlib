@@ -386,19 +386,28 @@ class PatchEmbed(nn.Module):
         stride: Optional[int] = None,
         padding: int = 0,
         norm_layer: Optional[nn.Module] = None,
+        overlap: bool = True,  # Use overlapping patches like reference
     ):
         super().__init__()
         self.patch_size = patch_size
         self.stride = stride or patch_size
+        
+        # Use reference implementation's overlapping patch approach
+        if overlap:
+            kernel_size = (patch_size - 1) * 2 + 1  # Reference formula
+            padding = kernel_size // 2
+        else:
+            kernel_size = patch_size
+            padding = padding
 
-        self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=patch_size, stride=self.stride, padding=padding
+        self.conv = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=kernel_size, stride=self.stride, padding=padding, bias=False
         )
         self.norm = norm_layer(embed_dim) if norm_layer else None
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass: NCHW -> NHWC with embedding."""
-        x = self.proj(x)  # (B, embed_dim, H', W')
+        x = self.conv(x)  # (B, embed_dim, H', W')
         x = nchw_to_nhwc(x)  # (B, H', W', embed_dim)
 
         if self.norm:
@@ -461,107 +470,84 @@ def get_downsample_layer(
 
 
 class DWSConvLSTM2d(nn.Module):
-    """Depthwise Separable Convolutional LSTM for RVT."""
+    """Depthwise Separable Convolutional LSTM matching reference RVT implementation."""
 
     def __init__(
         self,
-        input_dim: int,
-        hidden_dim: Optional[int] = None,
-        kernel_size: int = 3,
-        bias: bool = True,
-        dws_conv: bool = False,
+        dim: int,
+        dws_conv: bool = True,
         dws_conv_only_hidden: bool = True,
         dws_conv_kernel_size: int = 3,
+        cell_update_dropout: float = 0.,
     ):
         super().__init__()
+        assert isinstance(dws_conv, bool)
+        assert isinstance(dws_conv_only_hidden, bool)
+        self.dim = dim
 
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim or input_dim
-        self.kernel_size = kernel_size
-        self.padding = kernel_size // 2
-        self.bias = bias
-        self.dws_conv = dws_conv
-        self.dws_conv_only_hidden = dws_conv_only_hidden
-        self.dws_conv_kernel_size = dws_conv_kernel_size
-        self.dws_padding = dws_conv_kernel_size // 2
+        xh_dim = dim * 2
+        gates_dim = dim * 4
+        conv3x3_dws_dim = dim if dws_conv_only_hidden else xh_dim
+        
+        # Depthwise separable conv for spatial mixing (matches reference)
+        self.conv3x3_dws = nn.Conv2d(
+            in_channels=conv3x3_dws_dim,
+            out_channels=conv3x3_dws_dim,
+            kernel_size=dws_conv_kernel_size,
+            padding=dws_conv_kernel_size // 2,
+            groups=conv3x3_dws_dim
+        ) if dws_conv else nn.Identity()
+        
+        # 1x1 conv for gate computation (matches reference checkpoint structure)
+        self.conv1x1 = nn.Conv2d(
+            in_channels=xh_dim,
+            out_channels=gates_dim,
+            kernel_size=1
+        )
+        
+        self.conv_only_hidden = dws_conv_only_hidden
+        self.cell_update_dropout = nn.Dropout(p=cell_update_dropout)
 
-        # Input convolutions (i2h)
-        if dws_conv and not dws_conv_only_hidden:
-            # Depthwise separable for input
-            self.i2h = nn.Sequential(
-                nn.Conv2d(
-                    self.input_dim,
-                    self.input_dim,
-                    dws_conv_kernel_size,
-                    padding=self.dws_padding,
-                    groups=self.input_dim,
-                    bias=False,
-                ),
-                nn.Conv2d(self.input_dim, 4 * self.hidden_dim, 1, bias=bias),
-            )
-        else:
-            # Standard convolution for input
-            self.i2h = nn.Conv2d(
-                self.input_dim, 4 * self.hidden_dim, kernel_size, padding=self.padding, bias=bias
-            )
-
-        # Hidden convolutions (h2h)
-        if dws_conv:
-            # Depthwise separable for hidden
-            self.h2h = nn.Sequential(
-                nn.Conv2d(
-                    self.hidden_dim,
-                    self.hidden_dim,
-                    dws_conv_kernel_size,
-                    padding=self.dws_padding,
-                    groups=self.hidden_dim,
-                    bias=False,
-                ),
-                nn.Conv2d(self.hidden_dim, 4 * self.hidden_dim, 1, bias=bias),
-            )
-        else:
-            # Standard convolution for hidden
-            self.h2h = nn.Conv2d(
-                self.hidden_dim, 4 * self.hidden_dim, kernel_size, padding=self.padding, bias=bias
-            )
-
-    def forward(
-        self, input_tensor: Tensor, hidden_state: Optional[Tuple[Tensor, Tensor]] = None
-    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
-        """Forward pass of ConvLSTM.
-
+    def forward(self, x: torch.Tensor, h_and_c_previous: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass matching reference RVT implementation.
+        
         Args:
-            input_tensor: Input tensor of shape (B, C, H, W)
-            hidden_state: Tuple of (h, c) tensors, each of shape (B, hidden_dim, H, W)
-
+            x: Input tensor (N, C, H, W)
+            h_and_c_previous: Previous (hidden, cell) state tuple ((N, C, H, W), (N, C, H, W))
+            
         Returns:
-            Tuple of (output, (h, c)) where output is the hidden state h
+            Tuple of (hidden, cell) tensors ((N, C, H, W), (N, C, H, W))
         """
-        B, C, H, W = input_tensor.shape
+        if h_and_c_previous is None:
+            # Generate zero states
+            hidden = torch.zeros_like(x)
+            cell = torch.zeros_like(x)
+            h_and_c_previous = (hidden, cell)
+        h_tm1, c_tm1 = h_and_c_previous
 
-        # Initialize hidden state if not provided
-        if hidden_state is None:
-            h = torch.zeros(B, self.hidden_dim, H, W, dtype=input_tensor.dtype, device=input_tensor.device)
-            c = torch.zeros(B, self.hidden_dim, H, W, dtype=input_tensor.dtype, device=input_tensor.device)
-        else:
-            h, c = hidden_state
+        if self.conv_only_hidden:
+            h_tm1 = self.conv3x3_dws(h_tm1)
+        
+        # Concatenate input and hidden (reference approach)
+        xh = torch.cat((x, h_tm1), dim=1)
+        
+        if not self.conv_only_hidden:
+            xh = self.conv3x3_dws(xh)
+        
+        # Single conv1x1 for all gates (matches checkpoint structure)
+        mix = self.conv1x1(xh)
 
-        # Compute gates
-        gi = self.i2h(input_tensor)  # (B, 4*hidden_dim, H, W)
-        gh = self.h2h(h)  # (B, 4*hidden_dim, H, W)
+        # Split into gates and cell input
+        gates, cell_input = torch.tensor_split(mix, [self.dim * 3], dim=1)
+        assert gates.shape[1] == cell_input.shape[1] * 3
 
-        # Split into gates
-        i_i, i_f, i_o, i_g = gi.chunk(4, dim=1)
-        h_i, h_f, h_o, h_g = gh.chunk(4, dim=1)
+        gates = torch.sigmoid(gates)
+        forget_gate, input_gate, output_gate = torch.tensor_split(gates, 3, dim=1)
+        assert forget_gate.shape == input_gate.shape == output_gate.shape
 
-        # Apply gates
-        input_gate = torch.sigmoid(i_i + h_i)
-        forget_gate = torch.sigmoid(i_f + h_f)
-        output_gate = torch.sigmoid(i_o + h_o)
-        cell_gate = torch.tanh(i_g + h_g)
+        cell_input = self.cell_update_dropout(torch.tanh(cell_input))
 
-        # Update cell and hidden states
-        c_new = forget_gate * c + input_gate * cell_gate
-        h_new = output_gate * torch.tanh(c_new)
+        c_t = forget_gate * c_tm1 + input_gate * cell_input
+        h_t = output_gate * torch.tanh(c_t)
 
-        return h_new, (h_new, c_new)
+        return h_t, c_t

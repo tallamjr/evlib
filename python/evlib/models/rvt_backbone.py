@@ -100,8 +100,8 @@ class RVTStage(nn.Module):
         self.num_blocks = num_blocks
         self.enable_masking = enable_masking
 
-        # Downsampling layer (NCHW -> NHWC)
-        self.downsample = get_downsample_layer(
+        # Downsampling layer (NCHW -> NHWC) - named to match checkpoint
+        self.downsample_cf2cl = get_downsample_layer(
             in_channels=in_channels,
             out_channels=out_channels,
             downsample_factor=downsample_factor,
@@ -112,7 +112,7 @@ class RVTStage(nn.Module):
         # MaxViT attention blocks
         self.attention_blocks = nn.ModuleList()
         for i in range(num_blocks):
-            skip_first_norm = (i == 0) and self.downsample.output_is_normed()
+            skip_first_norm = (i == 0) and self.downsample_cf2cl.output_is_normed()
 
             block = MaxViTBlock(
                 dim=out_channels,
@@ -128,11 +128,9 @@ class RVTStage(nn.Module):
             )
             self.attention_blocks.append(block)
 
-        # Convolutional LSTM
+        # Convolutional LSTM (updated to match reference architecture)
         self.lstm = DWSConvLSTM2d(
-            input_dim=out_channels,
-            hidden_dim=out_channels,
-            kernel_size=config.lstm_kernel_size,
+            dim=out_channels,
             dws_conv=config.dws_conv,
             dws_conv_only_hidden=config.dws_conv_only_hidden,
             dws_conv_kernel_size=config.dws_conv_kernel_size,
@@ -162,7 +160,7 @@ class RVTStage(nn.Module):
             Tuple of (output, new_hidden_state)
         """
         # Downsample: NCHW -> NHWC
-        x = self.downsample(x)  # (B, H', W', C')
+        x = self.downsample_cf2cl(x)  # (B, H', W', C')
 
         # Apply token masking if provided
         if token_mask is not None and self.mask_token is not None:
@@ -187,8 +185,10 @@ class RVTStage(nn.Module):
         # Convert back to NCHW for LSTM
         x = nhwc_to_nchw(x)  # (B, C', H', W')
 
-        # Apply LSTM
-        output, new_hidden_state = self.lstm(x, hidden_state)
+        # Apply LSTM (new architecture returns (h, c) directly)
+        h, c = self.lstm(x, hidden_state)
+        output = h  # Output is the hidden state
+        new_hidden_state = (h, c)
 
         return output, new_hidden_state
 

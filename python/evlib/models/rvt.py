@@ -236,8 +236,16 @@ class RVT(BaseModel, nn.Module):
 
             if missing_keys:
                 print(f"Missing keys: {len(missing_keys)}")
+                # Show first few missing keys to understand patterns
+                print("First 10 missing keys:")
+                for key in sorted(missing_keys)[:10]:
+                    print(f"  - {key}")
             if unexpected_keys:
                 print(f"Unexpected keys: {len(unexpected_keys)}")
+                # Show first few unexpected keys
+                print("First 10 unexpected keys:")
+                for key in sorted(unexpected_keys)[:10]:
+                    print(f"  - {key}")
 
             return  # Skip the old loading logic
 
@@ -305,28 +313,39 @@ class RVT(BaseModel, nn.Module):
 
         # Step 1: Basic module name conversions
         converted_key = converted_key.replace("att_blocks", "attention_blocks")
-        converted_key = converted_key.replace("att_grid", "grid_attn")
-        converted_key = converted_key.replace("att_window", "window_attn")
-
-        # Step 2: Handle attention parameters that need attn. prefix
+        
+        # Step 2: Handle attention parameters that need attn. prefix BEFORE converting att_grid
         # Map attention parameters (qkv, proj) to be under attn module
-        if ".grid_attn." in converted_key:
+        if ".att_grid." in converted_key:
             # These parameters need to be moved under attn submodule
             attn_params = ["qkv.", "proj."]
             for param in attn_params:
                 if f".{param}" in converted_key:
-                    converted_key = converted_key.replace(f".grid_attn.{param}", f".grid_attn.attn.{param}")
+                    converted_key = converted_key.replace(f".att_grid.{param}", f".att_grid.attn.{param}")
+        
+        # Step 2b: Now convert module names
+        converted_key = converted_key.replace("att_grid", "grid_attn")
+        converted_key = converted_key.replace("att_window", "window_attn")
+        
+        # Step 2c: Fix attention module structure mismatch - checkpoint has self_attn, model expects attn
+        if ".grid_attn.self_attn." in converted_key:
+            converted_key = converted_key.replace(".grid_attn.self_attn.", ".grid_attn.attn.")
+        if ".window_attn.self_attn." in converted_key:
+            converted_key = converted_key.replace(".window_attn.self_attn.", ".window_attn.attn.")
 
         # Step 3: MLP structure conversion
         converted_key = converted_key.replace(".mlp.net.0.0.", ".mlp.fc1.")
         converted_key = converted_key.replace(".mlp.net.2.", ".mlp.fc2.")
 
-        # Step 4: Handle layer scaling parameters - these might not exist in our model
-        # For now, skip them as they're optional optimization components
-        if ".ls1.gamma" in converted_key or ".ls2.gamma" in converted_key:
-            return None  # Skip layer scaling parameters
+        # Step 4: Handle downsample parameter mapping
+        # Keep downsample_cf2cl naming to match checkpoint structure
+        # Our model should now use downsample_cf2cl naming to match reference
+        
+        # Step 5: Handle layer scaling parameters - keep original naming 
+        # Checkpoint has ls1.gamma/ls2.gamma, not layer_scale1/layer_scale2
+        # Keep the original ls1/ls2 naming since that's what the checkpoint provides
 
-        # Step 5: YOLOX head mapping
+        # Step 7: YOLOX head mapping
         if key.startswith("yolox_head."):
             converted_key = converted_key.replace("yolox_head.", "head.")
 
@@ -342,9 +361,11 @@ class RVT(BaseModel, nn.Module):
             ]
             for pattern in conv_patterns:
                 if f".{pattern}" in converted_key:
-                    # Add .conv. before weight/bias if missing
-                    if ".weight" in converted_key or ".bias" in converted_key:
-                        if ".conv.weight" not in converted_key and ".conv.bias" not in converted_key:
+                    # Add .conv. before weight/bias ONLY for conv layers, NOT for BatchNorm or prediction layers
+                    if (".weight" in converted_key or ".bias" in converted_key) and ".bn." not in converted_key:
+                        # Don't add .conv. to prediction layers (cls_preds, reg_preds, obj_preds)
+                        is_pred_layer = any(pred in converted_key for pred in ["cls_preds.", "reg_preds.", "obj_preds."])
+                        if not is_pred_layer and ".conv.weight" not in converted_key and ".conv.bias" not in converted_key:
                             converted_key = converted_key.replace(".weight", ".conv.weight")
                             converted_key = converted_key.replace(".bias", ".conv.bias")
 
@@ -372,7 +393,7 @@ class RVT(BaseModel, nn.Module):
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> Tuple[torch.Tensor, int, int]:
-        """Preprocess events into stacked histogram representation using evlib's native functions.
+        """Preprocess events into stacked histogram representation using reference RVT time normalization.
 
         Args:
             events: Event data as tuple (xs, ys, ts, ps) or structured array
@@ -385,71 +406,79 @@ class RVT(BaseModel, nn.Module):
         # Preprocess events using parent method
         xs, ys, ts, ps, height, width = self.preprocess_events(events, height, width)
 
-        # Create stacked histogram using evlib's native functionality
-        import polars as pl
-        import evlib
+        # Convert to torch tensors if not already
+        if not isinstance(xs, torch.Tensor):
+            xs = torch.from_numpy(xs).to(self._device)
+        if not isinstance(ys, torch.Tensor):
+            ys = torch.from_numpy(ys).to(self._device)
+        if not isinstance(ts, torch.Tensor):
+            ts = torch.from_numpy(ts).to(self._device)
+        if not isinstance(ps, torch.Tensor):
+            ps = torch.from_numpy(ps).to(self._device)
 
-        # Convert to polars DataFrame format expected by evlib
-        timestamp_us = ((ts * 1e6).cpu().numpy() if isinstance(ts, torch.Tensor) else (ts * 1e6)).astype(int)
+        # Ensure we have events
+        if len(xs) == 0:
+            channels = 2 * self.temporal_bins
+            return torch.zeros((channels, height, width), dtype=torch.float32, device=self._device), height, width
 
-        events_df = pl.DataFrame(
-            {
-                "x": xs.cpu().numpy() if isinstance(xs, torch.Tensor) else xs,
-                "y": ys.cpu().numpy() if isinstance(ys, torch.Tensor) else ys,
-                "timestamp": timestamp_us,  # Int64 microseconds first
-                "polarity": ps.cpu().numpy() if isinstance(ps, torch.Tensor) else ps,
-            }
-        )
+        # Convert to integer tensors as expected by reference implementation
+        xs = xs.long()
+        ys = ys.long()
+        ps = ps.long()
+        # Keep timestamps as microsecond integers to match reference precision
+        ts_int = (ts * 1e6).long()
 
-        # Convert timestamp to Duration type as expected by evlib
-        events_df = events_df.with_columns([pl.col("timestamp").cast(pl.Duration(time_unit="us"))])
+        # Apply reference RVT time normalization within the temporal window
+        # This is the CRITICAL fix: normalize time relative to window start
+        t0_int = ts_int[0]  # First timestamp in window
+        t1_int = ts_int[-1]  # Last timestamp in window
+        
+        # Reference normalization: t_norm = (time - time[0]) / max((time[-1] - time[0]), 1)
+        t_norm = (ts_int - t0_int).float()
+        t_norm = t_norm / max((t1_int - t0_int).float(), 1.0)
+        
+        # Map normalized time to temporal bins
+        t_norm = t_norm * self.temporal_bins
+        t_idx = torch.floor(t_norm)
+        t_idx = torch.clamp(t_idx, max=self.temporal_bins - 1).long()
 
-        # Use evlib's native stacked histogram function
-        hist_df = evlib.create_stacked_histogram(
-            events_df,
-            height,
-            width,
-            nbins=self.temporal_bins,
-            window_duration_ms=50.0,  # Standard RVT window duration
-        )
-
-        # Convert histogram DataFrame to tensor format using native .to_torch()
-        # Expected format: [2*nbins, height, width] where 2 is for pos/neg polarities
+        # Build stacked histogram using reference algorithm
         channels = 2 * self.temporal_bins  # 20 for 10 bins * 2 polarities
         histogram = torch.zeros((channels, height, width), dtype=torch.float32, device=self._device)
 
-        if len(hist_df) > 0:
-            # Use evlib's efficient tensor conversion via polars .to_torch()
-            # Convert relevant columns to torch tensors directly
-            channel_tensor = hist_df.select(pl.col("channel")).to_torch().squeeze()
-            time_bin_tensor = hist_df.select(pl.col("time_bin")).to_torch().squeeze()
-            y_tensor = hist_df.select(pl.col("y")).to_torch().squeeze()
-            x_tensor = hist_df.select(pl.col("x")).to_torch().squeeze()
-            count_tensor = hist_df.select(pl.col("count")).to_torch().squeeze().float()
+        # Filter valid events (within image bounds)
+        valid_mask = (
+            (xs >= 0) & (xs < width) &
+            (ys >= 0) & (ys < height) &
+            (ps >= 0) & (ps <= 1)
+        )
 
-            # Calculate channel indices: channel + time_bin * 2
-            # This interleaves pos/neg for each time bin: [t0_neg, t0_pos, t1_neg, t1_pos, ...]
-            channel_indices = channel_tensor + time_bin_tensor * 2
+        if valid_mask.any():
+            xs_valid = xs[valid_mask]
+            ys_valid = ys[valid_mask]
+            ps_valid = ps[valid_mask]
+            t_idx_valid = t_idx[valid_mask]
 
-            # Use torch advanced indexing for efficient tensor filling
-            # Create masks for valid indices
-            valid_mask = (
-                (channel_indices >= 0)
-                & (channel_indices < channels)
-                & (y_tensor >= 0)
-                & (y_tensor < height)
-                & (x_tensor >= 0)
-                & (x_tensor < width)
+            # Calculate channel indices using reference layout:
+            # Channels 0-9: Negative polarity events across 10 temporal bins
+            # Channels 10-19: Positive polarity events across 10 temporal bins
+            channel_indices = t_idx_valid + ps_valid * self.temporal_bins
+
+            # Use advanced indexing for efficient histogram accumulation
+            # Create linear indices for put_ operation (reference approach)
+            linear_indices = (
+                xs_valid + 
+                width * ys_valid + 
+                height * width * channel_indices
             )
 
-            if valid_mask.any():
-                valid_channels = channel_indices[valid_mask]
-                valid_y = y_tensor[valid_mask]
-                valid_x = x_tensor[valid_mask]
-                valid_counts = count_tensor[valid_mask]
-
-                # Use scatter_add for efficient accumulation
-                histogram.index_put_((valid_channels, valid_y, valid_x), valid_counts, accumulate=True)
+            # Accumulate events into histogram (matches reference implementation)
+            values = torch.ones_like(linear_indices, dtype=torch.float32, device=self._device)
+            histogram_flat = histogram.view(-1)
+            histogram_flat.put_(linear_indices, values, accumulate=True)
+            
+            # Apply count cutoff like reference (clip high event counts)
+            histogram = torch.clamp(histogram, min=0, max=10)  # Reference uses count_cutoff=10
 
         return histogram, height, width
 
@@ -540,6 +569,7 @@ class RVT(BaseModel, nn.Module):
         confidence_threshold: Optional[float] = None,
         nms_threshold: Optional[float] = None,
         reset_states: bool = False,
+        debug: bool = False,
     ) -> List[Dict[str, Any]]:
         """Detect objects in event data.
 
