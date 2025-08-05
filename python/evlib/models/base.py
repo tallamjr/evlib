@@ -118,9 +118,36 @@ class BaseModel(ABC):
         Returns:
             Voxel grid of shape (num_bins, height, width)
         """
-        return evlib.representations.events_to_voxel_grid(
-            xs, ys, ts, ps, self.config.num_bins, (width, height), "count"
+        import polars as pl
+
+        # Convert to Polars DataFrame for voxel grid creation
+        events_df = pl.DataFrame(
+            {
+                "x": xs.astype(np.int16),
+                "y": ys.astype(np.int16),
+                "timestamp": pl.Series((ts * 1e6).astype(np.int64)).cast(pl.Duration(time_unit="us")),
+                "polarity": ps.astype(np.int8),
+            }
         )
+
+        # Create voxel grid using evlib representations
+        voxel_df = evlib.representations.create_voxel_grid(events_df, height, width, self.config.num_bins)
+
+        # Convert back to numpy array format (num_bins, height, width)
+        voxel_array = np.zeros((self.config.num_bins, height, width), dtype=np.float32)
+
+        # Populate the array from the DataFrame
+        if hasattr(voxel_df, "collect"):
+            voxel_data = voxel_df.collect()
+        else:
+            voxel_data = voxel_df
+
+        for row in voxel_data.iter_rows():
+            time_bin, y, x, value = row
+            if 0 <= x < width and 0 <= y < height and 0 <= time_bin < self.config.num_bins:
+                voxel_array[time_bin, y, x] = value
+
+        return voxel_array
 
     def __repr__(self) -> str:
         """String representation of the model."""

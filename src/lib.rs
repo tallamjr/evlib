@@ -8,9 +8,7 @@ pub mod ev_representations;
 // Tracing configuration for structured logging
 pub mod tracing_config;
 
-// Removed modules with non-working implementations
-// pub mod ev_processing;    // Removed - broken neural network implementations
-// pub mod ev_visualization; // Removed - limited/broken functionality
+// Deep learning models are handled via Python interface in python/evlib/models/
 
 // Re-export core types for easier usage
 pub use ev_core::{Event, Events};

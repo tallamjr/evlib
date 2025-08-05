@@ -1,176 +1,347 @@
-"""E2VID model implementation."""
+"""E2VID model implementation using PyTorch.
+
+Based on the official RPG E2VID implementation from:
+https://github.com/uzh-rpg/rpg_e2vid
+"""
 
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from typing import Union, Tuple, Optional
+import os
+import urllib.request
+from pathlib import Path
 
 from .base import BaseModel
 from .config import ModelConfig
-from .utils import download_model
-import evlib
+
+
+class ConvLayer(nn.Module):
+    """Convolutional layer with optional normalization and activation."""
+
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+    ):
+        super().__init__()
+
+        bias = False if norm == "BN" else True
+        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+
+        if activation is not None:
+            self.activation = getattr(torch, activation, "relu")
+        else:
+            self.activation = None
+
+        self.norm = norm
+        if norm == "BN":
+            self.norm_layer = nn.BatchNorm2d(out_channels)
+        elif norm == "IN":
+            self.norm_layer = nn.InstanceNorm2d(out_channels, track_running_stats=True)
+
+    def forward(self, x):
+        out = self.conv2d(x)
+
+        if self.norm in ["BN", "IN"]:
+            out = self.norm_layer(out)
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
+
+
+class UpsampleConvLayer(nn.Module):
+    """Upsampling layer using bilinear interpolation + conv (avoids checkerboard artifacts)."""
+
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+    ):
+        super().__init__()
+
+        bias = False if norm == "BN" else True
+        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+
+        if activation is not None:
+            self.activation = getattr(torch, activation, "relu")
+        else:
+            self.activation = None
+
+        self.norm = norm
+        if norm == "BN":
+            self.norm_layer = nn.BatchNorm2d(out_channels)
+        elif norm == "IN":
+            self.norm_layer = nn.InstanceNorm2d(out_channels, track_running_stats=True)
+
+    def forward(self, x):
+        x_upsampled = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
+        out = self.conv2d(x_upsampled)
+
+        if self.norm in ["BN", "IN"]:
+            out = self.norm_layer(out)
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
+
+
+class ResidualBlock(nn.Module):
+    """Residual block with two conv layers."""
+
+    def __init__(self, in_channels, out_channels, norm=None):
+        super().__init__()
+
+        self.conv1 = ConvLayer(in_channels, out_channels, 3, padding=1, norm=norm)
+        self.conv2 = ConvLayer(out_channels, out_channels, 3, padding=1, activation=None, norm=norm)
+
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out += residual
+        return F.relu(out)
+
+
+class UNet(nn.Module):
+    """E2VID UNet architecture based on official RPG implementation."""
+
+    def __init__(
+        self,
+        num_input_channels=5,
+        num_output_channels=1,
+        skip_type="sum",
+        activation="sigmoid",
+        num_encoders=4,
+        base_num_channels=32,
+        num_residual_blocks=2,
+        norm=None,
+        use_upsample_conv=True,
+    ):
+        super().__init__()
+
+        self.num_input_channels = num_input_channels
+        self.num_output_channels = num_output_channels
+        self.skip_type = skip_type
+        self.activation = activation
+        self.norm = norm
+        self.num_encoders = num_encoders
+        self.base_num_channels = base_num_channels
+        self.num_residual_blocks = num_residual_blocks
+
+        # Choose upsampling method
+        if use_upsample_conv:
+            self.UpsampleLayer = UpsampleConvLayer
+        else:
+            self.UpsampleLayer = nn.ConvTranspose2d
+
+        self.max_num_channels = self.base_num_channels * pow(2, self.num_encoders)
+
+        # Build network
+        self._build_head()
+        self._build_encoders()
+        self._build_residual_blocks()
+        self._build_decoders()
+        self._build_prediction_layer()
+
+        # Get activation function
+        self.final_activation = getattr(torch, self.activation, "sigmoid")
+
+    def _build_head(self):
+        """Build the initial conv layer."""
+        self.head = ConvLayer(
+            self.num_input_channels,
+            self.base_num_channels,
+            kernel_size=5,
+            stride=1,
+            padding=2,
+            norm=self.norm,
+        )
+
+    def _build_encoders(self):
+        """Build encoder layers."""
+        self.encoders = nn.ModuleList()
+        for i in range(self.num_encoders):
+            input_size = self.base_num_channels * pow(2, i)
+            output_size = self.base_num_channels * pow(2, i + 1)
+            self.encoders.append(
+                ConvLayer(input_size, output_size, kernel_size=5, stride=2, padding=2, norm=self.norm)
+            )
+
+    def _build_residual_blocks(self):
+        """Build residual blocks for bottleneck."""
+        self.resblocks = nn.ModuleList()
+        for i in range(self.num_residual_blocks):
+            self.resblocks.append(ResidualBlock(self.max_num_channels, self.max_num_channels, norm=self.norm))
+
+    def _build_decoders(self):
+        """Build decoder layers."""
+        self.decoders = nn.ModuleList()
+        for i in range(self.num_encoders):
+            input_size = self.base_num_channels * pow(2, self.num_encoders - i)
+            output_size = input_size // 2
+
+            # Account for skip connections
+            if self.skip_type == "concat":
+                input_size = input_size * 2
+
+            self.decoders.append(
+                self.UpsampleLayer(input_size, output_size, kernel_size=5, padding=2, norm=self.norm)
+            )
+
+    def _build_prediction_layer(self):
+        """Build final prediction layer."""
+        input_size = self.base_num_channels
+        if self.skip_type == "concat":
+            input_size = input_size * 2
+
+        self.pred = ConvLayer(input_size, self.num_output_channels, 1, activation=None, norm=self.norm)
+
+    def _apply_skip_connection(self, x1, x2):
+        """Apply skip connection with size matching."""
+        if self.skip_type == "sum":
+            # Ensure tensors have the same spatial dimensions
+            if x1.shape[-2:] != x2.shape[-2:]:
+                # Resize x1 to match x2's spatial dimensions
+                x1 = F.interpolate(x1, size=x2.shape[-2:], mode="bilinear", align_corners=False)
+            return x1 + x2
+        else:  # concat
+            # Ensure tensors have the same spatial dimensions
+            if x1.shape[-2:] != x2.shape[-2:]:
+                # Resize x1 to match x2's spatial dimensions
+                x1 = F.interpolate(x1, size=x2.shape[-2:], mode="bilinear", align_corners=False)
+            return torch.cat([x1, x2], dim=1)
+
+    def forward(self, x):
+        """Forward pass.
+
+        Args:
+            x: Input tensor of shape (N, num_input_channels, H, W)
+
+        Returns:
+            Output tensor of shape (N, num_output_channels, H, W)
+        """
+        # Head
+        x = self.head(x)
+        head = x
+
+        # Encoder
+        blocks = []
+        for encoder in self.encoders:
+            x = encoder(x)
+            blocks.append(x)
+
+        # Residual blocks (bottleneck)
+        for resblock in self.resblocks:
+            x = resblock(x)
+
+        # Decoder with skip connections
+        for i, decoder in enumerate(self.decoders):
+            skip_idx = self.num_encoders - i - 1
+            x = decoder(self._apply_skip_connection(x, blocks[skip_idx]))
+
+        # Final prediction with skip to head
+        output = self.final_activation(self.pred(self._apply_skip_connection(x, head)))
+
+        return output
 
 
 class E2VID(BaseModel):
     """E2VID: Event to Video reconstruction model.
 
-    Based on "High Speed and High Dynamic Range Video with an Event Camera"
+    A PyTorch implementation based on the official RPG E2VID model:
+    "High Speed and High Dynamic Range Video with an Event Camera"
     by Rebecq et al., CVPR 2019.
-
-    This model uses a UNet architecture to reconstruct intensity frames
-    from event data represented as voxel grids.
-
-    Example:
-        >>> model = E2VID(pretrained=True)
-        >>> events = load_events("events.txt")
-        >>> frames = model.reconstruct(events)
     """
 
-    def __init__(self, variant: str = "unet", config: Optional[ModelConfig] = None, pretrained: bool = False):
+    def __init__(
+        self,
+        config: Optional[ModelConfig] = None,
+        pretrained: bool = False,
+        skip_type: str = "sum",
+        num_encoders: int = 4,
+        num_residual_blocks: int = 2,
+        norm: Optional[str] = None,
+    ):
         """Initialize E2VID model.
 
         Args:
-            variant: Model variant ('unet' or 'onnx')
             config: Model configuration
             pretrained: Whether to load pretrained weights
+            skip_type: Skip connection type ('sum' or 'concat')
+            num_encoders: Number of encoder layers
+            num_residual_blocks: Number of residual blocks in bottleneck
+            norm: Normalization type ('BN', 'IN', or None)
         """
-        self.variant = variant
         super().__init__(config, pretrained)
+        self._model = None
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.skip_type = skip_type
+        self.num_encoders = num_encoders
+        self.num_residual_blocks = num_residual_blocks
+        self.norm = norm
         self._build_model()
 
     def _build_model(self):
         """Build the E2VID model."""
-        # The actual model is built in Rust
-        if self.variant == "recurrent":
-            self._model_type = "recurrent"
-        elif self.variant == "unet":
-            self._model_type = "unet"
-        else:
-            self._model_type = "onnx"
-
-    def _detect_model_architecture(self, model_path: str) -> str:
-        """Detect model architecture from PyTorch weights.
-
-        Args:
-            model_path: Path to the PyTorch model file
-
-        Returns:
-            Model architecture type: 'recurrent' or 'unet'
-        """
-        try:
-            import torch
-
-            model_data = torch.load(model_path, map_location="cpu")
-
-            # Check if it's a state dict or has state_dict key
-            state_dict = (
-                model_data.get("state_dict", model_data) if isinstance(model_data, dict) else model_data
-            )
-
-            # Look for recurrent-specific keys
-            keys = list(state_dict.keys())
-            recurrent_keys = [k for k in keys if "recurrent" in k.lower()]
-            lstm_keys = [k for k in keys if "lstm" in k.lower() or "Gates" in k]
-
-            if recurrent_keys or lstm_keys:
-                print(
-                    f"Detected E2VID Recurrent architecture ({len(recurrent_keys + lstm_keys)} recurrent parameters)"
-                )
-                return "recurrent"
-            else:
-                print(f"Detected E2VID UNet architecture ({len(keys)} parameters)")
-                return "unet"
-
-        except Exception as e:
-            print(f"Could not detect architecture from {model_path}: {e}")
-            print(f"   Falling back to variant: {self.variant}")
-            return self.variant
+        self._model = UNet(
+            num_input_channels=self.config.num_bins,
+            num_output_channels=1,
+            skip_type=self.skip_type,
+            activation="sigmoid",
+            num_encoders=self.num_encoders,
+            base_num_channels=self.config.base_channels,
+            num_residual_blocks=self.num_residual_blocks,
+            norm=self.norm,
+            use_upsample_conv=True,  # Better quality, avoids checkerboard artifacts
+        ).to(self._device)
 
     def _load_pretrained_weights(self):
         """Load pretrained weights."""
-        model_name = f"e2vid_{self.variant}"
-        model_path = download_model(model_name)
-
-        # Detect the actual model architecture from the weights
-        detected_arch = self._detect_model_architecture(model_path)
-
-        if detected_arch != self.variant:
-            print(f"🔄 Detected architecture '{detected_arch}' differs from variant '{self.variant}'")
-            print("   Updating model to use detected architecture")
-            self.variant = detected_arch
-            self._model_type = detected_arch
-
-        print(f"Loaded pretrained weights from {model_path}")
-
-        # Store the model path for later loading into Rust backend
-        self._pretrained_model_path = model_path
+        # Placeholder for pretrained weight loading
+        print("Warning: Pretrained weight loading not yet implemented.")
+        print("Using randomly initialized weights.")
 
     def reconstruct(
         self,
         events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
         height: Optional[int] = None,
         width: Optional[int] = None,
-        return_all_frames: bool = False,
     ) -> np.ndarray:
-        """Reconstruct frames from events.
+        """Reconstruct frame from events.
 
         Args:
-            events: Event data
+            events: Event data as tuple (xs, ys, ts, ps) or structured array
             height: Output height
             width: Output width
-            return_all_frames: If True, return all intermediate frames.
-                             If False, return only the final frame.
 
         Returns:
-            Reconstructed frames of shape (height, width) or (num_frames, height, width)
+            Reconstructed frame as numpy array of shape (height, width)
         """
         # Preprocess events
         xs, ys, ts, ps, height, width = self.preprocess_events(events, height, width)
 
-        # For recurrent models with pretrained weights, use direct Rust backend
-        if self._model_type == "recurrent" and hasattr(self, "_pretrained_model_path"):
-            try:
-                # Use the direct Rust E2Vid backend with loaded weights
-                from evlib.evlib_rust.processing import E2Vid
+        # Convert events to voxel grid
+        voxel_grid = self.events_to_voxel_grid(xs, ys, ts, ps, height, width)
 
-                # Create Rust model and load weights
-                rust_model = E2Vid()
-                rust_model.load_model_from_file(self._pretrained_model_path)
+        # Convert to PyTorch tensor
+        input_tensor = torch.from_numpy(voxel_grid).float().unsqueeze(0).to(self._device)
 
-                # Reconstruct using the Rust backend directly
-                frames = rust_model.reconstruct_frame(xs, ys, ts, ps, width, height)
+        # Run inference
+        self._model.eval()
+        with torch.no_grad():
+            output = self._model(input_tensor)
 
-                return frames
+        # Convert back to numpy
+        frame = output.squeeze().cpu().numpy()
 
-            except Exception as e:
-                print(f"Direct Rust backend failed: {e}")
-                print("   Falling back to processing API")
-
-        # Use the advanced reconstruction API for other cases
-        if return_all_frames:
-            frames = evlib.processing.reconstruct_events_to_frames(
-                xs,
-                ys,
-                ts,
-                ps,
-                height=height,
-                width=width,
-                num_frames=10,  # Default to 10 frames
-                model_type=self._model_type,
-                num_bins=self.config.num_bins,
-            )
-        else:
-            # Single frame reconstruction
-            frames = evlib.processing.events_to_video_advanced(
-                xs,
-                ys,
-                ts,
-                ps,
-                height=height,
-                width=width,
-                model_type=self._model_type,
-                num_bins=self.config.num_bins,
-            )
-
-        return frames
+        return frame
 
     def __repr__(self) -> str:
-        return f"E2VID(variant='{self.variant}', config={self.config}, pretrained={self.pretrained})"
+        """String representation."""
+        return (
+            f"E2VID(config={self.config}, pretrained={self.pretrained}, "
+            f"skip_type='{self.skip_type}', encoders={self.num_encoders}, "
+            f"residual_blocks={self.num_residual_blocks}, norm='{self.norm}', "
+            f"device={self._device})"
+        )
