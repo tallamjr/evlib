@@ -98,4 +98,4 @@ jobs:
         run: |
           .venv/Scripts/Activate.ps1
           $env:PYO3_PYTHON = (Get-Location).Path + "\.venv\Scripts\python.exe"
-          cargo build --release --features python
+          cargo build --release --no-default-features --features python,polars

@@ -104,9 +104,9 @@ serde_json     = "1.0"
 num_cpus       = "1.16"
 thiserror      = "1.0"
 
-# Structured logging and tracing
-tracing        = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
+# Structured logging and tracing (disabled on Windows due to CI dependency resolution issues)
+tracing        = { version = "0.1.40", optional = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"], optional = true }
 
 # WebSocket server
 warp           = "0.3"
@@ -124,7 +124,8 @@ tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
-default        = ["polars", "python"]
+default        = ["polars", "python", "tracing"]
+tracing        = ["dep:tracing", "dep:tracing-subscriber"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 # cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies

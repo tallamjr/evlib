@@ -122,10 +122,10 @@ jobs:
           .venv/Scripts/Activate.ps1
           if ("${{ github.event.inputs.test_mode }}" -eq "true") {
             Write-Host "TEST MODE: Uploading to TestPyPI"
-            maturin publish --no-sdist -u __token__ -p "$env:TEST_MATURIN_PYPI_TOKEN" --repository testpypi --features python --interpreter python${{ matrix.python-version }}
+            maturin publish --no-sdist -u __token__ -p "$env:TEST_MATURIN_PYPI_TOKEN" --repository testpypi --no-default-features --features python,polars --interpreter python${{ matrix.python-version }}
           } else {
             Write-Host "Uploading to PyPI"
-            maturin publish --no-sdist -u __token__ -p "$env:MATURIN_PYPI_TOKEN" --features python --interpreter python${{ matrix.python-version }}
+            maturin publish --no-sdist -u __token__ -p "$env:MATURIN_PYPI_TOKEN" --no-default-features --features python,polars --interpreter python${{ matrix.python-version }}
           }
 
   publish-crates:
