@@ -747,4 +747,6 @@ events.parquet
 
 python/evlib/models/weights
 
+.github/DRAFTS/*.md
+
 libs/
