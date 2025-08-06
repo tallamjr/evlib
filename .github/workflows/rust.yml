@@ -56,6 +56,8 @@ jobs:
         shell: pwsh
         run: |
           .venv/Scripts/Activate.ps1
+          # Install Python dependencies with explicit upgrade to ensure latest versions
+          uv pip install --upgrade pip
           uv pip install .[all]
 
       - name: Set PYO3_PYTHON for PyO3 compatibility (Unix)
@@ -98,4 +100,10 @@ jobs:
         run: |
           .venv/Scripts/Activate.ps1
           $env:PYO3_PYTHON = (Get-Location).Path + "\.venv\Scripts\python.exe"
-          cargo build --release --no-default-features --features python,polars
+
+          # Set environment variables similar to Unix build
+          $pythonPath = (Get-Location).Path + "\.venv\Scripts\python.exe"
+          $env:PYTHON_SYS_EXECUTABLE = $pythonPath
+
+          # Build with same features as Unix (include all default features)
+          cargo build --release --features python,polars,tracing

@@ -49,12 +49,14 @@ runs:
       if: startsWith(inputs.os, 'windows')
       shell: pwsh
       run: |
-        # Install minimal dependencies for Windows (HDF5 excluded due to build complexity)
+        # Install dependencies for Windows build
+        # Note: Using vcpkg for consistent Windows builds
         vcpkg install pkgconf:x64-windows
 
-        # Set minimal environment variables for Windows
+        # Set environment variables for pkg-config and cmake
         echo "PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig" >> $env:GITHUB_ENV
         echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+        echo "VCPKG_ROOT=C:/vcpkg" >> $env:GITHUB_ENV
 
         if ("${{ inputs.enable-gstreamer }}" -eq "true") {
           vcpkg install gstreamer:x64-windows

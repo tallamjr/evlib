@@ -4,11 +4,12 @@ Working RVT Validation Script
 Based on the successful implementation documented in rvt_implementation_summary.md
 """
 
-import sys
+# Fix HDF5 plugin path issues
 import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "python"))
-
+import hdf5plugin
+import h5py
+import sys
+import evlib
 import torch
 import numpy as np
 from pathlib import Path
@@ -21,7 +22,6 @@ def create_evlib_stacked_histogram(events_df, height=720, width=1280, temporal_b
     Create stacked histogram using evlib's native create_stacked_histogram function.
     Uses evlib's optimized implementation for best performance.
     """
-    import evlib
 
     # Use evlib's native stacked histogram function
     # This returns a DataFrame with histogram data
@@ -77,44 +77,28 @@ def test_rvt_validation():
     print(f"Loading RVT preprocessed validation data from: {test_file}")
     print("This is the exact preprocessed stacked histogram data that RVT was trained on!")
 
-    try:
-        # Fix HDF5 plugin path issues
-        import os
+    # Load preprocessed stacked histogram directly (no need to create it!)
+    print("Loading preprocessed stacked histogram data...")
+    with h5py.File(test_file, "r") as f:
+        print(f"✓ H5 file keys: {list(f.keys())}")
 
-        try:
-            import hdf5plugin
+        # Load the preprocessed histogram data
+        if "data" in f:
+            hist_data = f["data"][:]  # Load the histogram data
+            print(f"✓ Loaded preprocessed histogram shape: {hist_data.shape}")
 
-            # Plugin path will be set automatically by hdf5plugin
-        except ImportError:
-            # Fallback: set plugin path manually
-            plugin_path = "/Users/tallam/github/tallamjr/origin/evlib/.venv/lib/python3.10/site-packages/hdf5plugin/plugins"
-            if os.path.exists(plugin_path):
-                os.environ["HDF5_PLUGIN_PATH"] = plugin_path
+            # Convert to PyTorch tensor
+            hist = torch.from_numpy(hist_data).float()
 
-        import h5py
+            # If batch dimension exists, take first sample
+            if hist.dim() == 4:  # [batch, channels, height, width]
+                hist = hist[0]
+                print(f"✓ Using first sample, final shape: {hist.shape}")
 
-        # Load preprocessed stacked histogram directly (no need to create it!)
-        print("Loading preprocessed stacked histogram data...")
-        with h5py.File(test_file, "r") as f:
-            print(f"✓ H5 file keys: {list(f.keys())}")
-
-            # Load the preprocessed histogram data
-            if "data" in f:
-                hist_data = f["data"][:]  # Load the histogram data
-                print(f"✓ Loaded preprocessed histogram shape: {hist_data.shape}")
-
-                # Convert to PyTorch tensor
-                hist = torch.from_numpy(hist_data).float()
-
-                # If batch dimension exists, take first sample
-                if hist.dim() == 4:  # [batch, channels, height, width]
-                    hist = hist[0]
-                    print(f"✓ Using first sample, final shape: {hist.shape}")
-
-            else:
-                print("✗ No 'data' key found in H5 file")
-                print(f"Available keys: {list(f.keys())}")
-                return
+        else:
+            print("✗ No 'data' key found in H5 file")
+            print(f"Available keys: {list(f.keys())}")
+            return
         print(f"✓ Histogram shape: {hist.shape}")
         print(f"  Value range: {hist.min():.3f} - {hist.max():.3f}")
         print(f"  Non-zero elements: {(hist > 0).sum()}")
@@ -151,12 +135,6 @@ def test_rvt_validation():
                 print(f"✓ Good detection confidence: {max_conf:.3f}")
             else:
                 print(f"⚠️  Low confidence: {max_conf:.6f}")
-
-    except Exception as e:
-        print(f"✗ Error: {e}")
-        import traceback
-
-        traceback.print_exc()
 
 
 if __name__ == "__main__":
