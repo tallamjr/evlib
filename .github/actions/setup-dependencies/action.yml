@@ -45,40 +45,14 @@ runs:
         echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
         echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
 
-    - name: Install system dependencies (Windows)
-      if: startsWith(inputs.os, 'windows')
-      shell: pwsh
-      run: |
-        # Install dependencies for Windows build
-        # Note: Using vcpkg for consistent Windows builds
-        vcpkg install pkgconf:x64-windows
-
-        # Set environment variables for pkg-config and cmake
-        echo "PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig" >> $env:GITHUB_ENV
-        echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
-        echo "VCPKG_ROOT=C:/vcpkg" >> $env:GITHUB_ENV
-
-        if ("${{ inputs.enable-gstreamer }}" -eq "true") {
-          vcpkg install gstreamer:x64-windows
-        }
 
     - name: Install UV
       uses: astral-sh/setup-uv@v5
 
-    - name: Setup Python with UV (Unix)
-      if: "!startsWith(inputs.os, 'windows')"
+    - name: Setup Python with UV
       shell: bash
       run: |
         uv venv --python "${{ inputs.python-version }}"
         source .venv/bin/activate
         echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
         echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
-
-    - name: Setup Python with UV (Windows)
-      if: startsWith(inputs.os, 'windows')
-      shell: pwsh
-      run: |
-        uv venv --python "${{ inputs.python-version }}"
-        .venv/Scripts/Activate.ps1
-        echo "VIRTUAL_ENV=$env:VIRTUAL_ENV" >> $env:GITHUB_ENV
-        echo "$env:VIRTUAL_ENV/Scripts" >> $env:GITHUB_PATH

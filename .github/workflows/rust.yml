@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -45,32 +45,14 @@ jobs:
           python-version: "3.12"
           os: ${{ matrix.os }}
 
-      - name: Install Python dependencies (Unix)
-        if: "!startsWith(matrix.os, 'windows')"
+      - name: Install Python dependencies
         run: |
           source .venv/bin/activate
           uv pip install .[all]
 
-      - name: Install Python dependencies (Windows)
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: |
-          .venv/Scripts/Activate.ps1
-          # Install Python dependencies with explicit upgrade to ensure latest versions
-          uv pip install --upgrade pip
-          uv pip install .[all]
-
-      - name: Set PYO3_PYTHON for PyO3 compatibility (Unix)
-        if: "!startsWith(matrix.os, 'windows')"
+      - name: Set PYO3_PYTHON for PyO3 compatibility
         run: |
           echo "PYO3_PYTHON=$(pwd)/.venv/bin/python" >> $GITHUB_ENV
-
-      - name: Set PYO3_PYTHON for PyO3 compatibility (Windows)
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: |
-          $pythonPath = (Get-Location).Path + "\.venv\Scripts\python.exe"
-          echo "PYO3_PYTHON=$pythonPath" >> $env:GITHUB_ENV
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -88,22 +70,7 @@ jobs:
       - name: Cargo check
         run: cargo check --all
 
-      - name: Cargo build (Unix)
-        if: "!startsWith(matrix.os, 'windows')"
+      - name: Cargo build
         run: |
           chmod +x .github/scripts/build.sh
           .github/scripts/build.sh
-
-      - name: Cargo build (Windows)
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: |
-          .venv/Scripts/Activate.ps1
-          $env:PYO3_PYTHON = (Get-Location).Path + "\.venv\Scripts\python.exe"
-
-          # Set environment variables similar to Unix build
-          $pythonPath = (Get-Location).Path + "\.venv\Scripts\python.exe"
-          $env:PYTHON_SYS_EXECUTABLE = $pythonPath
-
-          # Build with same features as Unix (include all default features)
-          cargo build --release --features python,polars,tracing
