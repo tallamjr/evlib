@@ -41,7 +41,11 @@ designed for scalable data processing with real-world event camera datasets.
 backend, maybe Candle) Real-time visualization (Only simulated working at the
 moment — see `wasm-evlib`)
 
-**Note**: The Rust backend currently focuses on data loading and processing,
+<center>
+<img src="./wasm-evlib/wasm-sim.png" style="width:480px;height:320px;">
+</center>
+
+*Note**: The Rust backend currently focuses on data loading and processing,
 with Python modules providing advanced features like filtering and
 representations.
 
@@ -803,7 +807,7 @@ maturin build --release
 
 ## Community & Support
 
-![xkcd](https://imgs.xkcd.com/comics/the_best_camera.png){ width=100% }
+![xkcd](https://imgs.xkcd.com/comics/universal_converter_box.png)
 
 - **GitHub**: [tallamjr/evlib](https://github.com/tallamjr/evlib)
 - **Issues**: Report bugs and request features
