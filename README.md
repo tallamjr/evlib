@@ -41,10 +41,6 @@ designed for scalable data processing with real-world event camera datasets.
 backend, maybe Candle) Real-time visualization (Only simulated working at the
 moment — see `wasm-evlib`)
 
-<center>
-<img src="./wasm-evlib/wasm-sim.png" style="width:480px;height:320px;">
-</center>
-
 *Note**: The Rust backend currently focuses on data loading and processing,
 with Python modules providing advanced features like filtering and
 representations.
@@ -54,6 +50,7 @@ representations.
 <!-- mtoc-start -->
 
 * [Quick Start](#quick-start)
+  * [What are Event Cameras?](#what-are-event-cameras)
   * [Basic Usage](#basic-usage)
   * [Advanced Filtering](#advanced-filtering)
   * [Event Representations](#event-representations)
@@ -99,6 +96,46 @@ representations.
 <!-- mtoc-end -->
 
 ## Quick Start
+
+### What are Event Cameras?
+
+Event cameras (also called neuromorphic or dynamic vision sensors) differ
+fundamentally from traditional frame-based cameras. Instead of capturing images
+at fixed frame rates, they operate asynchronously, with each pixel independently
+reporting changes in brightness as they occur.
+
+Each **event** is represented as a 4-tuple:
+
+$$e = (x, y, t, p)$$
+
+Where:
+- $x, y \in \mathbb{N}$: Pixel coordinates in the sensor array (e.g., $0 \leq x < 640$, $0 \leq y < 480$)
+- $t \in \mathbb{R}^+$: Timestamp when the brightness change occurred (microsecond precision)
+- $p \in \{-1, +1\}$ or $\{0, 1\}$: Polarity indicating brightness change direction
+
+An event is triggered when the logarithmic brightness change exceeds a threshold:
+
+$$\log(L(x,y,t)) - \log(L(x,y,t_{last})) > \pm C$$
+
+where $L(x,y,t)$ is the brightness at pixel $(x,y)$ at time $t$, and $C$ is the contrast threshold.
+
+**Key advantages:**
+- **High temporal resolution**: Microsecond precision vs. millisecond frame intervals
+- **High dynamic range**: 120dB+ vs. ~60dB for conventional cameras
+- **Low power consumption**: Only active pixels generate data
+- **No motion blur**: Events capture instantaneous changes
+- **Sparse data**: Only reports meaningful changes, reducing bandwidth
+
+Event cameras excel at tracking fast motion, operating in challenging lighting
+conditions, and applications requiring precise temporal information like
+robotics, autonomous vehicles, and augmented reality.
+
+Below is an overview of what the data "looks" like...
+
+<center>
+<img src="./wasm-evlib/wasm-sim.png" style="width:480px;height:320px;">
+</center>
+
 
 ### Basic Usage
 ```python
