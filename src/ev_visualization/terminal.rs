@@ -3,7 +3,11 @@
 //! This module provides ultra-high-performance event visualization directly in the terminal
 //! using Ratatui. This eliminates GUI overhead and provides the fastest possible visualization.
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
+// Import Event type from streaming module and define Events type alias
+use crate::ev_formats::streaming::Event;
+
+// Define Events type alias for compatibility
+type Events = Vec<Event>;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode},
     execute,

@@ -660,7 +660,7 @@ impl HotPixelDetector {
     }
 
     /// Legacy interface for Vec<Event> - delegates to Polars implementation
-
+    ///
     /// Create empty detector result
     fn empty(method: HotPixelDetectionMethod) -> Self {
         Self {

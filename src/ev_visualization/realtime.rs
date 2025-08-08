@@ -3,7 +3,11 @@
 //! This module provides high-performance event visualization by processing
 //! and rendering events directly in Rust, only passing the final image to Python.
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
+// Import Event type from streaming module and define Events type alias
+use crate::ev_formats::streaming::Event;
+
+// Define Events type alias for compatibility
+type Events = Vec<Event>;
 use image::{ImageBuffer, Rgb};
 use std::collections::VecDeque;
 use std::time::Instant;

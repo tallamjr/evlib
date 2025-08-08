@@ -43,7 +43,11 @@ use uuid::Uuid;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
+// Import Event type from streaming module and define Events type alias
+use crate::ev_formats::streaming::Event;
+
+// Define Events type alias for compatibility
+type Events = Vec<Event>;
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;

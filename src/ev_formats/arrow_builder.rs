@@ -15,8 +15,10 @@ use arrow_array::{
 #[cfg(feature = "arrow")]
 use std::sync::Arc;
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
-use crate::ev_formats::EventFormat;
+use crate::ev_formats::{streaming::Event, EventFormat};
+
+// Define Events type alias for this module
+type Events = Vec<Event>;
 
 /// Error types for Arrow operations
 #[derive(Debug, thiserror::Error)]
@@ -253,23 +255,23 @@ impl ArrowEventBuilder {
     /// - Text/Other: Use 0/1 encoding (matches file format)
     ///
     /// # Arguments
-    /// * `polarity` - Boolean polarity value from Event
+    /// * `polarity` - i8 polarity value from Event (-1/1 or 0/1)
     ///
     /// # Returns
     /// Int8 polarity value according to format encoding
-    fn convert_polarity(&self, polarity: bool) -> i8 {
+    fn convert_polarity(&self, polarity: i8) -> i8 {
         match self.format {
             EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 | EventFormat::HDF5 => {
-                // Convert 0/1 to -1/1 for proper polarity encoding
-                if polarity {
+                // Ensure we have -1/1 encoding for these formats
+                if polarity > 0 {
                     1i8
                 } else {
                     -1i8
                 }
             }
             _ => {
-                // Text and other formats: keep 0/1 encoding
-                if polarity {
+                // Text and other formats: convert to 0/1 encoding
+                if polarity > 0 {
                     1i8
                 } else {
                     0i8
@@ -521,8 +523,8 @@ pub fn arrow_to_events(batch: &RecordBatch) -> Result<Events, ArrowBuilderError>
         // Convert timestamp from microseconds to seconds
         let t = timestamp_us as f64 / 1_000_000.0;
 
-        // Convert polarity from Int8 to bool
-        let polarity = polarity_raw > 0;
+        // Keep polarity as i8
+        let polarity = polarity_raw;
 
         events.push(Event { t, x, y, polarity });
     }

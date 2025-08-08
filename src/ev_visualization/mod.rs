@@ -1,9 +1,13 @@
 // Visualization module
 // Tools for converting events into visualizations and images
 
-// Removed: use crate::Events; - legacy type no longer exists
+// Import Event type from streaming module and define Events type alias
+use crate::ev_formats::streaming::Event;
 use candle_core::{Result as CandleResult, Tensor};
 use image::{Rgb, RgbImage};
+
+// Define Events type alias for compatibility
+type Events = Vec<Event>;
 
 /// Render events to an RGB image, coloring by polarity
 ///

@@ -9,27 +9,7 @@ use polars::prelude::*;
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
-#[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! error {
-    ($($args:tt)*) => {
-        eprintln!("[ERROR] {}", format!($($args)*))
-    };
-}
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! info {
-    ($($args:tt)*) => {};
-}
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! warn {
-    ($($args:tt)*) => {
-        eprintln!("[WARN] {}", format!($($args)*))
-    };
-}
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -514,11 +494,9 @@ pub fn load_events_from_hdf5(
                 });
             }
 
-            return Ok(
-                python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-                })?,
-            );
+            return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+            });
         }
     }
 
@@ -583,11 +561,9 @@ pub fn load_events_from_hdf5(
                     )));
                 }
 
-                return Ok(
-                    python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                        hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-                    })?,
-                );
+                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                });
             }
         }
     }
@@ -775,11 +751,8 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
             });
         }
 
-        Ok(
-            python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-            })?,
-        )
+        python::build_polars_dataframe(&events, EventFormat::HDF5)
+            .map_err(|e| hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e)))
     })
 }
 
@@ -952,14 +925,8 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFr
         events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    Ok(
-        python::build_polars_dataframe(&events, EventFormat::Text).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("DataFrame conversion failed: {}", e),
-            )
-        })?,
-    )
+    python::build_polars_dataframe(&events, EventFormat::Text)
+        .map_err(|e| std::io::Error::other(format!("DataFrame conversion failed: {}", e)))
 }
 
 // Binary format (mmap_events) removed due to safety and reliability issues:
@@ -1118,8 +1085,14 @@ pub fn load_events_to_arrow(
     // Load events using existing pipeline
     let events = load_events_with_config(path, config)?;
 
+    // Convert DataFrame to Event iterator for Arrow construction
+    // Note: This conversion is for compatibility with Arrow integration
+    // For large datasets, consider direct DataFrame->Arrow conversion
+    let event_iter = dataframe_to_event_iterator(&events)?;
+    let events_vec: Vec<Event> = event_iter.collect();
+
     // Check if we should use streaming based on event count
-    let event_count = events.len();
+    let event_count = events_vec.len();
     let default_threshold = 5_000_000; // 5M events
     let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
 
@@ -1132,13 +1105,60 @@ pub fn load_events_to_arrow(
             );
         let streamer = ArrowEventStreamer::new(chunk_size, detection_result.format);
         streamer
-            .stream_to_arrow(events.into_iter())
+            .stream_to_arrow(events_vec.into_iter())
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
     } else {
         // Direct construction for smaller datasets
-        ArrowEventBuilder::from_events_zero_copy(&events, detection_result.format)
+        ArrowEventBuilder::from_events_zero_copy(&events_vec, detection_result.format)
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
     }
+}
+
+/// Convert DataFrame to Event iterator for Arrow integration
+/// This is a helper function for compatibility with Arrow builder
+#[cfg(feature = "arrow")]
+fn dataframe_to_event_iterator(
+    df: &DataFrame,
+) -> Result<impl Iterator<Item = Event>, Box<dyn std::error::Error>> {
+    use crate::ev_formats::streaming::Event;
+
+    let t_series = df
+        .column("timestamp")
+        .map_err(|e| format!("Missing timestamp column: {}", e))?;
+    let x_series = df
+        .column("x")
+        .map_err(|e| format!("Missing x column: {}", e))?;
+    let y_series = df
+        .column("y")
+        .map_err(|e| format!("Missing y column: {}", e))?;
+    let polarity_series = df
+        .column("polarity")
+        .map_err(|e| format!("Missing polarity column: {}", e))?;
+
+    // Convert to vectors for iterator creation
+    let timestamps: Vec<f64> = t_series.f64()?.into_no_null_iter().collect();
+    let x_coords: Vec<u16> = x_series
+        .i16()?
+        .into_no_null_iter()
+        .map(|v| v as u16)
+        .collect();
+    let y_coords: Vec<u16> = y_series
+        .i16()?
+        .into_no_null_iter()
+        .map(|v| v as u16)
+        .collect();
+    let polarities: Vec<i8> = polarity_series.i8()?.into_no_null_iter().collect();
+
+    // Create iterator of Event structs
+    let events: Vec<Event> = timestamps
+        .into_iter()
+        .zip(x_coords.into_iter())
+        .zip(y_coords.into_iter())
+        .zip(polarities.into_iter())
+        .map(|(((t, x), y), polarity)| Event { t, x, y, polarity })
+        .collect();
+
+    Ok(events.into_iter())
 }
 
 /// Load events to Apache Arrow RecordBatch (simple version)
@@ -1560,7 +1580,7 @@ pub mod python {
     ///
     /// Returns:
     ///     Python dictionary with event data for Polars LazyFrame creation
-
+    ///
     /// Load events directly into a Polars DataFrame (optimized path)
     /// This bypasses the intermediate Event struct and builds DataFrames directly from format readers
     #[cfg(all(feature = "polars", feature = "python"))]
@@ -1577,9 +1597,11 @@ pub mod python {
         let df = match format_result.format {
             EventFormat::EVT2 | EventFormat::EVT21 => {
                 // Use EVT2 reader with direct DataFrame output
-                let mut evt2_config = Evt2Config::default();
-                evt2_config.validate_coordinates = true;
-                evt2_config.skip_invalid_events = true;
+                let mut evt2_config = Evt2Config {
+                    validate_coordinates: true,
+                    skip_invalid_events: true,
+                    ..Default::default()
+                };
 
                 // Use chunk_size as max_events limit if specified
                 if let Some(chunk_size) = config.chunk_size {

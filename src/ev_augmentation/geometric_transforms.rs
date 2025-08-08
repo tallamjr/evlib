@@ -484,7 +484,6 @@ pub fn apply_geometric_transforms_polars(
 ///
 /// These functions apply geometric transformations directly to a LazyFrame for optimal performance.
 /// Use these instead of the legacy Vec<Event> versions when possible.
-
 #[cfg(feature = "polars")]
 pub fn apply_flip_lr_df(df: LazyFrame, sensor_width: u16) -> PolarsResult<LazyFrame> {
     let config =

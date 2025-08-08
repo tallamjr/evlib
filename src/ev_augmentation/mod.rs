@@ -43,20 +43,10 @@
 //! ```
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
+use crate::ev_formats::streaming::Event;
 use std::fmt;
-
-#[cfg(feature = "tracing")]
 use tracing::{debug, info};
 
-#[cfg(not(feature = "tracing"))]
-macro_rules! debug {
-    ($($args:tt)*) => {};
-}
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! info {
-    ($($args:tt)*) => {};
-}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
