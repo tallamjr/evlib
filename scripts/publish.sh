@@ -178,8 +178,11 @@ publish_to_pypi() {
     # Clean previous builds
     rm -rf dist/ target/wheels/
 
-    # Build wheels for multiple Python versions
-    print_step "Building wheels for Python 3.10, 3.11, and 3.12..."
+    # Build wheels for multiple Python versions and platforms
+    print_step "Building multi-platform wheels..."
+
+    # Build standard wheels for current platform
+    print_step "Building wheels for current platform..."
 
     # Check which Python interpreters are available
     PYTHON_VERSIONS=()
@@ -198,6 +201,64 @@ publish_to_pypi() {
     else
         print_step "Building wheels for: ${PYTHON_VERSIONS[*]}"
         maturin build --release --features python --interpreter "${PYTHON_VERSIONS[@]}"
+    fi
+
+    # If on Linux, also build manylinux2014 wheels for maximum compatibility
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        print_step "Building additional manylinux2014 wheels for GLIBC compatibility..."
+
+        # Check if Docker is available
+        if command_exists docker; then
+            print_step "Using Docker to build manylinux2014 wheels..."
+
+            # Create manylinux2014 compatible wheels
+            docker run --rm -v $(pwd):/workspace quay.io/pypa/manylinux2014_x86_64 bash -c '
+                set -e
+                cd /workspace
+
+                # Install system dependencies
+                yum install -y hdf5-devel pkgconfig cmake glib2-devel
+
+                # Install Rust nightly toolchain
+                curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly
+                source ~/.cargo/env
+
+                # Build for each supported Python version
+                for PYBIN in /opt/python/cp{310,311,312}-*/bin; do
+                  if [ -d "$PYBIN" ]; then
+                    echo "Building manylinux wheel for Python: $PYBIN"
+
+                    # Install maturin for this Python version
+                    "$PYBIN/pip" install maturin>=1.7.4
+
+                    # Build the wheel
+                    "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
+                  fi
+                done
+
+                # Repair wheels for manylinux2014 compatibility
+                echo "Repairing wheels for manylinux2014 compatibility..."
+                mkdir -p dist_manylinux
+                for wheel in dist/*.whl; do
+                  if [ -f "$wheel" ]; then
+                    echo "Repairing: $wheel"
+                    auditwheel repair "$wheel" --plat manylinux2014_x86_64 -w dist_manylinux/ || cp "$wheel" dist_manylinux/
+                  fi
+                done
+
+                # Keep only manylinux wheels
+                rm -f dist/*.whl
+                if [ -d dist_manylinux ] && [ "$(ls -A dist_manylinux)" ]; then
+                  mv dist_manylinux/*.whl dist/
+                fi
+                rm -rf dist_manylinux
+
+                echo "Final manylinux wheels:"
+                ls -la dist/*.whl
+            ' 2>/dev/null || print_warning "manylinux wheel build failed, using standard wheels"
+        else
+            print_warning "Docker not available, skipping manylinux2014 wheel build"
+        fi
     fi
 
     if [ "$TEST_MODE" = true ]; then

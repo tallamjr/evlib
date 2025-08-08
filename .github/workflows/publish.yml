@@ -54,16 +54,56 @@ jobs:
             echo "should_publish=false" >> $GITHUB_OUTPUT
           fi
 
-  publish-pypi:
+  build-wheels:
     runs-on: ${{ matrix.os }}
     needs: [check-version]
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          # Linux builds with multiple GLIBC versions
+          - os: ubuntu-20.04  # GLIBC 2.31 - broader compatibility
+            platform: linux
+            arch: x86_64
+            python-version: "3.10"
+          - os: ubuntu-20.04
+            platform: linux
+            arch: x86_64
+            python-version: "3.11"
+          - os: ubuntu-20.04
+            platform: linux
+            arch: x86_64
+            python-version: "3.12"
+
+          # macOS builds
+          - os: macos-13  # Intel macOS
+            platform: macos
+            arch: x86_64
+            python-version: "3.10"
+          - os: macos-13
+            platform: macos
+            arch: x86_64
+            python-version: "3.11"
+          - os: macos-13
+            platform: macos
+            arch: x86_64
+            python-version: "3.12"
+
+          - os: macos-14  # ARM64 macOS
+            platform: macos
+            arch: arm64
+            python-version: "3.10"
+          - os: macos-14
+            platform: macos
+            arch: arm64
+            python-version: "3.11"
+          - os: macos-14
+            platform: macos
+            arch: arm64
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -76,29 +116,149 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.platform == 'linux' && 'x86_64-unknown-linux-gnu' || matrix.platform == 'macos' && matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: publish-${{ matrix.os }}-${{ matrix.python-version }}
+          key: build-wheels-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.arch }}
 
       - name: Install maturin
         run: |
           source .venv/bin/activate
           uv pip install maturin>=1.7.4
 
-      - name: Publish to PyPI
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-          TEST_MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      - name: Build wheels
         run: |
           source .venv/bin/activate
+
+          # Set target architecture for cross-compilation
+          if [ "${{ matrix.platform }}" = "macos" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
+            export CARGO_BUILD_TARGET="aarch64-apple-darwin"
+          elif [ "${{ matrix.platform }}" = "macos" ] && [ "${{ matrix.arch }}" = "x86_64" ]; then
+            export CARGO_BUILD_TARGET="x86_64-apple-darwin"
+          fi
+
+          # Build wheel
+          maturin build --release --features python --interpreter python${{ matrix.python-version }} --out dist
+
+      - name: Upload wheels as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform }}-${{ matrix.arch }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+
+  # Additional legacy Linux build for maximum GLIBC compatibility
+  build-wheels-manylinux:
+    runs-on: ubuntu-latest
+    needs: [check-version]
+    if: |
+      needs.check-version.outputs.should_publish == 'true' &&
+      (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build manylinux wheels for GLIBC 2.17+ compatibility
+        run: |
+          # Use manylinux2014 container for maximum GLIBC compatibility (GLIBC 2.17+)
+          docker run --rm -v $(pwd):/workspace quay.io/pypa/manylinux2014_x86_64 bash -c '
+            set -e
+            cd /workspace
+
+            # Install system dependencies
+            yum install -y hdf5-devel pkgconfig cmake glib2-devel
+
+            # Install Rust nightly toolchain
+            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly
+            source ~/.cargo/env
+
+            # Build for each supported Python version
+            for PYBIN in /opt/python/cp{310,311,312}-*/bin; do
+              if [ -d "$PYBIN" ]; then
+                echo "Building wheel for Python: $PYBIN"
+
+                # Install maturin for this Python version
+                "$PYBIN/pip" install maturin>=1.7.4
+
+                # Build the wheel
+                "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
+              fi
+            done
+
+            # Repair wheels for manylinux2014 compatibility
+            echo "Repairing wheels for manylinux2014 compatibility..."
+            mkdir -p dist_repaired
+            for wheel in dist/*.whl; do
+              if [ -f "$wheel" ]; then
+                echo "Repairing: $wheel"
+                auditwheel repair "$wheel" --plat manylinux2014_x86_64 -w dist_repaired/
+              fi
+            done
+
+            # Replace original wheels with repaired ones
+            rm -f dist/*.whl
+            mv dist_repaired/*.whl dist/ 2>/dev/null || true
+            rmdir dist_repaired 2>/dev/null || true
+
+            echo "Final wheels:"
+            ls -la dist/*.whl
+          '
+
+      - name: Upload manylinux wheels as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-manylinux2014-x86_64
+          path: dist/*.whl
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: [check-version, build-wheels, build-wheels-manylinux]
+    if: |
+      needs.check-version.outputs.should_publish == 'true' &&
+      (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: List built wheels
+        run: |
+          echo "Built wheels:"
+          ls -la dist/
+          echo
+          echo "Wheel details:"
+          for wheel in dist/*.whl; do
+            echo "$(basename "$wheel"): $(python -m zipfile -l "$wheel" | grep -E '\.(so|pyd)$' || echo 'No native extensions found')"
+          done
+
+      - name: Install twine
+        run: pip install twine
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          TEST_TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: |
           if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
             echo "TEST MODE: Uploading to TestPyPI"
-            maturin publish --no-sdist -u __token__ -p "$TEST_MATURIN_PYPI_TOKEN" --repository testpypi --features python --interpreter python${{ matrix.python-version }}
+            twine upload --repository testpypi --username __token__ --password "$TEST_TWINE_PASSWORD" dist/*.whl --skip-existing --verbose
           else
             echo "Uploading to PyPI"
-            maturin publish --no-sdist -u __token__ -p "$MATURIN_PYPI_TOKEN" --features python --interpreter python${{ matrix.python-version }}
+            twine upload --username __token__ --password "$TWINE_PASSWORD" dist/*.whl --skip-existing --verbose
           fi
 
   publish-crates:
