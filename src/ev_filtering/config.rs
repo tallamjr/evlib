@@ -544,26 +544,26 @@ impl FilterConfig {
     pub fn description(&self) -> String {
         let mut parts = Vec::new();
 
-        if let Some(filter) = &self.temporal_filter {
-            parts.push(format!("Temporal({})", filter.description()));
+        if let Some(_filter) = &self.temporal_filter {
+            parts.push(format!("Temporal(filter)"));
         }
-        if let Some(filter) = &self.spatial_filter {
-            parts.push(format!("Spatial({})", filter.description()));
+        if let Some(_filter) = &self.spatial_filter {
+            parts.push(format!("Spatial(filter)"));
         }
-        if let Some(filter) = &self.polarity_filter {
-            parts.push(format!("Polarity({})", filter.description()));
+        if let Some(_filter) = &self.polarity_filter {
+            parts.push(format!("Polarity(filter)"));
         }
-        if let Some(filter) = &self.hot_pixel_filter {
-            parts.push(format!("HotPixel({})", filter.description()));
+        if let Some(_filter) = &self.hot_pixel_filter {
+            parts.push(format!("HotPixel(filter)"));
         }
-        if let Some(filter) = &self.denoise_filter {
-            parts.push(format!("Denoise({})", filter.description()));
+        if let Some(_filter) = &self.denoise_filter {
+            parts.push(format!("Denoise(filter)"));
         }
-        if let Some(filter) = &self.drop_pixel_filter {
-            parts.push(format!("DropPixel({})", filter.description()));
+        if let Some(_filter) = &self.drop_pixel_filter {
+            parts.push(format!("DropPixel(filter)"));
         }
-        if let Some(filter) = &self.downsampling_filter {
-            parts.push(format!("Downsample({})", filter.description()));
+        if let Some(_filter) = &self.downsampling_filter {
+            parts.push(format!("Downsample(filter)"));
         }
 
         if parts.is_empty() {

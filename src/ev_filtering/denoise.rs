@@ -34,10 +34,10 @@
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{utils, FilterError, FilterResult};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {

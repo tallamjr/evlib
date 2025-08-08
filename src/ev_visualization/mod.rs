@@ -363,7 +363,10 @@ fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, Polars
     let x_values = x_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
     let y_values = y_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
     let t_values = t_series.f64()?.into_no_null_iter().collect::<Vec<_>>();
-    let polarity_values = polarity_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let polarity_values = polarity_series
+        .i64()?
+        .into_no_null_iter()
+        .collect::<Vec<_>>();
 
     let events = x_values
         .into_iter()
@@ -607,25 +610,45 @@ pub mod python {
                 // For DataFrames, we need to compute resolution from data
                 // This requires collecting the DataFrame to get max values
                 let df = lf.clone().collect().map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to collect DataFrame: {}", e))
+                    pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Failed to collect DataFrame: {}",
+                        e
+                    ))
                 })?;
 
-                let x_max = df.column("x").map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("Missing 'x' column: {}", e))
-                })?.max::<i64>().unwrap_or(0) as u16 + 1;
+                let x_max = df
+                    .column("x")
+                    .map_err(|e| {
+                        pyo3::exceptions::PyRuntimeError::new_err(format!(
+                            "Missing 'x' column: {}",
+                            e
+                        ))
+                    })?
+                    .max::<i64>()
+                    .unwrap_or(0) as u16
+                    + 1;
 
-                let y_max = df.column("y").map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("Missing 'y' column: {}", e))
-                })?.max::<i64>().unwrap_or(0) as u16 + 1;
+                let y_max = df
+                    .column("y")
+                    .map_err(|e| {
+                        pyo3::exceptions::PyRuntimeError::new_err(format!(
+                            "Missing 'y' column: {}",
+                            e
+                        ))
+                    })?
+                    .max::<i64>()
+                    .unwrap_or(0) as u16
+                    + 1;
 
                 (x_max, y_max)
             }
         };
 
         // Draw events to image using DataFrame interface
-        let img = draw_events_to_image_df(lf, res, color_mode.unwrap_or("polarity")).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Image rendering failed: {}", e))
-        })?;
+        let img =
+            draw_events_to_image_df(lf, res, color_mode.unwrap_or("polarity")).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("Image rendering failed: {}", e))
+            })?;
 
         // Convert to numpy array
         let (width, height) = (img.width() as usize, img.height() as usize);

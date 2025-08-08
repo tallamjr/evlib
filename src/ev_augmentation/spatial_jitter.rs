@@ -34,11 +34,9 @@
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use rand::{Rng, SeedableRng};
-use rand_distr::{Distribution, Normal};
 
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {
@@ -151,32 +149,6 @@ impl SpatialJitterAugmentation {
         det >= 0.0 && trace >= 0.0
     }
 
-    /// Generate jitter for a single coordinate
-    fn generate_jitter(&self, rng: &mut impl Rng) -> (f64, f64) {
-        // For uncorrelated jitter, use simple normal distributions
-        if self.sigma_xy.abs() < 1e-10 {
-            let dist_x = Normal::new(0.0, self.var_x.sqrt()).unwrap();
-            let dist_y = Normal::new(0.0, self.var_y.sqrt()).unwrap();
-            return (dist_x.sample(rng), dist_y.sample(rng));
-        }
-
-        // For correlated jitter, use multivariate normal
-        // First generate two independent standard normal samples
-        let std_normal = Normal::new(0.0, 1.0).unwrap();
-        let z1 = std_normal.sample(rng);
-        let z2 = std_normal.sample(rng);
-
-        // Cholesky decomposition of covariance matrix to generate correlated samples
-        let a = self.var_x.sqrt();
-        let b = self.sigma_xy / a;
-        let c = (self.var_y - b * b).max(0.0).sqrt();
-
-        let x_jitter = a * z1;
-        let y_jitter = b * z1 + c * z2;
-
-        (x_jitter, y_jitter)
-    }
-
     /// Apply spatial jitter directly to DataFrame (recommended approach)
     ///
     /// This is the high-performance DataFrame-native method that should be used
@@ -285,7 +257,7 @@ pub fn apply_spatial_jitter(
 
     // For complex transformations with random generation, we'll collect and use Vec operations
     // This provides better control and compatibility across Polars versions
-    let collected_df = df.collect()?;
+    let _collected_df = df.collect()?;
 
     // TODO: Implement native Polars spatial jitter without Events type
     return Err(PolarsError::ComputeError(

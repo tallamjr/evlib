@@ -300,11 +300,12 @@ mod tests {
         assert_eq!(df.height(), 3);
         assert_eq!(df.width(), 4);
 
-        let columns: Vec<&str> = df.get_column_names();
-        assert!(columns.contains(&"x"));
-        assert!(columns.contains(&"y"));
-        assert!(columns.contains(&"timestamp"));
-        assert!(columns.contains(&"polarity"));
+        let columns = df.get_column_names();
+        let column_names: Vec<String> = columns.iter().map(|s| s.to_string()).collect();
+        assert!(column_names.contains(&"x".to_string()));
+        assert!(column_names.contains(&"y".to_string()));
+        assert!(column_names.contains(&"timestamp".to_string()));
+        assert!(column_names.contains(&"polarity".to_string()));
     }
 
     #[test]

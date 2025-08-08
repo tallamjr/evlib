@@ -129,7 +129,7 @@ impl RealtimeEventVisualizer {
             let age_ms = now.duration_since(*timestamp).as_millis() as f32;
             if age_ms < decay_ms {
                 let alpha = 1.0 - (age_ms / decay_ms);
-                let color = if event.polarity {
+                let color = if event.polarity > 0 {
                     self.config.positive_color
                 } else {
                     self.config.negative_color

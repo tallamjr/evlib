@@ -38,7 +38,7 @@ use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::collections::HashSet;
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {

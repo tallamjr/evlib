@@ -33,7 +33,7 @@
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult};
+use crate::ev_filtering::FilterError;
 use polars::prelude::*;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument, warn};

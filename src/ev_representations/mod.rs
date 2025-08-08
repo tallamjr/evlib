@@ -21,7 +21,7 @@ This module provides two complementary APIs for converting event streams into te
 - **Performance**: Rust core functions are optimised for tensor operations, Python bindings optimised for DataFrame workflows
 */
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
+use crate::ev_formats::streaming::Event;
 
 /// Error type for tensor operations
 #[derive(Debug)]
@@ -36,658 +36,11 @@ impl std::fmt::Display for TensorError {
 impl std::error::Error for TensorError {}
 
 /// Result type for tensor operations
-pub type TensorResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub type TensorResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 use ndarray::{s, Array2, Array3, Array4};
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
-
-/// Create a timestamp image (time surface) representation of events
-///
-/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
-///
-/// A timestamp image is a 2D grid where each pixel's value represents
-/// the timestamp of the most recent event at that location. This can be used
-/// to visualise the temporal dynamics and for creating time-based features.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `resolution` - Sensor resolution (width, height)
-/// * `normalize` - If true, normalise timestamps to [0,1] range
-/// * `polarity_separate` - If true, create separate time surfaces for positive and negative events
-///
-/// # Returns
-/// * `Array3<f32>` with shape (channels, height, width) where channels = 1 or 2 depending on `polarity_separate`
-pub fn events_to_timestamp_image(
-    events: &Events,
-    resolution: (u16, u16),
-    normalize: bool,
-    polarity_separate: bool,
-) -> TensorResult<Array3<f32>> {
-    let (width, height) = (resolution.0 as usize, resolution.1 as usize);
-
-    // Handle empty events
-    if events.is_empty() {
-        return if polarity_separate {
-            Ok(Array3::zeros((2, height, width)))
-        } else {
-            Ok(Array3::zeros((1, height, width)))
-        };
-    }
-
-    // Initialize timestamp images
-    let mut timestamps_pos = vec![0f32; width * height];
-    let mut timestamps_neg = vec![0f32; width * height];
-
-    // Find time range for normalization
-    let t_min = if normalize {
-        events.first().unwrap().t as f32
-    } else {
-        0.0
-    };
-
-    let t_max = if normalize {
-        events.last().unwrap().t as f32
-    } else {
-        1.0
-    };
-
-    let t_range = t_max - t_min;
-
-    // Process each event
-    for ev in events {
-        let idx = ev.y as usize * width + ev.x as usize;
-        let t_value = if normalize {
-            ((ev.t as f32 - t_min) / t_range).clamp(0.0, 1.0)
-        } else {
-            ev.t as f32
-        };
-
-        // Update the appropriate timestamp image
-        if ev.polarity {
-            timestamps_pos[idx] = t_value;
-        } else {
-            timestamps_neg[idx] = t_value;
-        }
-    }
-
-    // Convert to ndarray
-    if polarity_separate {
-        let all_timestamps = [&timestamps_pos[..], &timestamps_neg[..]].concat();
-        Array3::from_shape_vec((2, height, width), all_timestamps).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {e}")))
-                as Box<dyn std::error::Error + Send + Sync>
-        })
-    } else {
-        // Combine both polarities, taking the most recent timestamp
-        let mut timestamps = vec![0f32; width * height];
-        for i in 0..timestamps.len() {
-            timestamps[i] = if timestamps_pos[i] >= timestamps_neg[i] {
-                timestamps_pos[i]
-            } else {
-                timestamps_neg[i]
-            };
-        }
-        Array3::from_shape_vec((1, height, width), timestamps).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {e}")))
-                as Box<dyn std::error::Error + Send + Sync>
-        })
-    }
-}
-
-/// Create an event count image (spatial histogram of events)
-///
-/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `resolution` - Sensor resolution (width, height)
-/// * `polarity_as_channel` - If true, create a 2-channel image with positive and negative events separated
-///
-/// # Returns
-/// * `Array3<f32>` with shape (channels, height, width) where channels = 1 or 2 depending on `polarity_as_channel`
-pub fn events_to_count_image(
-    events: &Events,
-    resolution: (u16, u16),
-    polarity_as_channel: bool,
-) -> TensorResult<Array3<f32>> {
-    let (width, height) = (resolution.0 as usize, resolution.1 as usize);
-
-    // Initialize count images
-    let mut counts_pos = vec![0i32; width * height];
-    let mut counts_neg = vec![0i32; width * height];
-
-    // Count events at each pixel
-    for ev in events {
-        let idx = ev.y as usize * width + ev.x as usize;
-        if ev.polarity {
-            counts_pos[idx] += 1;
-        } else {
-            counts_neg[idx] += 1;
-        }
-    }
-
-    // Convert to ndarray
-    if polarity_as_channel {
-        // Create a 2-channel image [pos_counts, neg_counts]
-        let counts_pos_f32: Vec<f32> = counts_pos.iter().map(|&x| x as f32).collect();
-        let counts_neg_f32: Vec<f32> = counts_neg.iter().map(|&x| x as f32).collect();
-
-        let all_counts = [&counts_pos_f32[..], &counts_neg_f32[..]].concat();
-        Array3::from_shape_vec((2, height, width), all_counts).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {e}")))
-                as Box<dyn std::error::Error + Send + Sync>
-        })
-    } else {
-        // Create a single-channel image with combined counts
-        let mut counts = vec![0f32; width * height];
-        for i in 0..counts.len() {
-            counts[i] = (counts_pos[i] + counts_neg[i]) as f32;
-        }
-        Array3::from_shape_vec((1, height, width), counts).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {e}")))
-                as Box<dyn std::error::Error + Send + Sync>
-        })
-    }
-}
-
-/// Create an event frame by accumulating events into an image
-///
-/// **Rust Core API Function**: Returns `Array3<f32>` for direct tensor operations.
-///
-/// Similar to a count image but optionally applies normalisation and
-/// can be configured to use different accumulation methods.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `resolution` - Sensor resolution (width, height)
-/// * `method` - Accumulation method: "count", "polarity", or "times"
-/// * `normalize` - If true, normalise the output to [0,1] range
-///
-/// # Returns
-/// * `Array3<f32>` with shape (1, height, width)
-pub fn events_to_frame(
-    events: &Events,
-    resolution: (u16, u16),
-    method: &str,
-    normalize: bool,
-) -> TensorResult<Array3<f32>> {
-    let (width, height) = (resolution.0 as usize, resolution.1 as usize);
-    let mut frame = vec![0f32; width * height];
-
-    if events.is_empty() {
-        return Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
-            Box::new(TensorError(format!("Shape error: {e}")))
-                as Box<dyn std::error::Error + Send + Sync>
-        });
-    }
-
-    // Accumulate based on method
-    match method {
-        "polarity" => {
-            // Sum polarities
-            for ev in events {
-                let idx = ev.y as usize * width + ev.x as usize;
-                frame[idx] += ev.polarity as u8 as f32;
-            }
-        }
-        "times" => {
-            // Normalize timestamps to [0,1] and use as pixel intensities
-            let t_min = events.first().unwrap().t;
-            let t_max = events.last().unwrap().t;
-            let t_range = t_max - t_min;
-
-            if t_range > 0.0 {
-                for ev in events {
-                    let idx = ev.y as usize * width + ev.x as usize;
-                    let t_norm = ((ev.t - t_min) / t_range) as f32;
-                    // Use the most recent event's normalized time
-                    frame[idx] = t_norm;
-                }
-            }
-        }
-        _ => {
-            // "count" (default)
-            // Count events
-            for ev in events {
-                let idx = ev.y as usize * width + ev.x as usize;
-                frame[idx] += 1.0;
-            }
-        }
-    };
-
-    // Normalize if requested
-    if normalize && !events.is_empty() {
-        let max_val = frame.iter().fold(0.0f32, |a, &b| a.max(b));
-        if max_val > 0.0 {
-            for val in &mut frame {
-                *val /= max_val;
-            }
-        }
-    }
-
-    Array3::from_shape_vec((1, height, width), frame).map_err(|e| {
-        Box::new(TensorError(format!("Shape error: {e}")))
-            as Box<dyn std::error::Error + Send + Sync>
-    })
-}
-
-/// Create a time window representation of events
-///
-/// **Rust Core API Function**: Returns `Vec<Array3<f32>>` for direct tensor operations.
-///
-/// This splits the event stream into time windows and creates a representation
-/// for each window, allowing time-based processing of events.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `resolution` - Sensor resolution (width, height)
-/// * `window_duration` - Duration of each time window in seconds
-/// * `representation` - Type of representation to use for each window ("count", "polarity")
-///
-/// # Returns
-/// * `Vec<Array3<f32>>` where each element is a tensor for one time window
-pub fn events_to_time_windows(
-    events: &Events,
-    resolution: (u16, u16),
-    window_duration: f64,
-    representation: &str,
-) -> TensorResult<Vec<Array3<f32>>> {
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Determine time range
-    let t_min = events.first().unwrap().t;
-    let t_max = events.last().unwrap().t;
-    let total_duration = t_max - t_min;
-
-    // Calculate number of windows
-    let num_windows = (total_duration / window_duration).ceil() as usize;
-    let mut result = Vec::with_capacity(num_windows);
-
-    // Split events into time windows
-    let mut current_window = Vec::new();
-    let mut current_end_time = t_min + window_duration;
-
-    let mut event_index = 0;
-    while event_index < events.len() {
-        let event = &events[event_index];
-
-        if event.t <= current_end_time {
-            // Event belongs to current window
-            current_window.push(*event);
-            event_index += 1;
-        } else {
-            // Process current window
-            if !current_window.is_empty() {
-                let tensor = match representation {
-                    "count" => events_to_count_image(&current_window, resolution, false)?,
-                    _ => events_to_frame(&current_window, resolution, "polarity", false)?,
-                };
-                result.push(tensor);
-            } else {
-                // Add empty array if no events in window
-                let tensor = Array3::zeros((1, resolution.1 as usize, resolution.0 as usize));
-                result.push(tensor);
-            }
-
-            // Start new window
-            current_window.clear();
-            current_end_time += window_duration;
-        }
-    }
-
-    // Process final window if not empty
-    if !current_window.is_empty() {
-        let tensor = match representation {
-            "count" => events_to_count_image(&current_window, resolution, false)?,
-            _ => events_to_frame(&current_window, resolution, "polarity", false)?,
-        };
-        result.push(tensor);
-    }
-
-    Ok(result)
-}
-
-/// Create an enhanced voxel grid with bilinear interpolation in the time domain
-///
-/// **Rust Core API Function**: Returns `Array4<f32>` for direct tensor operations.
-///
-/// This function implements the enhanced voxel grid algorithm with bilinear interpolation
-/// from Tonic's `to_voxel_grid_numpy`, adapted for evlib's architecture. The algorithm
-/// builds a voxel grid representation as described in Zhu et al. 2019, "Unsupervised
-/// event-based learning of optical flow, depth, and egomotion."
-///
-/// ## Algorithm Details
-/// 1. **Timestamp Normalisation**: Event timestamps are normalised to [0, n_time_bins] range
-/// 2. **Bilinear Interpolation**: Events are distributed between adjacent time bins using
-///    bilinear interpolation: `vals_left = polarity * (1.0 - dts)`, `vals_right = polarity * dts`
-/// 3. **Polarity Handling**: Converts 0/1 polarity to -1/+1 for proper signed accumulation
-/// 4. **Boundary Conditions**: Properly handles events at bin boundaries
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `sensor_size` - Sensor dimensions (width, height, polarity_channels)
-/// * `n_time_bins` - Number of temporal bins in the voxel grid
-///
-/// # Returns
-/// * `Array4<f32>` with shape (n_time_bins, polarity_channels, height, width)
-///
-/// # Errors
-/// * Returns `TensorError` if sensor_size.2 != 2 (polarity channels must be 2)
-/// * Returns `TensorError` if events are empty or invalid
-pub fn to_voxel_grid_enhanced(
-    events: &Events,
-    sensor_size: (u16, u16, u16), // (width, height, polarity_channels)
-    n_time_bins: usize,
-) -> TensorResult<Array4<f32>> {
-    let (width, height, polarity_channels) = (
-        sensor_size.0 as usize,
-        sensor_size.1 as usize,
-        sensor_size.2 as usize,
-    );
-
-    // Validate polarity channels
-    if polarity_channels != 2 {
-        return Err(Box::new(TensorError(format!(
-            "Expected 2 polarity channels, got {}",
-            polarity_channels
-        ))));
-    }
-
-    // Handle empty events
-    if events.is_empty() {
-        return Ok(Array4::zeros((
-            n_time_bins,
-            polarity_channels,
-            height,
-            width,
-        )));
-    }
-
-    // Initialize flat voxel grid for efficient indexing
-    let total_size = n_time_bins * polarity_channels * height * width;
-    let mut voxel_grid = vec![0.0f32; total_size];
-
-    // Get time range for normalisation
-    let t_start = events.first().unwrap().t;
-    let t_end = events.last().unwrap().t;
-    let t_range = t_end - t_start;
-
-    // Handle edge case where all events have the same timestamp
-    if t_range <= 0.0 {
-        // Put all events in the first time bin
-        for event in events {
-            let x = event.x as usize;
-            let y = event.y as usize;
-
-            // Clamp coordinates to sensor bounds
-            if x >= width || y >= height {
-                continue;
-            }
-
-            // Convert polarity: true -> 1 (positive channel), false -> 0 (negative channel)
-            let polarity_channel = if event.polarity { 1 } else { 0 };
-            let polarity_value = if event.polarity { 1.0 } else { -1.0 };
-
-            let idx = polarity_channel * height * width * n_time_bins
-                // time_bin = 0, so no offset needed
-                + y * width
-                + x;
-
-            if idx < total_size {
-                voxel_grid[idx] += polarity_value;
-            }
-        }
-    } else {
-        // Normalise timestamps and apply bilinear interpolation
-        for event in events {
-            let x = event.x as usize;
-            let y = event.y as usize;
-
-            // Clamp coordinates to sensor bounds
-            if x >= width || y >= height {
-                continue;
-            }
-
-            // Normalise timestamp to [0, n_time_bins] range
-            let t_normalised = (n_time_bins as f64) * (event.t - t_start) / t_range;
-            let t_int = t_normalised.floor() as usize;
-            let t_fractional = t_normalised - t_int as f64;
-
-            // Convert polarity: true -> 1 (positive channel), false -> 0 (negative channel)
-            let polarity_channel = if event.polarity { 1 } else { 0 };
-            let polarity_value = if event.polarity { 1.0 } else { -1.0 };
-
-            // Bilinear interpolation weights
-            let val_left = polarity_value * (1.0 - t_fractional as f32);
-            let val_right = polarity_value * t_fractional as f32;
-
-            // Add to left time bin
-            if t_int < n_time_bins {
-                let idx = polarity_channel * height * width * n_time_bins
-                    + t_int * height * width
-                    + y * width
-                    + x;
-
-                if idx < total_size {
-                    voxel_grid[idx] += val_left;
-                }
-            }
-
-            // Add to right time bin
-            if t_int + 1 < n_time_bins {
-                let idx = polarity_channel * height * width * n_time_bins
-                    + (t_int + 1) * height * width
-                    + y * width
-                    + x;
-
-                if idx < total_size {
-                    voxel_grid[idx] += val_right;
-                }
-            }
-        }
-    }
-
-    // Reshape to 4D array: (n_time_bins, polarity_channels, height, width)
-    // We need to reorder the data from our flat representation
-    let mut reshaped_data = vec![0.0f32; total_size];
-    for t in 0..n_time_bins {
-        for p in 0..polarity_channels {
-            for y in 0..height {
-                for x in 0..width {
-                    let src_idx =
-                        p * height * width * n_time_bins + t * height * width + y * width + x;
-                    let dst_idx =
-                        t * polarity_channels * height * width + p * height * width + y * width + x;
-                    reshaped_data[dst_idx] = voxel_grid[src_idx];
-                }
-            }
-        }
-    }
-
-    Array4::from_shape_vec(
-        (n_time_bins, polarity_channels, height, width),
-        reshaped_data,
-    )
-    .map_err(|e| {
-        Box::new(TensorError(format!("Shape error: {e}")))
-            as Box<dyn std::error::Error + Send + Sync>
-    })
-}
-
-/// Create an enhanced voxel grid using Polars for high-performance processing
-///
-/// **Polars Integration Function**: Returns `LazyFrame` for efficient DataFrame operations.
-///
-/// This function provides a Polars-based implementation of the enhanced voxel grid
-/// with bilinear interpolation, optimised for large-scale event processing workflows.
-/// It processes events using Polars lazy operations for optimal memory usage and performance.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `sensor_size` - Sensor dimensions (width, height, polarity_channels)
-/// * `n_time_bins` - Number of temporal bins in the voxel grid
-///
-/// # Returns
-/// * `LazyFrame` with columns [time_bin, polarity_channel, y, x, value]
-///   where value is the accumulated polarity after bilinear interpolation
-///
-/// # Errors
-/// * Returns `TensorError` if polars feature is not enabled
-/// * Returns `TensorError` if sensor_size.2 != 2
-#[cfg(feature = "polars")]
-pub fn to_voxel_grid_enhanced_polars(
-    events: &Events,
-    sensor_size: (u16, u16, u16),
-    n_time_bins: usize,
-) -> TensorResult<LazyFrame> {
-    let (width, height, polarity_channels) = (
-        sensor_size.0 as i32,
-        sensor_size.1 as i32,
-        sensor_size.2 as i32,
-    );
-
-    // Validate polarity channels
-    if polarity_channels != 2 {
-        return Err(Box::new(TensorError(format!(
-            "Expected 2 polarity channels, got {}",
-            polarity_channels
-        ))));
-    }
-
-    // Handle empty events
-    if events.is_empty() {
-        // Return empty LazyFrame with correct schema
-        let empty_df = df! {
-            "time_bin" => Vec::<i32>::new(),
-            "polarity_channel" => Vec::<i32>::new(),
-            "y" => Vec::<i32>::new(),
-            "x" => Vec::<i32>::new(),
-            "value" => Vec::<f32>::new(),
-        }
-        .map_err(|e| Box::new(TensorError(format!("DataFrame creation error: {}", e))))?;
-
-        return Ok(empty_df.lazy());
-    }
-
-    // Convert events to DataFrame
-    let df = crate::events_to_dataframe(events)
-        .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
-
-    // Get time range for normalisation
-    let t_start = events.first().unwrap().t;
-    let t_end = events.last().unwrap().t;
-    let t_range = t_end - t_start;
-
-    let result = if t_range <= 0.0 {
-        // All events have the same timestamp - put in first time bin
-        df.lazy()
-            .filter(col("x").lt(lit(width)).and(col("y").lt(lit(height))))
-            .with_columns([
-                lit(0i32).alias("time_bin"),
-                // Convert polarity: 1 -> channel 1, 0 -> channel 0
-                col("polarity")
-                    .cast(DataType::Int32)
-                    .alias("polarity_channel"),
-                // Convert polarity to signed value: 1 -> 1.0, 0 -> -1.0
-                (col("polarity") * lit(2) - lit(1))
-                    .cast(DataType::Float32)
-                    .alias("polarity_value"),
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
-            ])
-            .group_by([col("time_bin"), col("polarity_channel"), col("y"), col("x")])
-            .agg([col("polarity_value").sum().alias("value")])
-    } else {
-        // Apply bilinear interpolation using Polars operations
-        // Create both left and right contributions
-        let left_contributions = df
-            .clone()
-            .lazy()
-            .filter(col("x").lt(lit(width)).and(col("y").lt(lit(height))))
-            .with_columns([
-                ((col("t") - lit(t_start)) * lit(n_time_bins as f64) / lit(t_range))
-                    .alias("t_normalised"),
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
-            ])
-            .with_columns([
-                // Integer part for time bin - cast to int to get floor behavior
-                col("t_normalised").cast(DataType::Int32).alias("t_int"),
-                // Fractional part for interpolation
-                (col("t_normalised")
-                    - col("t_normalised")
-                        .cast(DataType::Int32)
-                        .cast(DataType::Float64))
-                .alias("t_fractional"),
-                col("polarity")
-                    .cast(DataType::Int32)
-                    .alias("polarity_channel"),
-                (col("polarity") * lit(2) - lit(1))
-                    .cast(DataType::Float32)
-                    .alias("polarity_signed"),
-            ])
-            .with_columns([
-                (col("polarity_signed") * (lit(1.0) - col("t_fractional"))).alias("val_left")
-            ])
-            .select([
-                col("t_int").alias("time_bin"),
-                col("polarity_channel"),
-                col("y"),
-                col("x"),
-                col("val_left").alias("value"),
-            ])
-            .filter(col("time_bin").lt(lit(n_time_bins as i32)));
-
-        let right_contributions = df
-            .lazy()
-            .filter(col("x").lt(lit(width)).and(col("y").lt(lit(height))))
-            .with_columns([
-                ((col("t") - lit(t_start)) * lit(n_time_bins as f64) / lit(t_range))
-                    .alias("t_normalised"),
-                col("x").cast(DataType::Int32),
-                col("y").cast(DataType::Int32),
-            ])
-            .with_columns([
-                // Integer part for time bin - cast to int to get floor behavior
-                col("t_normalised").cast(DataType::Int32).alias("t_int"),
-                // Fractional part for interpolation
-                (col("t_normalised")
-                    - col("t_normalised")
-                        .cast(DataType::Int32)
-                        .cast(DataType::Float64))
-                .alias("t_fractional"),
-                col("polarity")
-                    .cast(DataType::Int32)
-                    .alias("polarity_channel"),
-                (col("polarity") * lit(2) - lit(1))
-                    .cast(DataType::Float32)
-                    .alias("polarity_signed"),
-            ])
-            .with_columns([(col("polarity_signed") * col("t_fractional")).alias("val_right")])
-            .select([
-                (col("t_int") + lit(1)).alias("time_bin"),
-                col("polarity_channel"),
-                col("y"),
-                col("x"),
-                col("val_right").alias("value"),
-            ])
-            .filter(col("time_bin").lt(lit(n_time_bins as i32)));
-
-        // Concatenate left and right contributions and group by coordinates
-        concat(
-            [left_contributions, right_contributions],
-            Default::default(),
-        )
-        .map_err(|e| Box::new(TensorError(format!("Concat error: {}", e))))?
-        .group_by([col("time_bin"), col("polarity_channel"), col("y"), col("x")])
-        .agg([col("value").sum()])
-    };
-
-    Ok(result)
-}
 
 /// Configuration for enhanced frame conversion with slicing methods
 ///
@@ -819,115 +172,17 @@ impl FrameConfig {
     }
 }
 
-/// Create enhanced frames with Tonic-style slicing methods
+/// Slice events into temporal frames based on the provided configuration
 ///
-/// **Rust Core API Function**: Returns `Array4<f32>` for direct tensor operations.
-///
-/// This function implements enhanced frame conversion with bilinear interpolation
-/// from Tonic's `to_frame_numpy`, adapted for evlib's architecture. It provides
-/// four different slicing methods to convert event streams into frame sequences.
-///
-/// ## Algorithm Details
-/// 1. **Event Slicing**: Events are sliced according to the specified method
-/// 2. **Frame Accumulation**: Each slice is accumulated into a 2D frame using polarity values
-/// 3. **Polarity Handling**: Converts 0/1 polarity to appropriate channel assignment
-/// 4. **Boundary Handling**: Clamps coordinates to sensor bounds
-///
-/// ## Slicing Methods
-/// - **time_window**: Fixed time windows with configurable overlap
-/// - **event_count**: Fixed number of events per frame with configurable overlap
-/// - **n_time_bins**: Fixed number of frames, equally spaced in time
-/// - **n_event_bins**: Fixed number of frames, equally spaced by event count
-///
-/// # Arguments
-/// * `events` - Event stream to convert (must be sorted by timestamp)
-/// * `sensor_size` - Sensor dimensions (width, height, polarity_channels)
-/// * `config` - Frame configuration specifying slicing method and parameters
-///
-/// # Returns
-/// * `Array4<f32>` with shape (n_frames, polarity_channels, height, width)
-///
-/// # Errors
-/// * Returns `TensorError` if configuration is invalid
-/// * Returns `TensorError` if sensor_size.2 is not 1 or 2
-/// * Returns `TensorError` if events are empty for time-based slicing
-pub fn to_frame_enhanced(
-    events: &Events,
-    sensor_size: (u16, u16, u16), // (width, height, polarity_channels)
-    config: FrameConfig,
-) -> TensorResult<Array4<f32>> {
-    // Validate configuration
+/// This function creates slices of events according to the FrameConfig parameters.
+/// Returns a vector of event slices, where each slice is a vector of events.
+fn slice_events(events: &[Event], config: &FrameConfig) -> TensorResult<Vec<Vec<Event>>> {
     config.validate()?;
 
-    let (width, height, polarity_channels) = (
-        sensor_size.0 as usize,
-        sensor_size.1 as usize,
-        sensor_size.2 as usize,
-    );
-
-    // Validate polarity channels
-    if polarity_channels != 1 && polarity_channels != 2 {
-        return Err(Box::new(TensorError(format!(
-            "Expected 1 or 2 polarity channels, got {}",
-            polarity_channels
-        ))));
-    }
-
-    // Handle empty events
     if events.is_empty() {
-        return Ok(Array4::zeros((1, polarity_channels, height, width)));
+        return Ok(vec![]);
     }
 
-    // Handle single polarity case
-    let single_polarity = polarity_channels == 1;
-    if single_polarity {
-        // Check if events actually contain both polarities
-        let polarities: std::collections::HashSet<bool> =
-            events.iter().map(|e| e.polarity).collect();
-        if polarities.len() > 1 {
-            return Err(Box::new(TensorError(
-                "Single polarity sensor, but events contain both polarities".to_string(),
-            )));
-        }
-    }
-
-    // Slice events according to configuration
-    let event_slices = slice_events(events, &config)?;
-    let n_frames = event_slices.len();
-
-    // Initialize output tensor
-    let mut frames = Array4::zeros((n_frames, polarity_channels, height, width));
-
-    // Process each slice
-    for (frame_idx, slice) in event_slices.iter().enumerate() {
-        for event in slice {
-            let x = event.x as usize;
-            let y = event.y as usize;
-
-            // Clamp coordinates to sensor bounds
-            if x >= width || y >= height {
-                continue;
-            }
-
-            // Determine polarity channel
-            let polarity_channel = if single_polarity {
-                0
-            } else if event.polarity {
-                1
-            } else {
-                0
-            };
-
-            // Accumulate event
-            frames[[frame_idx, polarity_channel, y, x]] += 1.0;
-        }
-    }
-
-    Ok(frames)
-}
-
-/// Internal function to slice events according to configuration
-fn slice_events(events: &Events, config: &FrameConfig) -> TensorResult<Vec<Events>> {
     if let Some(time_window) = config.time_window {
         slice_events_by_time(
             events,
@@ -939,7 +194,7 @@ fn slice_events(events: &Events, config: &FrameConfig) -> TensorResult<Vec<Event
         slice_events_by_count(
             events,
             event_count,
-            config.overlap as usize,
+            config.overlap,
             config.include_incomplete,
         )
     } else if let Some(n_time_bins) = config.n_time_bins {
@@ -948,54 +203,62 @@ fn slice_events(events: &Events, config: &FrameConfig) -> TensorResult<Vec<Event
         slice_events_by_event_bins(events, n_event_bins, config.overlap)
     } else {
         Err(Box::new(TensorError(
-            "No slicing method specified".to_string(),
+            "No slicing parameter specified".to_string(),
         )))
     }
 }
 
 /// Slice events by fixed time windows
 fn slice_events_by_time(
-    events: &Events,
+    events: &[Event],
     time_window: f64,
     overlap: f64,
     include_incomplete: bool,
-) -> TensorResult<Vec<Events>> {
+) -> TensorResult<Vec<Vec<Event>>> {
+    let mut slices = Vec::new();
+
     if events.is_empty() {
-        return Ok(vec![Vec::new()]);
+        return Ok(slices);
     }
 
-    let stride = time_window - overlap;
-    if stride <= 0.0 {
+    let start_time = events[0].t;
+    let end_time = events[events.len() - 1].t;
+    let total_duration = end_time - start_time;
+
+    if total_duration <= 0.0 {
+        return Ok(vec![events.to_vec()]);
+    }
+
+    let step_size = time_window - overlap;
+    if step_size <= 0.0 {
         return Err(Box::new(TensorError(
-            "Stride must be positive (time_window > overlap)".to_string(),
+            "Time window overlap cannot be greater than or equal to time window".to_string(),
         )));
     }
 
-    let t_start = events.first().unwrap().t;
-    let t_end = events.last().unwrap().t;
-    let duration = t_end - t_start;
+    let mut current_start = start_time;
 
-    // Calculate number of slices
-    let n_slices = if include_incomplete {
-        ((duration - time_window) / stride).ceil() as usize + 1
-    } else {
-        ((duration - time_window) / stride).floor() as usize + 1
-    }
-    .max(1);
+    while current_start < end_time {
+        let current_end = current_start + time_window;
 
-    // Generate window start times
-    let mut slices = Vec::new();
-    for i in 0..n_slices {
-        let window_start = t_start + i as f64 * stride;
-        let window_end = window_start + time_window;
-
-        let slice: Events = events
+        // Collect events in this time window
+        let slice: Vec<Event> = events
             .iter()
-            .filter(|e| e.t >= window_start && e.t < window_end)
+            .filter(|event| event.t >= current_start && event.t < current_end)
             .cloned()
             .collect();
 
-        slices.push(slice);
+        // Only add non-empty slices or incomplete slices if requested
+        if !slice.is_empty() || (include_incomplete && current_start < end_time) {
+            slices.push(slice);
+        }
+
+        current_start += step_size;
+
+        // Break if we would go beyond the end and don't include incomplete
+        if !include_incomplete && current_start + time_window > end_time {
+            break;
+        }
     }
 
     Ok(slices)
@@ -1003,41 +266,38 @@ fn slice_events_by_time(
 
 /// Slice events by fixed event count
 fn slice_events_by_count(
-    events: &Events,
+    events: &[Event],
     event_count: usize,
-    overlap: usize,
+    overlap: f64,
     include_incomplete: bool,
-) -> TensorResult<Vec<Events>> {
+) -> TensorResult<Vec<Vec<Event>>> {
+    let mut slices = Vec::new();
+
     if events.is_empty() {
-        return Ok(vec![Vec::new()]);
+        return Ok(slices);
     }
 
-    let n_events = events.len();
-    let actual_event_count = event_count.min(n_events);
+    let overlap_events = (overlap as usize).min(event_count);
+    let step_size = event_count - overlap_events;
 
-    if overlap >= actual_event_count {
+    if step_size == 0 {
         return Err(Box::new(TensorError(
-            "Overlap must be less than event_count".to_string(),
+            "Event count overlap cannot be greater than or equal to event count".to_string(),
         )));
     }
 
-    let stride = actual_event_count - overlap;
+    let mut start_idx = 0;
 
-    // Calculate number of slices
-    let n_slices = if include_incomplete {
-        ((n_events - actual_event_count) as f64 / stride as f64).ceil() as usize + 1
-    } else {
-        ((n_events - actual_event_count) as f64 / stride as f64).floor() as usize + 1
-    };
+    while start_idx < events.len() {
+        let end_idx = (start_idx + event_count).min(events.len());
+        let slice = events[start_idx..end_idx].to_vec();
 
-    let mut slices = Vec::new();
-    for i in 0..n_slices {
-        let start_idx = i * stride;
-        let end_idx = (start_idx + actual_event_count).min(n_events);
-
-        if start_idx < n_events {
-            slices.push(events[start_idx..end_idx].to_vec());
+        // Only add if we have the full count or include incomplete is true
+        if slice.len() == event_count || (include_incomplete && !slice.is_empty()) {
+            slices.push(slice);
         }
+
+        start_idx += step_size;
     }
 
     Ok(slices)
@@ -1045,42 +305,35 @@ fn slice_events_by_count(
 
 /// Slice events by fixed number of time bins
 fn slice_events_by_time_bins(
-    events: &Events,
+    events: &[Event],
     n_time_bins: usize,
     overlap: f64,
-) -> TensorResult<Vec<Events>> {
+) -> TensorResult<Vec<Vec<Event>>> {
     if events.is_empty() {
-        return Ok(vec![Vec::new(); n_time_bins]);
+        return Ok(vec![]);
     }
 
-    if overlap >= 1.0 {
-        return Err(Box::new(TensorError(
-            "Overlap must be less than 1.0 for time bin method".to_string(),
-        )));
-    }
-
-    let t_start = events.first().unwrap().t;
-    let t_end = events.last().unwrap().t;
-    let total_duration = t_end - t_start;
+    let start_time = events[0].t;
+    let end_time = events[events.len() - 1].t;
+    let total_duration = end_time - start_time;
 
     if total_duration <= 0.0 {
-        // All events have same timestamp - put them all in the first bin
-        let mut slices = vec![Vec::new(); n_time_bins];
-        slices[0] = events.clone();
-        return Ok(slices);
+        return Ok(vec![events.to_vec()]);
     }
 
-    let bin_duration = total_duration / n_time_bins as f64 * (1.0 + overlap);
-    let stride = bin_duration * (1.0 - overlap);
+    let bin_duration = total_duration / n_time_bins as f64;
+    let overlap_duration = bin_duration * overlap;
+    let step_size = bin_duration - overlap_duration;
 
     let mut slices = Vec::new();
-    for i in 0..n_time_bins {
-        let window_start = t_start + i as f64 * stride;
-        let window_end = window_start + bin_duration;
 
-        let slice: Events = events
+    for i in 0..n_time_bins {
+        let bin_start = start_time + i as f64 * step_size;
+        let bin_end = bin_start + bin_duration;
+
+        let slice: Vec<Event> = events
             .iter()
-            .filter(|e| e.t >= window_start && e.t < window_end)
+            .filter(|event| event.t >= bin_start && event.t < bin_end)
             .cloned()
             .collect();
 
@@ -1092,119 +345,32 @@ fn slice_events_by_time_bins(
 
 /// Slice events by fixed number of event bins
 fn slice_events_by_event_bins(
-    events: &Events,
+    events: &[Event],
     n_event_bins: usize,
     overlap: f64,
-) -> TensorResult<Vec<Events>> {
+) -> TensorResult<Vec<Vec<Event>>> {
     if events.is_empty() {
-        return Ok(vec![Vec::new(); n_event_bins]);
+        return Ok(vec![]);
     }
 
-    if overlap >= 1.0 {
-        return Err(Box::new(TensorError(
-            "Overlap must be less than 1.0 for event bin method".to_string(),
-        )));
-    }
-
-    let n_events = events.len();
-    let events_per_bin = (n_events as f64 / n_event_bins as f64 * (1.0 + overlap)) as usize;
-    let stride = (events_per_bin as f64 * (1.0 - overlap)) as usize;
+    let total_events = events.len();
+    let bin_size = total_events / n_event_bins;
+    let overlap_events = (bin_size as f64 * overlap) as usize;
+    let step_size = bin_size - overlap_events;
 
     let mut slices = Vec::new();
-    for i in 0..n_event_bins {
-        let start_idx = i * stride;
-        let end_idx = (start_idx + events_per_bin).min(n_events);
 
-        if start_idx < n_events {
-            slices.push(events[start_idx..end_idx].to_vec());
-        } else {
-            slices.push(Vec::new());
+    for i in 0..n_event_bins {
+        let start_idx = i * step_size;
+        let end_idx = (start_idx + bin_size).min(total_events);
+
+        if start_idx < total_events {
+            let slice = events[start_idx..end_idx].to_vec();
+            slices.push(slice);
         }
     }
 
     Ok(slices)
-}
-
-/// Create enhanced frames using Polars for high-performance processing
-///
-/// **Polars Integration Function**: Returns `LazyFrame` for efficient DataFrame operations.
-///
-/// This function provides a Polars-based implementation of enhanced frame conversion
-/// with configurable slicing methods, optimised for large-scale event processing workflows.
-/// It processes events using Polars lazy operations for optimal memory usage and performance.
-///
-/// # Arguments
-/// * `events` - Event stream to convert
-/// * `sensor_size` - Sensor dimensions (width, height, polarity_channels)
-/// * `config` - Frame configuration specifying slicing method and parameters
-///
-/// # Returns
-/// * `LazyFrame` with columns [frame_id, polarity_channel, y, x, count]
-///   where count is the accumulated event count for that pixel
-///
-/// # Errors
-/// * Returns `TensorError` if polars feature is not enabled
-/// * Returns `TensorError` if configuration is invalid
-#[cfg(feature = "polars")]
-pub fn to_frame_enhanced_polars(
-    events: &Events,
-    sensor_size: (u16, u16, u16),
-    config: FrameConfig,
-) -> TensorResult<LazyFrame> {
-    // Validate configuration
-    config.validate()?;
-
-    let (width, height, polarity_channels) = (
-        sensor_size.0 as i32,
-        sensor_size.1 as i32,
-        sensor_size.2 as i32,
-    );
-
-    // Validate polarity channels
-    if polarity_channels != 1 && polarity_channels != 2 {
-        return Err(Box::new(TensorError(format!(
-            "Expected 1 or 2 polarity channels, got {}",
-            polarity_channels
-        ))));
-    }
-
-    // Handle empty events
-    if events.is_empty() {
-        let empty_df = df! {
-            "frame_id" => Vec::<i32>::new(),
-            "polarity_channel" => Vec::<i32>::new(),
-            "y" => Vec::<i32>::new(),
-            "x" => Vec::<i32>::new(),
-            "count" => Vec::<f32>::new(),
-        }
-        .map_err(|e| Box::new(TensorError(format!("DataFrame creation error: {}", e))))?;
-
-        return Ok(empty_df.lazy());
-    }
-
-    // Convert events to DataFrame
-    let df = crate::events_to_dataframe(events)
-        .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
-
-    // Slice events and assign frame IDs using Polars operations
-    let result = slice_events_polars(df, &config)?
-        .filter(col("x").lt(lit(width)).and(col("y").lt(lit(height))))
-        .with_columns([
-            col("x").cast(DataType::Int32),
-            col("y").cast(DataType::Int32),
-            // Handle single vs dual polarity
-            if polarity_channels == 1 {
-                lit(0i32).alias("polarity_channel")
-            } else {
-                col("polarity")
-                    .cast(DataType::Int32)
-                    .alias("polarity_channel")
-            },
-        ])
-        .group_by([col("frame_id"), col("polarity_channel"), col("y"), col("x")])
-        .agg([len().cast(DataType::Float32).alias("count")]);
-
-    Ok(result)
 }
 
 /// Internal Polars function to slice events and assign frame IDs
@@ -1465,7 +631,7 @@ impl TimeSurfaceConfig {
 /// # References
 /// * Lagorce et al. 2016, "HOTS: a hierarchy of event-based time-surfaces for pattern recognition"
 pub fn to_timesurface_enhanced(
-    events: &Events,
+    events: &[Event],
     sensor_size: (u16, u16, u16), // (width, height, polarity_channels)
     dt: f64,                      // time interval in microseconds
     tau: f64,                     // time constant for decay
@@ -1522,8 +688,7 @@ pub fn to_timesurface_enhanced(
     let single_polarity = polarity_channels == 1;
     if single_polarity {
         // Check if events actually contain both polarities
-        let polarities: std::collections::HashSet<bool> =
-            events.iter().map(|e| e.polarity).collect();
+        let polarities: std::collections::HashSet<i8> = events.iter().map(|e| e.polarity).collect();
         if polarities.len() > 1 {
             return Err(Box::new(TensorError(
                 "Single polarity sensor, but events contain both polarities".to_string(),
@@ -1557,7 +722,7 @@ pub fn to_timesurface_enhanced(
             // Determine polarity channel
             let polarity_channel = if single_polarity {
                 0
-            } else if event.polarity {
+            } else if event.polarity > 0 {
                 1
             } else {
                 0
@@ -1630,7 +795,7 @@ pub fn to_timesurface_enhanced(
 /// # References
 /// * Sironi et al. 2018, "HATS: Histograms of averaged time surfaces for robust event-based object classification"
 pub fn to_averaged_timesurface_enhanced(
-    events: &Events,
+    events: &[Event],
     sensor_size: (u16, u16, u16),
     config: TimeSurfaceConfig,
 ) -> TensorResult<Array4<f32>> {
@@ -1668,8 +833,7 @@ pub fn to_averaged_timesurface_enhanced(
     let single_polarity = polarity_channels == 1;
     if single_polarity {
         // Check if events actually contain both polarities
-        let polarities: std::collections::HashSet<bool> =
-            events.iter().map(|e| e.polarity).collect();
+        let polarities: std::collections::HashSet<i8> = events.iter().map(|e| e.polarity).collect();
         if polarities.len() > 1 {
             return Err(Box::new(TensorError(
                 "Single polarity sensor, but events contain both polarities".to_string(),
@@ -1703,7 +867,7 @@ pub fn to_averaged_timesurface_enhanced(
         let cell_idx = pixel_to_cell(y, x);
         let polarity_channel = if single_polarity {
             0
-        } else if event.polarity {
+        } else if event.polarity > 0 {
             1
         } else {
             0
@@ -1821,7 +985,7 @@ pub fn to_averaged_timesurface_enhanced(
 /// * Returns `TensorError` if sensor_size.2 is not 1 or 2
 #[cfg(feature = "polars")]
 pub fn to_timesurface_enhanced_polars(
-    events: &Events,
+    events: &[Event],
     sensor_size: (u16, u16, u16),
     dt: f64,
     tau: f64,
@@ -1857,8 +1021,11 @@ pub fn to_timesurface_enhanced_polars(
     }
 
     // Convert events to DataFrame
-    let df = crate::events_to_dataframe(events)
-        .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
+    let df = crate::ev_formats::python::build_polars_dataframe(
+        events,
+        crate::ev_formats::EventFormat::HDF5,
+    )
+    .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
 
     let overlap = overlap.unwrap_or(0) as f64;
 
@@ -1954,7 +1121,7 @@ pub fn to_timesurface_enhanced_polars(
 /// * Returns `TensorError` if configuration is invalid
 #[cfg(feature = "polars")]
 pub fn to_averaged_timesurface_enhanced_polars(
-    events: &Events,
+    events: &[Event],
     sensor_size: (u16, u16, u16),
     config: TimeSurfaceConfig,
 ) -> TensorResult<LazyFrame> {
@@ -1990,8 +1157,11 @@ pub fn to_averaged_timesurface_enhanced_polars(
     }
 
     // Convert events to DataFrame
-    let df = crate::events_to_dataframe(events)
-        .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
+    let df = crate::ev_formats::python::build_polars_dataframe(
+        events,
+        crate::ev_formats::EventFormat::HDF5,
+    )
+    .map_err(|e| Box::new(TensorError(format!("Events to DataFrame error: {}", e))))?;
 
     // Calculate grid dimensions
     let w_grid = (width + config.cell_size as i32 - 1) / config.cell_size as i32;
@@ -2822,10 +1992,7 @@ pub fn to_bina_rep_enhanced_polars(
         "x" => &x_values,
         "bina_rep_value" => &bina_rep_values,
     ]
-    .map_err(|e| {
-        Box::new(TensorError(format!("Failed to create DataFrame: {}", e)))
-            as Box<dyn std::error::Error + Send + Sync>
-    })?;
+    .map_err(|e| Box::new(TensorError(format!("Failed to create DataFrame: {}", e))))?;
 
     Ok(df.lazy())
 }

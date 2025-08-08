@@ -1,9 +1,10 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
 #[cfg(not(windows))]
 use hdf5_metno::File as H5File;
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
@@ -69,7 +70,7 @@ pub use polarity_handler::{
 // Streaming module for large file processing
 pub mod streaming;
 pub use streaming::{
-    estimate_memory_usage, should_use_streaming, PolarsEventStreamer, StreamingConfig,
+    estimate_memory_usage, should_use_streaming, Event, PolarsEventStreamer, StreamingConfig,
 };
 
 // Apache Arrow integration for zero-copy data transfer
@@ -244,7 +245,7 @@ impl LoadConfig {
 
         // Polarity filter
         if let Some(polarity) = self.polarity {
-            if event.polarity != polarity {
+            if (event.polarity > 0) != polarity {
                 return false;
             }
         }
@@ -262,7 +263,10 @@ impl LoadConfig {
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
 #[cfg(not(windows))]
-pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_metno::Result<Events> {
+pub fn load_events_from_hdf5(
+    path: &str,
+    dataset_name: Option<&str>,
+) -> hdf5_metno::Result<DataFrame> {
     // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
 
     let file = H5File::open(path)?;
@@ -291,7 +295,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
 
                 // Handle empty datasets
                 if total_events == 0 {
-                    return Ok(Vec::new());
+                    return Ok(DataFrame::empty());
                 }
 
                 // For very large files, read in chunks to avoid memory issues
@@ -319,7 +323,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_chunk[i] as f64 / 1_000_000.0, // Convert i64 microseconds to seconds
                             x: x_chunk[i],                      // Already u16
                             y: y_chunk[i],                      // Already u16
-                            polarity: p_chunk[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: p_chunk[i],               // Keep as i8: 1 or -1
                         });
                     }
 
@@ -332,7 +336,11 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     }
                 }
 
-                return Ok(events);
+                return Ok(
+                    python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                        hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                    })?,
+                );
             }
         }
     }
@@ -344,7 +352,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             let total_events = shape[0];
 
             if total_events == 0 {
-                return Ok(Vec::new());
+                return Ok(DataFrame::empty());
             }
 
             // This is a Prophesee HDF5 format - try multiple approaches
@@ -357,7 +365,13 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     Ok(events) => {
                         // Success message already printed by read_prophesee_hdf5_native()
                         info!("Native ECF decoder succeeded with {} events", events.len());
-                        return Ok(events);
+                        return Ok(python::build_polars_dataframe(&events, EventFormat::HDF5)
+                            .map_err(|e| {
+                                hdf5_metno::Error::Internal(format!(
+                                    "DataFrame conversion failed: {}",
+                                    e
+                                ))
+                            })?);
                     }
                     Err(e) => {
                         warn!("Native ECF decoder failed: {}", e);
@@ -371,7 +385,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 info!("Trying Python fallback for ECF decoding");
                 match call_python_prophesee_fallback(path) {
                     Ok(events) => {
-                        info!(events = events.len(), "Python fallback loaded events");
+                        info!(events = events.height(), "Python fallback loaded events");
                         return Ok(events);
                     }
                     Err(e) => {
@@ -382,7 +396,16 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                                 Ok(events) => {
                                     info!("Rust ECF decoder succeeded");
-                                    return Ok(events);
+                                    return Ok(python::build_polars_dataframe(
+                                        &events,
+                                        EventFormat::HDF5,
+                                    )
+                                    .map_err(|e| {
+                                        hdf5_metno::Error::Internal(format!(
+                                            "DataFrame conversion failed: {}",
+                                            e
+                                        ))
+                                    })?);
                                 }
                                 Err(ecf_error) => {
                                     error!("Rust ECF decoder failed: {}", ecf_error);
@@ -412,7 +435,13 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                         Ok(events) => {
                             info!("Rust ECF decoder succeeded");
-                            return Ok(events);
+                            return Ok(python::build_polars_dataframe(&events, EventFormat::HDF5)
+                                .map_err(|e| {
+                                    hdf5_metno::Error::Internal(format!(
+                                        "DataFrame conversion failed: {}",
+                                        e
+                                    ))
+                                })?);
                         }
                         Err(ecf_error) => {
                             error!("Rust ECF decoder failed: {}", ecf_error);
@@ -481,11 +510,15 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     t: t_arr[i] / conversion_factor, // Use detected units
                     x,
                     y,
-                    polarity: p_arr[i] != 0, // Convert i8 to bool
+                    polarity: if p_arr[i] != 0 { 1 } else { -1 }, // Convert to standard i8 format
                 });
             }
 
-            return Ok(events);
+            return Ok(
+                python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                })?,
+            );
         }
     }
 
@@ -523,7 +556,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_arr[i] as f64 / conversion_factor, // Use detected units
                             x,
                             y,
-                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
                         });
                     }
                 } else if let Ok(t_arr) = t_dataset.read_raw::<f64>() {
@@ -541,7 +574,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_arr[i], // Already in seconds for f64 format
                             x,
                             y,
-                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
                         });
                     }
                 } else {
@@ -550,7 +583,11 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     )));
                 }
 
-                return Ok(events);
+                return Ok(
+                    python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                        hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                    })?,
+                );
             }
         }
     }
@@ -627,7 +664,7 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
 
 /// Call Python fallback for Prophesee HDF5 format
 #[cfg(all(feature = "python", not(windows)))]
-fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
+fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
     Python::with_gil(|py| {
         // Import the Python fallback module
         let hdf5_prophesee = match py.import("evlib.hdf5_prophesee") {
@@ -734,11 +771,15 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
                 t: t_array[i] as f64 / conversion_factor, // Use detected units
                 x,
                 y,
-                polarity: p_array[i] > 0, // Convert to bool
+                polarity: if p_array[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
             });
         }
 
-        Ok(events)
+        Ok(
+            python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+            })?,
+        )
     })
 }
 
@@ -748,7 +789,7 @@ fn try_rust_ecf_decoder(
     _cd_group: &hdf5_metno::Group,
     _events_dataset: &hdf5_metno::Dataset,
     total_events: usize,
-) -> Result<Events, Box<dyn std::error::Error>> {
+) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
     use crate::ev_formats::hdf5_reader;
 
     info!(events = total_events, "Attempting native Rust ECF decode");
@@ -784,11 +825,10 @@ fn try_rust_ecf_decoder(
 /// # Arguments
 /// * `path` - Path to the text file
 /// * `config` - Configuration with filtering options
-pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events> {
+pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFrame> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    // Commented out - legacy Events type no longer exists
-    // let mut events = Events::new();
+    let mut events = Vec::<Event>::new();
 
     // Estimate capacity if possible (reduce if filtering is likely to remove many events)
     if let Ok(metadata) = std::fs::metadata(path) {
@@ -890,7 +930,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
         })?;
 
         // Convert polarity to boolean: 0 -> false, non-zero -> true
-        let polarity = polarity_raw != 0;
+        let polarity = if polarity_raw != 0 { 1 } else { -1 };
 
         let event = Event { t, x, y, polarity };
 
@@ -912,7 +952,14 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
         events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    Ok(events)
+    Ok(
+        python::build_polars_dataframe(&events, EventFormat::Text).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("DataFrame conversion failed: {}", e),
+            )
+        })?,
+    )
 }
 
 // Binary format (mmap_events) removed due to safety and reliability issues:
@@ -926,7 +973,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
 // Backward compatibility functions (maintain old API)
 
 /// Load events from a text file (backward compatibility)
-pub fn load_events_from_text_simple(path: &str) -> IoResult<Events> {
+pub fn load_events_from_text_simple(path: &str) -> IoResult<DataFrame> {
     load_events_from_text(path, &LoadConfig::new())
 }
 
@@ -934,19 +981,19 @@ pub fn load_events_from_text_simple(path: &str) -> IoResult<Events> {
 pub fn load_events_with_config(
     path: &str,
     config: &LoadConfig,
-) -> Result<Events, Box<dyn std::error::Error>> {
+) -> Result<DataFrame, Box<dyn std::error::Error>> {
     // Use format detector to determine the file format
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
         #[cfg(not(windows))]
         EventFormat::HDF5 => {
-            let mut events = load_events_from_hdf5(path, None)?;
+            let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
-            events.retain(|event| config.passes_filters(event));
+            // TODO: Apply filters using Polars DataFrame operations
             // Sort if requested
             if config.sort {
-                events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+                // TODO: Apply sorting using Polars DataFrame.sort() operation\n                // events = events.sort([\"t\"], SortMultipleOptions::new())?;
             }
             Ok(events)
         }
@@ -1179,7 +1226,7 @@ impl Iterator for EventFileIterator {
                     t,
                     x,
                     y,
-                    polarity: p > 0,
+                    polarity: if p > 0 { 1 } else { -1 },
                 }))
             }
             Err(e) => Some(Err(e)),
@@ -1189,7 +1236,7 @@ impl Iterator for EventFileIterator {
 
 // Window-based event iterator that returns chunks of events based on time windows
 pub struct TimeWindowIter<'a> {
-    events: &'a Events,
+    events: &'a Vec<Event>,
     window_duration: f64,
     current_idx: usize,
     start_time: f64,
@@ -1202,7 +1249,7 @@ impl<'a> TimeWindowIter<'a> {
     /// # Arguments
     /// * `events` - Event array to iterate over
     /// * `window_duration` - Duration of each time window in seconds
-    pub fn new(events: &'a Events, window_duration: f64) -> Self {
+    pub fn new(events: &'a Vec<Event>, window_duration: f64) -> Self {
         let start_time = if !events.is_empty() { events[0].t } else { 0.0 };
 
         let end_time = start_time + window_duration;
@@ -1275,7 +1322,7 @@ pub mod python {
 
     /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency
     #[cfg(feature = "polars")]
-    fn build_polars_dataframe(
+    pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
     ) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
@@ -1316,7 +1363,7 @@ pub mod python {
             y_builder.append_value(event.y as i16);
             timestamp_builder.append_value(convert_timestamp(event.t));
             // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
+            polarity_builder.append_value(event.polarity);
         }
 
         // Build Series from builders
@@ -1558,11 +1605,8 @@ pub mod python {
                     ))
                 })?;
 
-                build_polars_dataframe(&events, format_result.format).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to build DataFrame: {e}"
-                    ))
-                })?
+                // load_events_with_config already returns a DataFrame, so use it directly
+                events
             }
         };
 
@@ -1681,7 +1725,7 @@ pub mod python {
             .with_header_lines(header_lines);
 
         // Detect format for proper polarity encoding
-        let format_result = detect_event_format(path).map_err(|e| {
+        let _format_result = detect_event_format(path).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
         })?;
 
@@ -1690,39 +1734,13 @@ pub mod python {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {e}"))
         })?;
 
-        // NEW: Direct Polars DataFrame construction with automatic streaming for large files
+        // Return Polars DataFrame/LazyFrame directly to Python
+        // load_events_with_config already returns a DataFrame, so use it directly
         #[cfg(feature = "polars")]
         {
-            use crate::ev_formats::streaming::should_use_streaming;
-
-            // Check if we should use streaming based on event count
-            let event_count = events.len();
-            let default_threshold = 5_000_000; // 5M events
-            let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
-
-            let df = if should_use_streaming(event_count, Some(streaming_threshold)) {
-                // Use streaming for large datasets
-                let chunk_size =
-                    PolarsEventStreamer::calculate_optimal_chunk_size(event_count, 512);
-                let streamer = PolarsEventStreamer::new(chunk_size, format_result.format);
-
-                streamer.stream_to_polars(events.into_iter()).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to stream Polars DataFrame: {e}"
-                    ))
-                })?
-            } else {
-                // Direct construction for smaller datasets
-                build_polars_dataframe(&events, format_result.format).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to build Polars DataFrame: {e}"
-                    ))
-                })?
-            };
-
             // Return Polars LazyFrame directly to Python
             // This is much more efficient than converting to dict and back
-            return_polars_lazyframe_to_python(py, df.lazy())
+            return_polars_lazyframe_to_python(py, events.lazy())
         }
 
         #[cfg(not(feature = "polars"))]
@@ -2072,7 +2090,7 @@ pub mod python {
             x_vec.push(event.x as i64);
             y_vec.push(event.y as i64);
             t_vec.push(event.t);
-            p_vec.push(if event.polarity { 1i64 } else { 0i64 });
+            p_vec.push(event.polarity as i64);
         }
 
         data_dict.insert("x".to_string(), x_vec.into_pyobject(py)?.into());

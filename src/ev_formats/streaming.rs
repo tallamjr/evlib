@@ -1,5 +1,18 @@
-// Removed: use crate::Event; - legacy type no longer exists
 use crate::ev_formats::EventFormat;
+
+/// Simple Event structure for streaming operations
+/// This is a minimal event representation used primarily for streaming and benchmark operations
+#[derive(Debug, Clone, Copy)]
+pub struct Event {
+    /// Timestamp in seconds
+    pub t: f64,
+    /// X coordinate (column)
+    pub x: u16,
+    /// Y coordinate (row)
+    pub y: u16,
+    /// Polarity (+1 or -1, stored as i8)
+    pub polarity: i8,
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -229,7 +242,7 @@ impl PolarsEventStreamer {
             y_builder.append_value(event.y as i16);
             timestamp_builder.append_value(self.convert_timestamp(event.t));
             // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
+            polarity_builder.append_value(event.polarity);
         }
 
         // Build Series from builders
@@ -433,19 +446,19 @@ mod tests {
                 t: 0.001,
                 x: 100,
                 y: 200,
-                polarity: true,
+                polarity: 1,
             },
             Event {
                 t: 0.002,
                 x: 101,
                 y: 201,
-                polarity: false,
+                polarity: -1,
             },
             Event {
                 t: 0.003,
                 x: 102,
                 y: 202,
-                polarity: true,
+                polarity: 1,
             },
         ];
 

@@ -40,11 +40,8 @@
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 // Removed: use crate::Events; - legacy type no longer exists
 use crate::ev_filtering::downsampling::DownsamplingFilter;
-use rand::SeedableRng;
 
-use rand_distr::{Distribution, Uniform};
-#[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+// Tracing imports removed due to unused warnings
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {

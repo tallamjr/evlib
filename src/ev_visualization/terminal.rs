@@ -412,7 +412,7 @@ fn render_canvas_static(
                     let x = canvas_bounds.2 - event.x as f64;
                     let y = canvas_bounds.3 - event.y as f64;
 
-                    if event.polarity {
+                    if event.polarity > 0 {
                         positive_events.push((x, y));
                     } else {
                         negative_events.push((x, y));
@@ -551,7 +551,10 @@ fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, Polars
     let x_values = x_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
     let y_values = y_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
     let t_values = t_series.f64()?.into_no_null_iter().collect::<Vec<_>>();
-    let polarity_values = polarity_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let polarity_values = polarity_series
+        .i64()?
+        .into_no_null_iter()
+        .collect::<Vec<_>>();
 
     let events = x_values
         .into_iter()

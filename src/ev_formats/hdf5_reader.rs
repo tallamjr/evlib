@@ -5,8 +5,8 @@ This module provides direct HDF5 chunk reading capabilities to enable
 our Rust ECF codec to decode Prophesee files without external dependencies.
 */
 
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
+use crate::ev_formats::streaming::Event;
 use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use std::io;
@@ -42,7 +42,7 @@ pub fn read_raw_chunks(_file_path: &str, _dataset_path: &str) -> io::Result<Vec<
 }
 
 /// Read Prophesee HDF5 file using our native ECF decoder
-pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
+pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
     let file = H5File::open(path)?;
 
     // Check for Prophesee format
@@ -141,7 +141,7 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                                 t: ecf_event.t as f64 / 1_000_000_000.0, // Convert nanoseconds to seconds
                                 x: ecf_event.x,
                                 y: ecf_event.y,
-                                polarity: ecf_event.p > 0,
+                                polarity: if ecf_event.p > 0 { 1 } else { -1 },
                             });
                         }
 

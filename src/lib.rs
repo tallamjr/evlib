@@ -9,8 +9,7 @@ pub mod tracing_config;
 
 // Deep learning models are handled via Python interface in python/evlib/models/
 
-#[cfg(feature = "python")]
-use numpy;
+// numpy use removed due to unused warnings
 
 // Python utility functions (previously in ev_core::python)
 #[cfg(feature = "python")]

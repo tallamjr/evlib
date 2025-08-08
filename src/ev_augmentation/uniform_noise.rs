@@ -49,8 +49,8 @@ pub const COL_T: &str = "t";
 #[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use rand::{Rng, SeedableRng};
-use rand_distr::{Distribution, Uniform};
+use rand::SeedableRng;
+use rand_distr::Distribution;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument};
 

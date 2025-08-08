@@ -22,7 +22,6 @@
 use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
-use std::collections::HashMap;
 #[cfg(feature = "tracing")]
 use tracing::{debug, instrument, warn};
 

@@ -198,7 +198,7 @@ impl EventBroadcaster {
             // Convert f64 timestamp to u64 microseconds
             let timestamp_us = (event.t * 1_000_000.0) as u64;
             buffer.extend_from_slice(&timestamp_us.to_le_bytes());
-            let polarity = if event.polarity { 1u8 } else { 0u8 };
+            let polarity = if event.polarity > 0 { 1u8 } else { 0u8 };
             buffer.push(polarity);
         }
 

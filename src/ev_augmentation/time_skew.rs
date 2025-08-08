@@ -5,13 +5,11 @@
 
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use rand::{Rng, SeedableRng};
 
 #[cfg(feature = "polars")]
 use crate::ev_augmentation::COL_T;
-use rand_distr::{Distribution, Uniform};
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {
@@ -149,23 +147,6 @@ impl TimeSkewAugmentation {
     pub fn with_seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
         self
-    }
-
-    /// Get the actual coefficient and offset to use
-    fn get_parameters(&self, rng: &mut impl Rng) -> (f64, f64) {
-        let coeff = if let Some((min, max)) = self.coefficient_range {
-            Uniform::new(min, max).sample(rng)
-        } else {
-            self.coefficient
-        };
-
-        let offset = if let Some((min, max)) = self.offset_range {
-            Uniform::new(min, max).sample(rng)
-        } else {
-            self.offset
-        };
-
-        (coeff, offset)
     }
 
     /// Get description of this augmentation

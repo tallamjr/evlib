@@ -33,7 +33,6 @@
 
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use rand::SeedableRng;
 
 // Polars column names for event data consistency
 #[cfg(feature = "polars")]
@@ -44,9 +43,8 @@ pub const COL_Y: &str = "y";
 pub const COL_T: &str = "t";
 #[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
-use rand_distr::{Distribution, Normal};
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {

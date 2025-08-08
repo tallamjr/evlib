@@ -361,7 +361,10 @@ impl Evt2Reader {
     }
 
     /// Read EVT2 file and return events with metadata
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<(Events, Evt2Metadata), Evt2Error> {
+    pub fn read_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(DataFrame, Evt2Metadata), Evt2Error> {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
@@ -382,7 +385,7 @@ impl Evt2Reader {
             file_size,
             header_size,
             data_size: file_size - header_size,
-            estimated_event_count: Some(events.len() as u64),
+            estimated_event_count: Some(events.height() as u64),
             ..metadata
         };
 
@@ -394,18 +397,69 @@ impl Evt2Reader {
         &self,
         path: P,
         load_config: &LoadConfig,
-    ) -> Result<Events, Evt2Error> {
-        let (mut events, _) = self.read_file(path)?;
+    ) -> Result<DataFrame, Evt2Error> {
+        let (df, _) = self.read_file(path)?;
 
-        // Apply LoadConfig filters
-        events.retain(|event| load_config.passes_filters(event));
+        #[cfg(feature = "polars")]
+        {
+            use polars::prelude::*;
+            let mut df = df;
 
-        // Sort if requested
-        if load_config.sort {
-            events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+            // Apply time window filter if specified
+            if let (Some(start), Some(end)) = (load_config.t_start, load_config.t_end) {
+                df = df
+                    .lazy()
+                    .filter(col("t").gt_eq(lit(start)).and(col("t").lt_eq(lit(end))))
+                    .collect()
+                    .map_err(|e| Evt2Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Time window filter failed: {}", e),
+                    })?;
+            }
+
+            // Apply bounding box filter if specified
+            if let (Some(x_min), Some(x_max), Some(y_min), Some(y_max)) = (
+                load_config.min_x,
+                load_config.max_x,
+                load_config.min_y,
+                load_config.max_y,
+            ) {
+                df = df
+                    .lazy()
+                    .filter(
+                        col("x")
+                            .gt_eq(lit(x_min))
+                            .and(col("x").lt_eq(lit(x_max)))
+                            .and(col("y").gt_eq(lit(y_min)))
+                            .and(col("y").lt_eq(lit(y_max))),
+                    )
+                    .collect()
+                    .map_err(|e| Evt2Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Bounding box filter failed: {}", e),
+                    })?;
+            }
+
+            // Sort if requested
+            if load_config.sort {
+                df = df.sort(["t"], Default::default()).map_err(|e| {
+                    Evt2Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Sort failed: {}", e),
+                    }
+                })?;
+            }
+
+            Ok(df)
         }
 
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(Evt2Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            })
+        }
     }
 
     /// Parse EVT2 header
@@ -573,167 +627,26 @@ impl Evt2Reader {
         file: &mut File,
         header_size: u64,
         metadata: &Evt2Metadata,
-    ) -> Result<Events, Evt2Error> {
-        // Seek to binary data start
-        file.seek(SeekFrom::Start(header_size))?;
-
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
-        let mut buffer = vec![0u8; self.config.chunk_size * 4]; // 4 bytes per event
-
-        // State for timestamp reconstruction
-        let mut current_time_base: u64 = 0;
-        let mut first_time_base_set = false;
-        let mut time_high_loop_count = 0u64;
-
-        // Constants for timestamp handling
-        const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6; // 17179869120us
-        const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6); // 17179869184us
-        const LOOP_THRESHOLD: u64 = 10 << 6; // Threshold for loop detection
-
-        let mut _bytes_read_total = 0;
-
-        loop {
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // End of file
-            }
-
-            _bytes_read_total += bytes_read;
-            let events_in_chunk = bytes_read / 4;
-
-            // Process events in chunks
-            for i in 0..events_in_chunk {
-                let event_offset =
-                    header_size + (_bytes_read_total - bytes_read) as u64 + (i * 4) as u64;
-                let raw_bytes = &buffer[i * 4..(i + 1) * 4];
-
-                // Parse raw event (little-endian)
-                let raw_data =
-                    u32::from_le_bytes([raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3]]);
-
-                let raw_event = RawEvt2Event { data: raw_data };
-
-                match raw_event.event_type() {
-                    Ok(event_type) => {
-                        match event_type {
-                            Evt2EventType::TimeHigh => {
-                                let time_event =
-                                    raw_event.as_time_high_event().map_err(|mut e| {
-                                        if let Evt2Error::InvalidEventType { offset, .. } = &mut e {
-                                            *offset = event_offset;
-                                        }
-                                        e
-                                    })?;
-
-                                let new_time_base = (time_event.timestamp as u64) << 6;
-                                let new_time_base_with_loops =
-                                    new_time_base + time_high_loop_count * TIME_LOOP;
-
-                                // Handle time loop detection
-                                if current_time_base > new_time_base_with_loops
-                                    && current_time_base - new_time_base_with_loops
-                                        >= MAX_TIMESTAMP_BASE - LOOP_THRESHOLD
-                                {
-                                    time_high_loop_count += 1;
-                                    current_time_base =
-                                        new_time_base + time_high_loop_count * TIME_LOOP;
-                                } else {
-                                    current_time_base = new_time_base_with_loops;
-                                }
-
-                                first_time_base_set = true;
-                            }
-                            Evt2EventType::CdOff
-                            | Evt2EventType::CdOn
-                            | Evt2EventType::VendorType2
-                            | Evt2EventType::VendorType3
-                            | Evt2EventType::VendorType4
-                            | Evt2EventType::VendorType5
-                            | Evt2EventType::VendorType6
-                            | Evt2EventType::VendorType7
-                            | Evt2EventType::VendorType9
-                            | Evt2EventType::VendorType11
-                            | Evt2EventType::VendorType12
-                            | Evt2EventType::VendorType13 => {
-                                // Skip CD events until we have a time base
-                                if !first_time_base_set {
-                                    continue;
-                                }
-
-                                let cd_event = raw_event.as_cd_event().map_err(|mut e| {
-                                    if let Evt2Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
-                                    }
-                                    e
-                                })?;
-
-                                // Validate coordinates if configured
-                                if self.config.validate_coordinates {
-                                    if let Some((max_x, max_y)) = metadata.sensor_resolution {
-                                        if cd_event.x >= max_x || cd_event.y >= max_y {
-                                            let error = Evt2Error::CoordinateOutOfBounds {
-                                                x: cd_event.x,
-                                                y: cd_event.y,
-                                                max_x,
-                                                max_y,
-                                            };
-
-                                            if self.config.skip_invalid_events {
-                                                continue;
-                                            } else {
-                                                return Err(error);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Reconstruct full timestamp
-                                let timestamp = current_time_base + cd_event.timestamp as u64;
-
-                                // Convert to Event struct
-                                let event = Event {
-                                    t: timestamp as f64 / 1_000_000.0, // Convert microseconds to seconds
-                                    x: cd_event.x,
-                                    y: cd_event.y,
-                                    polarity: cd_event.polarity,
-                                };
-
-                                events.push(event);
-
-                                // Check max events limit
-                                if let Some(max_events) = self.config.max_events {
-                                    if events.len() >= max_events {
-                                        return Ok(events);
-                                    }
-                                }
-                            }
-                            Evt2EventType::ExtTrigger => {
-                                // Skip external trigger events for now
-                                // Could be implemented if needed
-                            }
-                            Evt2EventType::Others | Evt2EventType::Continued => {
-                                // Skip vendor-specific OTHERS and CONTINUED events
-                                // These are documented as vendor-specific in the EVT2 spec
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            let mut error = e;
-                            if let Evt2Error::InvalidEventType { offset, .. } = &mut error {
-                                *offset = event_offset;
-                            }
-                            return Err(error);
-                        }
-                    }
-                }
-            }
+    ) -> Result<DataFrame, Evt2Error> {
+        // For DataFrame mode, use the optimized path
+        #[cfg(feature = "polars")]
+        {
+            let estimated_events = (metadata.data_size / 4) as usize; // 4 bytes per event
+            return self
+                .read_binary_data_to_dataframe(file, header_size, estimated_events)
+                .map_err(|e| Evt2Error::InvalidBinaryData {
+                    offset: 0,
+                    message: format!("DataFrame conversion failed: {}", e),
+                });
         }
 
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            return Err(Evt2Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            });
+        }
     }
 
     /// Read EVT2 file directly into a Polars DataFrame (optimized path)
@@ -748,9 +661,7 @@ impl Evt2Reader {
         let file_size = file.metadata()?.len();
 
         // Parse header
-        let (metadata, header_size) = self
-            .parse_header(&mut file)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        let (metadata, header_size) = self.parse_header(&mut file).map_err(|e| Box::new(e))?;
 
         // Calculate optimal chunk size
         let chunk_size = calculate_optimal_chunk_size(file_size, 1_000_000_000); // 1GB default available memory

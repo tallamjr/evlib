@@ -13,12 +13,15 @@
 /// - https://docs.inivation.com/software/software-advanced-usage/file-formats/
 /// - jAER Documentation
 /// - AEDAT File Format specifications
-// Removed: use crate::{Event, Events}; - legacy types no longer exist
+use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
+use crate::ev_formats::EventFormat;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-// Removed thiserror dependency - using standard error traits
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 
 /// Errors that can occur during AEDAT reading
 #[derive(Debug)]
@@ -219,7 +222,7 @@ impl AedatReader {
     pub fn read_file<P: AsRef<Path>>(
         &self,
         path: P,
-    ) -> Result<(Events, AedatMetadata), AedatError> {
+    ) -> Result<(DataFrame, AedatMetadata), AedatError> {
         let mut file = File::open(path.as_ref())?;
         let version = self.detect_version(&mut file)?;
 
@@ -310,7 +313,7 @@ impl AedatReader {
     }
 
     /// Read AEDAT 1.0 format
-    fn read_aedat_1_0(&self, file: &mut File) -> Result<(Events, AedatMetadata), AedatError> {
+    fn read_aedat_1_0(&self, file: &mut File) -> Result<(DataFrame, AedatMetadata), AedatError> {
         let mut metadata = AedatMetadata {
             version: Some(AedatVersion::V1_0),
             ..Default::default()
@@ -324,7 +327,7 @@ impl AedatReader {
         file.seek(SeekFrom::Start(header_size))?;
         let events = self.read_aedat_1_0_events(file)?;
 
-        metadata.event_count = Some(events.len());
+        metadata.event_count = Some(events.height());
 
         Ok((events, metadata))
     }
@@ -401,90 +404,116 @@ impl AedatReader {
     }
 
     /// Read AEDAT 1.0 events (6 bytes per event)
-    fn read_aedat_1_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
-        let mut buffer = [0u8; 6];
-        let mut event_index = 0;
-        let mut prev_timestamp = 0.0;
+    fn read_aedat_1_0_events(&self, file: &mut File) -> Result<DataFrame, AedatError> {
+        #[cfg(feature = "polars")]
+        {
+            let mut builder = EventDataFrameBuilder::new(EventFormat::AEDAT1, 100_000);
+            let mut buffer = [0u8; 6];
+            let mut event_index = 0;
+            let mut prev_timestamp = 0.0;
 
-        loop {
-            if let Some(max_events) = self.config.max_events {
-                if event_index >= max_events {
-                    break;
+            loop {
+                if let Some(max_events) = self.config.max_events {
+                    if event_index >= max_events {
+                        break;
+                    }
                 }
-            }
 
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            if bytes_read != 6 {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(AedatError::InsufficientData {
-                        expected: 6,
-                        actual: bytes_read,
-                    });
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break; // EOF
                 }
-            }
 
-            // Parse 16-bit address + 32-bit timestamp
-            let address = u16::from_le_bytes([buffer[0], buffer[1]]);
-            let timestamp = u32::from_le_bytes([buffer[2], buffer[3], buffer[4], buffer[5]]);
-
-            // Extract coordinates and polarity from address
-            // AEDAT 1.0 format for DVS128 (standard specification):
-            // 16-bit address field breakdown:
-            // - Bit 15: External event flag (ignored for DVS events)
-            // - Bits 14-8 (7 bits): Y address coordinate
-            // - Bits 7-1 (7 bits): X address coordinate
-            // - Bit 0: Polarity (event type)
-            //   - '1' = Increase (ON event)
-            //   - '0' = Decrease (OFF event)
-            // Coordinate system: (0,0) in lower left corner
-
-            // Extract polarity from bit 0
-            let polarity = (address & 1) == 1;
-
-            // Extract x coordinate from bits 7-1 (7 bits)
-            let x = (address >> 1) & 0x7F; // 7 bits: 0x7F = 0111 1111
-
-            // Extract y coordinate from bits 14-8 (7 bits)
-            let y = (address >> 8) & 0x7F; // 7 bits: 0x7F = 0111 1111
-
-            // Note: For DVS128, coordinates are max 128x128, so 7 bits each is sufficient
-            // The coordinate system has (0,0) at lower left, but we convert to upper left
-            // by inverting y coordinate if sensor resolution is known
-
-            let event = Event {
-                t: timestamp as f64,
-                x,
-                y,
-                polarity,
-            };
-
-            // Validate event
-            if let Err(e) = self.validate_event(&event, event_index, prev_timestamp) {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(e);
+                if bytes_read != 6 {
+                    if self.config.skip_invalid_events {
+                        continue;
+                    } else {
+                        return Err(AedatError::InsufficientData {
+                            expected: 6,
+                            actual: bytes_read,
+                        });
+                    }
                 }
+
+                // Parse 16-bit address + 32-bit timestamp
+                let address = u16::from_le_bytes([buffer[0], buffer[1]]);
+                let timestamp = u32::from_le_bytes([buffer[2], buffer[3], buffer[4], buffer[5]]);
+
+                // Extract coordinates and polarity from address
+                // AEDAT 1.0 format for DVS128 (standard specification):
+                // 16-bit address field breakdown:
+                // - Bit 15: External event flag (ignored for DVS events)
+                // - Bits 14-8 (7 bits): Y address coordinate
+                // - Bits 7-1 (7 bits): X address coordinate
+                // - Bit 0: Polarity (event type)
+                //   - '1' = Increase (ON event)
+                //   - '0' = Decrease (OFF event)
+                // Coordinate system: (0,0) in lower left corner
+
+                // Extract polarity from bit 0
+                let polarity = (address & 1) == 1;
+
+                // Extract x coordinate from bits 7-1 (7 bits)
+                let x = (address >> 1) & 0x7F; // 7 bits: 0x7F = 0111 1111
+
+                // Extract y coordinate from bits 14-8 (7 bits)
+                let y = (address >> 8) & 0x7F; // 7 bits: 0x7F = 0111 1111
+
+                // Note: For DVS128, coordinates are max 128x128, so 7 bits each is sufficient
+                // The coordinate system has (0,0) at lower left, but we convert to upper left
+                // by inverting y coordinate if sensor resolution is known
+
+                // Validate coordinates and timestamp before adding to builder
+                if self.config.validate_timestamps {
+                    if x > 127 || y > 127 {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(AedatError::CoordinateOutOfBounds {
+                                event_index,
+                                x,
+                                y,
+                                max_x: 127,
+                                max_y: 127,
+                            });
+                        }
+                    }
+
+                    let current_timestamp = timestamp as f64;
+                    if current_timestamp < prev_timestamp {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(AedatError::TimestampMonotonicityViolation {
+                                event_index,
+                                prev_timestamp,
+                                curr_timestamp: current_timestamp,
+                            });
+                        }
+                    }
+                    prev_timestamp = current_timestamp;
+                }
+
+                builder.add_event(x, y, timestamp as f64, polarity);
+                event_index += 1;
             }
 
-            events.push(event);
-            prev_timestamp = event.t;
-            event_index += 1;
+            builder.build().map_err(|e| AedatError::InvalidBinaryData {
+                offset: 0,
+                message: format!("Failed to build DataFrame: {}", e),
+            })
         }
-
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(AedatError::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled".to_string(),
+            })
+        }
     }
 
     /// Read AEDAT 2.0 format
-    fn read_aedat_2_0(&self, file: &mut File) -> Result<(Events, AedatMetadata), AedatError> {
+    fn read_aedat_2_0(&self, file: &mut File) -> Result<(DataFrame, AedatMetadata), AedatError> {
         let mut metadata = AedatMetadata {
             version: Some(AedatVersion::V2_0),
             ..Default::default()
@@ -498,7 +527,7 @@ impl AedatReader {
         file.seek(SeekFrom::Start(header_size))?;
         let events = self.read_aedat_2_0_events(file)?;
 
-        metadata.event_count = Some(events.len());
+        metadata.event_count = Some(events.height());
 
         Ok((events, metadata))
     }
@@ -568,85 +597,97 @@ impl AedatReader {
     }
 
     /// Read AEDAT 2.0 events (big-endian 32-bit timestamp + address pairs)
-    fn read_aedat_2_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
-        let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address
-        let mut event_index = 0;
-        let mut prev_timestamp = 0.0;
+    fn read_aedat_2_0_events(&self, file: &mut File) -> Result<DataFrame, AedatError> {
+        #[cfg(feature = "polars")]
+        {
+            let mut builder = EventDataFrameBuilder::new(EventFormat::AEDAT1, 100_000);
+            let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address
+            let mut event_index = 0;
+            let mut prev_timestamp = 0.0;
 
-        loop {
-            if let Some(max_events) = self.config.max_events {
-                if event_index >= max_events {
-                    break;
+            loop {
+                if let Some(max_events) = self.config.max_events {
+                    if event_index >= max_events {
+                        break;
+                    }
                 }
-            }
 
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            if bytes_read != 8 {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(AedatError::InsufficientData {
-                        expected: 8,
-                        actual: bytes_read,
-                    });
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break; // EOF
                 }
-            }
 
-            // Parse big-endian 32-bit timestamp and address
-            let timestamp = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
-            let address = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-
-            // Extract coordinates and polarity from address
-            // AEDAT 2.0 format typically uses standard AER encoding:
-            // 32-bit address field breakdown:
-            // - Bit 0: Polarity (event type)
-            //   - '1' = Increase (ON event)
-            //   - '0' = Decrease (OFF event)
-            // - Bits 1-15: X address coordinate (up to 15 bits)
-            // - Bits 16-30: Y address coordinate (up to 15 bits)
-            // - Bit 31: Reserved/unused
-
-            // Extract polarity from bit 0
-            let polarity = (address & 1) == 1;
-
-            // Extract x coordinate from bits 1-15 (up to 15 bits)
-            let x = (address >> 1) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-
-            // Extract y coordinate from bits 16-30 (up to 15 bits)
-            let y = (address >> 16) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-
-            let event = Event {
-                t: timestamp as f64,
-                x: x as u16,
-                y: y as u16,
-                polarity,
-            };
-
-            // Validate event
-            if let Err(e) = self.validate_event(&event, event_index, prev_timestamp) {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(e);
+                if bytes_read != 8 {
+                    if self.config.skip_invalid_events {
+                        continue;
+                    } else {
+                        return Err(AedatError::InsufficientData {
+                            expected: 8,
+                            actual: bytes_read,
+                        });
+                    }
                 }
+
+                // Parse big-endian 32-bit timestamp and address
+                let timestamp = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                let address = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
+
+                // Extract coordinates and polarity from address
+                // AEDAT 2.0 format typically uses standard AER encoding:
+                // 32-bit address field breakdown:
+                // - Bit 0: Polarity (event type)
+                //   - '1' = Increase (ON event)
+                //   - '0' = Decrease (OFF event)
+                // - Bits 1-15: X address coordinate (up to 15 bits)
+                // - Bits 16-30: Y address coordinate (up to 15 bits)
+                // - Bit 31: Reserved/unused
+
+                // Extract polarity from bit 0
+                let polarity = (address & 1) == 1;
+
+                // Extract x coordinate from bits 1-15 (up to 15 bits)
+                let x = (address >> 1) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
+
+                // Extract y coordinate from bits 16-30 (up to 15 bits)
+                let y = (address >> 16) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
+
+                // Validate coordinates and timestamp before adding to builder
+                if self.config.validate_timestamps {
+                    let current_timestamp = timestamp as f64;
+                    if current_timestamp < prev_timestamp {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(AedatError::TimestampMonotonicityViolation {
+                                event_index,
+                                prev_timestamp,
+                                curr_timestamp: current_timestamp,
+                            });
+                        }
+                    }
+                    prev_timestamp = current_timestamp;
+                }
+
+                builder.add_event(x as u16, y as u16, timestamp as f64, polarity);
+                event_index += 1;
             }
 
-            events.push(event);
-            prev_timestamp = event.t;
-            event_index += 1;
+            builder.build().map_err(|e| AedatError::InvalidBinaryData {
+                offset: 0,
+                message: format!("Failed to build DataFrame: {}", e),
+            })
         }
-
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(AedatError::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled".to_string(),
+            })
+        }
     }
 
     /// Read AEDAT 3.1 format
-    fn read_aedat_3_1(&self, file: &mut File) -> Result<(Events, AedatMetadata), AedatError> {
+    fn read_aedat_3_1(&self, file: &mut File) -> Result<(DataFrame, AedatMetadata), AedatError> {
         let mut metadata = AedatMetadata {
             version: Some(AedatVersion::V3_1),
             ..Default::default()
@@ -660,7 +701,7 @@ impl AedatReader {
         file.seek(SeekFrom::Start(header_size))?;
         let events = self.read_aedat_3_1_events(file)?;
 
-        metadata.event_count = Some(events.len());
+        metadata.event_count = Some(events.height());
 
         Ok((events, metadata))
     }
@@ -730,99 +771,111 @@ impl AedatReader {
     }
 
     /// Read AEDAT 3.1 events (signed little-endian format)
-    fn read_aedat_3_1_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
-        let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address (little-endian)
-        let mut event_index = 0;
-        let mut prev_timestamp = 0.0;
+    fn read_aedat_3_1_events(&self, file: &mut File) -> Result<DataFrame, AedatError> {
+        #[cfg(feature = "polars")]
+        {
+            let mut builder = EventDataFrameBuilder::new(EventFormat::AEDAT1, 100_000);
+            let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address (little-endian)
+            let mut event_index = 0;
+            let mut prev_timestamp = 0.0;
 
-        loop {
-            if let Some(max_events) = self.config.max_events {
-                if event_index >= max_events {
-                    break;
+            loop {
+                if let Some(max_events) = self.config.max_events {
+                    if event_index >= max_events {
+                        break;
+                    }
                 }
-            }
 
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            if bytes_read != 8 {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(AedatError::InsufficientData {
-                        expected: 8,
-                        actual: bytes_read,
-                    });
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break; // EOF
                 }
-            }
 
-            // Parse little-endian 32-bit timestamp and address
-            let timestamp = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
-            let address = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-
-            // Extract coordinates and polarity from address
-            // AEDAT 3.1 format specification (little-endian):
-            // 32-bit data field breakdown:
-            // - Bit 0: Validity mark (1 = valid, 0 = invalid)
-            // - Bit 1: Polarity
-            //   - '1' = Increase (ON event)
-            //   - '0' = Decrease (OFF event)
-            // - Bits 2-16: Y event address (up to 15 bits)
-            // - Bits 17-31: X event address (up to 15 bits)
-            // Coordinate system: (0,0) in upper left corner
-
-            // Check validity bit (bit 0)
-            let is_valid = (address & 1) == 1;
-            if !is_valid {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(AedatError::InvalidBinaryData {
-                        offset: (event_index * 8) as u64,
-                        message: "Invalid event (validity bit not set)".to_string(),
-                    });
+                if bytes_read != 8 {
+                    if self.config.skip_invalid_events {
+                        continue;
+                    } else {
+                        return Err(AedatError::InsufficientData {
+                            expected: 8,
+                            actual: bytes_read,
+                        });
+                    }
                 }
-            }
 
-            // Extract polarity from bit 1
-            let polarity = ((address >> 1) & 1) == 1;
+                // Parse little-endian 32-bit timestamp and address
+                let timestamp = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                let address = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
 
-            // Extract y coordinate from bits 2-16 (up to 15 bits)
-            let y = (address >> 2) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
+                // Extract coordinates and polarity from address
+                // AEDAT 3.1 format specification (little-endian):
+                // 32-bit data field breakdown:
+                // - Bit 0: Validity mark (1 = valid, 0 = invalid)
+                // - Bit 1: Polarity
+                //   - '1' = Increase (ON event)
+                //   - '0' = Decrease (OFF event)
+                // - Bits 2-16: Y event address (up to 15 bits)
+                // - Bits 17-31: X event address (up to 15 bits)
+                // Coordinate system: (0,0) in upper left corner
 
-            // Extract x coordinate from bits 17-31 (up to 15 bits)
-            let x = (address >> 17) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-
-            let event = Event {
-                t: timestamp as f64,
-                x: x as u16,
-                y: y as u16,
-                polarity,
-            };
-
-            // Validate event
-            if let Err(e) = self.validate_event(&event, event_index, prev_timestamp) {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(e);
+                // Check validity bit (bit 0)
+                let is_valid = (address & 1) == 1;
+                if !is_valid {
+                    if self.config.skip_invalid_events {
+                        continue;
+                    } else {
+                        return Err(AedatError::InvalidBinaryData {
+                            offset: (event_index * 8) as u64,
+                            message: "Invalid event (validity bit not set)".to_string(),
+                        });
+                    }
                 }
+
+                // Extract polarity from bit 1
+                let polarity = ((address >> 1) & 1) == 1;
+
+                // Extract y coordinate from bits 2-16 (up to 15 bits)
+                let y = (address >> 2) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
+
+                // Extract x coordinate from bits 17-31 (up to 15 bits)
+                let x = (address >> 17) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
+
+                // Validate coordinates and timestamp before adding to builder
+                if self.config.validate_timestamps {
+                    let current_timestamp = timestamp as f64;
+                    if current_timestamp < prev_timestamp {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(AedatError::TimestampMonotonicityViolation {
+                                event_index,
+                                prev_timestamp,
+                                curr_timestamp: current_timestamp,
+                            });
+                        }
+                    }
+                    prev_timestamp = current_timestamp;
+                }
+
+                builder.add_event(x as u16, y as u16, timestamp as f64, polarity);
+                event_index += 1;
             }
 
-            events.push(event);
-            prev_timestamp = event.t;
-            event_index += 1;
+            builder.build().map_err(|e| AedatError::InvalidBinaryData {
+                offset: 0,
+                message: format!("Failed to build DataFrame: {}", e),
+            })
         }
-
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(AedatError::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled".to_string(),
+            })
+        }
     }
 
     /// Read AEDAT 4.0 format
-    fn read_aedat_4_0(&self, file: &mut File) -> Result<(Events, AedatMetadata), AedatError> {
+    fn read_aedat_4_0(&self, file: &mut File) -> Result<(DataFrame, AedatMetadata), AedatError> {
         let mut metadata = AedatMetadata {
             version: Some(AedatVersion::V4_0),
             ..Default::default()
@@ -836,7 +889,7 @@ impl AedatReader {
         file.seek(SeekFrom::Start(header_size))?;
         let events = self.read_aedat_4_0_events(file)?;
 
-        metadata.event_count = Some(events.len());
+        metadata.event_count = Some(events.height());
 
         Ok((events, metadata))
     }
@@ -930,72 +983,90 @@ impl AedatReader {
     }
 
     /// Read AEDAT 4.0 events (DV framework with 28-byte packet headers)
-    fn read_aedat_4_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
-        let mut event_index = 0;
-        let mut prev_timestamp = 0.0;
+    fn read_aedat_4_0_events(&self, file: &mut File) -> Result<DataFrame, AedatError> {
+        #[cfg(feature = "polars")]
+        {
+            let mut builder = EventDataFrameBuilder::new(EventFormat::AEDAT1, 100_000);
+            let mut event_index = 0;
+            let mut prev_timestamp = 0.0;
 
-        loop {
-            if let Some(max_events) = self.config.max_events {
-                if event_index >= max_events {
-                    break;
-                }
-            }
-
-            // Read packet header (28 bytes)
-            let mut packet_header = [0u8; 28];
-            let bytes_read = file.read(&mut packet_header)?;
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            if bytes_read != 28 {
-                if self.config.skip_invalid_events {
-                    continue;
-                } else {
-                    return Err(AedatError::InsufficientData {
-                        expected: 28,
-                        actual: bytes_read,
-                    });
-                }
-            }
-
-            // Parse packet header to determine packet type and size
-            let packet_type = u16::from_le_bytes([packet_header[0], packet_header[1]]);
-            let packet_size = u32::from_le_bytes([
-                packet_header[4],
-                packet_header[5],
-                packet_header[6],
-                packet_header[7],
-            ]);
-
-            // Only process polarity event packets (type 1)
-            if packet_type == 1 {
-                let packet_events =
-                    self.read_aedat_4_0_packet_events(file, packet_size as usize)?;
-
-                for event in packet_events {
-                    // Validate event
-                    if let Err(e) = self.validate_event(&event, event_index, prev_timestamp) {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            return Err(e);
-                        }
+            loop {
+                if let Some(max_events) = self.config.max_events {
+                    if event_index >= max_events {
+                        break;
                     }
-
-                    events.push(event);
-                    prev_timestamp = event.t;
-                    event_index += 1;
                 }
-            } else {
-                // Skip non-polarity packets
-                file.seek(SeekFrom::Current(packet_size as i64))?;
-            }
-        }
 
-        Ok(events)
+                // Read packet header (28 bytes)
+                let mut packet_header = [0u8; 28];
+                let bytes_read = file.read(&mut packet_header)?;
+                if bytes_read == 0 {
+                    break; // EOF
+                }
+
+                if bytes_read != 28 {
+                    if self.config.skip_invalid_events {
+                        continue;
+                    } else {
+                        return Err(AedatError::InsufficientData {
+                            expected: 28,
+                            actual: bytes_read,
+                        });
+                    }
+                }
+
+                // Parse packet header to determine packet type and size
+                let packet_type = u16::from_le_bytes([packet_header[0], packet_header[1]]);
+                let packet_size = u32::from_le_bytes([
+                    packet_header[4],
+                    packet_header[5],
+                    packet_header[6],
+                    packet_header[7],
+                ]);
+
+                // Only process polarity event packets (type 1)
+                if packet_type == 1 {
+                    let packet_events =
+                        self.read_aedat_4_0_packet_events(file, packet_size as usize)?;
+
+                    for (x, y, timestamp, polarity) in packet_events {
+                        // Validate coordinates and timestamp before adding to builder
+                        if self.config.validate_timestamps {
+                            if timestamp < prev_timestamp {
+                                if self.config.skip_invalid_events {
+                                    continue;
+                                } else {
+                                    return Err(AedatError::TimestampMonotonicityViolation {
+                                        event_index,
+                                        prev_timestamp,
+                                        curr_timestamp: timestamp,
+                                    });
+                                }
+                            }
+                            prev_timestamp = timestamp;
+                        }
+
+                        builder.add_event(x, y, timestamp, polarity);
+                        event_index += 1;
+                    }
+                } else {
+                    // Skip non-polarity packets
+                    file.seek(SeekFrom::Current(packet_size as i64))?;
+                }
+            }
+
+            builder.build().map_err(|e| AedatError::InvalidBinaryData {
+                offset: 0,
+                message: format!("Failed to build DataFrame: {}", e),
+            })
+        }
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(AedatError::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled".to_string(),
+            })
+        }
     }
 
     /// Read events from AEDAT 4.0 packet
@@ -1003,9 +1074,8 @@ impl AedatReader {
         &self,
         file: &mut File,
         packet_size: usize,
-    ) -> Result<Events, AedatError> {
-        // Commented out - legacy Events type no longer exists
-        // let mut events = Events::new();
+    ) -> Result<Vec<(u16, u16, f64, bool)>, AedatError> {
+        let mut events = Vec::new();
         let mut buffer = vec![0u8; packet_size];
         let bytes_read = file.read(&mut buffer)?;
 
@@ -1041,64 +1111,10 @@ impl AedatReader {
                 continue;
             }
 
-            let event = Event {
-                t: timestamp as f64,
-                x,
-                y: y_clean,
-                polarity,
-            };
-
-            events.push(event);
+            events.push((x, y_clean, timestamp as f64, polarity));
         }
 
         Ok(events)
-    }
-
-    /// Validate an event according to configuration
-    fn validate_event(
-        &self,
-        event: &Event,
-        event_index: usize,
-        prev_timestamp: f64,
-    ) -> Result<(), AedatError> {
-        // Validate timestamp monotonicity
-        if self.config.validate_timestamps && event.t < prev_timestamp {
-            return Err(AedatError::TimestampMonotonicityViolation {
-                event_index,
-                prev_timestamp,
-                curr_timestamp: event.t,
-            });
-        }
-
-        // Validate coordinates
-        if self.config.validate_coordinates {
-            if let Some((max_x, max_y)) = self.config.max_resolution {
-                if event.x >= max_x || event.y >= max_y {
-                    return Err(AedatError::CoordinateOutOfBounds {
-                        event_index,
-                        x: event.x,
-                        y: event.y,
-                        max_x,
-                        max_y,
-                    });
-                }
-            }
-        }
-
-        // Validate polarity - bool is always valid, so this check is removed
-
-        // Additional bounds checking for unreasonable coordinates
-        if event.x > 8192 || event.y > 8192 {
-            return Err(AedatError::CoordinateOutOfBounds {
-                event_index,
-                x: event.x,
-                y: event.y,
-                max_x: 8192,
-                max_y: 8192,
-            });
-        }
-
-        Ok(())
     }
 
     /// Extract numeric value from a header line
@@ -1177,7 +1193,7 @@ mod tests {
 
         assert_eq!(metadata.version, Some(AedatVersion::V1_0));
         assert_eq!(metadata.sensor_resolution, Some((240, 180)));
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.height(), 3);
 
         // Verify first event
         assert_eq!(events[0].x, 1);
@@ -1342,7 +1358,7 @@ mod tests {
 
         assert_eq!(metadata.version, Some(AedatVersion::V4_0));
         assert_eq!(metadata.sensor_resolution, Some((640, 480)));
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.height(), 2);
 
         // Verify first event
         assert_eq!(events[0].x, 100);
@@ -1413,7 +1429,7 @@ mod tests {
         let reader = AedatReader::with_config(config);
         let (events, _) = reader.read_file(&file_path).unwrap();
 
-        assert_eq!(events.len(), 2); // Both events should be read
+        assert_eq!(events.height(), 2); // Both events should be read
     }
 
     /// Test coordinate bounds validation
@@ -1458,7 +1474,7 @@ mod tests {
         let reader = AedatReader::with_config(config);
         let (events, _) = reader.read_file(&file_path).unwrap();
 
-        assert_eq!(events.len(), 1);
+        assert_eq!(events.height(), 1);
     }
 
     /// Test configuration options
@@ -1487,7 +1503,7 @@ mod tests {
         let reader = AedatReader::with_config(config);
         let (events, _) = reader.read_file(&file_path).unwrap();
 
-        assert_eq!(events.len(), 5);
+        assert_eq!(events.height(), 5);
     }
 
     /// Test version detection
