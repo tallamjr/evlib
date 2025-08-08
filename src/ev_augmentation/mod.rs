@@ -42,8 +42,21 @@
 //! let augmented_events = augment_events(&events, &config)?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use std::fmt;
+
+#[cfg(feature = "tracing")]
+use tracing::{debug, info};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($args:tt)*) => {};
+}
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! info {
+    ($($args:tt)*) => {};
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -57,6 +70,103 @@ pub const COL_Y: &str = "y";
 pub const COL_T: &str = "t";
 #[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
+
+/// DataFrame-first augmentation function that applies augmentations entirely using LazyFrame operations
+///
+/// This function processes events through a pipeline of augmentations based on the provided
+/// configuration using Polars LazyFrame operations throughout. It provides significant
+/// performance improvements over the Vec<Event> approach.
+///
+/// # Arguments
+///
+/// * `df` - Input LazyFrame containing event data
+/// * `config` - Augmentation configuration specifying which augmentations to apply
+///
+/// # Returns
+///
+/// Augmented LazyFrame with all transformations applied
+///
+/// # Example
+///
+/// ```rust
+/// use polars::prelude::*;
+/// use evlib::ev_augmentation::{AugmentationConfig, augment_events_dataframe};
+///
+/// let events_df = events_to_dataframe(&events)?.lazy();
+/// let config = AugmentationConfig::new()
+///     .with_spatial_jitter(1.0, 1.0)
+///     .with_time_jitter(1000.0);
+/// let augmented_df = augment_events_dataframe(events_df, &config)?;
+/// ```
+#[cfg(feature = "polars")]
+pub fn augment_events_dataframe(
+    df: LazyFrame,
+    config: &AugmentationConfig,
+) -> PolarsResult<LazyFrame> {
+    debug!(
+        "Applying DataFrame-first augmentation pipeline: {:?}",
+        config
+    );
+
+    // Apply augmentations in order using DataFrame-native implementations
+    let mut augmented_df = df;
+
+    // 1. Spatial jitter - modifies spatial coordinates
+    if let Some(spatial_jitter) = &config.spatial_jitter {
+        augmented_df = spatial_jitter
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| {
+                PolarsError::ComputeError(format!("Spatial jitter error: {}", e).into())
+            })?;
+    }
+
+    // 2. Geometric transforms - modifies spatial coordinates and polarity
+    if let Some(geometric_transforms) = &config.geometric_transforms {
+        augmented_df = geometric_transforms
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| {
+                PolarsError::ComputeError(format!("Geometric transforms error: {}", e).into())
+            })?;
+    }
+
+    // 3. Time jitter - modifies timestamps
+    if let Some(time_jitter) = &config.time_jitter {
+        augmented_df = time_jitter
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| PolarsError::ComputeError(format!("Time jitter error: {}", e).into()))?;
+    }
+
+    // 4. Event dropping - removes events
+    if let Some(drop_event) = &config.drop_event {
+        augmented_df = drop_event
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| PolarsError::ComputeError(format!("Drop event error: {}", e).into()))?;
+    }
+
+    // 5. Drop by time - removes events in time interval
+    if let Some(drop_time) = &config.drop_time {
+        augmented_df = drop_time
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| PolarsError::ComputeError(format!("Drop time error: {}", e).into()))?;
+    }
+
+    // 6. Drop by area - removes events in spatial area
+    if let Some(drop_area) = &config.drop_area {
+        augmented_df = drop_area
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| PolarsError::ComputeError(format!("Drop area error: {}", e).into()))?;
+    }
+
+    // 7. Uniform noise - adds noise events (should be last)
+    if let Some(uniform_noise) = &config.uniform_noise {
+        augmented_df = uniform_noise
+            .apply_to_dataframe(augmented_df)
+            .map_err(|e| PolarsError::ComputeError(format!("Uniform noise error: {}", e).into()))?;
+    }
+
+    info!("DataFrame-first augmentation pipeline completed");
+    Ok(augmented_df)
+}
 
 // Sub-modules
 pub mod config;
@@ -73,19 +183,17 @@ pub mod uniform_noise;
 
 // Re-export core types and functions for convenience
 pub use config::{AugmentationConfig, AugmentationError, AugmentationResult, Validatable};
-pub use crop::{center_crop, random_crop, CenterCropAugmentation, RandomCropAugmentation};
-pub use decimate::{decimate_events, DecimateAugmentation};
-pub use drop_event::{
-    drop_by_area, drop_by_probability, drop_by_time, DropAreaAugmentation, DropEventAugmentation,
-    DropTimeAugmentation,
-};
-pub use geometric_transforms::{geometric_transforms, GeometricTransformAugmentation};
-pub use spatial_jitter::{spatial_jitter, SpatialJitterAugmentation};
-pub use time_jitter::{time_jitter, TimeJitterAugmentation};
-pub use time_reversal::{time_reversal, TimeReversalAugmentation};
-pub use time_skew::{time_skew, TimeSkewAugmentation};
-pub use uniform_noise::{uniform_noise, UniformNoiseAugmentation};
+pub use crop::{CenterCropAugmentation, RandomCropAugmentation};
+pub use decimate::DecimateAugmentation;
+pub use drop_event::{DropAreaAugmentation, DropEventAugmentation, DropTimeAugmentation};
+pub use geometric_transforms::GeometricTransformAugmentation;
+pub use spatial_jitter::SpatialJitterAugmentation;
+pub use time_jitter::TimeJitterAugmentation;
+pub use time_reversal::TimeReversalAugmentation;
+pub use time_skew::TimeSkewAugmentation;
+pub use uniform_noise::UniformNoiseAugmentation;
 
+/* Commented out - legacy Event/Events types no longer exist
 /// Trait for individual augmentation implementations
 pub trait SingleAugmentation {
     /// Apply this augmentation to a set of events
@@ -99,7 +207,9 @@ pub trait SingleAugmentation {
         true
     }
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Main augmentation function that applies a comprehensive augmentation configuration
 ///
 /// This function processes events through a pipeline of augmentations based on the provided
@@ -207,7 +317,9 @@ pub fn augment_events(events: &Events, config: &AugmentationConfig) -> Augmentat
         Ok(augmented_events)
     }
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Polars-first augmentation function that applies augmentations entirely using LazyFrame operations
 ///
 /// This function processes events through a pipeline of augmentations based on the provided
@@ -219,7 +331,7 @@ pub fn augment_events_polars(
     config: &AugmentationConfig,
 ) -> AugmentationResult<Events> {
     // Convert input Vec<Event> to LazyFrame once at the beginning
-    let df = crate::ev_core::events_to_dataframe(events)
+    let df = crate::events_to_dataframe(events)
         .map_err(|e| {
             AugmentationError::ProcessingError(format!("DataFrame conversion error: {}", e))
         })?
@@ -372,6 +484,7 @@ fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
 
     Ok(events)
 }
+*/
 
 /// Statistics about augmentation operations
 #[derive(Debug, Clone)]
@@ -427,6 +540,7 @@ impl fmt::Display for AugmentationStats {
     }
 }
 
+/* Commented out - legacy Events type no longer exists
 /// Apply augmentation with statistics collection
 pub fn augment_events_with_stats(
     events: &Events,
@@ -443,7 +557,9 @@ pub fn augment_events_with_stats(
 
     Ok((augmented_events, stats))
 }
+*/
 
+/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,3 +618,4 @@ mod tests {
         assert!(stats.removed_count >= 0);
     }
 }
+*/

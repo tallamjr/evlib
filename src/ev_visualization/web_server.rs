@@ -43,7 +43,10 @@ use uuid::Uuid;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
-use crate::ev_core::Event;
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebServerConfig {
@@ -74,7 +77,7 @@ pub struct WebSocketClient {
 
 pub struct EventBroadcaster {
     clients: HashMap<Uuid, WebSocketClient>,
-    event_buffer: Vec<Event>,
+    event_buffer: Events,
 }
 
 impl Default for EventBroadcaster {
@@ -87,7 +90,7 @@ impl EventBroadcaster {
     pub fn new() -> Self {
         Self {
             clients: HashMap::new(),
-            event_buffer: Vec::with_capacity(10000),
+            event_buffer: Events::with_capacity(10000),
         }
     }
 
@@ -100,7 +103,23 @@ impl EventBroadcaster {
         self.clients.remove(id);
     }
 
-    pub async fn broadcast_events(&mut self, events: Vec<Event>) {
+    pub async fn broadcast_events(&mut self, events: Events) {
+        self.broadcast_events_impl(events).await;
+    }
+
+    /// Broadcast events from DataFrame to all connected clients
+    #[cfg(feature = "polars")]
+    pub async fn broadcast_events_from_dataframe(
+        &mut self,
+        df: LazyFrame,
+    ) -> Result<(), PolarsError> {
+        let events = dataframe_to_events_for_visualization(df)?;
+        self.broadcast_events_impl(events).await;
+        Ok(())
+    }
+
+    /// Internal implementation for broadcasting events
+    async fn broadcast_events_impl(&mut self, events: Events) {
         let event_count = events.len();
         self.event_buffer.extend(events);
 
@@ -108,7 +127,7 @@ impl EventBroadcaster {
         if self.event_buffer.len() >= 100
             || (!self.clients.is_empty() && self.event_buffer.len() >= 20)
         {
-            let batch = std::mem::replace(&mut self.event_buffer, Vec::with_capacity(5000));
+            let batch = std::mem::replace(&mut self.event_buffer, Events::with_capacity(5000));
             if !batch.is_empty() {
                 let message = Self::serialize_events(&batch);
                 if batch.len() > 50 {
@@ -287,11 +306,45 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
     );
 }
 
+/// Helper function to convert DataFrame back to Events for visualization
+#[cfg(feature = "polars")]
+fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
+    let df = df.collect()?;
+
+    let x_series = df.column("x")?;
+    let y_series = df.column("y")?;
+    let t_series = df.column("t")?;
+    let polarity_series = df.column("polarity")?;
+
+    let x_values = x_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let y_values = y_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let t_values = t_series.f64()?.into_no_null_iter().collect::<Vec<_>>();
+    let polarity_values = polarity_series
+        .i64()?
+        .into_no_null_iter()
+        .collect::<Vec<_>>();
+
+    let events = x_values
+        .into_iter()
+        .zip(y_values)
+        .zip(t_values)
+        .zip(polarity_values)
+        .map(|(((x, y), t), p)| Event {
+            x: x as u16,
+            y: y as u16,
+            t,
+            polarity: p > 0,
+        })
+        .collect();
+
+    Ok(events)
+}
+
 /// Python bindings for the web server
 #[cfg(feature = "python")]
 pub mod python {
     use super::*;
-    use crate::ev_core::from_numpy_arrays;
+    use crate::from_numpy_arrays;
     use numpy::PyReadonlyArray1;
     use pyo3::prelude::*;
     // std::sync::Arc and tokio::sync::Mutex removed (unused imports)

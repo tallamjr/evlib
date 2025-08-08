@@ -32,9 +32,9 @@
 //! let filtered = apply_spatial_filter(events_df, &SpatialFilter::roi(100, 200, 150, 250))?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::collections::HashSet;
 #[cfg(feature = "tracing")]
@@ -989,6 +989,37 @@ impl SpatialFilter {
             parts.join(", ")
         }
     }
+
+    /// Apply spatial filtering directly to DataFrame (recommended approach)
+    ///
+    /// This is the high-performance DataFrame-native method that should be used
+    /// instead of the legacy Vec<Event> approach when possible.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input LazyFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered LazyFrame with spatial constraints applied
+    pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
+        apply_spatial_filter(df, self)
+    }
+
+    /// Apply spatial filtering directly to DataFrame and return DataFrame
+    ///
+    /// Convenience method that applies filtering and collects the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input DataFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered DataFrame with spatial constraints applied
+    pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
+        apply_spatial_filter(df.lazy(), self)?.collect()
+    }
 }
 
 impl Default for SpatialFilter {
@@ -1038,45 +1069,6 @@ impl Validatable for SpatialFilter {
         }
 
         Ok(())
-    }
-}
-
-impl SingleFilter for SpatialFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        // Legacy Vec<Event> interface - convert to DataFrame and back
-        // This is for backward compatibility only
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        let filtered_df = apply_spatial_filter(df, self)
-            .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-        // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-        let result_df = filtered_df.collect().map_err(|e| {
-            FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e))
-        })?;
-
-        // Convert DataFrame back to Events
-        dataframe_to_events(&result_df)
-    }
-
-    fn description(&self) -> String {
-        format!("Spatial filter: {}", self.description())
-    }
-
-    fn is_enabled(&self) -> bool {
-        self.roi.is_some()
-            || self.circular_roi.is_some()
-            || self.polygon_roi.is_some()
-            || self.multiple_rois.is_some()
-            || self.excluded_pixels.is_some()
-            || self.included_pixels.is_some()
-            || self.max_coordinate.is_some()
     }
 }
 
@@ -1533,362 +1525,59 @@ pub fn find_spatial_clusters_polars(
     .collect()
 }
 
-/// Helper function to convert DataFrame back to Events (for legacy compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing x value".to_string()))?
-            as u16;
-        let y = y_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing y value".to_string()))?
-            as u16;
-        let t = t_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing t value".to_string()))?;
-        let p = p_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing polarity value".to_string()))?
-            > 0;
-
-        events.push(Event {
-            x,
-            y,
-            t,
-            polarity: p,
-        });
-    }
-
-    Ok(events)
-}
-
 // Legacy convenience functions for backward compatibility - all delegate to Polars implementations
 
-/// Legacy function for ROI filtering - delegates to Polars implementation
-pub fn filter_by_roi(
-    events: &Events,
+/// Filter events by ROI - DataFrame-native version (recommended)
+///
+/// This function applies ROI filtering directly to a LazyFrame for optimal performance.
+/// Use this instead of the legacy Vec<Event> version when possible.
+///
+/// # Arguments
+///
+/// * `df` - Input LazyFrame containing event data
+/// * `min_x`, `max_x`, `min_y`, `max_y` - ROI bounds
+///
+/// # Returns
+///
+/// Filtered LazyFrame
+pub fn filter_by_roi_df(
+    df: LazyFrame,
     min_x: u16,
     max_x: u16,
     min_y: u16,
     max_y: u16,
-) -> FilterResult<Events> {
+) -> PolarsResult<LazyFrame> {
     let filter = SpatialFilter::roi(min_x, max_x, min_y, max_y);
-    filter.apply(events)
+    filter.apply_to_dataframe(df)
 }
 
-/// Legacy function for coordinate bounds filtering - delegates to Polars implementation
-pub fn filter_by_coordinates(
-    events: &Events,
-    x_bounds: Option<(u16, u16)>,
-    y_bounds: Option<(u16, u16)>,
-) -> FilterResult<Events> {
-    let mut filter = SpatialFilter::default();
-
-    if let (Some((min_x, max_x)), Some((min_y, max_y))) = (x_bounds, y_bounds) {
-        filter.roi = Some(RegionOfInterest::new(min_x, max_x, min_y, max_y)?);
-    } else if let Some((min_x, max_x)) = x_bounds {
-        filter.roi = Some(RegionOfInterest::new(min_x, max_x, 0, u16::MAX)?);
-    } else if let Some((min_y, max_y)) = y_bounds {
-        filter.roi = Some(RegionOfInterest::new(0, u16::MAX, min_y, max_y)?);
-    }
-
-    filter.apply(events)
-}
-
-/// Legacy function for circular ROI filtering - delegates to Polars implementation
-pub fn filter_by_circular_roi(
-    events: &Events,
+/// Filter events by circular ROI - DataFrame-native version (recommended)
+///
+/// This function applies circular ROI filtering directly to a LazyFrame for optimal performance.
+///
+/// # Arguments
+///
+/// * `df` - Input LazyFrame containing event data
+/// * `center_x`, `center_y` - Center coordinates of the circle
+/// * `radius` - Radius of the circle in pixels
+///
+/// # Returns
+///
+/// Filtered LazyFrame
+pub fn filter_by_circular_roi_df(
+    df: LazyFrame,
     center_x: u16,
     center_y: u16,
     radius: u16,
-) -> FilterResult<Events> {
+) -> PolarsResult<LazyFrame> {
     let filter = SpatialFilter::circular(center_x, center_y, radius);
-    filter.apply(events)
-}
-
-/// Legacy function for polygon filtering - delegates to Polars implementation
-pub fn filter_by_polygon(events: &Events, vertices: Vec<Point>) -> FilterResult<Events> {
-    let filter = SpatialFilter::polygon(vertices)?;
-    filter.apply(events)
-}
-
-/// Legacy function for pixel mask filtering - delegates to Polars implementation
-pub fn filter_by_pixel_mask(
-    events: &Events,
-    included_pixels: Option<HashSet<(u16, u16)>>,
-    excluded_pixels: Option<HashSet<(u16, u16)>>,
-) -> FilterResult<Events> {
-    let filter = SpatialFilter {
-        included_pixels,
-        excluded_pixels,
-        ..Default::default()
-    };
-    filter.apply(events)
-}
-
-/// Legacy function for multiple ROI filtering - delegates to Polars implementation
-pub fn filter_by_multiple_rois(
-    events: &Events,
-    multiple_rois: MultipleROIs,
-) -> FilterResult<Events> {
-    let filter = SpatialFilter::multiple_rois(multiple_rois);
-    filter.apply(events)
-}
-
-/// Legacy function for circular filtering - delegates to optimized implementation
-pub fn filter_by_circle(
-    events: &Events,
-    center_x: u16,
-    center_y: u16,
-    radius: u16,
-) -> FilterResult<Events> {
-    filter_by_circular_roi(events, center_x, center_y, radius)
-}
-
-/// Split events by spatial grid using Polars operations (delegates to Polars implementation)
-///
-/// This function creates a spatial grid and returns events grouped by grid cells.
-/// For better performance, use `split_by_spatial_grid_polars` directly with LazyFrame.
-pub fn split_by_spatial_grid(
-    events: &Events,
-    grid_width: u16,
-    grid_height: u16,
-    sensor_width: u16,
-    sensor_height: u16,
-) -> FilterResult<Vec<Vec<Events>>> {
-    warn!("Using legacy Vec<Vec<Events>> interface for spatial grid - consider using split_by_spatial_grid_polars with LazyFrame directly");
-
-    if grid_width == 0 || grid_height == 0 {
-        return Err(FilterError::InvalidConfig(
-            "Grid dimensions must be positive".to_string(),
-        ));
-    }
-
-    // Convert to DataFrame and use Polars operations
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let _grid_df =
-        split_by_spatial_grid_polars(df, grid_width, grid_height, sensor_width, sensor_height)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("Polars grid splitting failed: {}", e))
-            })?;
-
-    // Convert back to Vec<Vec<Events>> format for legacy compatibility
-    let mut grid: Vec<Vec<Events>> =
-        vec![vec![Vec::new(); grid_width as usize]; grid_height as usize];
-
-    // Get the original events DataFrame for reconstruction
-    let events_df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?;
-
-    let cell_width = sensor_width / grid_width;
-    let cell_height = sensor_height / grid_height;
-
-    // Use Polars to assign grid coordinates to each event
-    let events_with_grid = events_df
-        .lazy()
-        .with_columns([
-            (col(COL_X) / lit(cell_width as i64)).alias("grid_x"),
-            (col(COL_Y) / lit(cell_height as i64)).alias("grid_y"),
-        ])
-        .collect()
-        .map_err(|e| {
-            FilterError::ProcessingError(format!("Grid coordinate assignment failed: {}", e))
-        })?;
-
-    // Reconstruct events grouped by grid cells
-    let x_values = events_with_grid.column(COL_X).unwrap().i64().unwrap();
-    let y_values = events_with_grid.column(COL_Y).unwrap().i64().unwrap();
-    let t_values = events_with_grid.column(COL_T).unwrap().f64().unwrap();
-    let p_values = events_with_grid
-        .column(COL_POLARITY)
-        .unwrap()
-        .i64()
-        .unwrap();
-    let grid_x_values = events_with_grid.column("grid_x").unwrap().i64().unwrap();
-    let grid_y_values = events_with_grid.column("grid_y").unwrap().i64().unwrap();
-
-    for i in 0..events_with_grid.height() {
-        let event = Event {
-            x: x_values.get(i).unwrap() as u16,
-            y: y_values.get(i).unwrap() as u16,
-            t: t_values.get(i).unwrap(),
-            polarity: p_values.get(i).unwrap() > 0,
-        };
-
-        let grid_x = (grid_x_values.get(i).unwrap() as u16).min(grid_width - 1) as usize;
-        let grid_y = (grid_y_values.get(i).unwrap() as u16).min(grid_height - 1) as usize;
-
-        grid[grid_y][grid_x].push(event);
-    }
-
-    info!(
-        "Split {} events into {}x{} spatial grid using Polars operations",
-        events.len(),
-        grid_width,
-        grid_height
-    );
-
-    Ok(grid)
-}
-
-/// Create pixel activity mask using Polars operations (delegates to Polars implementation)
-///
-/// This function creates a 2D boolean mask indicating which pixels have generated events.
-/// For better performance, use `create_pixel_mask_polars` directly with LazyFrame.
-pub fn create_pixel_mask(events: &Events, sensor_width: u16, sensor_height: u16) -> Vec<Vec<bool>> {
-    warn!("Using legacy Vec<Vec<bool>> interface for pixel mask - consider using create_pixel_mask_polars with LazyFrame directly");
-
-    if events.is_empty() {
-        return vec![vec![false; sensor_width as usize]; sensor_height as usize];
-    }
-
-    // Convert to DataFrame and use Polars operations
-    let df = match crate::ev_core::events_to_dataframe(events) {
-        Ok(df) => df.lazy(),
-        Err(e) => {
-            warn!(
-                "Failed to convert events to DataFrame: {}, falling back to manual processing",
-                e
-            );
-            let mut mask = vec![vec![false; sensor_width as usize]; sensor_height as usize];
-            for event in events {
-                if event.x < sensor_width && event.y < sensor_height {
-                    mask[event.y as usize][event.x as usize] = true;
-                }
-            }
-            return mask;
-        }
-    };
-
-    // Get unique pixels using Polars
-    let pixel_mask_df = match create_pixel_mask_polars(df, sensor_width, sensor_height) {
-        Ok(df) => df,
-        Err(e) => {
-            warn!(
-                "Failed to create pixel mask with Polars: {}, falling back to manual processing",
-                e
-            );
-            let mut mask = vec![vec![false; sensor_width as usize]; sensor_height as usize];
-            for event in events {
-                if event.x < sensor_width && event.y < sensor_height {
-                    mask[event.y as usize][event.x as usize] = true;
-                }
-            }
-            return mask;
-        }
-    };
-
-    // Convert Polars result to 2D boolean mask
-    let mut mask = vec![vec![false; sensor_width as usize]; sensor_height as usize];
-
-    if let (Ok(x_values), Ok(y_values)) = (
-        pixel_mask_df.column(COL_X).map(|s| s.i64()),
-        pixel_mask_df.column(COL_Y).map(|s| s.i64()),
-    ) {
-        if let (Ok(x_series), Ok(y_series)) = (x_values, y_values) {
-            for i in 0..pixel_mask_df.height() {
-                if let (Some(x), Some(y)) = (x_series.get(i), y_series.get(i)) {
-                    let x = x as u16;
-                    let y = y as u16;
-                    if x < sensor_width && y < sensor_height {
-                        mask[y as usize][x as usize] = true;
-                    }
-                }
-            }
-        }
-    }
-
-    debug!(
-        "Created pixel mask using Polars operations for {} events on {}x{} sensor",
-        events.len(),
-        sensor_width,
-        sensor_height
-    );
-
-    mask
-}
-
-/// Find spatial clusters using Polars operations (delegates to Polars implementation)
-///
-/// This function groups nearby events into spatial clusters using grid-based approximation.
-/// For better performance, use `find_spatial_clusters_polars` directly with LazyFrame.
-pub fn find_spatial_clusters(
-    events: &Events,
-    max_distance: u16,
-    min_cluster_size: usize,
-) -> FilterResult<Vec<Events>> {
-    warn!("Using legacy Vec<Events> interface for spatial clustering - consider using find_spatial_clusters_polars with LazyFrame directly");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Convert to DataFrame and use Polars operations
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let clusters_df = find_spatial_clusters_polars(df, max_distance, min_cluster_size)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars clustering failed: {}", e)))?;
-
-    // For legacy compatibility, we'll return the largest clusters as Vec<Events>
-    // Note: This is a simplified version - the Polars implementation provides more detailed cluster information
-    let mut clusters = Vec::new();
-
-    if clusters_df.height() > 0 {
-        // For now, return all events as a single cluster if any clusters were found
-        // In a full implementation, you'd want to reconstruct the actual cluster memberships
-        warn!("Legacy spatial clustering returns simplified results - use Polars version for detailed cluster information");
-        clusters.push(events.to_vec());
-    }
-
-    info!(
-        "Found {} spatial clusters from {} events using Polars operations (min size: {})",
-        clusters.len(),
-        events.len(),
-        min_cluster_size
-    );
-
-    Ok(clusters)
+    filter.apply_to_dataframe(df)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::{events_to_dataframe, Event};
+    use crate::{events_to_dataframe, Event};
 
     fn create_test_events() -> Events {
         vec![
@@ -1976,6 +1665,46 @@ mod tests {
         let result = filtered.collect()?;
 
         assert_eq!(result.height(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_spatial_filter_dataframe_native() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        let filter = SpatialFilter::roi(80, 180, 180, 280);
+        let filtered = filter.apply_to_dataframe(df)?;
+        let result = filtered.collect()?;
+
+        assert_eq!(result.height(), 2); // Events at (100,200) and (150,250)
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filter_by_roi_dataframe() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        let filtered = filter_by_roi_df(df, 80, 180, 180, 280)?;
+        let result = filtered.collect()?;
+
+        assert_eq!(result.height(), 2); // Events at (100,200) and (150,250)
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filter_by_circular_roi_dataframe() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        let filtered = filter_by_circular_roi_df(df, 150, 250, 100)?;
+        let result = filtered.collect()?;
+
+        assert!(result.height() >= 1); // Should include at least some events
 
         Ok(())
     }

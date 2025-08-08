@@ -18,7 +18,7 @@ macro_rules! warn {
 
 use crate::ev_filtering::{
     DenoiseFilter, DownsamplingFilter, DropPixelFilter, HotPixelFilter, PolarityFilter,
-    SingleFilter, SpatialFilter, TemporalFilter,
+    SpatialFilter, TemporalFilter,
 };
 
 /// Result type for filtering operations

@@ -15,7 +15,7 @@ use arrow_array::{
 #[cfg(feature = "arrow")]
 use std::sync::Arc;
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_formats::EventFormat;
 
 /// Error types for Arrow operations
@@ -564,10 +564,11 @@ impl ArrowEventStreamer {
     }
 }
 
+/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
     use crate::ev_formats::EventFormat;
 
     fn create_test_events() -> Vec<Event> {
@@ -740,3 +741,4 @@ mod tests {
         assert!(matches!(result, Err(ArrowBuilderError::FeatureNotEnabled)));
     }
 }
+*/

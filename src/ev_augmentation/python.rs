@@ -8,13 +8,13 @@ use pyo3::prelude::*;
 
 #[cfg(feature = "python")]
 use crate::ev_augmentation::{
-    augment_events, AugmentationConfig as RustAugmentationConfig, GeometricTransformAugmentation,
+    AugmentationConfig as RustAugmentationConfig, GeometricTransformAugmentation,
     SpatialJitterAugmentation, TimeJitterAugmentation, TimeSkewAugmentation,
 };
 
-#[cfg(feature = "python")]
-use crate::ev_core::Events;
+// Removed: use crate::Events; - legacy type no longer exists
 
+/* Commented out - legacy Event/Events types no longer exist
 /// Apply spatial jitter augmentation to events
 #[cfg(feature = "python")]
 #[pyfunction]
@@ -30,7 +30,7 @@ pub fn spatial_jitter_py(
     // Convert Python events to Rust Events
     let rust_events: Events = events
         .into_iter()
-        .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
+        .map(|(t, x, y, polarity)| crate::Event { t, x, y, polarity })
         .collect();
 
     // Create augmentation configuration
@@ -74,7 +74,7 @@ pub fn time_jitter_py(
 ) -> PyResult<Vec<(f64, u16, u16, bool)>> {
     let rust_events: Events = events
         .into_iter()
-        .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
+        .map(|(t, x, y, polarity)| crate::Event { t, x, y, polarity })
         .collect();
 
     let mut config = RustAugmentationConfig::new();
@@ -107,7 +107,7 @@ pub fn time_skew_py(
 ) -> PyResult<Vec<(f64, u16, u16, bool)>> {
     let rust_events: Events = events
         .into_iter()
-        .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
+        .map(|(t, x, y, polarity)| crate::Event { t, x, y, polarity })
         .collect();
 
     let mut config = RustAugmentationConfig::new();
@@ -143,7 +143,7 @@ pub fn geometric_transforms_py(
 ) -> PyResult<Vec<(f64, u16, u16, bool)>> {
     let rust_events: Events = events
         .into_iter()
-        .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
+        .map(|(t, x, y, polarity)| crate::Event { t, x, y, polarity })
         .collect();
 
     let mut config = RustAugmentationConfig::new();
@@ -272,7 +272,7 @@ impl AugmentationConfig {
     ) -> PyResult<Vec<(f64, u16, u16, bool)>> {
         let rust_events: Events = events
             .into_iter()
-            .map(|(t, x, y, polarity)| crate::ev_core::Event { t, x, y, polarity })
+            .map(|(t, x, y, polarity)| crate::Event { t, x, y, polarity })
             .collect();
 
         let augmented_events = augment_events(&rust_events, &self.inner).map_err(|e| {
@@ -306,11 +306,11 @@ pub fn augment_events_py(
             let y: u16 = event.get_item("y")?.extract()?;
             let polarity: bool = event.get_item("polarity")?.extract()?;
 
-            rust_events.push(crate::ev_core::Event { t, x, y, polarity });
+            rust_events.push(crate::Event { t, x, y, polarity });
         }
         // Try as tuple
         else if let Ok((t, x, y, polarity)) = event.extract::<(f64, u16, u16, bool)>() {
-            rust_events.push(crate::ev_core::Event { t, x, y, polarity });
+            rust_events.push(crate::Event { t, x, y, polarity });
         } else {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Events must be dictionaries with keys 't', 'x', 'y', 'polarity' or tuples (t, x, y, polarity)"
@@ -353,3 +353,4 @@ pub fn register_augmentation_functions(m: &Bound<'_, PyModule>) -> PyResult<()> 
 
     Ok(())
 }
+*/

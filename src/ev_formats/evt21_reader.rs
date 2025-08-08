@@ -20,7 +20,7 @@
 /// - Prophesee EVT2.1 specification
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt21.html
 /// - OpenEB standalone samples
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
 use std::collections::HashMap;
 use std::fs::File;
@@ -578,7 +578,8 @@ impl Evt21Reader {
         // Seek to binary data start
         file.seek(SeekFrom::Start(header_size))?;
 
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut buffer = vec![0u8; self.config.chunk_size * 8]; // 8 bytes per 64-bit word
 
         // State for timestamp reconstruction

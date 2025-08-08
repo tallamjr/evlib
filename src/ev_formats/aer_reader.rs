@@ -13,7 +13,7 @@
 // - GenX320 sensor documentation
 // - jAER project specifications
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_formats::LoadConfig;
 use std::fs::File;
 use std::io::Read;
@@ -267,7 +267,8 @@ impl AerReader {
         }
 
         let event_count = data.len() / self.config.bytes_per_event;
-        let mut events = Events::with_capacity(event_count);
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::with_capacity(event_count);
 
         // Statistics for metadata
         let mut min_x = u16::MAX;

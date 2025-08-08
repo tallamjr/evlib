@@ -3,10 +3,13 @@
 //! This module provides high-performance event visualization by processing
 //! and rendering events directly in Rust, only passing the final image to Python.
 
-use crate::ev_core::Event;
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use image::{ImageBuffer, Rgb};
 use std::collections::VecDeque;
 use std::time::Instant;
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 
 /// Configuration for real-time visualization
 #[derive(Debug, Clone)]
@@ -76,7 +79,20 @@ impl RealtimeEventVisualizer {
     }
 
     /// Add events to the visualization buffer
-    pub fn add_events(&mut self, events: Vec<Event>) {
+    pub fn add_events(&mut self, events: Events) {
+        self.add_events_impl(events);
+    }
+
+    /// Add events from DataFrame to the visualization buffer
+    #[cfg(feature = "polars")]
+    pub fn add_events_from_dataframe(&mut self, df: LazyFrame) -> Result<(), PolarsError> {
+        let events = dataframe_to_events_for_visualization(df)?;
+        self.add_events_impl(events);
+        Ok(())
+    }
+
+    /// Internal implementation for adding events
+    fn add_events_impl(&mut self, events: Events) {
         let now = Instant::now();
 
         // Add new events
@@ -185,7 +201,22 @@ impl EventVisualizationPipeline {
     }
 
     /// Process and visualize events, returning raw RGB frame data
-    pub fn process_events(&mut self, events: Vec<Event>) -> (Vec<u8>, f32, (u32, u32)) {
+    pub fn process_events(&mut self, events: Events) -> (Vec<u8>, f32, (u32, u32)) {
+        self.process_events_impl(events)
+    }
+
+    /// Process and visualize events from DataFrame, returning raw RGB frame data
+    #[cfg(feature = "polars")]
+    pub fn process_events_from_dataframe(
+        &mut self,
+        df: LazyFrame,
+    ) -> Result<(Vec<u8>, f32, (u32, u32)), PolarsError> {
+        let events = dataframe_to_events_for_visualization(df)?;
+        Ok(self.process_events_impl(events))
+    }
+
+    /// Internal implementation for processing events
+    fn process_events_impl(&mut self, events: Events) -> (Vec<u8>, f32, (u32, u32)) {
         self.total_events += events.len() as u64;
         self.visualizer.add_events(events);
         self.frame_count += 1;
@@ -212,4 +243,38 @@ impl EventVisualizationPipeline {
         self.frame_count = 0;
         self.total_events = 0;
     }
+}
+
+/// Helper function to convert DataFrame back to Events for visualization
+#[cfg(feature = "polars")]
+fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
+    let df = df.collect()?;
+
+    let x_series = df.column("x")?;
+    let y_series = df.column("y")?;
+    let t_series = df.column("t")?;
+    let polarity_series = df.column("polarity")?;
+
+    let x_values = x_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let y_values = y_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let t_values = t_series.f64()?.into_no_null_iter().collect::<Vec<_>>();
+    let polarity_values = polarity_series
+        .i64()?
+        .into_no_null_iter()
+        .collect::<Vec<_>>();
+
+    let events = x_values
+        .into_iter()
+        .zip(y_values)
+        .zip(t_values)
+        .zip(polarity_values)
+        .map(|(((x, y), t), p)| Event {
+            x: x as u16,
+            y: y as u16,
+            t,
+            polarity: p > 0,
+        })
+        .collect();
+
+    Ok(events)
 }

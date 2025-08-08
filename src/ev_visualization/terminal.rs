@@ -3,7 +3,7 @@
 //! This module provides ultra-high-performance event visualization directly in the terminal
 //! using Ratatui. This eliminates GUI overhead and provides the fastest possible visualization.
 
-use crate::ev_core::Event;
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode},
     execute,
@@ -25,6 +25,9 @@ use std::{
     io::{self, Stdout},
     time::{Duration, Instant},
 };
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 
 /// Configuration for terminal-based event visualization
 #[derive(Debug, Clone)]
@@ -117,7 +120,20 @@ impl TerminalEventVisualizer {
     }
 
     /// Add events to the visualization buffer
-    pub fn add_events(&mut self, events: Vec<Event>) {
+    pub fn add_events(&mut self, events: Events) {
+        self.add_events_impl(events);
+    }
+
+    /// Add events from DataFrame to the visualization buffer
+    #[cfg(feature = "polars")]
+    pub fn add_events_from_dataframe(&mut self, df: LazyFrame) -> Result<(), PolarsError> {
+        let events = dataframe_to_events_for_visualization(df)?;
+        self.add_events_impl(events);
+        Ok(())
+    }
+
+    /// Internal implementation for adding events
+    fn add_events_impl(&mut self, events: Events) {
         let now = Instant::now();
 
         // Update canvas bounds based on events
@@ -253,7 +269,7 @@ impl TerminalEventVisualizer {
     /// Main event loop
     pub fn run_event_loop<F>(&mut self, mut event_source: F) -> io::Result<()>
     where
-        F: FnMut() -> Vec<Event>,
+        F: FnMut() -> Events,
     {
         let target_frame_time = Duration::from_secs_f32(1.0 / self.config.target_fps);
 
@@ -520,4 +536,35 @@ pub fn create_terminal_event_viewer(
     config: TerminalVisualizationConfig,
 ) -> io::Result<TerminalEventVisualizer> {
     TerminalEventVisualizer::new(config)
+}
+
+/// Helper function to convert DataFrame back to Events for visualization
+#[cfg(feature = "polars")]
+fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
+    let df = df.collect()?;
+
+    let x_series = df.column("x")?;
+    let y_series = df.column("y")?;
+    let t_series = df.column("t")?;
+    let polarity_series = df.column("polarity")?;
+
+    let x_values = x_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let y_values = y_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+    let t_values = t_series.f64()?.into_no_null_iter().collect::<Vec<_>>();
+    let polarity_values = polarity_series.i64()?.into_no_null_iter().collect::<Vec<_>>();
+
+    let events = x_values
+        .into_iter()
+        .zip(y_values)
+        .zip(t_values)
+        .zip(polarity_values)
+        .map(|(((x, y), t), p)| Event {
+            x: x as u16,
+            y: y as u16,
+            t,
+            polarity: p > 0,
+        })
+        .collect();
+
+    Ok(events)
 }

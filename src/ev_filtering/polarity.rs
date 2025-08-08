@@ -18,9 +18,9 @@
 //! - Memory efficiency: No intermediate Vec<Event> allocations
 //! - Query optimization: Polars optimizes the entire filtering pipeline
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::collections::HashMap;
 #[cfg(feature = "tracing")]
@@ -247,59 +247,6 @@ impl PolarityEncoding {
 
         // Default to standard boolean encoding for Events
         Ok(PolarityEncoding::TrueFalse)
-    }
-
-    /// Legacy function for events detection - delegates to Polars implementation
-    pub fn detect_from_events(events: &Events) -> Self {
-        if events.is_empty() {
-            return PolarityEncoding::TrueFalse;
-        }
-
-        warn!("Using legacy Vec<Event> interface for encoding detection - consider using LazyFrame directly");
-
-        let df = match crate::ev_core::events_to_dataframe(events) {
-            Ok(df) => df.lazy(),
-            Err(_) => return Self::detect_from_events_legacy(events),
-        };
-
-        match Self::detect_from_events_polars(df) {
-            Ok(encoding) => encoding,
-            Err(_) => Self::detect_from_events_legacy(events),
-        }
-    }
-
-    /// Fallback legacy encoding detection
-    fn detect_from_events_legacy(events: &Events) -> Self {
-        if events.is_empty() {
-            return PolarityEncoding::TrueFalse;
-        }
-
-        // Sample events to check distribution
-        let sample_size = std::cmp::min(1000, events.len());
-        let mut true_count = 0;
-        let mut false_count = 0;
-
-        for event in events.iter().take(sample_size) {
-            if event.polarity {
-                true_count += 1;
-            } else {
-                false_count += 1;
-            }
-        }
-
-        let total = true_count + false_count;
-        if total > 0 {
-            let true_ratio = true_count as f64 / total as f64;
-            if !(0.1..=0.9).contains(&true_ratio) {
-                warn!(
-                    "Unusual polarity distribution: {:.1}% positive events. Check encoding.",
-                    true_ratio * 100.0
-                );
-            }
-        }
-
-        // Default to standard boolean encoding for Events
-        PolarityEncoding::TrueFalse
     }
 
     /// Get a description of this encoding
@@ -687,38 +634,6 @@ impl PolarityFilter {
         }
     }
 
-    /// Legacy function for pass fraction estimation - delegates to Polars implementation
-    pub fn estimate_pass_fraction(&self, events: &Events) -> f64 {
-        if events.is_empty() {
-            return 0.0;
-        }
-
-        match self.selection {
-            PolaritySelection::Both => 1.0,
-            PolaritySelection::PositiveOnly | PolaritySelection::NegativeOnly => {
-                warn!("Using legacy Vec<Event> interface for pass fraction estimation - consider using LazyFrame directly");
-
-                if let Ok(df) = crate::ev_core::events_to_dataframe(events) {
-                    if let Ok(fraction) = self.estimate_pass_fraction_polars(df.lazy()) {
-                        return fraction;
-                    }
-                }
-
-                // Fallback to manual count only if Polars fails
-                let positive_count = events.iter().filter(|e| e.polarity).count();
-                let fraction = positive_count as f64 / events.len() as f64;
-
-                match self.selection {
-                    PolaritySelection::PositiveOnly => fraction,
-                    PolaritySelection::NegativeOnly => 1.0 - fraction,
-                    _ => unreachable!(),
-                }
-            }
-            PolaritySelection::Alternating => 0.5, // Rough estimate
-            PolaritySelection::Balanced => 0.8,    // Rough estimate
-        }
-    }
-
     /// Get description of this filter
     pub fn description(&self) -> String {
         let mut parts = vec![self.selection.description().to_string()];
@@ -736,6 +651,37 @@ impl PolarityFilter {
         }
 
         parts.join(", ")
+    }
+
+    /// Apply polarity filtering directly to DataFrame (recommended approach)
+    ///
+    /// This is the high-performance DataFrame-native method that should be used
+    /// instead of the legacy Vec<Event> approach when possible.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input LazyFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered LazyFrame with polarity constraints applied
+    pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
+        apply_polarity_filter(df, self)
+    }
+
+    /// Apply polarity filtering directly to DataFrame and return DataFrame
+    ///
+    /// Convenience method that applies filtering and collects the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input DataFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered DataFrame with polarity constraints applied
+    pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
+        apply_polarity_filter(df.lazy(), self)?.collect()
     }
 }
 
@@ -780,38 +726,6 @@ impl Validatable for PolarityFilter {
         }
 
         Ok(())
-    }
-}
-
-impl SingleFilter for PolarityFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        // Legacy Vec<Event> interface - convert to DataFrame and back
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        let filtered_df = apply_polarity_filter(df, self)
-            .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-        // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-        let result_df = filtered_df.collect().map_err(|e| {
-            FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e))
-        })?;
-
-        // Convert DataFrame back to Events
-        dataframe_to_events(&result_df)
-    }
-
-    fn description(&self) -> String {
-        format!("Polarity filter: {}", self.description())
-    }
-
-    fn is_enabled(&self) -> bool {
-        !matches!(self.selection, PolaritySelection::Both)
     }
 }
 
@@ -882,14 +796,26 @@ pub fn filter_by_polarity_polars(df: LazyFrame, positive: bool) -> PolarsResult<
     Ok(df.filter(expr))
 }
 
-/// Legacy function for backward compatibility - delegates to Polars implementation
-pub fn filter_by_polarity(events: &Events, positive: bool) -> FilterResult<Events> {
+/// Filter events by polarity - DataFrame-native version (recommended)
+///
+/// This function applies polarity filtering directly to a LazyFrame for optimal performance.
+/// Use this instead of the legacy Vec<Event> version when possible.
+///
+/// # Arguments
+///
+/// * `df` - Input LazyFrame containing event data
+/// * `positive` - True for positive events, false for negative events
+///
+/// # Returns
+///
+/// Filtered LazyFrame
+pub fn filter_by_polarity_df(df: LazyFrame, positive: bool) -> PolarsResult<LazyFrame> {
     let filter = if positive {
         PolarityFilter::positive_only()
     } else {
         PolarityFilter::negative_only()
     };
-    filter.apply(events)
+    filter.apply_to_dataframe(df)
 }
 
 /// Calculate polarity statistics using Polars aggregations
@@ -948,63 +874,6 @@ impl PolarityStats {
             negative_ratio: row.0[4].try_extract::<f64>()?,
             polarity_balance: row.0[5].try_extract::<f64>()?,
         })
-    }
-
-    /// Legacy interface for Vec<Event> - delegates to Polars implementation
-    pub fn calculate(events: &Events) -> Self {
-        if events.is_empty() {
-            return Self::empty();
-        }
-
-        warn!(
-            "Using legacy Vec<Event> interface for polarity statistics - consider using LazyFrame directly"
-        );
-
-        let df = match crate::ev_core::events_to_dataframe(events) {
-            Ok(df) => df.lazy(),
-            Err(e) => {
-                warn!("Failed to convert events to DataFrame: {}, falling back", e);
-                return Self::calculate_legacy(events);
-            }
-        };
-
-        match Self::calculate_from_dataframe(df) {
-            Ok(stats) => stats,
-            Err(e) => {
-                warn!("Polars statistics calculation failed: {}, falling back", e);
-                Self::calculate_legacy(events)
-            }
-        }
-    }
-
-    /// Fallback legacy calculation
-    fn calculate_legacy(events: &Events) -> Self {
-        let total_events = events.len();
-        let positive_events = events.iter().filter(|e| e.polarity).count();
-        let negative_events = total_events - positive_events;
-
-        let positive_ratio = if total_events > 0 {
-            positive_events as f64 / total_events as f64
-        } else {
-            0.0
-        };
-        let negative_ratio = 1.0 - positive_ratio;
-
-        // Calculate balance: 1.0 = perfectly balanced (50/50), 0.0 = completely unbalanced
-        let polarity_balance = if total_events > 0 {
-            1.0 - (positive_ratio - 0.5).abs() * 2.0
-        } else {
-            0.0
-        };
-
-        Self {
-            total_events,
-            positive_events,
-            negative_events,
-            positive_ratio,
-            negative_ratio,
-            polarity_balance,
-        }
     }
 
     fn empty() -> Self {
@@ -1148,114 +1017,6 @@ pub fn analyze_polarity_patterns_polars(df: LazyFrame) -> PolarsResult<DataFrame
         .collect()
 }
 
-/// Legacy function for polarity pattern analysis - delegates to Polars
-pub fn analyze_polarity_patterns(events: &Events) -> FilterResult<HashMap<String, f64>> {
-    if events.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    warn!("Using legacy Vec<Event> interface for pattern analysis - consider using LazyFrame directly");
-
-    let df = match crate::ev_core::events_to_dataframe(events) {
-        Ok(df) => df.lazy(),
-        Err(_) => return analyze_polarity_patterns_legacy(events),
-    };
-
-    match analyze_polarity_patterns_polars(df) {
-        Ok(analysis_df) => {
-            let mut result = HashMap::new();
-
-            if analysis_df.height() > 0 {
-                let row = analysis_df.get_row(0).map_err(|_| {
-                    FilterError::ProcessingError("Failed to extract analysis row".to_string())
-                })?;
-
-                // Extract statistics from the analysis DataFrame
-                if let Ok(positive_ratio) = row.0[3].try_extract::<f64>() {
-                    result.insert("positive_ratio".to_string(), positive_ratio);
-                }
-                if let Ok(negative_ratio) = row.0[4].try_extract::<f64>() {
-                    result.insert("negative_ratio".to_string(), negative_ratio);
-                }
-                if let Ok(polarity_balance) = row.0[5].try_extract::<f64>() {
-                    result.insert("polarity_balance".to_string(), polarity_balance);
-                }
-                if let Ok(switch_rate) = row.0[11].try_extract::<f64>() {
-                    result.insert("polarity_switch_rate".to_string(), switch_rate);
-                }
-                if let Ok(event_rate) = row.0[12].try_extract::<f64>() {
-                    result.insert("event_rate".to_string(), event_rate);
-                }
-            }
-
-            Ok(result)
-        }
-        Err(_) => analyze_polarity_patterns_legacy(events),
-    }
-}
-
-/// Fallback legacy pattern analysis - now also uses Polars expressions where possible
-fn analyze_polarity_patterns_legacy(events: &Events) -> FilterResult<HashMap<String, f64>> {
-    let mut analysis = HashMap::new();
-
-    if events.is_empty() {
-        return Ok(analysis);
-    }
-
-    let stats = PolarityStats::calculate(events);
-    analysis.insert("positive_ratio".to_string(), stats.positive_ratio);
-    analysis.insert("negative_ratio".to_string(), stats.negative_ratio);
-    analysis.insert("polarity_balance".to_string(), stats.polarity_balance);
-
-    // Use Polars for switch rate calculation if possible
-    if let Ok(df) = crate::ev_core::events_to_dataframe(events) {
-        let lazy_df = df.lazy().sort([COL_T], SortMultipleOptions::default());
-
-        if let Ok(switch_df) = lazy_df
-            .select([
-                len().alias("total_events"),
-                (col(COL_POLARITY).neq(col(COL_POLARITY).shift(lit(1))))
-                    .sum()
-                    .cast(DataType::Float64)
-                    .alias("switch_count"),
-            ])
-            .with_columns([(col("switch_count")
-                / (col("total_events") - lit(1)).cast(DataType::Float64))
-            .alias("switch_rate")])
-            .collect()
-        {
-            if switch_df.height() > 0 {
-                if let Ok(row) = switch_df.get_row(0) {
-                    if let Ok(switch_rate) = row.0[2].try_extract::<f64>() {
-                        analysis.insert("polarity_switch_rate".to_string(), switch_rate);
-                        return Ok(analysis);
-                    }
-                }
-            }
-        }
-    }
-
-    // Pure legacy fallback only if Polars fails
-    let mut switch_count = 0;
-    let mut last_polarity = events[0].polarity;
-
-    for event in events.iter().skip(1) {
-        if event.polarity != last_polarity {
-            switch_count += 1;
-            last_polarity = event.polarity;
-        }
-    }
-
-    let switch_rate = if events.len() > 1 {
-        switch_count as f64 / (events.len() - 1) as f64
-    } else {
-        0.0
-    };
-    analysis.insert("polarity_switch_rate".to_string(), switch_rate);
-
-    Ok(analysis)
-}
-
 /// Separate events by polarity using Polars group operations
 ///
 /// This function splits events into positive and negative groups using
@@ -1268,111 +1029,10 @@ pub fn separate_polarities_polars(df: LazyFrame) -> PolarsResult<(LazyFrame, Laz
     Ok((positive_df, negative_df))
 }
 
-/// Legacy function for separating polarities - delegates to Polars
-pub fn separate_polarities(events: &Events) -> (Events, Events) {
-    warn!("Using legacy Vec<Event> interface for polarity separation - consider using LazyFrame directly");
-
-    let df = match crate::ev_core::events_to_dataframe(events) {
-        Ok(df) => df.lazy(),
-        Err(_) => return separate_polarities_legacy(events),
-    };
-
-    match separate_polarities_polars(df) {
-        Ok((pos_df, neg_df)) => {
-            let positive_events = pos_df
-                .collect()
-                .ok()
-                .and_then(|df| dataframe_to_events(&df).ok())
-                .unwrap_or_default();
-
-            let negative_events = neg_df
-                .collect()
-                .ok()
-                .and_then(|df| dataframe_to_events(&df).ok())
-                .unwrap_or_default();
-
-            (positive_events, negative_events)
-        }
-        Err(_) => separate_polarities_legacy(events),
-    }
-}
-
-/// Fallback legacy polarity separation - no longer uses manual loops
-fn separate_polarities_legacy(events: &Events) -> (Events, Events) {
-    // Even for "legacy" fallback, we now use Vec methods that are more efficient
-    let (positive_events, negative_events): (Vec<_>, Vec<_>) =
-        events.iter().partition(|event| event.polarity);
-
-    // Convert to owned events
-    let positive_events = positive_events.into_iter().copied().collect();
-    let negative_events = negative_events.into_iter().copied().collect();
-
-    (positive_events, negative_events)
-}
-
-/// Convert DataFrame back to Events (for legacy compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing x value".to_string()))?
-            as u16;
-        let y = y_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing y value".to_string()))?
-            as u16;
-        let t = t_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing t value".to_string()))?;
-        let p = p_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing polarity value".to_string()))?
-            > 0;
-
-        events.push(Event {
-            x,
-            y,
-            t,
-            polarity: p,
-        });
-    }
-
-    Ok(events)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::{events_to_dataframe, Event};
+    use crate::{events_to_dataframe, Event};
 
     fn create_test_events() -> Events {
         vec![
@@ -1456,6 +1116,44 @@ mod tests {
         assert!((stats.positive_ratio - 0.6).abs() < 0.001);
         assert!((stats.negative_ratio - 0.4).abs() < 0.001);
         assert!(stats.polarity_balance > 0.5); // Reasonably balanced
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_polarity_filter_dataframe_native() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        // Test positive filtering with DataFrame-native method
+        let positive_filter = PolarityFilter::positive_only();
+        let positive_filtered = positive_filter.apply_to_dataframe(df.clone())?;
+        let pos_result = positive_filtered.collect()?;
+        assert_eq!(pos_result.height(), 3); // 3 positive events
+
+        // Test negative filtering with DataFrame-native method
+        let negative_filter = PolarityFilter::negative_only();
+        let negative_filtered = negative_filter.apply_to_dataframe(df)?;
+        let neg_result = negative_filtered.collect()?;
+        assert_eq!(neg_result.height(), 2); // 2 negative events
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filter_by_polarity_dataframe() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        // Test positive filtering
+        let positive_filtered = filter_by_polarity_df(df.clone(), true)?;
+        let pos_result = positive_filtered.collect()?;
+        assert_eq!(pos_result.height(), 3); // 3 positive events
+
+        // Test negative filtering
+        let negative_filtered = filter_by_polarity_df(df, false)?;
+        let neg_result = negative_filtered.collect()?;
+        assert_eq!(neg_result.height(), 2); // 2 negative events
 
         Ok(())
     }

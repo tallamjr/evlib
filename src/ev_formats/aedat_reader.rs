@@ -13,7 +13,7 @@
 /// - https://docs.inivation.com/software/software-advanced-usage/file-formats/
 /// - jAER Documentation
 /// - AEDAT File Format specifications
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -402,7 +402,8 @@ impl AedatReader {
 
     /// Read AEDAT 1.0 events (6 bytes per event)
     fn read_aedat_1_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut buffer = [0u8; 6];
         let mut event_index = 0;
         let mut prev_timestamp = 0.0;
@@ -568,7 +569,8 @@ impl AedatReader {
 
     /// Read AEDAT 2.0 events (big-endian 32-bit timestamp + address pairs)
     fn read_aedat_2_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address
         let mut event_index = 0;
         let mut prev_timestamp = 0.0;
@@ -729,7 +731,8 @@ impl AedatReader {
 
     /// Read AEDAT 3.1 events (signed little-endian format)
     fn read_aedat_3_1_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut buffer = [0u8; 8]; // 4 bytes timestamp + 4 bytes address (little-endian)
         let mut event_index = 0;
         let mut prev_timestamp = 0.0;
@@ -928,7 +931,8 @@ impl AedatReader {
 
     /// Read AEDAT 4.0 events (DV framework with 28-byte packet headers)
     fn read_aedat_4_0_events(&self, file: &mut File) -> Result<Events, AedatError> {
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut event_index = 0;
         let mut prev_timestamp = 0.0;
 
@@ -1000,7 +1004,8 @@ impl AedatReader {
         file: &mut File,
         packet_size: usize,
     ) -> Result<Events, AedatError> {
-        let mut events = Events::new();
+        // Commented out - legacy Events type no longer exists
+        // let mut events = Events::new();
         let mut buffer = vec![0u8; packet_size];
         let bytes_read = file.read(&mut buffer)?;
 

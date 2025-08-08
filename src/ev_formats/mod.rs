@@ -1,7 +1,7 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 #[cfg(not(windows))]
 use hdf5_metno::File as H5File;
 #[cfg(feature = "python")]
@@ -92,6 +92,15 @@ pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, Prophese
 // Native HDF5 reader with ECF support (disabled on Windows)
 #[cfg(not(windows))]
 pub mod hdf5_reader;
+
+// DataFrame construction utilities for direct event processing
+pub mod dataframe_builder;
+pub use dataframe_builder::{
+    calculate_optimal_chunk_size, convert_timestamp, create_empty_events_dataframe,
+    EventDataFrameBuilder, EventDataFrameStreamer,
+};
+
+// Python bindings for DataFrame-based operations (defined inline below)
 
 // Polars support integrated directly into file readers
 
@@ -778,7 +787,8 @@ fn try_rust_ecf_decoder(
 pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut events = Events::new();
+    // Commented out - legacy Events type no longer exists
+    // let mut events = Events::new();
 
     // Estimate capacity if possible (reduce if filtering is likely to remove many events)
     if let Ok(metadata) = std::fs::metadata(path) {
@@ -1243,7 +1253,7 @@ impl Iterator for TimeWindowIter<'_> {
 pub mod python {
     use super::*;
     use numpy::PyReadonlyArray1;
-    use polars::prelude::IntoLazy;
+    use polars::prelude::{col, lit, DataFrame, IntoLazy, SortMultipleOptions};
     use std::io::Write;
 
     // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
@@ -1503,6 +1513,124 @@ pub mod python {
     ///
     /// Returns:
     ///     Python dictionary with event data for Polars LazyFrame creation
+
+    /// Load events directly into a Polars DataFrame (optimized path)
+    /// This bypasses the intermediate Event struct and builds DataFrames directly from format readers
+    #[cfg(all(feature = "polars", feature = "python"))]
+    pub fn load_events_to_dataframe_py(
+        py: Python<'_>,
+        path: &str,
+        config: &LoadConfig,
+    ) -> PyResult<PyObject> {
+        // Detect format for proper reader selection
+        let format_result = detect_event_format(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
+        })?;
+
+        let df = match format_result.format {
+            EventFormat::EVT2 | EventFormat::EVT21 => {
+                // Use EVT2 reader with direct DataFrame output
+                let mut evt2_config = Evt2Config::default();
+                evt2_config.validate_coordinates = true;
+                evt2_config.skip_invalid_events = true;
+
+                // Use chunk_size as max_events limit if specified
+                if let Some(chunk_size) = config.chunk_size {
+                    evt2_config.max_events = Some(chunk_size);
+                }
+
+                let reader = Evt2Reader::with_config(evt2_config);
+                let (df, _metadata) = reader.read_file_to_dataframe(path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Failed to read EVT2 file: {e}"
+                    ))
+                })?;
+
+                // Apply additional filtering if needed using Polars operations
+                apply_config_filters_to_dataframe(df, config)?
+            }
+            _ => {
+                // For other formats, fall back to the existing approach for now
+                // TODO: Add direct DataFrame readers for other formats
+                let events = load_events_with_config(path, config).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                        "Failed to load events: {e}"
+                    ))
+                })?;
+
+                build_polars_dataframe(&events, format_result.format).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Failed to build DataFrame: {e}"
+                    ))
+                })?
+            }
+        };
+
+        // Return Polars DataFrame directly to Python
+        use pyo3::IntoPyObject;
+        let py_df = pyo3_polars::PyDataFrame(df);
+        Ok(py_df.into_pyobject(py)?.into())
+    }
+
+    /// Apply LoadConfig filters to a DataFrame using Polars operations
+    #[cfg(feature = "polars")]
+    fn apply_config_filters_to_dataframe(
+        df: DataFrame,
+        config: &LoadConfig,
+    ) -> PyResult<DataFrame> {
+        let mut lazy_df = df.lazy();
+
+        // Apply time window filter
+        if let (Some(t_start), Some(t_end)) = (config.t_start, config.t_end) {
+            let t_start_micros = (t_start * 1_000_000.0) as i64;
+            let t_end_micros = (t_end * 1_000_000.0) as i64;
+
+            lazy_df = lazy_df.filter(
+                col("timestamp")
+                    .gt_eq(lit(t_start_micros))
+                    .and(col("timestamp").lt_eq(lit(t_end_micros))),
+            );
+        } else if let Some(t_start) = config.t_start {
+            let t_start_micros = (t_start * 1_000_000.0) as i64;
+            lazy_df = lazy_df.filter(col("timestamp").gt_eq(lit(t_start_micros)));
+        } else if let Some(t_end) = config.t_end {
+            let t_end_micros = (t_end * 1_000_000.0) as i64;
+            lazy_df = lazy_df.filter(col("timestamp").lt_eq(lit(t_end_micros)));
+        }
+
+        // Apply spatial bounds
+        if let Some(min_x) = config.min_x {
+            lazy_df = lazy_df.filter(col("x").gt_eq(lit(min_x as i16)));
+        }
+        if let Some(max_x) = config.max_x {
+            lazy_df = lazy_df.filter(col("x").lt_eq(lit(max_x as i16)));
+        }
+        if let Some(min_y) = config.min_y {
+            lazy_df = lazy_df.filter(col("y").gt_eq(lit(min_y as i16)));
+        }
+        if let Some(max_y) = config.max_y {
+            lazy_df = lazy_df.filter(col("y").lt_eq(lit(max_y as i16)));
+        }
+
+        // Apply polarity filter
+        if let Some(polarity) = config.polarity {
+            let polarity_value = if polarity { 1i8 } else { -1i8 };
+            lazy_df = lazy_df.filter(col("polarity").eq(lit(polarity_value)));
+        }
+
+        // Apply sorting if requested
+        if config.sort {
+            lazy_df = lazy_df.sort(["timestamp"], SortMultipleOptions::default());
+        }
+
+        // Collect the result
+        lazy_df.collect().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to apply filters: {e}"
+            ))
+        })
+    }
+
     #[pyfunction]
     #[pyo3(
         signature = (
@@ -1953,5 +2081,445 @@ pub mod python {
         data_dict.insert("polarity".to_string(), p_vec.into_pyobject(py)?.into());
 
         Ok(data_dict.into_pyobject(py)?.into())
+    }
+
+    // ============================================================================
+    // MIGRATED FROM ev_core::python - Legacy compatibility functions
+    // These functions maintain backward compatibility for existing Python code
+    // ============================================================================
+
+    /// Convert events to a block representation (direct numpy array processing)
+    #[pyfunction]
+    #[pyo3(name = "events_to_block")]
+    pub fn events_to_block_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array2;
+        use numpy::IntoPyArray;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        let len = xs_array
+            .len()
+            .min(ys_array.len())
+            .min(ts_array.len())
+            .min(ps_array.len());
+
+        // Create a 2D array with shape (n, 4) directly from numpy arrays
+        let mut block = Array2::<f64>::zeros((len, 4));
+
+        // Fill in the values: [x, y, t, p]
+        for i in 0..len {
+            block[[i, 0]] = xs_array[i] as f64;
+            block[[i, 1]] = ys_array[i] as f64;
+            block[[i, 2]] = ts_array[i];
+            block[[i, 3]] = if ps_array[i] > 0 { 1.0 } else { 0.0 };
+        }
+
+        Ok(block.into_pyarray(py).into())
+    }
+
+    /// Merge multiple sets of events into a single chronologically sorted list (direct array processing)
+    #[pyfunction]
+    #[pyo3(name = "merge_events")]
+    pub fn merge_events_py(
+        py: Python<'_>,
+        event_sets: &Bound<'_, pyo3::types::PyTuple>,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+
+        // Collect all data from input arrays
+        let mut all_xs = Vec::new();
+        let mut all_ys = Vec::new();
+        let mut all_ts = Vec::new();
+        let mut all_ps = Vec::new();
+
+        for event_set in event_sets.iter() {
+            let tuple = event_set.downcast::<PyTuple>()?;
+            if tuple.len() != 4 {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Each event set must be a tuple of (xs, ys, ts, ps)",
+                ));
+            }
+            let xs = tuple.get_item(0)?.extract::<PyReadonlyArray1<i64>>()?;
+            let ys = tuple.get_item(1)?.extract::<PyReadonlyArray1<i64>>()?;
+            let ts = tuple.get_item(2)?.extract::<PyReadonlyArray1<f64>>()?;
+            let ps = tuple.get_item(3)?.extract::<PyReadonlyArray1<i64>>()?;
+
+            let xs_array = xs.as_array();
+            let ys_array = ys.as_array();
+            let ts_array = ts.as_array();
+            let ps_array = ps.as_array();
+
+            let len = xs_array
+                .len()
+                .min(ys_array.len())
+                .min(ts_array.len())
+                .min(ps_array.len());
+
+            for i in 0..len {
+                all_xs.push(xs_array[i]);
+                all_ys.push(ys_array[i]);
+                all_ts.push(ts_array[i]);
+                all_ps.push(ps_array[i]);
+            }
+        }
+
+        // Create indices for sorting by timestamp
+        let mut indices: Vec<usize> = (0..all_ts.len()).collect();
+        indices.sort_by(|&a, &b| all_ts[a].partial_cmp(&all_ts[b]).unwrap());
+
+        // Rearrange arrays according to sorted indices
+        let xs_sorted: Vec<i64> = indices.iter().map(|&i| all_xs[i]).collect();
+        let ys_sorted: Vec<i64> = indices.iter().map(|&i| all_ys[i]).collect();
+        let ts_sorted: Vec<f64> = indices.iter().map(|&i| all_ts[i]).collect();
+        let ps_sorted: Vec<i64> = indices.iter().map(|&i| all_ps[i]).collect();
+
+        // Convert arrays to Python objects
+        let xs_py: PyObject = Array1::from(xs_sorted).into_pyarray(py).into();
+        let ys_py: PyObject = Array1::from(ys_sorted).into_pyarray(py).into();
+        let ts_py: PyObject = Array1::from(ts_sorted).into_pyarray(py).into();
+        let ps_py: PyObject = Array1::from(ps_sorted).into_pyarray(py).into();
+
+        // Create result tuple
+        let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+        Ok(tuple.into())
+    }
+
+    /// Add random events drawn from a uniform distribution (migrated from ev_core)
+    #[pyfunction]
+    #[pyo3(name = "add_random_events")]
+    #[pyo3(signature = (xs, ys, ts, ps, to_add, sensor_resolution=None, sort=true, return_merged=true))]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_random_events_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+        to_add: usize,
+        sensor_resolution: Option<(i64, i64)>,
+        sort: bool,
+        return_merged: bool,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+        use rand::prelude::*;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        // Generate random events
+        let max_x = match sensor_resolution {
+            Some((w, _)) => w - 1,
+            None => xs_array.fold(0, |acc, &x| acc.max(x)),
+        };
+
+        let max_y = match sensor_resolution {
+            Some((_, h)) => h - 1,
+            None => ys_array.fold(0, |acc, &y| acc.max(y)),
+        };
+
+        let mut rng = thread_rng();
+
+        let mut xs_new = Vec::with_capacity(to_add);
+        let mut ys_new = Vec::with_capacity(to_add);
+        let mut ts_new = Vec::with_capacity(to_add);
+        let mut ps_new = Vec::with_capacity(to_add);
+
+        let min_ts = ts_array.fold(f64::INFINITY, |acc, &t| acc.min(t));
+        let max_ts = ts_array.fold(f64::NEG_INFINITY, |acc, &t| acc.max(t));
+
+        for _ in 0..to_add {
+            xs_new.push(rng.gen_range(0..=max_x));
+            ys_new.push(rng.gen_range(0..=max_y));
+            ts_new.push(rng.gen_range(min_ts..=max_ts));
+            ps_new.push(if rng.gen_bool(0.5) { 1 } else { -1 });
+        }
+
+        if return_merged {
+            // Merge both arrays
+            let mut all_xs = Vec::with_capacity(xs_array.len() + xs_new.len());
+            let mut all_ys = Vec::with_capacity(ys_array.len() + ys_new.len());
+            let mut all_ts: Vec<f64> = Vec::with_capacity(ts_array.len() + ts_new.len());
+            let mut all_ps = Vec::with_capacity(ps_array.len() + ps_new.len());
+
+            all_xs.extend(xs_array.iter());
+            all_xs.extend(xs_new.iter());
+
+            all_ys.extend(ys_array.iter());
+            all_ys.extend(ys_new.iter());
+
+            all_ts.extend(ts_array.iter());
+            all_ts.extend(ts_new.iter());
+
+            all_ps.extend(ps_array.iter());
+            all_ps.extend(ps_new.iter());
+
+            let merged_xs = Array1::from(all_xs);
+            let merged_ys = Array1::from(all_ys);
+            let merged_ts = Array1::from(all_ts);
+            let merged_ps = Array1::from(all_ps);
+
+            if sort {
+                // Sort by timestamp
+                let mut indices: Vec<usize> = (0..merged_ts.len()).collect();
+                indices.sort_by(|&i, &j| merged_ts[i].partial_cmp(&merged_ts[j]).unwrap());
+
+                let sorted_xs = indices
+                    .iter()
+                    .map(|&i| merged_xs[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ys = indices
+                    .iter()
+                    .map(|&i| merged_ys[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ts = indices
+                    .iter()
+                    .map(|&i| merged_ts[i])
+                    .collect::<Array1<f64>>();
+                let sorted_ps = indices
+                    .iter()
+                    .map(|&i| merged_ps[i])
+                    .collect::<Array1<i64>>();
+
+                // Convert arrays to Python objects
+                let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+                let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+                let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+                let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            } else {
+                // Convert arrays to Python objects without sorting
+                let xs_py: PyObject = merged_xs.into_pyarray(py).into();
+                let ys_py: PyObject = merged_ys.into_pyarray(py).into();
+                let ts_py: PyObject = merged_ts.into_pyarray(py).into();
+                let ps_py: PyObject = merged_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            }
+        } else {
+            // Return only the new events
+            let xs_new_array = Array1::from(xs_new);
+            let ys_new_array = Array1::from(ys_new);
+            let ts_new_array = Array1::from(ts_new);
+            let ps_new_array = Array1::from(ps_new);
+
+            if sort {
+                // Sort by timestamp
+                let mut indices: Vec<usize> = (0..ts_new_array.len()).collect();
+                indices.sort_by(|&i, &j| ts_new_array[i].partial_cmp(&ts_new_array[j]).unwrap());
+
+                let sorted_xs = indices
+                    .iter()
+                    .map(|&i| xs_new_array[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ys = indices
+                    .iter()
+                    .map(|&i| ys_new_array[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ts = indices
+                    .iter()
+                    .map(|&i| ts_new_array[i])
+                    .collect::<Array1<f64>>();
+                let sorted_ps = indices
+                    .iter()
+                    .map(|&i| ps_new_array[i])
+                    .collect::<Array1<i64>>();
+
+                // Convert arrays to Python objects
+                let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+                let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+                let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+                let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            } else {
+                // Convert arrays to Python objects
+                let xs_py: PyObject = xs_new_array.into_pyarray(py).into();
+                let ys_py: PyObject = ys_new_array.into_pyarray(py).into();
+                let ts_py: PyObject = ts_new_array.into_pyarray(py).into();
+                let ps_py: PyObject = ps_new_array.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            }
+        }
+    }
+
+    /// Remove events by random selection (migrated from ev_core)
+    #[pyfunction]
+    #[pyo3(name = "remove_events")]
+    #[pyo3(signature = (xs, ys, ts, ps, to_remove, add_noise=0))]
+    pub fn remove_events_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+        to_remove: usize,
+        add_noise: usize,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+        use rand::prelude::*;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        let n = xs_array.len();
+
+        if to_remove >= n {
+            // Return empty arrays
+            let empty_xs = Array1::<i64>::zeros(0);
+            let empty_ys = Array1::<i64>::zeros(0);
+            let empty_ts = Array1::<f64>::zeros(0);
+            let empty_ps = Array1::<i64>::zeros(0);
+
+            // Convert arrays to Python objects
+            let xs_py: PyObject = empty_xs.into_pyarray(py).into();
+            let ys_py: PyObject = empty_ys.into_pyarray(py).into();
+            let ts_py: PyObject = empty_ts.into_pyarray(py).into();
+            let ps_py: PyObject = empty_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            return Ok(tuple.into());
+        }
+
+        let to_select = n - to_remove;
+
+        // Generate random indices without replacement
+        let mut rng = thread_rng();
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.shuffle(&mut rng);
+        indices.truncate(to_select);
+        indices.sort();
+
+        // Extract selected events
+        let selected_xs = indices
+            .iter()
+            .map(|&i| xs_array[i])
+            .collect::<Array1<i64>>();
+        let selected_ys = indices
+            .iter()
+            .map(|&i| ys_array[i])
+            .collect::<Array1<i64>>();
+        let selected_ts = indices
+            .iter()
+            .map(|&i| ts_array[i])
+            .collect::<Array1<f64>>();
+        let selected_ps = indices
+            .iter()
+            .map(|&i| ps_array[i])
+            .collect::<Array1<i64>>();
+
+        if add_noise == 0 {
+            // Convert arrays to Python objects
+            let xs_py: PyObject = selected_xs.into_pyarray(py).into();
+            let ys_py: PyObject = selected_ys.into_pyarray(py).into();
+            let ts_py: PyObject = selected_ts.into_pyarray(py).into();
+            let ps_py: PyObject = selected_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            Ok(tuple.into())
+        } else {
+            // Generate random events for noise
+            let max_x = xs_array.fold(0, |acc, &x| acc.max(x));
+            let max_y = ys_array.fold(0, |acc, &y| acc.max(y));
+
+            let mut xs_noise = Vec::with_capacity(add_noise);
+            let mut ys_noise = Vec::with_capacity(add_noise);
+            let mut ts_noise = Vec::with_capacity(add_noise);
+            let mut ps_noise = Vec::with_capacity(add_noise);
+
+            let min_ts = ts_array.fold(f64::INFINITY, |acc, &t| acc.min(t));
+            let max_ts = ts_array.fold(f64::NEG_INFINITY, |acc, &t| acc.max(t));
+
+            for _ in 0..add_noise {
+                xs_noise.push(rng.gen_range(0..=max_x));
+                ys_noise.push(rng.gen_range(0..=max_y));
+                ts_noise.push(rng.gen_range(min_ts..=max_ts));
+                ps_noise.push(if rng.gen_bool(0.5) { 1 } else { -1 });
+            }
+
+            // Merge selected events and noise
+            let mut all_xs = Vec::with_capacity(selected_xs.len() + add_noise);
+            let mut all_ys = Vec::with_capacity(selected_ys.len() + add_noise);
+            let mut all_ts: Vec<f64> = Vec::with_capacity(selected_ts.len() + add_noise);
+            let mut all_ps = Vec::with_capacity(selected_ps.len() + add_noise);
+
+            all_xs.extend(selected_xs.iter());
+            all_xs.extend(xs_noise.iter());
+
+            all_ys.extend(selected_ys.iter());
+            all_ys.extend(ys_noise.iter());
+
+            all_ts.extend(selected_ts.iter());
+            all_ts.extend(ts_noise.iter());
+
+            all_ps.extend(selected_ps.iter());
+            all_ps.extend(ps_noise.iter());
+
+            let merged_xs = Array1::from(all_xs);
+            let merged_ys = Array1::from(all_ys);
+            let merged_ts = Array1::from(all_ts);
+            let merged_ps = Array1::from(all_ps);
+
+            // Sort by timestamp
+            let mut indices: Vec<usize> = (0..merged_ts.len()).collect();
+            indices.sort_by(|&i, &j| merged_ts[i].partial_cmp(&merged_ts[j]).unwrap());
+
+            let sorted_xs = indices
+                .iter()
+                .map(|&i| merged_xs[i])
+                .collect::<Array1<i64>>();
+            let sorted_ys = indices
+                .iter()
+                .map(|&i| merged_ys[i])
+                .collect::<Array1<i64>>();
+            let sorted_ts = indices
+                .iter()
+                .map(|&i| merged_ts[i])
+                .collect::<Array1<f64>>();
+            let sorted_ps = indices
+                .iter()
+                .map(|&i| merged_ps[i])
+                .collect::<Array1<i64>>();
+
+            // Convert arrays to Python objects
+            let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+            let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+            let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+            let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            Ok(tuple.into())
+        }
     }
 }

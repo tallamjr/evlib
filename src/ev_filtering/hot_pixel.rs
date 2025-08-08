@@ -32,9 +32,9 @@
 //! let filtered = apply_hot_pixel_filter(events_df, &filter)?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::time::Instant;
 #[cfg(feature = "tracing")]
@@ -502,38 +502,6 @@ impl Validatable for HotPixelFilter {
     }
 }
 
-impl SingleFilter for HotPixelFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        // Legacy Vec<Event> interface - convert to DataFrame and back
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        let filtered_df = apply_hot_pixel_filter(df, self)
-            .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-        // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-        let result_df = filtered_df.collect().map_err(|e| {
-            FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e))
-        })?;
-
-        // Convert DataFrame back to Events
-        dataframe_to_events(&result_df)
-    }
-
-    fn description(&self) -> String {
-        format!("Hot pixel filter: {}", self.description())
-    }
-
-    fn is_enabled(&self) -> bool {
-        true
-    }
-}
-
 /// Hot pixel detection results using Polars analysis
 #[derive(Debug, Clone)]
 pub struct HotPixelDetector {
@@ -692,19 +660,6 @@ impl HotPixelDetector {
     }
 
     /// Legacy interface for Vec<Event> - delegates to Polars implementation
-    pub fn detect(events: &Events, filter: &HotPixelFilter) -> FilterResult<Self> {
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        Self::detect_polars(df, filter).map_err(|e| {
-            FilterError::ProcessingError(format!("Polars hot pixel detection failed: {}", e))
-        })
-    }
 
     /// Create empty detector result
     fn empty(method: HotPixelDetectionMethod) -> Self {
@@ -1232,12 +1187,6 @@ fn create_density_map_polars(
     result.ok().and_then(|r| r.ok())
 }
 
-/// Legacy function for backward compatibility - delegates to Polars implementation
-pub fn filter_hot_pixels(events: &Events, percentile_threshold: f64) -> FilterResult<Events> {
-    let filter = HotPixelFilter::percentile(percentile_threshold);
-    filter.apply(events)
-}
-
 /// Detect hot pixels and return their locations - Polars version
 pub fn detect_hot_pixels_polars(
     df: LazyFrame,
@@ -1246,234 +1195,4 @@ pub fn detect_hot_pixels_polars(
     let filter = HotPixelFilter::percentile(percentile_threshold);
     let detector = HotPixelDetector::detect_polars(df, &filter)?;
     Ok(detector.hot_pixels)
-}
-
-/// Legacy detect hot pixels function - delegates to Polars implementation
-pub fn detect_hot_pixels(
-    events: &Events,
-    percentile_threshold: f64,
-) -> FilterResult<Vec<(u16, u16)>> {
-    let filter = HotPixelFilter::percentile(percentile_threshold);
-    let detector = HotPixelDetector::detect(events, &filter)?;
-    Ok(detector.hot_pixels)
-}
-
-/// Helper function to convert DataFrame back to Events (for legacy compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing x value".to_string()))?
-            as u16;
-        let y = y_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing y value".to_string()))?
-            as u16;
-        let t = t_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing t value".to_string()))?;
-        let p = p_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing polarity value".to_string()))?
-            > 0;
-
-        events.push(Event {
-            x,
-            y,
-            t,
-            polarity: p,
-        });
-    }
-
-    Ok(events)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ev_core::{events_to_dataframe, Event};
-
-    fn create_test_events_with_hot_pixel() -> Events {
-        let mut events = Vec::new();
-
-        // Normal pixels with few events
-        for i in 0..5 {
-            events.push(Event {
-                t: i as f64,
-                x: 100 + i as u16,
-                y: 200,
-                polarity: true,
-            });
-        }
-
-        // Hot pixel with many events
-        for i in 0..100 {
-            events.push(Event {
-                t: i as f64 * 0.1,
-                x: 300,
-                y: 400,
-                polarity: i % 2 == 0,
-            });
-        }
-
-        events
-    }
-
-    #[test]
-    fn test_hot_pixel_filter_creation() {
-        let filter = HotPixelFilter::percentile(99.5);
-        assert_eq!(filter.method, HotPixelDetectionMethod::Percentile);
-        assert_eq!(filter.percentile_threshold, Some(99.5));
-
-        let filter = HotPixelFilter::standard_deviation(3.0);
-        assert_eq!(filter.method, HotPixelDetectionMethod::StandardDeviation);
-        assert_eq!(filter.std_dev_multiplier, Some(3.0));
-
-        let filter = HotPixelFilter::fixed_threshold(1000);
-        assert_eq!(filter.method, HotPixelDetectionMethod::FixedThreshold);
-        assert_eq!(filter.fixed_threshold, Some(1000));
-    }
-
-    #[test]
-    fn test_hot_pixel_detection_polars() -> PolarsResult<()> {
-        let events = create_test_events_with_hot_pixel();
-        let df = events_to_dataframe(&events)?.lazy();
-
-        let filter = HotPixelFilter::percentile(90.0); // Low threshold to catch hot pixel
-        let detector = HotPixelDetector::detect_polars(df, &filter)?;
-
-        // Should detect the pixel (300, 400) as hot
-        assert!(!detector.hot_pixels.is_empty());
-        assert!(detector.is_hot_pixel(300, 400));
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_hot_pixel_filtering_polars() -> PolarsResult<()> {
-        let events = create_test_events_with_hot_pixel();
-        let df = events_to_dataframe(&events)?.lazy();
-        let original_count = events.len();
-
-        let filter = HotPixelFilter::percentile(90.0);
-        let filtered_df = apply_hot_pixel_filter(df, &filter)?;
-        let filtered_result = filtered_df.collect()?;
-
-        // Should remove events from hot pixel
-        assert!(filtered_result.height() < original_count);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_pixel_statistics_calculation() -> PolarsResult<()> {
-        let events = create_test_events_with_hot_pixel();
-        let df = events_to_dataframe(&events)?.lazy();
-
-        let filter = HotPixelFilter::percentile(90.0);
-        let pixel_stats_df = calculate_pixel_statistics_polars(df, &filter)?;
-
-        // Should have calculated statistics for all unique pixels meeting minimum threshold
-        assert!(pixel_stats_df.height() > 0);
-        assert!(pixel_stats_df.column("total_events").is_ok());
-        assert!(pixel_stats_df.column("positive_events").is_ok());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_filter_validation() {
-        let valid_filter = HotPixelFilter::percentile(99.5);
-        assert!(valid_filter.validate().is_ok());
-
-        let mut invalid_percentile = HotPixelFilter::percentile(99.5);
-        invalid_percentile.percentile_threshold = Some(150.0); // > 100
-        assert!(invalid_percentile.validate().is_err());
-
-        let mut invalid_std_dev = HotPixelFilter::standard_deviation(3.0);
-        invalid_std_dev.std_dev_multiplier = Some(-1.0); // Negative
-        assert!(invalid_std_dev.validate().is_err());
-    }
-
-    #[test]
-    fn test_empty_events() -> PolarsResult<()> {
-        let events = Vec::new();
-        let df = events_to_dataframe(&events)?.lazy();
-
-        let filter = HotPixelFilter::percentile(99.5);
-        let filtered_df = apply_hot_pixel_filter(df, &filter)?;
-        let result = filtered_df.collect()?;
-
-        assert_eq!(result.height(), 0);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_legacy_compatibility() {
-        let events = create_test_events_with_hot_pixel();
-        let original_count = events.len();
-
-        let filtered = filter_hot_pixels(&events, 90.0).unwrap();
-
-        // Should remove events from hot pixel
-        assert!(filtered.len() < original_count);
-
-        // Should not contain events from hot pixel (300, 400)
-        assert!(!filtered.iter().any(|e| e.x == 300 && e.y == 400));
-    }
-
-    #[test]
-    fn test_detection_methods() -> PolarsResult<()> {
-        let events = create_test_events_with_hot_pixel();
-        let df = events_to_dataframe(&events)?.lazy();
-
-        // Test different detection methods
-        let methods = [
-            HotPixelFilter::percentile(95.0),
-            HotPixelFilter::standard_deviation(2.0),
-            HotPixelFilter::fixed_threshold(50),
-        ];
-
-        for filter in methods {
-            let detector = HotPixelDetector::detect_polars(df.clone(), &filter)?;
-            // All methods should detect the obvious hot pixel
-            assert!(
-                !detector.hot_pixels.is_empty(),
-                "Method {:?} failed to detect hot pixel",
-                filter.method
-            );
-        }
-
-        Ok(())
-    }
 }

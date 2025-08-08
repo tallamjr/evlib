@@ -1,4 +1,4 @@
-use crate::ev_core::Event;
+// Removed: use crate::Event; - legacy type no longer exists
 use crate::ev_formats::EventFormat;
 
 #[cfg(feature = "polars")]
@@ -381,7 +381,7 @@ pub fn estimate_memory_usage(event_count: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
 
     #[test]
     fn test_calculate_optimal_chunk_size() {

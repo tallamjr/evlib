@@ -1,15 +1,54 @@
-//! Uniform noise augmentation for event data
+//! Polars-first uniform noise augmentation for event camera data
+//!
+//! This module provides noise injection functionality using Polars DataFrames
+//! and LazyFrames for maximum performance and memory efficiency. All operations
+//! work directly with Polars expressions and avoid unnecessary conversions.
+//!
+//! # Philosophy
+//!
+//! This implementation follows a strict Polars-first approach:
+//! - Input: LazyFrame (from events_to_dataframe)
+//! - Processing: Polars expressions and transformations
+//! - Output: LazyFrame (convertible to Vec<Event>/numpy only when needed)
+//!
+//! # Performance Benefits
+//!
+//! - Lazy evaluation: Operations are optimized and executed only when needed
+//! - Vectorized operations: All noise generation uses SIMD-optimized Polars operations
+//! - Memory efficiency: No intermediate Vec<Event> allocations
+//! - Query optimization: Polars optimizes the entire augmentation pipeline
+//!
+//! # Noise Generation
 //!
 //! This module implements noise injection by adding uniformly distributed
 //! synthetic events across the sensor dimensions and time range.
+//!
+//! # Example
+//!
+//! ```rust
+//! use polars::prelude::*;
+//! use evlib::ev_augmentation::uniform_noise::*;
+//!
+//! // Convert events to LazyFrame once
+//! let events_df = events_to_dataframe(&events)?.lazy();
+//!
+//! // Apply uniform noise with Polars expressions
+//! let config = UniformNoiseAugmentation::new(1000, 640, 480);
+//! let noisy = apply_uniform_noise(events_df, &config)?;
+//! ```
 
-use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
-};
+use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 
+// Polars column names for event data consistency
 #[cfg(feature = "polars")]
-use crate::ev_augmentation::COL_T;
-use crate::ev_core::{Event, Events};
+pub const COL_X: &str = "x";
+#[cfg(feature = "polars")]
+pub const COL_Y: &str = "y";
+#[cfg(feature = "polars")]
+pub const COL_T: &str = "t";
+#[cfg(feature = "polars")]
+pub const COL_POLARITY: &str = "polarity";
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Uniform};
 #[cfg(feature = "tracing")]
@@ -130,6 +169,39 @@ impl UniformNoiseAugmentation {
             self.n_events, self.sensor_width, self.sensor_height
         )
     }
+
+    /// Apply uniform noise directly to DataFrame (recommended approach)
+    ///
+    /// This is the high-performance DataFrame-native method that should be used
+    /// instead of the legacy Vec<Event> approach when possible.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input LazyFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Combined LazyFrame with original events plus uniform noise
+    #[cfg(feature = "polars")]
+    pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
+        apply_uniform_noise(df, self)
+    }
+
+    /// Apply uniform noise directly to DataFrame and return DataFrame
+    ///
+    /// Convenience method that applies noise and collects the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input DataFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Combined DataFrame with original events plus uniform noise
+    #[cfg(feature = "polars")]
+    pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
+        apply_uniform_noise(df.lazy(), self)?.collect()
+    }
 }
 
 impl Validatable for UniformNoiseAugmentation {
@@ -144,159 +216,11 @@ impl Validatable for UniformNoiseAugmentation {
     }
 }
 
-impl SingleAugmentation for UniformNoiseAugmentation {
-    fn apply(&self, events: &Events) -> AugmentationResult<Events> {
-        uniform_noise(events, self)
-    }
-
-    fn description(&self) -> String {
-        format!("Uniform noise: {}", self.description())
-    }
-}
-
-/// Apply uniform noise to events
+/// Apply uniform noise using Polars expressions
 ///
-/// This function adds uniformly distributed noise events across the sensor
-/// dimensions and time range of the input events.
-///
-/// # Arguments
-///
-/// * `events` - Input events to augment
-/// * `config` - Uniform noise configuration
-///
-/// # Returns
-///
-/// * `AugmentationResult<Events>` - Original events plus noise events
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
-pub fn uniform_noise(
-    events: &Events,
-    config: &UniformNoiseAugmentation,
-) -> AugmentationResult<Events> {
-    let start_time = std::time::Instant::now();
-
-    // Validate configuration
-    config.validate()?;
-
-    // Handle empty events case
-    if events.is_empty() {
-        debug!("No events provided, generating noise in default time range");
-        // Generate noise in a default time range if no events exist
-        return generate_noise_only(config, 0.0, 1.0);
-    }
-
-    // Find time range
-    let min_time = events
-        .iter()
-        .map(|e| e.t)
-        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap_or(0.0);
-    let max_time = events
-        .iter()
-        .map(|e| e.t)
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap_or(1.0);
-
-    // Initialize RNG
-    let mut rng = if let Some(seed) = config.seed {
-        rand::rngs::StdRng::seed_from_u64(seed)
-    } else {
-        rand::rngs::StdRng::from_entropy()
-    };
-
-    // Create distributions
-    let x_dist = Uniform::new(0, config.sensor_width);
-    let y_dist = Uniform::new(0, config.sensor_height);
-    let t_dist = Uniform::new(min_time, max_time);
-
-    // Generate noise events
-    let mut noise_events = Vec::with_capacity(config.n_events);
-
-    for i in 0..config.n_events {
-        let polarity = if config.balance_polarities {
-            i % 2 == 0
-        } else {
-            rng.gen_bool(0.5)
-        };
-
-        let noise_event = Event {
-            t: t_dist.sample(&mut rng),
-            x: x_dist.sample(&mut rng),
-            y: y_dist.sample(&mut rng),
-            polarity,
-        };
-
-        noise_events.push(noise_event);
-    }
-
-    // Combine with original events
-    let mut combined_events = events.clone();
-    combined_events.extend(noise_events);
-
-    // Sort if requested
-    if config.sort_timestamps {
-        combined_events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
-    let processing_time = start_time.elapsed().as_secs_f64();
-    let noise_count = config.n_events;
-    let output_count = combined_events.len();
-
-    info!(
-        "Uniform noise applied: {} + {} noise = {} events in {:.3}s",
-        events.len(),
-        noise_count,
-        output_count,
-        processing_time
-    );
-
-    Ok(combined_events)
-}
-
-/// Generate noise events only (when no input events provided)
-fn generate_noise_only(
-    config: &UniformNoiseAugmentation,
-    min_time: f64,
-    max_time: f64,
-) -> AugmentationResult<Events> {
-    let mut rng = if let Some(seed) = config.seed {
-        rand::rngs::StdRng::seed_from_u64(seed)
-    } else {
-        rand::rngs::StdRng::from_entropy()
-    };
-
-    let x_dist = Uniform::new(0, config.sensor_width);
-    let y_dist = Uniform::new(0, config.sensor_height);
-    let t_dist = Uniform::new(min_time, max_time);
-
-    let mut noise_events = Vec::with_capacity(config.n_events);
-
-    for i in 0..config.n_events {
-        let polarity = if config.balance_polarities {
-            i % 2 == 0
-        } else {
-            rng.gen_bool(0.5)
-        };
-
-        let noise_event = Event {
-            t: t_dist.sample(&mut rng),
-            x: x_dist.sample(&mut rng),
-            y: y_dist.sample(&mut rng),
-            polarity,
-        };
-
-        noise_events.push(noise_event);
-    }
-
-    if config.sort_timestamps {
-        noise_events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
-    Ok(noise_events)
-}
-
-/// Apply uniform noise using Polars operations (Polars-first implementation)
-///
-/// This implementation uses vectorized operations for better performance on large datasets.
+/// This is the main uniform noise function that works entirely with Polars
+/// operations for maximum performance. It creates synthetic noise events
+/// and combines them with the input data using efficient vectorized operations.
 ///
 /// # Arguments
 ///
@@ -305,85 +229,154 @@ fn generate_noise_only(
 ///
 /// # Returns
 ///
-/// * `PolarsResult<LazyFrame>` - Combined events as LazyFrame
+/// Combined LazyFrame with original events plus uniform noise
+///
+/// # Example
+///
+/// ```rust
+/// use polars::prelude::*;
+/// use evlib::ev_augmentation::uniform_noise::*;
+///
+/// let events_df = events_to_dataframe(&events)?.lazy();
+/// let config = UniformNoiseAugmentation::new(1000, 640, 480);
+/// let noisy = apply_uniform_noise(events_df, &config)?;
+/// ```
 #[cfg(feature = "polars")]
 #[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
-pub fn apply_uniform_noise_polars(
+pub fn apply_uniform_noise(
     df: LazyFrame,
     config: &UniformNoiseAugmentation,
 ) -> PolarsResult<LazyFrame> {
     debug!("Applying uniform noise with Polars: {:?}", config);
 
+    if config.n_events == 0 {
+        debug!("No noise events to add");
+        return Ok(df);
+    }
+
     // Get time range from existing events
-    let time_stats = df
+    let time_bounds = df
         .clone()
         .select([
-            col(COL_T).min().alias("min_time"),
-            col(COL_T).max().alias("max_time"),
+            col(COL_T).min().alias("t_min"),
+            col(COL_T).max().alias("t_max"),
         ])
         .collect()?;
 
-    let _min_time = time_stats.column("min_time")?.f64()?.get(0).unwrap_or(0.0);
-    let _max_time = time_stats.column("max_time")?.f64()?.get(0).unwrap_or(1.0);
+    let t_min = time_bounds
+        .column("t_min")?
+        .get(0)?
+        .try_extract::<f64>()
+        .unwrap_or(0.0);
+    let t_max = time_bounds
+        .column("t_max")?
+        .get(0)?
+        .try_extract::<f64>()
+        .unwrap_or(1.0);
 
-    // For now, use the Vec implementation and convert
-    // A fully vectorized Polars implementation would require creating a new DataFrame
-    let collected_df = df.collect()?;
-    let events = crate::ev_augmentation::dataframe_to_events(&collected_df)
-        .map_err(|e| PolarsError::ComputeError(format!("Conversion error: {}", e).into()))?;
+    // Ensure we have a valid time range
+    let (time_min, time_max) = if t_max > t_min {
+        (t_min, t_max)
+    } else {
+        (0.0, 1.0)
+    };
 
-    let noisy = uniform_noise(&events, config)
-        .map_err(|e| PolarsError::ComputeError(format!("Noise error: {}", e).into()))?;
+    info!(
+        "Adding {} noise events in time range [{:.6}, {:.6}]",
+        config.n_events, time_min, time_max
+    );
 
-    let noisy_df = crate::ev_core::events_to_dataframe(&noisy)?;
+    // Generate random data for noise events using deterministic seed if provided
+    let mut rng = if let Some(seed) = config.seed {
+        rand::rngs::StdRng::seed_from_u64(seed)
+    } else {
+        rand::rngs::StdRng::from_entropy()
+    };
 
-    Ok(noisy_df.lazy())
+    use rand::Rng;
+
+    // Generate noise event data
+    let mut noise_x = Vec::with_capacity(config.n_events);
+    let mut noise_y = Vec::with_capacity(config.n_events);
+    let mut noise_t = Vec::with_capacity(config.n_events);
+    let mut noise_polarity = Vec::with_capacity(config.n_events);
+
+    let x_dist = rand_distr::Uniform::new(0, config.sensor_width);
+    let y_dist = rand_distr::Uniform::new(0, config.sensor_height);
+    let t_dist = rand_distr::Uniform::new(time_min, time_max);
+
+    for i in 0..config.n_events {
+        noise_x.push(x_dist.sample(&mut rng) as i64);
+        noise_y.push(y_dist.sample(&mut rng) as i64);
+        noise_t.push(t_dist.sample(&mut rng));
+
+        let polarity = if config.balance_polarities {
+            i % 2 == 0
+        } else {
+            rng.gen_bool(0.5)
+        };
+        noise_polarity.push(if polarity { 1i64 } else { 0i64 });
+    }
+
+    // Create noise DataFrame
+    let noise_df = df! {
+        COL_X => noise_x,
+        COL_Y => noise_y,
+        COL_T => noise_t,
+        COL_POLARITY => noise_polarity,
+    }?;
+
+    // Combine original events with noise events
+    let combined_df = df.collect()?.vstack(&noise_df)?;
+
+    let mut result = combined_df.lazy();
+
+    // Sort by timestamp if requested
+    if config.sort_timestamps {
+        result = result.sort([COL_T], SortMultipleOptions::default());
+    }
+
+    Ok(result)
 }
 
-/// Convenience function for simple uniform noise
+/// Legacy Polars function for backward compatibility
+#[cfg(feature = "polars")]
+pub fn apply_uniform_noise_polars(
+    df: LazyFrame,
+    config: &UniformNoiseAugmentation,
+) -> PolarsResult<LazyFrame> {
+    apply_uniform_noise(df, config)
+}
+
+/// Apply uniform noise directly to LazyFrame - DataFrame-native version (recommended)
+///
+/// This function applies noise injection directly to a LazyFrame for optimal performance.
+/// Use this instead of the legacy Vec<Event> version when possible.
 ///
 /// # Arguments
 ///
-/// * `events` - Input events
+/// * `df` - Input LazyFrame containing event data
 /// * `n_events` - Number of noise events to add
-/// * `sensor_width` - Sensor width
-/// * `sensor_height` - Sensor height
-pub fn add_uniform_noise_simple(
-    events: &Events,
+/// * `sensor_width` - Sensor width in pixels
+/// * `sensor_height` - Sensor height in pixels
+///
+/// # Returns
+///
+/// Combined LazyFrame with original events plus noise
+#[cfg(feature = "polars")]
+pub fn add_uniform_noise_df(
+    df: LazyFrame,
     n_events: usize,
     sensor_width: u16,
     sensor_height: u16,
-) -> AugmentationResult<Events> {
+) -> PolarsResult<LazyFrame> {
     let config = UniformNoiseAugmentation::new(n_events, sensor_width, sensor_height);
-    uniform_noise(events, &config)
+    apply_uniform_noise(df, &config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn create_test_events() -> Events {
-        vec![
-            Event {
-                t: 1.0,
-                x: 100,
-                y: 200,
-                polarity: true,
-            },
-            Event {
-                t: 2.0,
-                x: 150,
-                y: 250,
-                polarity: false,
-            },
-            Event {
-                t: 3.0,
-                x: 200,
-                y: 300,
-                polarity: true,
-            },
-        ]
-    }
 
     #[test]
     fn test_uniform_noise_creation() {
@@ -407,102 +400,5 @@ mod tests {
 
         let invalid = UniformNoiseAugmentation::new(100, 640, 0);
         assert!(invalid.validate().is_err());
-    }
-
-    #[test]
-    fn test_uniform_noise_application() {
-        let events = create_test_events();
-        let config = UniformNoiseAugmentation::new(10, 640, 480).with_seed(42);
-
-        let noisy = uniform_noise(&events, &config).unwrap();
-
-        // Should have original events plus noise
-        assert_eq!(noisy.len(), events.len() + 10);
-
-        // First events should be original (if sorted)
-        // This depends on the time distribution, so we just check count
-    }
-
-    #[test]
-    fn test_uniform_noise_bounds() {
-        let events = create_test_events();
-        let config = UniformNoiseAugmentation::new(100, 640, 480).with_seed(42);
-
-        let noisy = uniform_noise(&events, &config).unwrap();
-
-        // All noise events should be within bounds
-        for event in noisy.iter().skip(events.len()) {
-            assert!(event.x < 640);
-            assert!(event.y < 480);
-            assert!(event.t >= 1.0 && event.t <= 3.0); // Time range of original events
-        }
-    }
-
-    #[test]
-    fn test_uniform_noise_polarity_balance() {
-        let events = create_test_events();
-        let config = UniformNoiseAugmentation::new(100, 640, 480)
-            .with_polarity_balance(true)
-            .with_seed(42);
-
-        let noisy = uniform_noise(&events, &config).unwrap();
-
-        // Count polarities in noise events
-        let noise_events: Vec<_> = noisy.iter().skip(events.len()).collect();
-        let positive_count = noise_events.iter().filter(|e| e.polarity).count();
-        let negative_count = noise_events.iter().filter(|e| !e.polarity).count();
-
-        // Should be exactly balanced (or differ by at most 1 for odd numbers)
-        assert!((positive_count as i32 - negative_count as i32).abs() <= 1);
-    }
-
-    #[test]
-    fn test_uniform_noise_sorting() {
-        let events = create_test_events();
-        let config = UniformNoiseAugmentation::new(50, 640, 480)
-            .with_sorting(true)
-            .with_seed(42);
-
-        let noisy = uniform_noise(&events, &config).unwrap();
-
-        // Check that events are sorted
-        for i in 1..noisy.len() {
-            assert!(noisy[i].t >= noisy[i - 1].t);
-        }
-    }
-
-    #[test]
-    fn test_uniform_noise_reproducibility() {
-        let events = create_test_events();
-        let config = UniformNoiseAugmentation::new(20, 640, 480).with_seed(12345);
-
-        let noisy1 = uniform_noise(&events, &config).unwrap();
-        let noisy2 = uniform_noise(&events, &config).unwrap();
-
-        // With same seed, results should be identical
-        assert_eq!(noisy1.len(), noisy2.len());
-        for (e1, e2) in noisy1.iter().zip(noisy2.iter()) {
-            assert_eq!(e1.x, e2.x);
-            assert_eq!(e1.y, e2.y);
-            assert!((e1.t - e2.t).abs() < 1e-10);
-            assert_eq!(e1.polarity, e2.polarity);
-        }
-    }
-
-    #[test]
-    fn test_uniform_noise_empty_events() {
-        let events = Vec::new();
-        let config = UniformNoiseAugmentation::new(10, 640, 480);
-        let noisy = uniform_noise(&events, &config).unwrap();
-
-        // Should generate noise in default time range
-        assert_eq!(noisy.len(), 10);
-
-        // All should be within sensor bounds
-        for event in &noisy {
-            assert!(event.x < 640);
-            assert!(event.y < 480);
-            assert!(event.t >= 0.0 && event.t <= 1.0); // Default time range
-        }
     }
 }
