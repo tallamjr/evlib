@@ -43,10 +43,9 @@
 //! ```
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use crate::ev_formats::streaming::Event;
+// use crate::ev_formats::streaming::Event; // Currently unused
 use std::fmt;
 use tracing::{debug, info};
-
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;

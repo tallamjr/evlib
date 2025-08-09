@@ -111,9 +111,10 @@ impl TimeReversalAugmentation {
 impl Validatable for TimeReversalAugmentation {
     fn validate(&self) -> AugmentationResult<()> {
         if !(0.0..=1.0).contains(&self.probability) {
-            return Err(AugmentationError::InvalidProbability(self.probability));
+            Err(AugmentationError::InvalidProbability(self.probability))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 }
 

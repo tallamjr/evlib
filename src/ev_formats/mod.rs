@@ -316,11 +316,9 @@ pub fn load_events_from_hdf5(
                     }
                 }
 
-                return Ok(
-                    python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                        hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-                    })?,
-                );
+                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                });
             }
         }
     }
@@ -345,13 +343,14 @@ pub fn load_events_from_hdf5(
                     Ok(events) => {
                         // Success message already printed by read_prophesee_hdf5_native()
                         info!("Native ECF decoder succeeded with {} events", events.len());
-                        return Ok(python::build_polars_dataframe(&events, EventFormat::HDF5)
-                            .map_err(|e| {
+                        return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(
+                            |e| {
                                 hdf5_metno::Error::Internal(format!(
                                     "DataFrame conversion failed: {}",
                                     e
                                 ))
-                            })?);
+                            },
+                        );
                     }
                     Err(e) => {
                         warn!("Native ECF decoder failed: {}", e);
@@ -376,7 +375,7 @@ pub fn load_events_from_hdf5(
                             match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                                 Ok(events) => {
                                     info!("Rust ECF decoder succeeded");
-                                    return Ok(python::build_polars_dataframe(
+                                    return python::build_polars_dataframe(
                                         &events,
                                         EventFormat::HDF5,
                                     )
@@ -385,7 +384,7 @@ pub fn load_events_from_hdf5(
                                             "DataFrame conversion failed: {}",
                                             e
                                         ))
-                                    })?);
+                                    });
                                 }
                                 Err(ecf_error) => {
                                     error!("Rust ECF decoder failed: {}", ecf_error);
@@ -2222,7 +2221,11 @@ pub mod python {
         let xs_sorted: Vec<i64> = indices.iter().map(|&i| all_xs[i]).collect();
         let ys_sorted: Vec<i64> = indices.iter().map(|&i| all_ys[i]).collect();
         let ts_sorted: Vec<f64> = indices.iter().map(|&i| all_ts[i]).collect();
-        let ps_sorted: Vec<i64> = indices.iter().map(|&i| all_ps[i]).collect();
+        // Convert polarities from -1/1 to 0/1 for consistency with events_to_block_py
+        let ps_sorted: Vec<i64> = indices
+            .iter()
+            .map(|&i| if all_ps[i] > 0 { 1 } else { 0 })
+            .collect();
 
         // Convert arrays to Python objects
         let xs_py: PyObject = Array1::from(xs_sorted).into_pyarray(py).into();

@@ -632,12 +632,11 @@ impl Evt2Reader {
         #[cfg(feature = "polars")]
         {
             let estimated_events = (metadata.data_size / 4) as usize; // 4 bytes per event
-            return self
-                .read_binary_data_to_dataframe(file, header_size, estimated_events)
+            self.read_binary_data_to_dataframe(file, header_size, estimated_events)
                 .map_err(|e| Evt2Error::InvalidBinaryData {
                     offset: 0,
                     message: format!("DataFrame conversion failed: {}", e),
-                });
+                })
         }
 
         #[cfg(not(feature = "polars"))]
@@ -661,7 +660,7 @@ impl Evt2Reader {
         let file_size = file.metadata()?.len();
 
         // Parse header
-        let (metadata, header_size) = self.parse_header(&mut file).map_err(|e| Box::new(e))?;
+        let (metadata, header_size) = self.parse_header(&mut file).map_err(Box::new)?;
 
         // Calculate optimal chunk size
         let chunk_size = calculate_optimal_chunk_size(file_size, 1_000_000_000); // 1GB default available memory
@@ -772,10 +771,10 @@ impl Evt2Reader {
                                 // Validate coordinates if enabled
                                 if self.config.validate_coordinates {
                                     if let Some((max_x, max_y)) = self.config.sensor_resolution {
-                                        if x >= max_x || y >= max_y {
-                                            if self.config.skip_invalid_events {
-                                                continue;
-                                            }
+                                        if (x >= max_x || y >= max_y)
+                                            && self.config.skip_invalid_events
+                                        {
+                                            continue;
                                         }
                                     }
                                 }
@@ -878,10 +877,10 @@ impl Evt2Reader {
                                 // Validate coordinates if enabled
                                 if self.config.validate_coordinates {
                                     if let Some((max_x, max_y)) = self.config.sensor_resolution {
-                                        if x >= max_x || y >= max_y {
-                                            if self.config.skip_invalid_events {
-                                                continue;
-                                            }
+                                        if (x >= max_x || y >= max_y)
+                                            && self.config.skip_invalid_events
+                                        {
+                                            continue;
                                         }
                                     }
                                 }

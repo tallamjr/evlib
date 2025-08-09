@@ -181,35 +181,43 @@ impl Validatable for TimeSkewAugmentation {
     fn validate(&self) -> AugmentationResult<()> {
         // Check coefficient
         if self.coefficient <= 0.0 {
-            return Err(AugmentationError::InvalidConfig(
+            Err(AugmentationError::InvalidConfig(
                 "Time skew coefficient must be positive".to_string(),
-            ));
-        }
-
-        // Check coefficient range
-        if let Some((min, max)) = self.coefficient_range {
+            ))
+        } else if let Some((min, max)) = self.coefficient_range {
+            // Check coefficient range
             if min <= 0.0 {
-                return Err(AugmentationError::InvalidConfig(
+                Err(AugmentationError::InvalidConfig(
                     "Minimum coefficient must be positive".to_string(),
-                ));
-            }
-            if min >= max {
-                return Err(AugmentationError::InvalidConfig(
+                ))
+            } else if min >= max {
+                Err(AugmentationError::InvalidConfig(
                     "Invalid coefficient range".to_string(),
-                ));
+                ))
+            } else if let Some((offset_min, offset_max)) = self.offset_range {
+                // Check offset range
+                if offset_min >= offset_max {
+                    Err(AugmentationError::InvalidConfig(
+                        "Invalid offset range".to_string(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            } else {
+                Ok(())
             }
-        }
-
-        // Check offset range
-        if let Some((min, max)) = self.offset_range {
-            if min >= max {
-                return Err(AugmentationError::InvalidConfig(
+        } else if let Some((offset_min, offset_max)) = self.offset_range {
+            // Check offset range when coefficient range is None
+            if offset_min >= offset_max {
+                Err(AugmentationError::InvalidConfig(
                     "Invalid offset range".to_string(),
-                ));
+                ))
+            } else {
+                Ok(())
             }
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 }
 

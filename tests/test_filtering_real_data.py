@@ -235,13 +235,13 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     raw_df = small_raw_events.collect()
     assert len(raw_df) > 0, "Raw file should contain events"
 
-    # Get time range
+    # Get time range using percentiles to avoid outliers
     timestamps_sec = raw_df["timestamp"].dt.total_microseconds() / 1_000_000
-    t_min = timestamps_sec.min()
-    t_max = timestamps_sec.max()
+    t_min = timestamps_sec.quantile(0.1)  # Use 10th percentile instead of absolute min
+    t_max = timestamps_sec.quantile(0.9)  # Use 90th percentile instead of absolute max
     duration = t_max - t_min
 
-    # Test filtering middle 60% of time range
+    # Test filtering middle 60% of time range (within the 10th-90th percentile range)
     t_start = t_min + duration * 0.2
     t_end = t_min + duration * 0.8
 
@@ -258,11 +258,11 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     assert filtered_timestamps.min() >= t_start, "All events should be after t_start"
     assert filtered_timestamps.max() <= t_end, "All events should be before t_end"
 
-    # Test with H5 file
+    # Test with H5 file using percentile-based approach
     h5_df = small_h5_events.collect()
     h5_timestamps = h5_df["timestamp"].dt.total_microseconds() / 1_000_000
-    h5_t_min = h5_timestamps.min()
-    h5_t_max = h5_timestamps.max()
+    h5_t_min = h5_timestamps.quantile(0.1)  # Use 10th percentile
+    h5_t_max = h5_timestamps.quantile(0.9)  # Use 90th percentile
     h5_duration = h5_t_max - h5_t_min
 
     # Convert LazyFrame to DataFrame for filtering

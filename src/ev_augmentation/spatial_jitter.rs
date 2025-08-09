@@ -260,9 +260,9 @@ pub fn apply_spatial_jitter(
     let _collected_df = df.collect()?;
 
     // TODO: Implement native Polars spatial jitter without Events type
-    return Err(PolarsError::ComputeError(
+    Err(PolarsError::ComputeError(
         "Spatial jitter temporarily disabled - Events type removed".into(),
-    ));
+    ))
 }
 
 /// Legacy Polars function for backward compatibility

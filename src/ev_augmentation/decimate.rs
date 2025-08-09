@@ -29,11 +29,12 @@ impl DecimateAugmentation {
 impl Validatable for DecimateAugmentation {
     fn validate(&self) -> AugmentationResult<()> {
         if self.n == 0 {
-            return Err(AugmentationError::InvalidConfig(
+            Err(AugmentationError::InvalidConfig(
                 "Decimation factor must be positive".to_string(),
-            ));
+            ))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 }
 

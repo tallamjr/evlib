@@ -545,25 +545,25 @@ impl FilterConfig {
         let mut parts = Vec::new();
 
         if let Some(_filter) = &self.temporal_filter {
-            parts.push(format!("Temporal(filter)"));
+            parts.push("Temporal(filter)".to_string());
         }
         if let Some(_filter) = &self.spatial_filter {
-            parts.push(format!("Spatial(filter)"));
+            parts.push("Spatial(filter)".to_string());
         }
         if let Some(_filter) = &self.polarity_filter {
-            parts.push(format!("Polarity(filter)"));
+            parts.push("Polarity(filter)".to_string());
         }
         if let Some(_filter) = &self.hot_pixel_filter {
-            parts.push(format!("HotPixel(filter)"));
+            parts.push("HotPixel(filter)".to_string());
         }
         if let Some(_filter) = &self.denoise_filter {
-            parts.push(format!("Denoise(filter)"));
+            parts.push("Denoise(filter)".to_string());
         }
         if let Some(_filter) = &self.drop_pixel_filter {
-            parts.push(format!("DropPixel(filter)"));
+            parts.push("DropPixel(filter)".to_string());
         }
         if let Some(_filter) = &self.downsampling_filter {
-            parts.push(format!("Downsample(filter)"));
+            parts.push("Downsample(filter)".to_string());
         }
 
         if parts.is_empty() {

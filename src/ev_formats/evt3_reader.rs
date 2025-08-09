@@ -839,45 +839,46 @@ impl Evt3Reader {
                                     if let Ok(vect12_event) = raw_event.as_vect12_event() {
                                         // Generate events from 12-bit validity mask
                                         for bit in 0..12 {
-                                            if (vect12_event.valid >> bit) & 1 != 0 {
-                                                if decoder_state.has_y
-                                                    && decoder_state.has_timestamp
-                                                {
-                                                    let x = decoder_state.vect_base_x + bit;
-                                                    let y = decoder_state.current_y;
-                                                    let timestamp =
-                                                        decoder_state.current_timestamp as f64;
-                                                    let polarity = decoder_state.vect_base_polarity;
+                                            if (vect12_event.valid >> bit) & 1 != 0
+                                                && decoder_state.has_y
+                                                && decoder_state.has_timestamp
+                                            {
+                                                let x = decoder_state.vect_base_x + bit;
+                                                let y = decoder_state.current_y;
+                                                let timestamp =
+                                                    decoder_state.current_timestamp as f64;
+                                                let polarity = decoder_state.vect_base_polarity;
 
-                                                    // Validate coordinates if configured
-                                                    if self.config.validate_coordinates {
-                                                        if let Some((max_x, max_y)) =
-                                                            metadata.sensor_resolution
-                                                        {
-                                                            if x >= max_x || y >= max_y {
-                                                                if self.config.skip_invalid_events {
-                                                                    continue;
-                                                                } else {
-                                                                    return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
-                                                                }
+                                                // Validate coordinates if configured
+                                                if self.config.validate_coordinates {
+                                                    if let Some((max_x, max_y)) =
+                                                        metadata.sensor_resolution
+                                                    {
+                                                        if x >= max_x || y >= max_y {
+                                                            if self.config.skip_invalid_events {
+                                                                continue;
+                                                            } else {
+                                                                return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
                                                             }
                                                         }
                                                     }
+                                                }
 
-                                                    // Add event directly to DataFrame builder
-                                                    builder.add_event(x, y, timestamp, polarity);
+                                                // Add event directly to DataFrame builder
+                                                builder.add_event(x, y, timestamp, polarity);
 
-                                                    // Check max events limit
-                                                    if let Some(max_events) = self.config.max_events
-                                                    {
-                                                        if builder.len() >= max_events {
-                                                            return builder.build().map_err(|e| {
-                                                                Evt3Error::InvalidBinaryData {
-                                                                    offset: event_offset,
-                                                                    message: format!("DataFrame build failed: {}", e),
-                                                                }
-                                                            });
-                                                        }
+                                                // Check max events limit
+                                                if let Some(max_events) = self.config.max_events {
+                                                    if builder.len() >= max_events {
+                                                        return builder.build().map_err(|e| {
+                                                            Evt3Error::InvalidBinaryData {
+                                                                offset: event_offset,
+                                                                message: format!(
+                                                                    "DataFrame build failed: {}",
+                                                                    e
+                                                                ),
+                                                            }
+                                                        });
                                                     }
                                                 }
                                             }
@@ -891,45 +892,46 @@ impl Evt3Reader {
                                     if let Ok(vect8_event) = raw_event.as_vect8_event() {
                                         // Generate events from 8-bit validity mask
                                         for bit in 0..8 {
-                                            if (vect8_event.valid >> bit) & 1 != 0 {
-                                                if decoder_state.has_y
-                                                    && decoder_state.has_timestamp
-                                                {
-                                                    let x = decoder_state.vect_base_x + bit as u16;
-                                                    let y = decoder_state.current_y;
-                                                    let timestamp =
-                                                        decoder_state.current_timestamp as f64;
-                                                    let polarity = decoder_state.vect_base_polarity;
+                                            if (vect8_event.valid >> bit) & 1 != 0
+                                                && decoder_state.has_y
+                                                && decoder_state.has_timestamp
+                                            {
+                                                let x = decoder_state.vect_base_x + bit as u16;
+                                                let y = decoder_state.current_y;
+                                                let timestamp =
+                                                    decoder_state.current_timestamp as f64;
+                                                let polarity = decoder_state.vect_base_polarity;
 
-                                                    // Validate coordinates if configured
-                                                    if self.config.validate_coordinates {
-                                                        if let Some((max_x, max_y)) =
-                                                            metadata.sensor_resolution
-                                                        {
-                                                            if x >= max_x || y >= max_y {
-                                                                if self.config.skip_invalid_events {
-                                                                    continue;
-                                                                } else {
-                                                                    return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
-                                                                }
+                                                // Validate coordinates if configured
+                                                if self.config.validate_coordinates {
+                                                    if let Some((max_x, max_y)) =
+                                                        metadata.sensor_resolution
+                                                    {
+                                                        if x >= max_x || y >= max_y {
+                                                            if self.config.skip_invalid_events {
+                                                                continue;
+                                                            } else {
+                                                                return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
                                                             }
                                                         }
                                                     }
+                                                }
 
-                                                    // Add event directly to DataFrame builder
-                                                    builder.add_event(x, y, timestamp, polarity);
+                                                // Add event directly to DataFrame builder
+                                                builder.add_event(x, y, timestamp, polarity);
 
-                                                    // Check max events limit
-                                                    if let Some(max_events) = self.config.max_events
-                                                    {
-                                                        if builder.len() >= max_events {
-                                                            return builder.build().map_err(|e| {
-                                                                Evt3Error::InvalidBinaryData {
-                                                                    offset: event_offset,
-                                                                    message: format!("DataFrame build failed: {}", e),
-                                                                }
-                                                            });
-                                                        }
+                                                // Check max events limit
+                                                if let Some(max_events) = self.config.max_events {
+                                                    if builder.len() >= max_events {
+                                                        return builder.build().map_err(|e| {
+                                                            Evt3Error::InvalidBinaryData {
+                                                                offset: event_offset,
+                                                                message: format!(
+                                                                    "DataFrame build failed: {}",
+                                                                    e
+                                                                ),
+                                                            }
+                                                        });
                                                     }
                                                 }
                                             }

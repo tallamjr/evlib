@@ -2385,7 +2385,6 @@ pub mod python {
         Ok(PyDataFrame(result_df))
     }
     */
-
     /// Create enhanced frames with configurable slicing methods
     ///
     /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
@@ -2597,7 +2596,6 @@ pub mod python {
         Ok(PyDataFrame(result_df))
     }
     */
-
     /// Create time surface representation with exponential decay
     ///
     /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
@@ -2767,7 +2765,6 @@ pub mod python {
         Ok(PyDataFrame(result_df))
     }
     */
-
     /// Create averaged time surface (HATS) representation
     ///
     /// **Python Bindings API Function**: `PyDataFrame` → `PyDataFrame` using Polars operations.
@@ -2955,7 +2952,6 @@ pub mod python {
         Ok(PyDataFrame(result_df))
     }
     */
-
     /// Create Bina-Rep (Binary Representation) frames from pre-computed binary event frames
     ///
     /// **Python Bindings API Function**: Processes binary event frames using numpy arrays.
