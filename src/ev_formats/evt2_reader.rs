@@ -715,7 +715,6 @@ impl Evt2Reader {
         // Constants for timestamp handling
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
-        const LOOP_THRESHOLD: u64 = 10 << 6;
 
         let mut _bytes_read_total = 0;
 
@@ -746,13 +745,17 @@ impl Evt2Reader {
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
                                     first_time_base_set = true;
-                                } else if new_time_base < current_time_base
-                                    && (current_time_base - new_time_base) > LOOP_THRESHOLD
-                                {
-                                    time_high_loop_count += 1;
-                                    current_time_base =
-                                        new_time_base + time_high_loop_count * TIME_LOOP;
                                 } else {
+                                    // Check for significant backwards jump that indicates counter wraparound
+                                    // Use a much larger threshold to avoid false positives
+                                    let large_backwards_jump = new_time_base < current_time_base
+                                        && (current_time_base - new_time_base)
+                                            > (MAX_TIMESTAMP_BASE >> 1); // Half of max range
+
+                                    if large_backwards_jump {
+                                        time_high_loop_count += 1;
+                                    }
+
                                     current_time_base =
                                         new_time_base + time_high_loop_count * TIME_LOOP;
                                 }
@@ -824,7 +827,6 @@ impl Evt2Reader {
 
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
-        const LOOP_THRESHOLD: u64 = 10 << 6;
 
         let mut _bytes_read_total = 0;
 
@@ -854,13 +856,17 @@ impl Evt2Reader {
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
                                     first_time_base_set = true;
-                                } else if new_time_base < current_time_base
-                                    && (current_time_base - new_time_base) > LOOP_THRESHOLD
-                                {
-                                    time_high_loop_count += 1;
-                                    current_time_base =
-                                        new_time_base + time_high_loop_count * TIME_LOOP;
                                 } else {
+                                    // Check for significant backwards jump that indicates counter wraparound
+                                    // Use a much larger threshold to avoid false positives
+                                    let large_backwards_jump = new_time_base < current_time_base
+                                        && (current_time_base - new_time_base)
+                                            > (MAX_TIMESTAMP_BASE >> 1); // Half of max range
+
+                                    if large_backwards_jump {
+                                        time_high_loop_count += 1;
+                                    }
+
                                     current_time_base =
                                         new_time_base + time_high_loop_count * TIME_LOOP;
                                 }
