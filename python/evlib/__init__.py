@@ -22,8 +22,8 @@ events = evlib.load_events("path/to/your/data.h5")
 
 # Fast filtering using Polars expressions
 filtered = events.filter(
-    (pl.col("timestamp") > 0.1) &
-    (pl.col("timestamp") < 0.2) &
+    (pl.col("t").dt.total_microseconds() / 1_000_000 > 0.1) &
+    (pl.col("t").dt.total_microseconds() / 1_000_000 < 0.2) &
     (pl.col("polarity") == 1)
 )
 

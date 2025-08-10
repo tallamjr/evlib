@@ -103,11 +103,11 @@ class BaseModel(ABC):
             ys = events_df["y"].to_numpy()
 
             # Handle timestamp conversion from Duration to seconds
-            if events_df["timestamp"].dtype == pl.Duration:
+            if events_df["t"].dtype == pl.Duration:
                 # Convert from microseconds to seconds
-                ts = events_df["timestamp"].to_numpy().astype(np.float64) / 1e6
+                ts = events_df["t"].dt.total_microseconds().to_numpy().astype(np.float64) / 1e6
             else:
-                ts = events_df["timestamp"].to_numpy().astype(np.float64)
+                ts = events_df["t"].to_numpy().astype(np.float64)
 
             ps = events_df["polarity"].to_numpy()
         else:
