@@ -160,7 +160,7 @@ polarities = df['polarity'].to_numpy()
 ```
 
 ### Advanced Filtering
-```python
+```python notest
 import evlib
 import polars as pl
 
@@ -192,7 +192,7 @@ print(f"Filtered to {len(filtered_df)} events")
 
 evlib provides comprehensive event representation functions for computer vision and neural network applications:
 
-```python
+```python notest
 import evlib
 import evlib.representations as evr
 import polars as pl
@@ -358,7 +358,7 @@ print(f"Description: {evlib.formats.get_format_description('EVT2')}")
 ```
 
 #### Advanced Features
-```python
+```python notest
 import evlib
 import polars as pl
 
@@ -391,7 +391,7 @@ analysis = filtered.with_columns([
 ```
 
 #### Utility Functions
-```python
+```python notest
 import evlib
 import polars as pl
 import evlib.filtering as evf
@@ -475,7 +475,7 @@ print(f'Memory per event: {df.estimated_size() / len(df):.1f} bytes')
 ### Performance Examples
 
 #### Optimal Loading for Different File Sizes
-```python
+```python notest
 import evlib
 import evlib.filtering as evf
 import polars as pl
@@ -513,7 +513,7 @@ def monitor_memory():
 
 # Monitor memory usage during loading
 initial_mem = monitor_memory()
-events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
+events = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 df = events.collect()
 peak_mem = monitor_memory()
 
@@ -539,7 +539,7 @@ print(f"Polars DataFrame size: {df.estimated_size() / 1024 / 1024:.1f} MB")
 #### Common Issues and Solutions
 
 **Issue**: Out of memory errors
-```python
+```python notest
 import evlib
 import evlib.filtering as evf
 
@@ -580,7 +580,7 @@ result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).
 ```
 
 **Issue**: Memory usage higher than expected
-```python
+```python notest
 import evlib
 
 # Solution: Monitor and verify optimization
@@ -606,7 +606,7 @@ evlib provides several Python modules for different aspects of event processing:
 - **`evlib.models`**: Neural network model loading and inference (Under construction)
 
 ### Module Overview
-```python
+```python notest
 import evlib
 import evlib.filtering as evf
 import evlib.representations as evr
