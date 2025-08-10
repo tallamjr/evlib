@@ -359,10 +359,30 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
 
         # Check for reasonable event rate
         event_rate = event_count / duration if duration > 0 else 0
-        if event_rate < 1000:  # Less than 1kHz seems low for event cameras
-            results["warnings"].append(f"Low event rate: {event_rate:.0f} Hz")
-        elif event_rate > 10_000_000:  # More than 10MHz seems suspiciously high
-            results["warnings"].append(f"Very high event rate: {event_rate:.0f} Hz")
+
+        # Detect processed/accumulated data patterns
+        if duration > 0:
+            # Check uniqueness of timestamps to detect processed data
+            unique_timestamps = events_df.select(pl.col("t").n_unique()).collect()[0, 0]
+            events_per_timestamp = event_count / unique_timestamps if unique_timestamps > 0 else 0
+
+            # If many events share few timestamps, this is likely processed data
+            is_processed_data = unique_timestamps < 10000 and events_per_timestamp > 1000
+
+            if is_processed_data:
+                # Relaxed thresholds for processed/accumulated data
+                if event_rate < 100:  # Very low rate for processed data
+                    results["warnings"].append(f"Low event rate: {event_rate:.0f} Hz")
+                elif event_rate > 100_000_000_000:  # 100 GHz - extreme threshold for processed data
+                    results["warnings"].append(
+                        f"Extremely high event rate (processed data): {event_rate:.0f} Hz"
+                    )
+            else:
+                # Normal thresholds for raw event data
+                if event_rate < 1000:  # Less than 1kHz seems low for event cameras
+                    results["warnings"].append(f"Low event rate: {event_rate:.0f} Hz")
+                elif event_rate > 10_000_000:  # More than 10MHz seems suspiciously high for raw data
+                    results["warnings"].append(f"Very high event rate: {event_rate:.0f} Hz")
 
         # Check monotonicity (informational only)
         backward_jumps = events_df.select((pl.col("t").diff() < pl.duration(microseconds=0)).sum()).collect()[
