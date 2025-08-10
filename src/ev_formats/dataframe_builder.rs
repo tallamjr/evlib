@@ -52,7 +52,7 @@ impl EventDataFrameBuilder {
             x_builder: PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), estimated_capacity),
             y_builder: PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), estimated_capacity),
             timestamp_builder: PrimitiveChunkedBuilder::<Int64Type>::new(
-                "timestamp".into(),
+                "t".into(),
                 estimated_capacity,
             ),
             polarity_builder: PrimitiveChunkedBuilder::<Int8Type>::new(
@@ -99,7 +99,7 @@ impl EventDataFrameBuilder {
             // Create empty DataFrame with proper schema
             let empty_x = Series::new("x".into(), Vec::<i16>::new());
             let empty_y = Series::new("y".into(), Vec::<i16>::new());
-            let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+            let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
                 .cast(&DataType::Duration(TimeUnit::Microseconds))?;
             let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -182,7 +182,7 @@ impl EventDataFrameBuilder {
 pub fn create_empty_events_dataframe() -> PolarsResult<DataFrame> {
     let empty_x = Series::new("x".into(), Vec::<i16>::new());
     let empty_y = Series::new("y".into(), Vec::<i16>::new());
-    let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+    let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
         .cast(&DataType::Duration(TimeUnit::Microseconds))?;
     let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -304,7 +304,7 @@ mod tests {
         let column_names: Vec<String> = columns.iter().map(|s| s.to_string()).collect();
         assert!(column_names.contains(&"x".to_string()));
         assert!(column_names.contains(&"y".to_string()));
-        assert!(column_names.contains(&"timestamp".to_string()));
+        assert!(column_names.contains(&"t".to_string()));
         assert!(column_names.contains(&"polarity".to_string()));
     }
 

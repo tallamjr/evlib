@@ -201,7 +201,7 @@ class TestEvlibRegression:
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
             "timestamp_seconds"
         ].to_numpy()
         p = df["polarity"].to_numpy()
@@ -297,7 +297,7 @@ class TestEvlibRegression:
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
             "timestamp_seconds"
         ].to_numpy()
         p = df["polarity"].to_numpy()
@@ -349,9 +349,9 @@ class TestEvlibRegression:
             x = df["x"].to_numpy()
             y = df["y"].to_numpy()
             # Convert duration to seconds
-            t = df.with_columns(
-                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-            )["timestamp_seconds"].to_numpy()
+            t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+                "timestamp_seconds"
+            ].to_numpy()
             p = df["polarity"].to_numpy()
 
             results[file_key] = {
@@ -407,9 +407,9 @@ class TestEvlibRegression:
             _x = df["x"].to_numpy()
             _y = df["y"].to_numpy()
             # Convert duration to seconds
-            _t = df.with_columns(
-                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-            )["timestamp_seconds"].to_numpy()
+            _t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+                "timestamp_seconds"
+            ].to_numpy()
             p = df["polarity"].to_numpy()
 
             # Check against expected polarity encoding for this format
@@ -541,7 +541,7 @@ class TestEvlibRegression:
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
             "timestamp_seconds"
         ].to_numpy()
         p = df["polarity"].to_numpy()
@@ -586,7 +586,7 @@ class TestEvlibRegression:
         assert event_count < 50000000, f"Time filter didn't work, got {event_count} events"
 
         # Verify data structure
-        expected_columns = {"x", "y", "timestamp", "polarity"}
+        expected_columns = {"x", "y", "t", "polarity"}
         actual_columns = set(df.columns)
         assert (
             expected_columns == actual_columns
@@ -595,7 +595,7 @@ class TestEvlibRegression:
         # Convert to numpy for validation
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
-        t = df.with_columns((df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
             "timestamp_seconds"
         ].to_numpy()
         p = df["polarity"].to_numpy()
@@ -685,9 +685,9 @@ class TestEvlibRegression:
         for df, name in [(gen4_df, "BLOSC"), (etram_df, "deflate")]:
             x = df["x"].to_numpy()
             y = df["y"].to_numpy()
-            t = df.with_columns(
-                (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-            )["timestamp_seconds"].to_numpy()
+            t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
+                "timestamp_seconds"
+            ].to_numpy()
             p = df["polarity"].to_numpy()
 
             assert np.all(x >= 0), f"{name}: negative x coordinates"

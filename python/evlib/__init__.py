@@ -318,8 +318,8 @@ def load_events(path, **kwargs):
         **kwargs: Additional arguments (t_start, t_end, min_x, max_x, min_y, max_y, polarity, sort, etc.)
 
     Returns:
-        Polars LazyFrame with columns [x, y, timestamp, polarity]
-        - timestamp is always converted to Duration type in microseconds
+        Polars LazyFrame with columns [x, y, t, polarity]
+        - t is always converted to Duration type in microseconds
 
     Example:
         # Basic loading
@@ -329,35 +329,12 @@ def load_events(path, **kwargs):
         # from evlib.validation import quick_validate_events
         # is_valid = quick_validate_events(events)
     """
-    # Load data using Rust formats module
-    data_dict = formats.load_events(path, **kwargs)
+    # Load data using Rust formats module - this returns a LazyFrame directly
+    lazy_frame = formats.load_events(path, **kwargs)
 
-    # Convert the dictionary to Polars LazyFrame
-    import polars as pl
-
-    # Handle the duration column properly
-    if "timestamp" in data_dict:
-        # Define explicit schema to preserve efficient data types from Rust
-        schema = {
-            "x": pl.Int16,  # Coordinates: sufficient for event camera resolutions
-            "y": pl.Int16,  # Coordinates: sufficient for event camera resolutions
-            "timestamp": pl.Int64,  # Timestamp: needs full precision for microseconds
-            "polarity": pl.Int8,  # Polarity: -1/1 fits in single byte
-        }
-
-        df = pl.DataFrame(data_dict, schema=schema)
-        # The timestamp is already converted to microseconds in Rust
-        df = df.with_columns([pl.col("timestamp").cast(pl.Duration(time_unit="us"))])
-        return df.lazy()
-    else:
-        # Empty case - use same schema for consistency
-        schema = {
-            "x": pl.Int16,
-            "y": pl.Int16,
-            "timestamp": pl.Duration(time_unit="us"),
-            "polarity": pl.Int8,
-        }
-        return pl.DataFrame(data_dict, schema=schema).lazy()
+    # The Rust module already returns the LazyFrame with correct schema and column names
+    # Just return it directly - no need for Python-side conversion
+    return lazy_frame
 
 
 # Define exports

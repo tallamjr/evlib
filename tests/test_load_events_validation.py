@@ -233,7 +233,7 @@ def validate_event_data_structure(
             return results
 
         # Check column presence and types
-        required_columns = {"x", "y", "timestamp", "polarity"}
+        required_columns = {"x", "y", "t", "polarity"}
         actual_columns = set(sample_df.columns)
 
         if not required_columns.issubset(actual_columns):
@@ -245,7 +245,7 @@ def validate_event_data_structure(
         expected_types = {
             "x": pl.Int16,
             "y": pl.Int16,
-            "timestamp": pl.Duration,  # evlib internal format
+            "t": pl.Duration,  # evlib internal format
             "polarity": pl.Int8,
         }
 
@@ -340,8 +340,8 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
         # Get timestamp statistics (convert Duration to seconds)
         temporal_stats = events_df.select(
             [
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
                 pl.len().alias("event_count"),
             ]
         ).collect()
@@ -365,9 +365,9 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
             results["warnings"].append(f"Very high event rate: {event_rate:.0f} Hz")
 
         # Check monotonicity (informational only)
-        backward_jumps = events_df.select(
-            (pl.col("timestamp").diff() < pl.duration(microseconds=0)).sum()
-        ).collect()[0, 0]
+        backward_jumps = events_df.select((pl.col("t").diff() < pl.duration(microseconds=0)).sum()).collect()[
+            0, 0
+        ]
 
         if backward_jumps > 0:
             results["warnings"].append(
@@ -422,14 +422,16 @@ def validate_polarity_encoding(events_df: pl.LazyFrame, spec: Dict[str, Any]) ->
 
         if expected_format == "-1_1":
             # Expect -1/1 encoding (binary formats converted by evlib)
-            expected_polarities = {-1, 1}
-            if actual_polarities != expected_polarities:
+            # Allow single-polarity files (some event camera files may only have positive or negative events)
+            valid_polarities = {-1, 1}
+            if not actual_polarities.issubset(valid_polarities):
                 results["errors"].append(f"Expected -1/1 polarity encoding, got {actual_polarities}")
                 results["valid"] = False
         elif expected_format == "0_1":
             # Expect 0/1 encoding (text formats kept as-is)
-            expected_polarities = {0, 1}
-            if actual_polarities != expected_polarities:
+            # Allow single-polarity files
+            valid_polarities = {0, 1}
+            if not actual_polarities.issubset(valid_polarities):
                 results["errors"].append(f"Expected 0/1 polarity encoding, got {actual_polarities}")
                 results["valid"] = False
         else:

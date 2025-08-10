@@ -487,7 +487,7 @@ class TestEVT3FormatSupport(unittest.TestCase):
                 if len(df) > 0:
                     x_coords = df["x"].to_numpy()
                     y_coords = df["y"].to_numpy()
-                    timestamps = df["timestamp"].cast(float).to_numpy()
+                    timestamps = df["t"].cast(float).to_numpy()
                     polarities = df["polarity"].to_numpy()
 
                     # Verify data types
@@ -532,7 +532,7 @@ class TestEVT3FormatSupport(unittest.TestCase):
                 if len(df) > 0:
                     x_coords = df["x"].to_numpy()
                     y_coords = df["y"].to_numpy()
-                    timestamps = df["timestamp"].cast(float).to_numpy()
+                    timestamps = df["t"].cast(float).to_numpy()
                     polarities = df["polarity"].to_numpy()
 
                     # Expected values based on our test data

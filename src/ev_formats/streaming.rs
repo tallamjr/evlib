@@ -187,7 +187,7 @@ impl PolarsEventStreamer {
                         col("x").cast(DataType::Int16),
                         col("y").cast(DataType::Int16),
                         col("polarity").cast(DataType::Int8),
-                        col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+                        col("t").cast(DataType::Duration(TimeUnit::Microseconds)),
                     ])
                 })
                 .collect();
@@ -201,7 +201,7 @@ impl PolarsEventStreamer {
                 col("x").cast(DataType::Int16),
                 col("y").cast(DataType::Int16),
                 col("polarity").cast(DataType::Int8),
-                col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+                col("t").cast(DataType::Duration(TimeUnit::Microseconds)),
             ])
             .collect()?;
 
@@ -231,8 +231,7 @@ impl PolarsEventStreamer {
         // Use optimal data types for memory efficiency
         let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
         let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder =
-            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
@@ -302,7 +301,7 @@ impl PolarsEventStreamer {
     fn create_empty_dataframe(&self) -> PolarsResult<DataFrame> {
         let empty_x = Series::new("x".into(), Vec::<i16>::new());
         let empty_y = Series::new("y".into(), Vec::<i16>::new());
-        let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+        let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
         let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -471,7 +470,7 @@ mod tests {
 
         // Verify column names
         let columns: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
-        assert_eq!(columns, vec!["x", "y", "timestamp", "polarity"]);
+        assert_eq!(columns, vec!["x", "y", "t", "polarity"]);
     }
 
     #[cfg(feature = "polars")]

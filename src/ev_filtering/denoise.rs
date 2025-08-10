@@ -76,7 +76,7 @@ macro_rules! instrument {
 /// Polars column names for event data (consistent across all filtering modules)
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "timestamp";
+pub const COL_T: &str = "t";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Noise filtering methods

@@ -901,8 +901,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFr
             )
         })?;
 
-        // Convert polarity to boolean: 0 -> false, non-zero -> true
-        let polarity = if polarity_raw != 0 { 1 } else { -1 };
+        // For text files, preserve original polarity encoding (0/1)
+        // Don't convert to -1/1 like other formats
+        let polarity = polarity_raw;
 
         let event = Event { t, x, y, polarity };
 
@@ -1122,7 +1123,7 @@ fn dataframe_to_event_iterator(
     use crate::ev_formats::streaming::Event;
 
     let t_series = df
-        .column("timestamp")
+        .column("t")
         .map_err(|e| format!("Missing timestamp column: {}", e))?;
     let x_series = df
         .column("x")
@@ -1353,7 +1354,7 @@ pub mod python {
             // Create empty DataFrame with proper schema
             let empty_x = Series::new("x".into(), Vec::<i16>::new());
             let empty_y = Series::new("y".into(), Vec::<i16>::new());
-            let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+            let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
                 .cast(&DataType::Duration(TimeUnit::Microseconds))?;
             let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -1371,8 +1372,7 @@ pub mod python {
         // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
         let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
         let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder =
-            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
@@ -1651,16 +1651,16 @@ pub mod python {
             let t_end_micros = (t_end * 1_000_000.0) as i64;
 
             lazy_df = lazy_df.filter(
-                col("timestamp")
+                col("t")
                     .gt_eq(lit(t_start_micros))
-                    .and(col("timestamp").lt_eq(lit(t_end_micros))),
+                    .and(col("t").lt_eq(lit(t_end_micros))),
             );
         } else if let Some(t_start) = config.t_start {
             let t_start_micros = (t_start * 1_000_000.0) as i64;
-            lazy_df = lazy_df.filter(col("timestamp").gt_eq(lit(t_start_micros)));
+            lazy_df = lazy_df.filter(col("t").gt_eq(lit(t_start_micros)));
         } else if let Some(t_end) = config.t_end {
             let t_end_micros = (t_end * 1_000_000.0) as i64;
-            lazy_df = lazy_df.filter(col("timestamp").lt_eq(lit(t_end_micros)));
+            lazy_df = lazy_df.filter(col("t").lt_eq(lit(t_end_micros)));
         }
 
         // Apply spatial bounds
@@ -1685,7 +1685,7 @@ pub mod python {
 
         // Apply sorting if requested
         if config.sort {
-            lazy_df = lazy_df.sort(["timestamp"], SortMultipleOptions::default());
+            lazy_df = lazy_df.sort(["t"], SortMultipleOptions::default());
         }
 
         // Collect the result

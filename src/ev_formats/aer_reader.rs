@@ -502,7 +502,7 @@ impl AerReader {
             // TODO: Implement LoadConfig filtering for DataFrames
 
             if load_config.sort {
-                df = df.sort(["timestamp"], Default::default());
+                df = df.sort(["t"], Default::default());
             }
 
             df.collect().map_err(|e| {

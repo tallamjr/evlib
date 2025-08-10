@@ -110,8 +110,8 @@ def create_event_schema(
                 nullable=False,
                 description=f"Y coordinate (0 to {max_y} for {sensor_type})",
             ),
-            # Timestamp: format-dependent
-            "timestamp": timestamp_column,
+            # Timestamp: format-dependent - API uses 't' column name
+            "t": timestamp_column,
             # Polarity: Int8 with encoding-specific values
             "polarity": pa.Column(
                 pl.Int8,
@@ -174,7 +174,7 @@ def create_raw_event_schema(data_format: str = "float") -> pa.DataFrameSchema:
                 nullable=False,
                 description="Raw Y coordinate (16-bit unsigned)",
             ),
-            "timestamp": timestamp_column,
+            "t": timestamp_column,
             "polarity": pa.Column(
                 pl.Int8,  # Match evlib format
                 checks=[
@@ -229,7 +229,7 @@ def validate_events(
 
         # Auto-detect data format if not specified
         if data_format is None:
-            timestamp_dtype = df_to_validate["timestamp"].dtype
+            timestamp_dtype = df_to_validate["t"].dtype
             if timestamp_dtype == pl.Duration:
                 data_format = "duration"
             else:
@@ -277,13 +277,13 @@ def _collect_event_statistics(events_df: pl.LazyFrame) -> Dict[str, Any]:
     """Collect comprehensive statistics from event data."""
     try:
         # Handle Duration vs Float timestamps differently
-        timestamp_dtype = events_df.select(pl.col("timestamp")).collect().dtypes[0]
+        timestamp_dtype = events_df.select(pl.col("t")).collect().dtypes[0]
 
         if timestamp_dtype == pl.Duration:
             # Convert Duration to seconds for statistics
-            timestamp_expr = pl.col("timestamp").dt.total_microseconds() / 1_000_000
+            timestamp_expr = pl.col("t").dt.total_microseconds() / 1_000_000
         else:
-            timestamp_expr = pl.col("timestamp")
+            timestamp_expr = pl.col("t")
 
         stats_df = events_df.select(
             [
@@ -335,16 +335,14 @@ def _check_data_quality(events_df: pl.LazyFrame) -> list:
 
     try:
         # Check for timestamp monotonicity (informational only)
-        timestamp_dtype = events_df.select(pl.col("timestamp")).collect().dtypes[0]
+        timestamp_dtype = events_df.select(pl.col("t")).collect().dtypes[0]
 
         if timestamp_dtype == pl.Duration:
             backward_jumps = (
-                events_df.select((pl.col("timestamp").diff() < pl.duration(microseconds=0)).sum())
-                .collect()
-                .row(0)[0]
+                events_df.select((pl.col("t").diff() < pl.duration(microseconds=0)).sum()).collect().row(0)[0]
             )
         else:
-            backward_jumps = events_df.select((pl.col("timestamp").diff() < 0).sum()).collect().row(0)[0]
+            backward_jumps = events_df.select((pl.col("t").diff() < 0).sum()).collect().row(0)[0]
 
         if backward_jumps > 0:
             warnings.append(
@@ -406,7 +404,7 @@ def quick_validate_events(events_df: pl.LazyFrame, sample_size: int = 10000) -> 
             df_to_validate = events_df
 
         # Auto-detect data format
-        timestamp_dtype = df_to_validate["timestamp"].dtype
+        timestamp_dtype = df_to_validate["t"].dtype
         data_format = "duration" if timestamp_dtype == pl.Duration else "float"
 
         raw_schema = create_raw_event_schema(data_format=data_format)

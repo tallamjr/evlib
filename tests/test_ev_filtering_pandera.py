@@ -62,8 +62,8 @@ if PANDERA_AVAILABLE:
         x: pl.Int16 = Field(ge=0, le=2048, description="X coordinate in pixels")
         y: pl.Int16 = Field(ge=0, le=2000, description="Y coordinate in pixels")
 
-        # Timestamp column (microseconds duration)
-        timestamp: pl.Duration = Field(description="Timestamp as duration in microseconds")
+        # Timestamp column (microseconds duration) - API uses 't' column name
+        t: pl.Duration = Field(description="Timestamp as duration in microseconds")
 
         # Polarity column (binary values)
         polarity: pl.Int8 = Field(isin=[-1, 1], description="Event polarity (-1=negative, 1=positive)")
@@ -80,7 +80,7 @@ if PANDERA_AVAILABLE:
         y: pl.Int16 = Field(ge=0, le=2000, description="Y coordinate (filtered)")
 
         # Timestamps should still be valid and ordered
-        timestamp: pl.Duration = Field(description="Timestamp as duration (filtered)")
+        t: pl.Duration = Field(description="Timestamp as duration (filtered)")
 
         class Config:
             strict = True
@@ -96,7 +96,7 @@ if PANDERA_AVAILABLE:
         """Schema for temporally filtered events within time window."""
 
         # Time should be within specified window
-        timestamp: pl.Duration = Field(description="Timestamp within time window")
+        t: pl.Duration = Field(description="Timestamp within time window")
 
 else:
     # Dummy classes if pandera is not available
@@ -241,8 +241,8 @@ def validate_monotonic_timestamps(df: Union[pl.LazyFrame, pl.DataFrame], name: s
     # Check for non-monotonic timestamps
     check_df = df_lazy.select(
         [
-            pl.col("timestamp"),
-            (pl.col("timestamp").diff() < pl.duration(microseconds=0)).sum().alias("backward_jumps"),
+            pl.col("t"),
+            (pl.col("t").diff() < pl.duration(microseconds=0)).sum().alias("backward_jumps"),
         ]
     ).collect()
 
@@ -322,8 +322,8 @@ class TestTemporalFiltering:
         # Get time range (convert duration to seconds)
         time_stats = sample_events_df.select(
             [
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
                 pl.len().alias("count"),
             ]
         ).collect()
@@ -362,8 +362,8 @@ class TestTemporalFiltering:
         # Validate time window
         filtered_stats = filtered_df.select(
             [
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
             ]
         ).collect()
 
@@ -654,8 +654,8 @@ class TestCombinedFiltering:
                 pl.col("x").max().alias("x_max"),
                 pl.col("y").min().alias("y_min"),
                 pl.col("y").max().alias("y_max"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
                 pl.len().alias("count"),
             ]
         ).collect()
@@ -851,8 +851,8 @@ class TestPerformanceAndEdgeCases:
         # Apply mild filtering that should preserve most data
         stats = sample_events_df.select(
             [
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
-                (pl.col("timestamp").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).min().alias("t_min"),
+                (pl.col("t").dt.total_microseconds() / 1_000_000).max().alias("t_max"),
             ]
         ).collect()
 
@@ -873,9 +873,7 @@ class TestPerformanceAndEdgeCases:
             # Check data types are preserved
             assert filtered_df["x"].dtype == original_df["x"].dtype, "X dtype should be preserved"
             assert filtered_df["y"].dtype == original_df["y"].dtype, "Y dtype should be preserved"
-            assert (
-                filtered_df["timestamp"].dtype == original_df["timestamp"].dtype
-            ), "Timestamp dtype should be preserved"
+            assert filtered_df["t"].dtype == original_df["t"].dtype, "Timestamp dtype should be preserved"
             assert (
                 filtered_df["polarity"].dtype == original_df["polarity"].dtype
             ), "Polarity dtype should be preserved"

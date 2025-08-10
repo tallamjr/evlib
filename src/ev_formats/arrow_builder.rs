@@ -64,11 +64,7 @@ pub fn create_event_arrow_schema() -> Schema {
     Schema::new(vec![
         Field::new("x", DataType::Int16, false),
         Field::new("y", DataType::Int16, false),
-        Field::new(
-            "timestamp",
-            DataType::Duration(TimeUnit::Microsecond),
-            false,
-        ),
+        Field::new("t", DataType::Duration(TimeUnit::Microsecond), false),
         Field::new("polarity", DataType::Int8, false),
     ])
 }
@@ -603,7 +599,7 @@ mod tests {
         assert_eq!(schema.fields().len(), 4);
 
         let field_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-        assert_eq!(field_names, vec!["x", "y", "timestamp", "polarity"]);
+        assert_eq!(field_names, vec!["x", "y", "t", "polarity"]);
     }
 
     #[cfg(feature = "arrow")]
