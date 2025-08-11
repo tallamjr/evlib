@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "evlib"
-version = "0.7.7"
+version = "0.7.8"
 dependencies = [
  "arrow",
  "arrow-array",
