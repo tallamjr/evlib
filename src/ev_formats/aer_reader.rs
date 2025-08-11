@@ -13,11 +13,14 @@
 // - GenX320 sensor documentation
 // - jAER project specifications
 
-use crate::ev_core::{Event, Events};
-use crate::ev_formats::LoadConfig;
+use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
+use crate::ev_formats::{EventFormat, LoadConfig};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 
 /// Configuration for AER reader
 #[derive(Debug, Clone)]
@@ -228,7 +231,7 @@ impl AerReader {
     }
 
     /// Read AER events from a file
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> AerResult<(Events, AerMetadata)> {
+    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> AerResult<(DataFrame, AerMetadata)> {
         let mut file = File::open(path.as_ref())?;
         let file_size = file.metadata()?.len();
 
@@ -261,88 +264,121 @@ impl AerReader {
     }
 
     /// Parse AER events from binary data
-    fn parse_events(&self, data: &[u8], file_size: u64) -> AerResult<(Events, AerMetadata)> {
+    fn parse_events(&self, data: &[u8], file_size: u64) -> AerResult<(DataFrame, AerMetadata)> {
         if self.config.bytes_per_event != 2 && self.config.bytes_per_event != 4 {
             return Err(AerError::InvalidBytesPerEvent(self.config.bytes_per_event));
         }
 
-        let event_count = data.len() / self.config.bytes_per_event;
-        let mut events = Events::with_capacity(event_count);
+        #[cfg(feature = "polars")]
+        {
+            let event_count = data.len() / self.config.bytes_per_event;
+            let mut builder = EventDataFrameBuilder::new(EventFormat::AER, event_count);
 
-        // Statistics for metadata
-        let mut min_x = u16::MAX;
-        let mut min_y = u16::MAX;
-        let mut max_x = 0u16;
-        let mut max_y = 0u16;
-        let mut positive_count = 0;
-        let mut negative_count = 0;
+            // Statistics for metadata
+            let mut min_x = u16::MAX;
+            let mut min_y = u16::MAX;
+            let mut max_x = 0u16;
+            let mut max_y = 0u16;
+            let mut positive_count = 0;
+            let mut negative_count = 0;
+            let mut valid_events = 0;
 
-        // Process events
-        for i in 0..event_count {
-            let offset = i * self.config.bytes_per_event;
+            // Collect parsed events for timestamp generation
+            let mut parsed_events = Vec::with_capacity(event_count);
 
-            match self.parse_single_event(&data[offset..offset + self.config.bytes_per_event], i) {
-                Ok(event) => {
-                    // Update statistics
-                    min_x = min_x.min(event.x);
-                    min_y = min_y.min(event.y);
-                    max_x = max_x.max(event.x);
-                    max_y = max_y.max(event.y);
+            // Process events
+            for i in 0..event_count {
+                let offset = i * self.config.bytes_per_event;
 
-                    if event.polarity {
-                        positive_count += 1;
-                    } else {
-                        negative_count += 1;
+                match self
+                    .parse_single_event(&data[offset..offset + self.config.bytes_per_event], i)
+                {
+                    Ok((x, y, t, polarity)) => {
+                        // Update statistics
+                        min_x = min_x.min(x);
+                        min_y = min_y.min(y);
+                        max_x = max_x.max(x);
+                        max_y = max_y.max(y);
+
+                        if polarity {
+                            positive_count += 1;
+                        } else {
+                            negative_count += 1;
+                        }
+
+                        parsed_events.push((x, y, t, polarity));
+                        valid_events += 1;
                     }
-
-                    events.push(event);
-                }
-                Err(e) => {
-                    if self.config.skip_invalid_events {
-                        continue;
-                    } else {
-                        return Err(e);
+                    Err(e) => {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
-        }
 
-        // Generate timestamps if requested
-        if self.config.generate_timestamps {
-            self.generate_timestamps(&mut events)?;
-        }
+            // Generate timestamps if requested
+            if self.config.generate_timestamps {
+                self.generate_timestamps_for_parsed_events(&mut parsed_events)?;
+            }
 
-        let timestamp_range = if !events.is_empty() {
-            Some((events[0].t, events[events.len() - 1].t))
-        } else {
-            None
-        };
+            // Add events to builder
+            for (x, y, timestamp, polarity) in &parsed_events {
+                builder.add_event(*x, *y, *timestamp, *polarity);
+            }
 
-        let coordinate_bounds = if !events.is_empty() {
-            Some((min_x, min_y, max_x, max_y))
-        } else {
-            None
-        };
+            let events = builder.build().map_err(|e| {
+                AerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Failed to build DataFrame: {}", e),
+                ))
+            })?;
 
-        let metadata = AerMetadata {
-            file_size,
-            event_count: events.len(),
-            bytes_per_event: self.config.bytes_per_event,
-            endianness: if self.config.big_endian {
-                "big".to_string()
+            let timestamp_range = if !parsed_events.is_empty() {
+                Some((parsed_events[0].2, parsed_events[parsed_events.len() - 1].2))
             } else {
-                "little".to_string()
-            },
-            coordinate_bounds,
-            timestamp_range,
-            polarity_distribution: Some((positive_count, negative_count)),
-        };
+                None
+            };
 
-        Ok((events, metadata))
+            let coordinate_bounds = if valid_events > 0 {
+                Some((min_x, min_y, max_x, max_y))
+            } else {
+                None
+            };
+
+            let metadata = AerMetadata {
+                file_size,
+                event_count: valid_events,
+                bytes_per_event: self.config.bytes_per_event,
+                endianness: if self.config.big_endian {
+                    "big".to_string()
+                } else {
+                    "little".to_string()
+                },
+                coordinate_bounds,
+                timestamp_range,
+                polarity_distribution: Some((positive_count, negative_count)),
+            };
+
+            Ok((events, metadata))
+        }
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(AerError::Io(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Polars feature not enabled",
+            )))
+        }
     }
 
     /// Parse a single AER event from binary data
-    fn parse_single_event(&self, data: &[u8], _event_index: usize) -> AerResult<Event> {
+    fn parse_single_event(
+        &self,
+        data: &[u8],
+        _event_index: usize,
+    ) -> AerResult<(u16, u16, f64, bool)> {
         if data.len() < self.config.bytes_per_event {
             return Err(AerError::InsufficientData(
                 self.config.bytes_per_event,
@@ -390,19 +426,15 @@ impl AerReader {
             ));
         }
 
-        // Create event with placeholder timestamp (will be generated later if needed)
-        let event = Event {
-            t: 0.0, // Will be set by generate_timestamps if needed
-            x,
-            y,
-            polarity,
-        };
-
-        Ok(event)
+        // Return tuple with placeholder timestamp (will be generated later if needed)
+        Ok((x, y, 0.0, polarity))
     }
 
-    /// Generate timestamps for events based on configuration
-    fn generate_timestamps(&self, events: &mut [Event]) -> AerResult<()> {
+    /// Generate timestamps for parsed events based on configuration
+    fn generate_timestamps_for_parsed_events(
+        &self,
+        events: &mut [(u16, u16, f64, bool)],
+    ) -> AerResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -410,14 +442,14 @@ impl AerReader {
         match &self.config.timestamp_mode {
             TimestampMode::Sequential => {
                 for (i, event) in events.iter_mut().enumerate() {
-                    event.t = self.config.start_timestamp + (i as f64 * self.config.time_increment);
+                    event.2 = self.config.start_timestamp + (i as f64 * self.config.time_increment);
                 }
             }
             TimestampMode::Uniform => {
                 let total_time = events.len() as f64 * self.config.time_increment;
                 let event_count = events.len();
                 for (i, event) in events.iter_mut().enumerate() {
-                    event.t =
+                    event.2 =
                         self.config.start_timestamp + (i as f64 / event_count as f64) * total_time;
                 }
             }
@@ -431,7 +463,7 @@ impl AerReader {
                     let u: f64 = (fastrand::f64() + 1e-10).ln(); // Add small value to avoid log(0)
                     let interval = -u / lambda;
                     current_time += interval;
-                    event.t = current_time;
+                    event.2 = current_time;
                 }
             }
             TimestampMode::Custom(timestamps) => {
@@ -444,7 +476,7 @@ impl AerReader {
                 }
 
                 for (event, &timestamp) in events.iter_mut().zip(timestamps.iter()) {
-                    event.t = timestamp;
+                    event.2 = timestamp;
                 }
             }
         }
@@ -457,18 +489,33 @@ impl AerReader {
         &self,
         path: P,
         load_config: &LoadConfig,
-    ) -> AerResult<Events> {
-        let (mut events, _metadata) = self.read_file(path)?;
+    ) -> AerResult<DataFrame> {
+        let (events, _metadata) = self.read_file(path)?;
 
-        // Apply filtering from LoadConfig
-        events.retain(|event| load_config.passes_filters(event));
+        #[cfg(feature = "polars")]
+        {
+            // Apply filtering and sorting using DataFrame operations
+            let mut df = events.lazy();
 
-        // Sort if requested
-        if load_config.sort {
-            events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+            // Apply LoadConfig filters (this would need to be implemented for DataFrame)
+            // For now, just return the DataFrame as-is
+            // TODO: Implement LoadConfig filtering for DataFrames
+
+            if load_config.sort {
+                df = df.sort(["t"], Default::default());
+            }
+
+            df.collect().map_err(|e| {
+                AerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Failed to process DataFrame: {}", e),
+                ))
+            })
         }
-
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Ok(events)
+        }
     }
 
     /// Get configuration
@@ -484,7 +531,7 @@ impl Default for AerReader {
 }
 
 /// Convenience function to read AER file with default configuration
-pub fn read_aer_file<P: AsRef<Path>>(path: P) -> AerResult<(Events, AerMetadata)> {
+pub fn read_aer_file<P: AsRef<Path>>(path: P) -> AerResult<(DataFrame, AerMetadata)> {
     let reader = AerReader::new();
     reader.read_file(path)
 }
@@ -493,7 +540,7 @@ pub fn read_aer_file<P: AsRef<Path>>(path: P) -> AerResult<(Events, AerMetadata)
 pub fn read_aer_file_with_config<P: AsRef<Path>>(
     path: P,
     config: AerConfig,
-) -> AerResult<(Events, AerMetadata)> {
+) -> AerResult<(DataFrame, AerMetadata)> {
     let reader = AerReader::with_config(config);
     reader.read_file(path)
 }
@@ -653,7 +700,7 @@ mod tests {
 
         let (events, metadata) = reader.parse_events(&data, data.len() as u64).unwrap();
 
-        assert_eq!(events.len(), 2); // Only valid events should be included
+        assert_eq!(events.height(), 2); // Only valid events should be included
         assert_eq!(metadata.event_count, 2);
         assert_eq!(events[0].x, 50);
         assert_eq!(events[0].y, 75);
@@ -682,7 +729,7 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
 
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.height(), 3);
         assert_eq!(events[0].t, 1.0);
         assert_eq!(events[1].t, 1.001);
         assert_eq!(events[2].t, 1.002);
@@ -709,7 +756,7 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
 
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.height(), 3);
         assert_eq!(events[0].t, 0.0);
         assert_eq!(events[1].t, 0.003);
         assert_eq!(events[2].t, 0.006);
@@ -769,7 +816,7 @@ mod tests {
 
         let (events, metadata) = reader.read_file(temp_file.path()).unwrap();
 
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.height(), 3);
         assert_eq!(metadata.event_count, 3);
         assert_eq!(metadata.bytes_per_event, 4);
         assert_eq!(metadata.file_size, 12);
@@ -837,7 +884,7 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
 
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.height(), 3);
         assert_eq!(events[0].t, 0.1);
         assert_eq!(events[1].t, 0.5);
         assert_eq!(events[2].t, 1.2);
@@ -880,7 +927,7 @@ mod tests {
 
         let (events, metadata) = reader.read_file(temp_file.path()).unwrap();
 
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.height(), 2);
         assert_eq!(metadata.event_count, 2);
     }
 }

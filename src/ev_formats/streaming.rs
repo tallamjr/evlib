@@ -1,5 +1,18 @@
-use crate::ev_core::Event;
 use crate::ev_formats::EventFormat;
+
+/// Simple Event structure for streaming operations
+/// This is a minimal event representation used primarily for streaming and benchmark operations
+#[derive(Debug, Clone, Copy)]
+pub struct Event {
+    /// Timestamp in seconds
+    pub t: f64,
+    /// X coordinate (column)
+    pub x: u16,
+    /// Y coordinate (row)
+    pub y: u16,
+    /// Polarity (+1 or -1, stored as i8)
+    pub polarity: i8,
+}
 
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -174,7 +187,7 @@ impl PolarsEventStreamer {
                         col("x").cast(DataType::Int16),
                         col("y").cast(DataType::Int16),
                         col("polarity").cast(DataType::Int8),
-                        col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+                        col("t").cast(DataType::Duration(TimeUnit::Microseconds)),
                     ])
                 })
                 .collect();
@@ -188,7 +201,7 @@ impl PolarsEventStreamer {
                 col("x").cast(DataType::Int16),
                 col("y").cast(DataType::Int16),
                 col("polarity").cast(DataType::Int8),
-                col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+                col("t").cast(DataType::Duration(TimeUnit::Microseconds)),
             ])
             .collect()?;
 
@@ -218,8 +231,7 @@ impl PolarsEventStreamer {
         // Use optimal data types for memory efficiency
         let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
         let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder =
-            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
@@ -229,7 +241,7 @@ impl PolarsEventStreamer {
             y_builder.append_value(event.y as i16);
             timestamp_builder.append_value(self.convert_timestamp(event.t));
             // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
+            polarity_builder.append_value(event.polarity);
         }
 
         // Build Series from builders
@@ -289,7 +301,7 @@ impl PolarsEventStreamer {
     fn create_empty_dataframe(&self) -> PolarsResult<DataFrame> {
         let empty_x = Series::new("x".into(), Vec::<i16>::new());
         let empty_y = Series::new("y".into(), Vec::<i16>::new());
-        let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+        let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
         let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -381,7 +393,7 @@ pub fn estimate_memory_usage(event_count: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
 
     #[test]
     fn test_calculate_optimal_chunk_size() {
@@ -433,19 +445,19 @@ mod tests {
                 t: 0.001,
                 x: 100,
                 y: 200,
-                polarity: true,
+                polarity: 1,
             },
             Event {
                 t: 0.002,
                 x: 101,
                 y: 201,
-                polarity: false,
+                polarity: -1,
             },
             Event {
                 t: 0.003,
                 x: 102,
                 y: 202,
-                polarity: true,
+                polarity: 1,
             },
         ];
 
@@ -458,7 +470,7 @@ mod tests {
 
         // Verify column names
         let columns: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
-        assert_eq!(columns, vec!["x", "y", "timestamp", "polarity"]);
+        assert_eq!(columns, vec!["x", "y", "t", "polarity"]);
     }
 
     #[cfg(feature = "polars")]

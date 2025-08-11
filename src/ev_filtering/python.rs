@@ -39,7 +39,7 @@ pub fn filter_by_time_lf_py(
     #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
-        let lazy_frame = crate::ev_core::python::extract_lazy_frame(events_lf)?;
+        let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
 
         // Build temporal filter configuration
         let mut config = FilterConfig::new();
@@ -62,7 +62,7 @@ pub fn filter_by_time_lf_py(
         };
 
         // Convert back to Python LazyFrame
-        crate::ev_core::python::lazy_frame_to_python(filtered_lf, events_lf.py())
+        crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
 
     #[cfg(not(feature = "polars"))]
@@ -98,7 +98,7 @@ pub fn filter_by_roi_lf_py(
     #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
-        let lazy_frame = crate::ev_core::python::extract_lazy_frame(events_lf)?;
+        let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
 
         // Build spatial filter configuration
         let roi = RegionOfInterest::new(x_min as u16, x_max as u16, y_min as u16, y_max as u16)
@@ -116,7 +116,7 @@ pub fn filter_by_roi_lf_py(
         };
 
         // Convert back to Python LazyFrame
-        crate::ev_core::python::lazy_frame_to_python(filtered_lf, events_lf.py())
+        crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
 
     #[cfg(not(feature = "polars"))]
@@ -146,7 +146,7 @@ pub fn filter_by_polarity_lf_py(
     #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
-        let lazy_frame = crate::ev_core::python::extract_lazy_frame(events_lf)?;
+        let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
 
         // Handle both single int and list of ints for polarity
         let polarity_values: Vec<i8> = if let Ok(single_val) = polarity.extract::<i64>() {
@@ -175,7 +175,7 @@ pub fn filter_by_polarity_lf_py(
         };
 
         // Convert back to Python LazyFrame
-        crate::ev_core::python::lazy_frame_to_python(filtered_lf, events_lf.py())
+        crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
 
     #[cfg(not(feature = "polars"))]
@@ -205,7 +205,7 @@ pub fn filter_hot_pixels_lf_py(
     #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
-        let lazy_frame = crate::ev_core::python::extract_lazy_frame(events_lf)?;
+        let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
 
         let percentile = threshold_percentile.unwrap_or(99.9);
         let hot_pixel_filter = HotPixelFilter::percentile(percentile);
@@ -221,7 +221,7 @@ pub fn filter_hot_pixels_lf_py(
         };
 
         // Convert back to Python LazyFrame
-        crate::ev_core::python::lazy_frame_to_python(filtered_lf, events_lf.py())
+        crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
 
     #[cfg(not(feature = "polars"))]
@@ -253,7 +253,7 @@ pub fn filter_noise_lf_py(
     #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
-        let lazy_frame = crate::ev_core::python::extract_lazy_frame(events_lf)?;
+        let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
 
         let _denoise_method = match method.unwrap_or("refractory") {
             "refractory" => DenoiseMethod::RefractoryPeriod,
@@ -284,7 +284,7 @@ pub fn filter_noise_lf_py(
         };
 
         // Convert back to Python LazyFrame
-        crate::ev_core::python::lazy_frame_to_python(filtered_lf, events_lf.py())
+        crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
 
     #[cfg(not(feature = "polars"))]

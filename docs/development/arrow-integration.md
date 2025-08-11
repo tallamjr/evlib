@@ -87,7 +87,7 @@ df_from_arrow = pl.from_arrow(arrow_table)
 events_dict = {
     "x": df_from_arrow['x'].to_numpy(),
     "y": df_from_arrow['y'].to_numpy(),
-    "timestamp": df_from_arrow['timestamp'].to_numpy(),
+    "t": df_from_arrow['t'].to_numpy(),
     "polarity": df_from_arrow['polarity'].to_numpy()
 }
 
@@ -133,7 +133,7 @@ The Arrow schema exactly matches the existing Polars schema for perfect compatib
 Schema::new(vec![
     Field::new("x", DataType::Int16, false),
     Field::new("y", DataType::Int16, false),
-    Field::new("timestamp", DataType::Duration(TimeUnit::Microsecond), false),
+    Field::new("t", DataType::Duration(TimeUnit::Microsecond), false),
     Field::new("polarity", DataType::Int8, false),
 ])
 ```
@@ -144,7 +144,7 @@ Schema::new(vec![
 |-----------|------------------------------|-------|-------------|
 | x         | Int16                        | 2     | Pixel x coordinate |
 | y         | Int16                        | 2     | Pixel y coordinate |
-| timestamp | Duration(Microseconds)       | 8     | Event timestamp |
+| t | Duration(Microseconds)       | 8     | Event time |
 | polarity  | Int8                         | 1     | Event polarity |
 | **Total** |                              | **13** | Core data per event |
 | **Arrow Overhead** |                   | **~2** | Array metadata |
@@ -159,9 +159,9 @@ Arrow implementation maintains the same polarity encoding as the existing Polars
 
 ### Timestamp Conversion
 
-Automatic timestamp handling:
-- **If timestamp ≥ 1,000,000**: Assume microseconds, use directly
-- **If timestamp < 1,000,000**: Assume seconds, multiply by 1,000,000
+Automatic time handling:
+- **If time value ≥ 1,000,000**: Assume microseconds, use directly
+- **If time value < 1,000,000**: Assume seconds, multiply by 1,000,000
 - **Output**: Always Duration(Microseconds) for consistency
 
 ## Building with Arrow Support
@@ -265,8 +265,8 @@ df.write_parquet("output.parquet")
 # Export to CSV (if needed) - convert Duration to numeric first
 import polars as pl
 df_for_csv = df.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("timestamp_us")
-]).drop("timestamp")
+    pl.col("t").dt.total_microseconds().alias("time_us")
+]).drop("t")
 df_for_csv.write_csv("output.csv")
 
 # Export to HDF5 via PyTables (if needed)

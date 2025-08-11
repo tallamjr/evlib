@@ -1,4 +1,4 @@
-name: Python Tests
+name: Python
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
       - "**.py"
       - "**.rs"
       - "**.ipynb"
+      - "docs/**"
+      - "README.md"
       - "pyproject.toml"
       - "pytest.ini"
   pull_request:
@@ -14,6 +16,8 @@ on:
       - "**.py"
       - "**.rs"
       - "**.ipynb"
+      - "docs/**"
+      - "README.md"
       - "pyproject.toml"
       - "pytest.ini"
   workflow_dispatch:
@@ -56,6 +60,11 @@ jobs:
           source .venv/bin/activate
           uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5
           uv run pytest --nbmake examples/*.ipynb -v --no-cov
+
+      - name: Test documentation examples
+        run: |
+          source .venv/bin/activate
+          uv run pytest --markdown-docs README.md docs/ -v --tb=short --maxfail=10
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'

@@ -78,7 +78,7 @@ def periodic_time_subsampling(events, keep_ratio=0.5, window_size_ms=10.0):
     window_size_us = int(window_size_ms * 1000)
 
     # Get time range
-    timestamps_us = df["timestamp"].dt.total_microseconds()
+    timestamps_us = df["t"].dt.total_microseconds()
     t_min = timestamps_us.min()
     _ = timestamps_us.max()  # t_max unused but kept for potential future use
 
@@ -127,7 +127,7 @@ def adaptive_time_subsampling(events, target_reduction=0.5, window_size_ms=5.0):
     window_size_us = int(window_size_ms * 1000)
 
     # Get time range
-    timestamps_us = df["timestamp"].dt.total_microseconds()
+    timestamps_us = df["t"].dt.total_microseconds()
     t_min = timestamps_us.min()
     _ = timestamps_us.max()  # t_max unused but kept for potential future use
 
@@ -333,7 +333,7 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
     pos_sampled = pos_events.sample(fraction=reduction_factor, seed=seed)
     neg_sampled = neg_events.sample(fraction=reduction_factor, seed=seed + 1)
 
-    stratified_sampled = pl.concat([pos_sampled, neg_sampled]).sort("timestamp")
+    stratified_sampled = pl.concat([pos_sampled, neg_sampled]).sort("t")
     results["stratified"] = stratified_sampled.lazy()
     print(f"   Positive events: {len(pos_events):,} → {len(pos_sampled):,}")
     print(f"   Negative events: {len(neg_events):,} → {len(neg_sampled):,}")
@@ -356,11 +356,14 @@ def combined_filtering_example():
         print(f"Data file {data_file} not found. Skipping combined example.")
         return
 
-    # Step 1: Standard evlib preprocessing
+    # Step 1: Standard evlib preprocessing using filter chaining
     print("\n1. Standard evlib preprocessing:")
-    preprocessed = evlib.preprocess_events(
-        data_file, t_start=0.1, t_end=0.8, remove_hot_pixels=True, remove_noise=True
-    )
+    import evlib.filtering as evf
+
+    events = evlib.load_events(data_file)
+    filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.8)
+    filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
+    preprocessed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
 
     # Step 2: Apply Polars native subsampling
     print("\n2. Apply Polars native sampling:")

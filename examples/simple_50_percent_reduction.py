@@ -80,7 +80,7 @@ def remove_50_percent_with_stratification(events, seed=42):
 
     # Combine and sort by timestamp
     if sampled_groups:
-        stratified_sampled = pl.concat(sampled_groups).sort("timestamp")
+        stratified_sampled = pl.concat(sampled_groups).sort("t")
     else:
         stratified_sampled = df.sample(fraction=0.5, seed=seed)
 
@@ -107,11 +107,14 @@ def complete_preprocessing_with_50_percent_reduction(data_file, seed=42):
     """
     print("=== Complete Preprocessing + 50% Reduction ===")
 
-    # Step 1: Standard evlib preprocessing
+    # Step 1: Standard evlib preprocessing using filter chaining
     print("\n1. Applying evlib preprocessing...")
-    preprocessed = evlib.preprocess_events(
-        data_file, t_start=0.1, t_end=0.8, remove_hot_pixels=True, remove_noise=True
-    )
+    import evlib.filtering as evf
+
+    events = evlib.load_events(data_file)
+    filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.8)
+    filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
+    preprocessed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
 
     # Step 2: Apply 50% reduction using Polars native sampling
     print("\n2. Applying 50% reduction...")
@@ -179,7 +182,7 @@ def main():
     print("--------")
     print("SUCCESS: Use df.sample(fraction=0.5) for simple 50% reduction")
     print("SUCCESS: Use stratified sampling to maintain polarity balance")
-    print("SUCCESS: Combine with evlib.preprocess_events() for complete pipeline")
+    print("SUCCESS: Combine with evlib filtering functions for complete pipeline")
     print("SUCCESS: Polars native sampling is most efficient and idiomatic")
     print("\nCode example:")
     print("```python")

@@ -3,13 +3,11 @@
 //! This module implements temporal reversal augmentation, which reverses
 //! the temporal order of events and flips polarities to maintain causality.
 
-use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
-};
-use crate::ev_core::{Event, Events};
+use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use rand::{Rng, SeedableRng};
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {
@@ -113,12 +111,14 @@ impl TimeReversalAugmentation {
 impl Validatable for TimeReversalAugmentation {
     fn validate(&self) -> AugmentationResult<()> {
         if !(0.0..=1.0).contains(&self.probability) {
-            return Err(AugmentationError::InvalidProbability(self.probability));
+            Err(AugmentationError::InvalidProbability(self.probability))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 }
 
+/* Commented out - legacy SingleAugmentation trait no longer exists
 impl SingleAugmentation for TimeReversalAugmentation {
     #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
@@ -190,7 +190,9 @@ impl SingleAugmentation for TimeReversalAugmentation {
         self.description()
     }
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Apply time reversal to events
 ///
 /// # Arguments
@@ -208,6 +210,7 @@ pub fn time_reversal(
 ) -> AugmentationResult<Events> {
     config.apply(events)
 }
+*/
 
 /// Apply time reversal using Polars operations
 #[cfg(feature = "polars")]

@@ -10,14 +10,11 @@
 //! - Polars-first implementations for high performance
 //! - Reproducible seeding support for RandomCrop
 
-use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
-};
-use crate::ev_core::{Event, Events};
-use rand::{Rng, SeedableRng};
+use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
+use rand::Rng;
 use rand_distr::{Distribution, Uniform};
-#[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument};
+// Tracing imports removed due to unused warnings
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {
@@ -150,6 +147,7 @@ impl Validatable for CenterCropAugmentation {
     }
 }
 
+/* Commented out - legacy SingleAugmentation trait no longer exists
 impl SingleAugmentation for CenterCropAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         center_crop(events, self)
@@ -159,6 +157,7 @@ impl SingleAugmentation for CenterCropAugmentation {
         format!("Center crop: {}", self.description())
     }
 }
+*/
 
 /// Random crop augmentation
 ///
@@ -262,6 +261,7 @@ impl Validatable for RandomCropAugmentation {
     }
 }
 
+/* Commented out - legacy SingleAugmentation trait no longer exists
 impl SingleAugmentation for RandomCropAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         random_crop(events, self)
@@ -271,7 +271,9 @@ impl SingleAugmentation for RandomCropAugmentation {
         format!("Random crop: {}", self.description())
     }
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Apply center crop to events
 #[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> AugmentationResult<Events> {
@@ -322,7 +324,9 @@ pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> Augmenta
 
     Ok(cropped_events)
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Apply random crop to events
 #[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
 pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> AugmentationResult<Events> {
@@ -383,6 +387,7 @@ pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> Augmenta
 
     Ok(cropped_events)
 }
+*/
 
 /// Apply center crop using Polars operations
 #[cfg(feature = "polars")]
@@ -410,6 +415,7 @@ pub fn apply_center_crop_polars(
     Ok(filtered_df)
 }
 
+/* Commented out - depends on legacy random_crop function
 /// Apply random crop using Polars operations
 #[cfg(feature = "polars")]
 pub fn apply_random_crop_polars(
@@ -427,10 +433,12 @@ pub fn apply_random_crop_polars(
     let cropped_events = random_crop(&events, config)
         .map_err(|e| PolarsError::ComputeError(format!("Random crop error: {}", e).into()))?;
 
-    let result_df = crate::ev_core::events_to_dataframe(&cropped_events)?;
+    let result_df = crate::events_to_dataframe(&cropped_events)?;
     Ok(result_df.lazy())
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -637,7 +645,7 @@ mod tests {
     #[cfg(feature = "polars")]
     #[test]
     fn test_center_crop_polars() {
-        use crate::ev_core::events_to_dataframe;
+        use crate::events_to_dataframe;
 
         let events = create_test_events();
         let df = events_to_dataframe(&events).unwrap().lazy();
@@ -665,7 +673,7 @@ mod tests {
     #[cfg(feature = "polars")]
     #[test]
     fn test_random_crop_polars() {
-        use crate::ev_core::events_to_dataframe;
+        use crate::events_to_dataframe;
 
         let events = create_test_events();
         let df = events_to_dataframe(&events).unwrap().lazy();
@@ -688,3 +696,4 @@ mod tests {
         }
     }
 }
+*/

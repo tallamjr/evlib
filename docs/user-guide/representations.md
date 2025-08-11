@@ -30,7 +30,7 @@ events_df = events.collect()
 # Use a subset that spans sufficient time for window creation
 # In test environments, we may have limited data, so adjust window size
 total_events = len(events_df)
-time_span = (events_df['timestamp'].max() - events_df['timestamp'].min()).total_seconds()
+time_span = (events_df['t'].max() - events_df['t'].min()).total_seconds()
 
 # Adjust window duration based on available data
 if time_span < 0.1:  # Less than 100ms of data
@@ -81,7 +81,7 @@ else:
     print(f"Using all {total_events} available events for testing")
 
 # Calculate appropriate window duration
-time_range = events_df['timestamp'].max() - events_df['timestamp'].min()
+time_range = events_df['t'].max() - events_df['t'].min()
 time_span_sec = time_range.total_seconds()
 
 if time_span_sec < 0.1:  # Less than 100ms of data

@@ -13,8 +13,12 @@
 /// - Prophesee EVT3 specification
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt3.html
 /// - OpenEB standalone samples
-use crate::ev_core::{Event, Events};
+use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
+use crate::ev_formats::EventFormat;
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -423,7 +427,10 @@ impl Evt3Reader {
     }
 
     /// Read EVT3 file and return events with metadata
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<(Events, Evt3Metadata), Evt3Error> {
+    pub fn read_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(DataFrame, Evt3Metadata), Evt3Error> {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
@@ -444,7 +451,7 @@ impl Evt3Reader {
             file_size,
             header_size,
             data_size: file_size - header_size,
-            estimated_event_count: Some(events.len() as u64),
+            estimated_event_count: Some(events.height() as u64),
             ..metadata
         };
 
@@ -456,18 +463,69 @@ impl Evt3Reader {
         &self,
         path: P,
         load_config: &LoadConfig,
-    ) -> Result<Events, Evt3Error> {
-        let (mut events, _) = self.read_file(path)?;
+    ) -> Result<DataFrame, Evt3Error> {
+        let (df, _) = self.read_file(path)?;
 
-        // Apply LoadConfig filters
-        events.retain(|event| load_config.passes_filters(event));
+        #[cfg(feature = "polars")]
+        {
+            use polars::prelude::*;
+            let mut df = df;
 
-        // Sort if requested
-        if load_config.sort {
-            events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+            // Apply time window filter if specified
+            if let (Some(start), Some(end)) = (load_config.t_start, load_config.t_end) {
+                df = df
+                    .lazy()
+                    .filter(col("t").gt_eq(lit(start)).and(col("t").lt_eq(lit(end))))
+                    .collect()
+                    .map_err(|e| Evt3Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Time window filter failed: {}", e),
+                    })?;
+            }
+
+            // Apply bounding box filter if specified
+            if let (Some(x_min), Some(x_max), Some(y_min), Some(y_max)) = (
+                load_config.min_x,
+                load_config.max_x,
+                load_config.min_y,
+                load_config.max_y,
+            ) {
+                df = df
+                    .lazy()
+                    .filter(
+                        col("x")
+                            .gt_eq(lit(x_min))
+                            .and(col("x").lt_eq(lit(x_max)))
+                            .and(col("y").gt_eq(lit(y_min)))
+                            .and(col("y").lt_eq(lit(y_max))),
+                    )
+                    .collect()
+                    .map_err(|e| Evt3Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Bounding box filter failed: {}", e),
+                    })?;
+            }
+
+            // Sort if requested
+            if load_config.sort {
+                df = df.sort(["t"], Default::default()).map_err(|e| {
+                    Evt3Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Sort failed: {}", e),
+                    }
+                })?;
+            }
+
+            Ok(df)
         }
 
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(Evt3Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            })
+        }
     }
 
     /// Parse EVT3 header
@@ -659,260 +717,261 @@ impl Evt3Reader {
         file: &mut File,
         header_size: u64,
         metadata: &Evt3Metadata,
-    ) -> Result<Events, Evt3Error> {
-        // Seek to binary data start
-        file.seek(SeekFrom::Start(header_size))?;
+    ) -> Result<DataFrame, Evt3Error> {
+        // Use DataFrame-based implementation
+        #[cfg(feature = "polars")]
+        {
+            // Seek to binary data start
+            file.seek(SeekFrom::Start(header_size))?;
 
-        let mut events = Events::new();
-        let mut buffer = vec![0u8; self.config.chunk_size * 2]; // 2 bytes per event
-        let mut decoder_state = DecoderState::default();
+            // Estimate total events for builder capacity
+            let estimated_events = ((metadata.data_size) / 2) as usize; // 2 bytes per event
+            let mut builder = EventDataFrameBuilder::new(EventFormat::EVT3, estimated_events);
+            let mut buffer = vec![0u8; self.config.chunk_size * 2]; // 2 bytes per event
+            let mut decoder_state = DecoderState::default();
 
-        let mut bytes_read_total = 0;
+            let mut bytes_read_total = 0;
 
-        loop {
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // End of file
-            }
+            loop {
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break; // End of file
+                }
 
-            bytes_read_total += bytes_read;
-            let events_in_chunk = bytes_read / 2;
+                bytes_read_total += bytes_read;
+                let events_in_chunk = bytes_read / 2;
 
-            // Process events in chunks
-            for i in 0..events_in_chunk {
-                let event_offset =
-                    header_size + (bytes_read_total - bytes_read) as u64 + (i * 2) as u64;
-                let raw_bytes = &buffer[i * 2..(i + 1) * 2];
+                // Process events in chunks
+                for i in 0..events_in_chunk {
+                    let event_offset =
+                        header_size + (bytes_read_total - bytes_read) as u64 + (i * 2) as u64;
+                    let raw_bytes = &buffer[i * 2..(i + 1) * 2];
 
-                // Parse raw event (little-endian)
-                let raw_data = u16::from_le_bytes([raw_bytes[0], raw_bytes[1]]);
-                let raw_event = RawEvt3Event { data: raw_data };
+                    // Parse raw event (little-endian)
+                    let raw_data = u16::from_le_bytes([raw_bytes[0], raw_bytes[1]]);
+                    let raw_event = RawEvt3Event { data: raw_data };
 
-                match raw_event.event_type() {
-                    Ok(event_type) => {
-                        match event_type {
-                            Evt3EventType::TimeLow => {
-                                let time_event = raw_event.as_time_event().map_err(|mut e| {
-                                    if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
-                                    }
-                                    e
-                                })?;
-
-                                // Update lower 12 bits of timestamp
-                                decoder_state.current_timestamp = (decoder_state.current_timestamp
-                                    & 0xFFF000)
-                                    | time_event.time as u32;
-                                decoder_state.has_timestamp = true;
-                            }
-                            Evt3EventType::TimeHigh => {
-                                let time_event = raw_event.as_time_event().map_err(|mut e| {
-                                    if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
-                                    }
-                                    e
-                                })?;
-
-                                // Update upper 12 bits of timestamp
-                                decoder_state.current_timestamp = (decoder_state.current_timestamp
-                                    & 0x000FFF)
-                                    | ((time_event.time as u32) << 12);
-                                decoder_state.has_timestamp = true;
-                            }
-                            Evt3EventType::AddrY => {
-                                let y_event = raw_event.as_y_addr_event().map_err(|mut e| {
-                                    if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
-                                    }
-                                    e
-                                })?;
-
-                                decoder_state.current_y = y_event.y;
-                                decoder_state.has_y = true;
-                            }
-                            Evt3EventType::AddrX => {
-                                let x_event = raw_event.as_x_addr_event().map_err(|mut e| {
-                                    if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
-                                    }
-                                    e
-                                })?;
-
-                                // Generate single event
-                                if let Some(event) = self.generate_event(
-                                    x_event.x,
-                                    decoder_state.current_y,
-                                    decoder_state.current_timestamp,
-                                    x_event.polarity,
-                                    &decoder_state,
-                                    metadata,
-                                )? {
-                                    events.push(event);
-
-                                    // Check max events limit
-                                    if let Some(max_events) = self.config.max_events {
-                                        if events.len() >= max_events {
-                                            return Ok(events);
-                                        }
+                    match raw_event.event_type() {
+                        Ok(event_type) => {
+                            match event_type {
+                                Evt3EventType::TimeLow => {
+                                    if let Ok(time_event) = raw_event.as_time_event() {
+                                        // Update lower 12 bits of timestamp
+                                        decoder_state.current_timestamp =
+                                            (decoder_state.current_timestamp & 0xFFF000)
+                                                | time_event.time as u32;
+                                        decoder_state.has_timestamp = true;
                                     }
                                 }
-                            }
-                            Evt3EventType::VectBaseX => {
-                                let vect_base_event =
-                                    raw_event.as_vect_base_x_event().map_err(|mut e| {
-                                        if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                            *offset = event_offset;
-                                        }
-                                        e
-                                    })?;
+                                Evt3EventType::TimeHigh => {
+                                    if let Ok(time_event) = raw_event.as_time_event() {
+                                        // Update upper 12 bits of timestamp
+                                        decoder_state.current_timestamp =
+                                            (decoder_state.current_timestamp & 0x000FFF)
+                                                | ((time_event.time as u32) << 12);
+                                        decoder_state.has_timestamp = true;
+                                    }
+                                }
+                                Evt3EventType::AddrY => {
+                                    if let Ok(y_event) = raw_event.as_y_addr_event() {
+                                        decoder_state.current_y = y_event.y;
+                                        decoder_state.has_y = true;
+                                    }
+                                }
+                                Evt3EventType::AddrX => {
+                                    if let Ok(x_event) = raw_event.as_x_addr_event() {
+                                        // Generate single event
+                                        if decoder_state.has_y && decoder_state.has_timestamp {
+                                            let x = x_event.x;
+                                            let y = decoder_state.current_y;
+                                            let timestamp = decoder_state.current_timestamp as f64;
+                                            let polarity = x_event.polarity;
 
-                                decoder_state.vect_base_x = vect_base_event.x;
-                                decoder_state.vect_base_polarity = vect_base_event.polarity;
-                            }
-                            Evt3EventType::Vect12 => {
-                                let vect12_event =
-                                    raw_event.as_vect12_event().map_err(|mut e| {
-                                        if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                            *offset = event_offset;
-                                        }
-                                        e
-                                    })?;
+                                            // Validate coordinates if configured
+                                            if self.config.validate_coordinates {
+                                                if let Some((max_x, max_y)) =
+                                                    metadata.sensor_resolution
+                                                {
+                                                    if x >= max_x || y >= max_y {
+                                                        if self.config.skip_invalid_events {
+                                                            continue;
+                                                        } else {
+                                                            return Err(
+                                                                Evt3Error::CoordinateOutOfBounds {
+                                                                    x,
+                                                                    y,
+                                                                    max_x,
+                                                                    max_y,
+                                                                },
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
 
-                                // Generate events from 12-bit validity mask
-                                for bit in 0..12 {
-                                    if (vect12_event.valid >> bit) & 1 != 0 {
-                                        let x = decoder_state.vect_base_x + bit;
-                                        if let Some(event) = self.generate_event(
-                                            x,
-                                            decoder_state.current_y,
-                                            decoder_state.current_timestamp,
-                                            decoder_state.vect_base_polarity,
-                                            &decoder_state,
-                                            metadata,
-                                        )? {
-                                            events.push(event);
+                                            // Add event directly to DataFrame builder
+                                            builder.add_event(x, y, timestamp, polarity);
 
                                             // Check max events limit
                                             if let Some(max_events) = self.config.max_events {
-                                                if events.len() >= max_events {
-                                                    return Ok(events);
+                                                if builder.len() >= max_events {
+                                                    return builder.build().map_err(|e| {
+                                                        Evt3Error::InvalidBinaryData {
+                                                            offset: event_offset,
+                                                            message: format!(
+                                                                "DataFrame build failed: {}",
+                                                                e
+                                                            ),
+                                                        }
+                                                    });
                                                 }
                                             }
                                         }
                                     }
                                 }
-
-                                // Update vector base X
-                                decoder_state.vect_base_x += 12;
-                            }
-                            Evt3EventType::Vect8 => {
-                                let vect8_event = raw_event.as_vect8_event().map_err(|mut e| {
-                                    if let Evt3Error::InvalidEventType { offset, .. } = &mut e {
-                                        *offset = event_offset;
+                                Evt3EventType::VectBaseX => {
+                                    if let Ok(vect_base_event) = raw_event.as_vect_base_x_event() {
+                                        decoder_state.vect_base_x = vect_base_event.x;
+                                        decoder_state.vect_base_polarity = vect_base_event.polarity;
                                     }
-                                    e
-                                })?;
+                                }
+                                Evt3EventType::Vect12 => {
+                                    if let Ok(vect12_event) = raw_event.as_vect12_event() {
+                                        // Generate events from 12-bit validity mask
+                                        for bit in 0..12 {
+                                            if (vect12_event.valid >> bit) & 1 != 0
+                                                && decoder_state.has_y
+                                                && decoder_state.has_timestamp
+                                            {
+                                                let x = decoder_state.vect_base_x + bit;
+                                                let y = decoder_state.current_y;
+                                                let timestamp =
+                                                    decoder_state.current_timestamp as f64;
+                                                let polarity = decoder_state.vect_base_polarity;
 
-                                // Generate events from 8-bit validity mask
-                                for bit in 0..8 {
-                                    if (vect8_event.valid >> bit) & 1 != 0 {
-                                        let x = decoder_state.vect_base_x + bit as u16;
-                                        if let Some(event) = self.generate_event(
-                                            x,
-                                            decoder_state.current_y,
-                                            decoder_state.current_timestamp,
-                                            decoder_state.vect_base_polarity,
-                                            &decoder_state,
-                                            metadata,
-                                        )? {
-                                            events.push(event);
+                                                // Validate coordinates if configured
+                                                if self.config.validate_coordinates {
+                                                    if let Some((max_x, max_y)) =
+                                                        metadata.sensor_resolution
+                                                    {
+                                                        if x >= max_x || y >= max_y {
+                                                            if self.config.skip_invalid_events {
+                                                                continue;
+                                                            } else {
+                                                                return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
+                                                            }
+                                                        }
+                                                    }
+                                                }
 
-                                            // Check max events limit
-                                            if let Some(max_events) = self.config.max_events {
-                                                if events.len() >= max_events {
-                                                    return Ok(events);
+                                                // Add event directly to DataFrame builder
+                                                builder.add_event(x, y, timestamp, polarity);
+
+                                                // Check max events limit
+                                                if let Some(max_events) = self.config.max_events {
+                                                    if builder.len() >= max_events {
+                                                        return builder.build().map_err(|e| {
+                                                            Evt3Error::InvalidBinaryData {
+                                                                offset: event_offset,
+                                                                message: format!(
+                                                                    "DataFrame build failed: {}",
+                                                                    e
+                                                                ),
+                                                            }
+                                                        });
+                                                    }
                                                 }
                                             }
                                         }
+
+                                        // Update vector base X
+                                        decoder_state.vect_base_x += 12;
                                     }
                                 }
+                                Evt3EventType::Vect8 => {
+                                    if let Ok(vect8_event) = raw_event.as_vect8_event() {
+                                        // Generate events from 8-bit validity mask
+                                        for bit in 0..8 {
+                                            if (vect8_event.valid >> bit) & 1 != 0
+                                                && decoder_state.has_y
+                                                && decoder_state.has_timestamp
+                                            {
+                                                let x = decoder_state.vect_base_x + bit as u16;
+                                                let y = decoder_state.current_y;
+                                                let timestamp =
+                                                    decoder_state.current_timestamp as f64;
+                                                let polarity = decoder_state.vect_base_polarity;
 
-                                // Update vector base X
-                                decoder_state.vect_base_x += 8;
-                            }
-                            Evt3EventType::ExtTrigger => {
-                                // Skip external trigger events for now
-                            }
-                            Evt3EventType::Reserved1
-                            | Evt3EventType::Continued4
-                            | Evt3EventType::Reserved9
-                            | Evt3EventType::ReservedB
-                            | Evt3EventType::ReservedC
-                            | Evt3EventType::ReservedD
-                            | Evt3EventType::Others
-                            | Evt3EventType::Continued12 => {
-                                // Skip reserved/unknown event types
-                                // These are undocumented event types that appear in some EVT3 files
+                                                // Validate coordinates if configured
+                                                if self.config.validate_coordinates {
+                                                    if let Some((max_x, max_y)) =
+                                                        metadata.sensor_resolution
+                                                    {
+                                                        if x >= max_x || y >= max_y {
+                                                            if self.config.skip_invalid_events {
+                                                                continue;
+                                                            } else {
+                                                                return Err(Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y });
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Add event directly to DataFrame builder
+                                                builder.add_event(x, y, timestamp, polarity);
+
+                                                // Check max events limit
+                                                if let Some(max_events) = self.config.max_events {
+                                                    if builder.len() >= max_events {
+                                                        return builder.build().map_err(|e| {
+                                                            Evt3Error::InvalidBinaryData {
+                                                                offset: event_offset,
+                                                                message: format!(
+                                                                    "DataFrame build failed: {}",
+                                                                    e
+                                                                ),
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Update vector base X
+                                        decoder_state.vect_base_x += 8;
+                                    }
+                                }
+                                _ => {
+                                    // Skip other event types (ExtTrigger, Reserved, etc.)
+                                    continue;
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            let mut error = e;
-                            if let Evt3Error::InvalidEventType { offset, .. } = &mut error {
-                                *offset = event_offset;
+                        Err(_) => {
+                            if !self.config.skip_invalid_events {
+                                return Err(Evt3Error::InvalidEventType {
+                                    type_value: 0,
+                                    offset: event_offset,
+                                });
                             }
-                            return Err(error);
                         }
                     }
                 }
             }
+
+            builder.build().map_err(|e| Evt3Error::InvalidBinaryData {
+                offset: 0,
+                message: format!("DataFrame build failed: {}", e),
+            })
         }
 
-        Ok(events)
-    }
-
-    /// Generate an event from coordinates, timestamp, and polarity
-    fn generate_event(
-        &self,
-        x: u16,
-        y: u16,
-        timestamp: u32,
-        polarity: bool,
-        decoder_state: &DecoderState,
-        metadata: &Evt3Metadata,
-    ) -> Result<Option<Event>, Evt3Error> {
-        // Check if we have valid state
-        if !decoder_state.has_y || !decoder_state.has_timestamp {
-            return Ok(None);
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(Evt3Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            })
         }
-
-        // Validate coordinates if configured
-        if self.config.validate_coordinates {
-            if let Some((max_x, max_y)) = metadata.sensor_resolution {
-                if x >= max_x || y >= max_y {
-                    let error = Evt3Error::CoordinateOutOfBounds { x, y, max_x, max_y };
-
-                    if self.config.skip_invalid_events {
-                        return Ok(None);
-                    } else {
-                        return Err(error);
-                    }
-                }
-            }
-        }
-
-        // Create event
-        let event = Event {
-            t: timestamp as f64 / 1_000_000.0, // Convert microseconds to seconds
-            x,
-            y,
-            polarity,
-        };
-
-        Ok(Some(event))
     }
 }
 

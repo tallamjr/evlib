@@ -3,10 +3,8 @@
 //! This functionality is available in ev_filtering::downsampling with
 //! SpatialDecimation strategy. Use that implementation instead.
 
-use crate::ev_augmentation::{
-    AugmentationError, AugmentationResult, SingleAugmentation, Validatable,
-};
-use crate::ev_core::Events;
+use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
+// Removed: use crate::Events; - legacy type no longer exists
 use crate::ev_filtering::downsampling::DownsamplingFilter;
 
 /// Decimate augmentation (redirects to existing downsampling)
@@ -31,14 +29,16 @@ impl DecimateAugmentation {
 impl Validatable for DecimateAugmentation {
     fn validate(&self) -> AugmentationResult<()> {
         if self.n == 0 {
-            return Err(AugmentationError::InvalidConfig(
+            Err(AugmentationError::InvalidConfig(
                 "Decimation factor must be positive".to_string(),
-            ));
+            ))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 }
 
+/* Commented out - legacy SingleAugmentation trait no longer exists
 impl SingleAugmentation for DecimateAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Use existing spatial decimation functionality
@@ -51,12 +51,15 @@ impl SingleAugmentation for DecimateAugmentation {
         format!("Decimate: {}", self.description())
     }
 }
+*/
 
+/* Commented out - legacy Events type no longer exists
 /// Convenience function for decimation
 pub fn decimate_events(events: &Events, n: usize) -> AugmentationResult<Events> {
     let aug = DecimateAugmentation::new(n);
     aug.apply(events)
 }
+*/
 
 /// Apply decimate using Polars operations
 #[cfg(feature = "polars")]

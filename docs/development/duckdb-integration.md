@@ -56,16 +56,16 @@ for pol, count, pct in polarity_dist:
 # Temporal statistics
 temporal_stats = con.execute("""
     SELECT
-        MIN(EXTRACT(microseconds FROM timestamp)) as min_timestamp,
-        MAX(EXTRACT(microseconds FROM timestamp)) as max_timestamp,
-        AVG(EXTRACT(microseconds FROM timestamp)) as avg_timestamp,
-        STDDEV(EXTRACT(microseconds FROM timestamp)) as std_timestamp
+        MIN(EXTRACT(microseconds FROM t)) as min_timestamp,
+        MAX(EXTRACT(microseconds FROM t)) as max_timestamp,
+        AVG(EXTRACT(microseconds FROM t)) as avg_timestamp,
+        STDDEV(EXTRACT(microseconds FROM t)) as std_timestamp
     FROM events
 """).fetchone()
 
 print(f"\\nTemporal statistics:")
 print(f"  Time range: {temporal_stats[0]:,.0f} to {temporal_stats[1]:,.0f} microseconds")
-print(f"  Average timestamp: {temporal_stats[2]:,.0f} microseconds")
+print(f"  Average time: {temporal_stats[2]:,.0f} microseconds")
 print(f"  Standard deviation: {temporal_stats[3]:,.0f} microseconds")
 
 # Spatial statistics
@@ -96,10 +96,10 @@ con.register("events", events_df.collect().to_arrow())
 
 events_per_second = con.execute("""
     SELECT
-        EXTRACT(microseconds FROM timestamp) // 1000000 as second,  -- Convert microseconds to seconds
+        EXTRACT(microseconds FROM t) // 1000000 as second,  -- Convert microseconds to seconds
         COUNT(*) as events_count
     FROM events
-    GROUP BY EXTRACT(microseconds FROM timestamp) // 1000000
+    GROUP BY EXTRACT(microseconds FROM t) // 1000000
     ORDER BY second
     LIMIT 10
 """).fetchall()

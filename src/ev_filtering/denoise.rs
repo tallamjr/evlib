@@ -32,12 +32,12 @@
 //! let filtered = apply_refractory_filter(events_df, &filter)?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{utils, FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 #[cfg(feature = "tracing")]
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 #[cfg(not(feature = "tracing"))]
 macro_rules! debug {
@@ -76,7 +76,7 @@ macro_rules! instrument {
 /// Polars column names for event data (consistent across all filtering modules)
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "timestamp";
+pub const COL_T: &str = "t";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Noise filtering methods
@@ -491,91 +491,6 @@ impl Validatable for DenoiseFilter {
     }
 }
 
-impl SingleFilter for DenoiseFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        apply_denoise_filter(events, self)
-    }
-
-    fn description(&self) -> String {
-        format!("Denoise filter: {}", self.description())
-    }
-
-    fn is_enabled(&self) -> bool {
-        true
-    }
-}
-
-/// Apply denoising filter to events
-///
-/// This function applies the specified denoising method to remove noise events
-/// while preserving signal events.
-///
-/// # Arguments
-///
-/// * `events` - Input events to denoise
-/// * `filter` - Denoising filter configuration
-///
-/// # Returns
-///
-/// * `FilterResult<Events>` - Denoised events
-pub fn apply_denoise_filter(events: &Events, filter: &DenoiseFilter) -> FilterResult<Events> {
-    let start_time = std::time::Instant::now();
-
-    if events.is_empty() {
-        debug!("No events to denoise");
-        return Ok(Vec::new());
-    }
-
-    // Validate filter configuration
-    filter.validate()?;
-
-    let denoised_events = match filter.method {
-        DenoiseMethod::RefractoryPeriod => {
-            apply_refractory_period_filter(events, filter.refractory_filter.as_ref().unwrap())?
-        }
-        DenoiseMethod::TemporalCorrelation => apply_temporal_correlation_filter(
-            events,
-            filter.temporal_correlation_filter.as_ref().unwrap(),
-        )?,
-        DenoiseMethod::SpatialTemporalCorrelation => {
-            apply_spatial_temporal_filter(events, filter.spatial_temporal_filter.as_ref().unwrap())?
-        }
-        DenoiseMethod::BackgroundActivity => {
-            apply_background_activity_filter(events, filter.background_threshold.unwrap())?
-        }
-        DenoiseMethod::MultiScale => apply_multi_scale_filter(events, filter)?,
-    };
-
-    // Preserve temporal order if requested
-    let mut final_events = denoised_events;
-    if filter.preserve_order && !utils::is_sorted_by_time(&final_events) {
-        debug!("Sorting denoised events to preserve temporal order");
-        utils::sort_events_by_time(&mut final_events);
-    }
-
-    // Validate results if requested
-    if filter.validate_results {
-        utils::validate_events(&final_events, false)?;
-    }
-
-    let processing_time = start_time.elapsed().as_secs_f64();
-    let input_count = events.len();
-    let output_count = final_events.len();
-    let removed_count = input_count - output_count;
-
-    info!(
-        "Denoising ({}): {} -> {} events ({} removed, {:.1}% reduction) in {:.3}s",
-        filter.method.description(),
-        input_count,
-        output_count,
-        removed_count,
-        (removed_count as f64 / input_count as f64) * 100.0,
-        processing_time
-    );
-
-    Ok(final_events)
-}
-
 /// Apply refractory period filtering using Polars window functions (Polars-first implementation)
 ///
 /// This is the main Polars-first implementation that uses window functions
@@ -624,32 +539,6 @@ pub fn apply_refractory_filter_polars(
 
     debug!("Refractory filter applied using Polars window functions");
     Ok(filtered_df)
-}
-
-/// Legacy function for backward compatibility - delegates to Polars implementation
-fn apply_refractory_period_filter(
-    events: &Events,
-    filter: &RefractoryFilter,
-) -> FilterResult<Events> {
-    warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let filtered_df = apply_refractory_filter_polars(df, filter)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-    // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-    let result_df = filtered_df
-        .collect()
-        .map_err(|e| FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e)))?;
-
-    dataframe_to_events(&result_df)
 }
 
 // Legacy HashMap-based refractory functions removed - functionality moved to Polars-first implementation
@@ -744,32 +633,6 @@ pub fn apply_temporal_correlation_filter_polars(
 
     debug!("Temporal correlation filter applied using Polars window functions");
     Ok(filtered_df)
-}
-
-/// Legacy function for backward compatibility - delegates to Polars implementation
-fn apply_temporal_correlation_filter(
-    events: &Events,
-    filter: &TemporalCorrelationFilter,
-) -> FilterResult<Events> {
-    warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let filtered_df = apply_temporal_correlation_filter_polars(df, filter)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-    // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-    let result_df = filtered_df
-        .collect()
-        .map_err(|e| FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e)))?;
-
-    dataframe_to_events(&result_df)
 }
 
 // Legacy HashMap-based temporal correlation functions removed
@@ -901,32 +764,6 @@ pub fn apply_spatial_temporal_filter_polars(
     Ok(result_df)
 }
 
-/// Legacy function for backward compatibility - delegates to Polars implementation
-fn apply_spatial_temporal_filter(
-    events: &Events,
-    filter: &SpatialTemporalFilter,
-) -> FilterResult<Events> {
-    warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let filtered_df = apply_spatial_temporal_filter_polars(df, filter)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-    // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-    let result_df = filtered_df
-        .collect()
-        .map_err(|e| FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e)))?;
-
-    dataframe_to_events(&result_df)
-}
-
 // Legacy HashMap-based spatial-temporal correlation functions removed
 
 /// Apply background activity filtering using Polars group_by operations (Polars-first implementation)
@@ -1012,32 +849,6 @@ pub fn apply_background_activity_filter_polars(
     Ok(filtered_df)
 }
 
-/// Legacy function for backward compatibility - delegates to Polars implementation
-fn apply_background_activity_filter(
-    events: &Events,
-    threshold_events_per_sec: f64,
-) -> FilterResult<Events> {
-    warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let filtered_df = apply_background_activity_filter_polars(df, threshold_events_per_sec)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-    // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-    let result_df = filtered_df
-        .collect()
-        .map_err(|e| FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e)))?;
-
-    dataframe_to_events(&result_df)
-}
-
 /// Apply multi-scale filtering using Polars pipeline (Polars-first implementation)
 ///
 /// This is the main Polars-first implementation that combines multiple denoising
@@ -1080,193 +891,6 @@ pub fn apply_multi_scale_filter_polars(
 
     debug!("Multi-scale filter pipeline completed using Polars operations");
     Ok(current_df)
-}
-
-/// Legacy function for backward compatibility - delegates to Polars implementation
-fn apply_multi_scale_filter(events: &Events, filter: &DenoiseFilter) -> FilterResult<Events> {
-    warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?
-        .lazy();
-
-    let filtered_df = apply_multi_scale_filter_polars(df, filter)
-        .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-    // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-    let result_df = filtered_df
-        .collect()
-        .map_err(|e| FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e)))?;
-
-    dataframe_to_events(&result_df)
-}
-
-/// Convenience function for refractory period filtering
-pub fn apply_refractory_period(events: &Events, period_us: f64) -> FilterResult<Events> {
-    let filter = DenoiseFilter::refractory(period_us);
-    apply_denoise_filter(events, &filter)
-}
-
-/// Convenience function for noise filtering (Python API compatible)
-///
-/// This function provides a simple interface matching the Python API:
-/// `filtered = evf.filter_noise("data/events.h5", method="refractory", refractory_period_us=1000)`
-pub fn filter_noise(
-    events: &Events,
-    method: DenoiseMethod,
-    parameters: &[f64],
-) -> FilterResult<Events> {
-    let mut filter = match method {
-        DenoiseMethod::RefractoryPeriod => {
-            if parameters.is_empty() {
-                return Err(FilterError::InvalidConfig(
-                    "Refractory period requires period parameter".to_string(),
-                ));
-            }
-            DenoiseFilter::refractory(parameters[0])
-        }
-        DenoiseMethod::TemporalCorrelation => {
-            if parameters.len() < 2 {
-                return Err(FilterError::InvalidConfig(
-                    "Temporal correlation requires time_window and min_events parameters"
-                        .to_string(),
-                ));
-            }
-            DenoiseFilter::temporal_correlation(parameters[0], parameters[1] as usize)
-        }
-        DenoiseMethod::SpatialTemporalCorrelation => {
-            if parameters.len() < 3 {
-                return Err(FilterError::InvalidConfig("Spatial-temporal correlation requires radius, time_window, and min_neighbors parameters".to_string()));
-            }
-            DenoiseFilter::spatial_temporal(
-                parameters[0] as u16,
-                parameters[1],
-                parameters[2] as usize,
-            )
-        }
-        DenoiseMethod::BackgroundActivity => {
-            if parameters.is_empty() {
-                return Err(FilterError::InvalidConfig(
-                    "Background activity requires threshold parameter".to_string(),
-                ));
-            }
-            DenoiseFilter::background_activity(parameters[0])
-        }
-        DenoiseMethod::MultiScale => {
-            if parameters.len() < 3 {
-                return Err(FilterError::InvalidConfig("Multi-scale requires refractory_period, spatial_radius, and time_window parameters".to_string()));
-            }
-            DenoiseFilter::multi_scale(parameters[0], parameters[1] as u16, parameters[2])
-        }
-    };
-
-    // Auto-configure performance based on dataset size
-    if events.len() > 1_000_000 {
-        filter = filter.with_high_performance();
-    } else if events.len() > 100_000 {
-        filter = filter.with_performance_config(DenoisePerformanceConfig::default());
-    } else {
-        filter = filter.with_memory_efficient();
-    }
-
-    apply_denoise_filter(events, &filter)
-}
-
-/// High-level noise filtering function with automatic parameter selection
-///
-/// This function automatically selects appropriate parameters based on the dataset
-/// characteristics for common noise filtering scenarios.
-pub fn auto_filter_noise(events: &Events, aggressiveness: f32) -> FilterResult<Events> {
-    if events.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Analyze dataset characteristics
-    let stats = utils::EventStats::calculate(events);
-    let avg_rate = stats.avg_event_rate;
-
-    // Auto-select refractory period based on event rate and aggressiveness
-    let base_refractory_us = if avg_rate > 100_000.0 {
-        500.0 // High activity -> short refractory
-    } else if avg_rate > 10_000.0 {
-        1000.0 // Medium activity -> medium refractory
-    } else {
-        2000.0 // Low activity -> long refractory
-    };
-
-    let adjusted_refractory = base_refractory_us * (2.0 - aggressiveness.clamp(0.0, 1.0)) as f64;
-
-    info!(
-        "Auto-filtering noise: event_rate={:.0}/s, refractory_period={:.0}µs",
-        avg_rate, adjusted_refractory
-    );
-
-    let filter = DenoiseFilter::refractory(adjusted_refractory).with_high_performance(); // Use best performance for auto mode
-
-    apply_denoise_filter(events, &filter)
-}
-
-/// Helper function to convert DataFrame back to Events (for legacy compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing x value".to_string()))?
-            as u16;
-        let y = y_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing y value".to_string()))?
-            as u16;
-        let t = t_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing t value".to_string()))?;
-        let p = p_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing polarity value".to_string()))?
-            > 0;
-
-        events.push(Event {
-            x,
-            y,
-            t,
-            polarity: p,
-        });
-    }
-
-    Ok(events)
 }
 
 /// Main Polars-first denoising API - apply any denoise filter to LazyFrame
@@ -1401,10 +1025,11 @@ pub fn apply_background_activity_polars(
     apply_background_activity_filter_polars(df, threshold_events_per_sec)
 }
 
+/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
 
     fn create_test_events_with_noise() -> Events {
         let mut events = Vec::new();
@@ -1677,3 +1302,4 @@ mod tests {
         assert!(utils::is_sorted_by_time(&filtered));
     }
 }
+*/

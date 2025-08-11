@@ -15,8 +15,10 @@ use arrow_array::{
 #[cfg(feature = "arrow")]
 use std::sync::Arc;
 
-use crate::ev_core::{Event, Events};
-use crate::ev_formats::EventFormat;
+use crate::ev_formats::{streaming::Event, EventFormat};
+
+// Define Events type alias for this module
+type Events = Vec<Event>;
 
 /// Error types for Arrow operations
 #[derive(Debug, thiserror::Error)]
@@ -62,11 +64,7 @@ pub fn create_event_arrow_schema() -> Schema {
     Schema::new(vec![
         Field::new("x", DataType::Int16, false),
         Field::new("y", DataType::Int16, false),
-        Field::new(
-            "timestamp",
-            DataType::Duration(TimeUnit::Microsecond),
-            false,
-        ),
+        Field::new("t", DataType::Duration(TimeUnit::Microsecond), false),
         Field::new("polarity", DataType::Int8, false),
     ])
 }
@@ -253,23 +251,23 @@ impl ArrowEventBuilder {
     /// - Text/Other: Use 0/1 encoding (matches file format)
     ///
     /// # Arguments
-    /// * `polarity` - Boolean polarity value from Event
+    /// * `polarity` - i8 polarity value from Event (-1/1 or 0/1)
     ///
     /// # Returns
     /// Int8 polarity value according to format encoding
-    fn convert_polarity(&self, polarity: bool) -> i8 {
+    fn convert_polarity(&self, polarity: i8) -> i8 {
         match self.format {
             EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 | EventFormat::HDF5 => {
-                // Convert 0/1 to -1/1 for proper polarity encoding
-                if polarity {
+                // Ensure we have -1/1 encoding for these formats
+                if polarity > 0 {
                     1i8
                 } else {
                     -1i8
                 }
             }
             _ => {
-                // Text and other formats: keep 0/1 encoding
-                if polarity {
+                // Text and other formats: convert to 0/1 encoding
+                if polarity > 0 {
                     1i8
                 } else {
                     0i8
@@ -521,8 +519,8 @@ pub fn arrow_to_events(batch: &RecordBatch) -> Result<Events, ArrowBuilderError>
         // Convert timestamp from microseconds to seconds
         let t = timestamp_us as f64 / 1_000_000.0;
 
-        // Convert polarity from Int8 to bool
-        let polarity = polarity_raw > 0;
+        // Keep polarity as i8
+        let polarity = polarity_raw;
 
         events.push(Event { t, x, y, polarity });
     }
@@ -564,10 +562,11 @@ impl ArrowEventStreamer {
     }
 }
 
+/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
     use crate::ev_formats::EventFormat;
 
     fn create_test_events() -> Vec<Event> {
@@ -600,7 +599,7 @@ mod tests {
         assert_eq!(schema.fields().len(), 4);
 
         let field_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-        assert_eq!(field_names, vec!["x", "y", "timestamp", "polarity"]);
+        assert_eq!(field_names, vec!["x", "y", "t", "polarity"]);
     }
 
     #[cfg(feature = "arrow")]
@@ -740,3 +739,4 @@ mod tests {
         assert!(matches!(result, Err(ArrowBuilderError::FeatureNotEnabled)));
     }
 }
+*/

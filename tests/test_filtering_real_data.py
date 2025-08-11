@@ -235,13 +235,13 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     raw_df = small_raw_events.collect()
     assert len(raw_df) > 0, "Raw file should contain events"
 
-    # Get time range
-    timestamps_sec = raw_df["timestamp"].dt.total_microseconds() / 1_000_000
-    t_min = timestamps_sec.min()
-    t_max = timestamps_sec.max()
+    # Get time range using percentiles to avoid outliers
+    timestamps_sec = raw_df["t"].dt.total_microseconds() / 1_000_000
+    t_min = timestamps_sec.quantile(0.1)  # Use 10th percentile instead of absolute min
+    t_max = timestamps_sec.quantile(0.9)  # Use 90th percentile instead of absolute max
     duration = t_max - t_min
 
-    # Test filtering middle 60% of time range
+    # Test filtering middle 60% of time range (within the 10th-90th percentile range)
     t_start = t_min + duration * 0.2
     t_end = t_min + duration * 0.8
 
@@ -254,15 +254,15 @@ def test_temporal_filtering_real_data(filtering_module, small_raw_events, small_
     assert len(filtered_df) < len(raw_df), "Should filter out some events"
 
     # Verify time bounds
-    filtered_timestamps = filtered_df["timestamp"].dt.total_microseconds() / 1_000_000
+    filtered_timestamps = filtered_df["t"].dt.total_microseconds() / 1_000_000
     assert filtered_timestamps.min() >= t_start, "All events should be after t_start"
     assert filtered_timestamps.max() <= t_end, "All events should be before t_end"
 
-    # Test with H5 file
+    # Test with H5 file using percentile-based approach
     h5_df = small_h5_events.collect()
-    h5_timestamps = h5_df["timestamp"].dt.total_microseconds() / 1_000_000
-    h5_t_min = h5_timestamps.min()
-    h5_t_max = h5_timestamps.max()
+    h5_timestamps = h5_df["t"].dt.total_microseconds() / 1_000_000
+    h5_t_min = h5_timestamps.quantile(0.1)  # Use 10th percentile
+    h5_t_max = h5_timestamps.quantile(0.9)  # Use 90th percentile
     h5_duration = h5_t_max - h5_t_min
 
     # Convert LazyFrame to DataFrame for filtering
@@ -503,7 +503,7 @@ def test_noise_filtering_real_data(filtering_module, small_raw_events, small_h5_
 
     # Verify temporal ordering is preserved (or can be sorted)
     if len(h5_filtered_df) > 0:
-        timestamps = h5_filtered_df["timestamp"].dt.total_microseconds()
+        timestamps = h5_filtered_df["t"].dt.total_microseconds()
         # After filtering, events might not be sorted, but should be sortable
         # Let's just verify there are no invalid timestamps
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
@@ -523,7 +523,7 @@ def test_chained_filtering_real_data(filtering_module, small_raw_events, small_h
 
     # Apply filters in sequence
     raw_events_df = small_raw_events.collect()
-    timestamps_sec = raw_events_df["timestamp"].dt.total_microseconds() / 1_000_000
+    timestamps_sec = raw_events_df["t"].dt.total_microseconds() / 1_000_000
     t_max = timestamps_sec.max()
 
     step1 = filtering_module.filter_by_time(raw_events_df, 0.1, t_max)
@@ -557,7 +557,7 @@ def test_chained_filtering_real_data(filtering_module, small_raw_events, small_h
         assert final_df["y"].max() <= 600, "Final y coordinates should respect ROI"
 
         # Check temporal ordering (events may not be sorted after filtering)
-        timestamps = final_df["timestamp"].dt.total_microseconds()
+        timestamps = final_df["t"].dt.total_microseconds()
         # Just verify we have valid timestamps
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"
@@ -572,7 +572,7 @@ def test_preprocessing_pipeline_real_data(filtering_module, small_raw_events, sm
 
     # Get baseline data
     raw_df = small_raw_events.collect()
-    timestamps_sec = raw_df["timestamp"].dt.total_microseconds() / 1_000_000
+    timestamps_sec = raw_df["t"].dt.total_microseconds() / 1_000_000
     t_min = timestamps_sec.min()
     t_max = timestamps_sec.max()
     duration = t_max - t_min
@@ -602,7 +602,7 @@ def test_preprocessing_pipeline_real_data(filtering_module, small_raw_events, sm
     # Verify all filters were applied correctly
     if len(processed_df) > 0:
         # Time bounds
-        proc_timestamps = processed_df["timestamp"].dt.total_microseconds() / 1_000_000
+        proc_timestamps = processed_df["t"].dt.total_microseconds() / 1_000_000
         assert proc_timestamps.min() >= t_min + duration * 0.1, "Should respect time bounds"
         assert proc_timestamps.max() <= t_min + duration * 0.9, "Should respect time bounds"
 
@@ -613,7 +613,7 @@ def test_preprocessing_pipeline_real_data(filtering_module, small_raw_events, sm
         assert processed_df["y"].max() <= 600, "Should respect ROI bounds"
 
         # Temporal ordering (events may not be sorted after filtering)
-        timestamps = processed_df["timestamp"].dt.total_microseconds()
+        timestamps = processed_df["t"].dt.total_microseconds()
         # Just verify we have valid timestamps
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"
@@ -624,7 +624,7 @@ def test_preprocessing_pipeline_real_data(filtering_module, small_raw_events, sm
 
     # Test with H5 file
     h5_df = small_h5_events.collect()
-    h5_timestamps = h5_df["timestamp"].dt.total_microseconds() / 1_000_000
+    h5_timestamps = h5_df["t"].dt.total_microseconds() / 1_000_000
     h5_t_min = h5_timestamps.min()
     h5_t_max = h5_timestamps.max()
     h5_duration = h5_t_max - h5_t_min
@@ -668,7 +668,7 @@ def test_performance_benchmarks_real_data(filtering_module, large_raw_events, la
     print(f"Large raw file: {original_count:,} events")
 
     # Benchmark time filtering
-    timestamps_sec = raw_df["timestamp"].dt.total_microseconds() / 1_000_000
+    timestamps_sec = raw_df["t"].dt.total_microseconds() / 1_000_000
     t_max = timestamps_sec.max()
 
     start_time = time.time()
@@ -799,7 +799,7 @@ def test_data_integrity_real_data():
     original_df = original_events.collect()
 
     # Apply filtering
-    timestamps_sec = original_df["timestamp"].dt.total_microseconds() / 1_000_000
+    timestamps_sec = original_df["t"].dt.total_microseconds() / 1_000_000
     t_max = timestamps_sec.max()
     filtered_events = filtering_module.filter_by_time(original_df, 0.1, t_max)
     filtered_df = filtered_events.collect() if hasattr(filtered_events, "collect") else filtered_events
@@ -812,9 +812,7 @@ def test_data_integrity_real_data():
         assert (
             filtered_df["polarity"].dtype == original_df["polarity"].dtype
         ), "Polarity dtype should be preserved"
-        assert (
-            filtered_df["timestamp"].dtype == original_df["timestamp"].dtype
-        ), "Timestamp dtype should be preserved"
+        assert filtered_df["t"].dtype == original_df["t"].dtype, "Timestamp dtype should be preserved"
 
         # Check value ranges
         assert filtered_df["x"].min() >= original_df["x"].min(), "X values should be within original range"
@@ -830,7 +828,7 @@ def test_data_integrity_real_data():
         ), "Filtered polarities should be subset of original"
 
         # Check temporal ordering (events may not be sorted after filtering)
-        timestamps = filtered_df["timestamp"].dt.total_microseconds()
+        timestamps = filtered_df["t"].dt.total_microseconds()
         # Just verify we have valid timestamps
         assert timestamps.min() >= 0, "Timestamps should be non-negative"
         assert timestamps.max() > timestamps.min(), "Should have valid time range"

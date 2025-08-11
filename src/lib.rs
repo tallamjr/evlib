@@ -1,6 +1,5 @@
 // Core modules (only working functionality)
 pub mod ev_augmentation;
-pub mod ev_core;
 pub mod ev_filtering;
 pub mod ev_formats;
 pub mod ev_representations;
@@ -10,8 +9,69 @@ pub mod tracing_config;
 
 // Deep learning models are handled via Python interface in python/evlib/models/
 
-// Re-export core types for easier usage
-pub use ev_core::{Event, Events};
+// numpy use removed due to unused warnings
+
+// Python utility functions (previously in ev_core::python)
+#[cfg(feature = "python")]
+pub mod python {
+    use pyo3::prelude::*;
+    use pyo3::types::PyAny;
+
+    #[cfg(all(feature = "polars", feature = "python"))]
+    pub fn extract_lazy_frame(py_obj: &Bound<'_, PyAny>) -> PyResult<polars::prelude::LazyFrame> {
+        use polars::prelude::IntoLazy;
+        use pyo3_polars::PyDataFrame;
+
+        // Try to extract a DataFrame first and convert to LazyFrame
+        if let Ok(pydf) = py_obj.extract::<PyDataFrame>() {
+            return Ok(pydf.0.lazy());
+        }
+
+        // Try to call .lazy() method on the Python object if it's a DataFrame
+        if let Ok(lazy_method) = py_obj.getattr("lazy") {
+            if let Ok(lazy_result) = lazy_method.call0() {
+                // Try to extract the resulting object as a DataFrame (might be a LazyFrame wrapper)
+                if let Ok(pydf) = lazy_result.extract::<PyDataFrame>() {
+                    return Ok(pydf.0.lazy());
+                }
+            }
+        }
+
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "Expected a Polars DataFrame - ensure you're using pl.DataFrame(...)",
+        ))
+    }
+
+    #[cfg(all(feature = "polars", feature = "python"))]
+    pub fn lazy_frame_to_python(
+        lf: polars::prelude::LazyFrame,
+        py: Python<'_>,
+    ) -> PyResult<PyObject> {
+        use pyo3::IntoPyObject;
+        use pyo3_polars::PyDataFrame;
+
+        // Convert LazyFrame to DataFrame and wrap in PyDataFrame
+        let df = lf.collect().map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to collect LazyFrame: {}", e))
+        })?;
+        let py_dataframe = PyDataFrame(df);
+        Ok(py_dataframe.into_pyobject(py)?.into())
+    }
+
+    #[cfg(not(all(feature = "polars", feature = "python")))]
+    pub fn extract_lazy_frame(_py_obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        Err(pyo3::exceptions::PyNotImplementedError::new_err(
+            "Polars and Python features are required for LazyFrame operations",
+        ))
+    }
+
+    #[cfg(not(all(feature = "polars", feature = "python")))]
+    pub fn lazy_frame_to_python(_lf: (), _py: Python<'_>) -> PyResult<PyObject> {
+        Err(pyo3::exceptions::PyNotImplementedError::new_err(
+            "Polars and Python features are required for LazyFrame operations",
+        ))
+    }
+}
 
 // Test modules
 // #[cfg(test)]
@@ -57,17 +117,26 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
 
-    // Register ev_core module as "core" in Python
+    // Register legacy "core" module using migrated functions from ev_formats
+    // These functions maintain backward compatibility for existing Python code
     let core_submodule = PyModule::new(m.py(), "core")?;
     // PyO3 0.25 API compatible
     #[cfg(feature = "python")]
     {
         core_submodule.add_function(wrap_pyfunction!(
-            ev_core::python::events_to_block_py,
+            ev_formats::python::events_to_block_py,
             &core_submodule
         )?)?;
         core_submodule.add_function(wrap_pyfunction!(
-            ev_core::python::merge_events,
+            ev_formats::python::merge_events_py,
+            &core_submodule
+        )?)?;
+        core_submodule.add_function(wrap_pyfunction!(
+            ev_formats::python::add_random_events_py,
+            &core_submodule
+        )?)?;
+        core_submodule.add_function(wrap_pyfunction!(
+            ev_formats::python::remove_events_py,
             &core_submodule
         )?)?;
     }
@@ -91,26 +160,27 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
             ev_representations::python::create_voxel_grid_py,
             &representations_submodule
         )?)?;
-        representations_submodule.add_function(wrap_pyfunction!(
-            ev_representations::python::create_enhanced_voxel_grid_py,
-            &representations_submodule
-        )?)?;
-        representations_submodule.add_function(wrap_pyfunction!(
-            ev_representations::python::create_enhanced_frame_py,
-            &representations_submodule
-        )?)?;
-        representations_submodule.add_function(wrap_pyfunction!(
-            ev_representations::python::create_timesurface_py,
-            &representations_submodule
-        )?)?;
-        representations_submodule.add_function(wrap_pyfunction!(
-            ev_representations::python::create_averaged_timesurface_py,
-            &representations_submodule
-        )?)?;
-        representations_submodule.add_function(wrap_pyfunction!(
-            ev_representations::python::create_bina_rep_py,
-            &representations_submodule
-        )?)?;
+        // TODO: Re-enable these functions after they are updated for DataFrame-first architecture
+        // representations_submodule.add_function(wrap_pyfunction!(
+        //     ev_representations::python::create_enhanced_voxel_grid_py,
+        //     &representations_submodule
+        // )?)?;
+        // representations_submodule.add_function(wrap_pyfunction!(
+        //     ev_representations::python::create_enhanced_frame_py,
+        //     &representations_submodule
+        // )?)?;
+        // representations_submodule.add_function(wrap_pyfunction!(
+        //     ev_representations::python::create_timesurface_py,
+        //     &representations_submodule
+        // )?)?;
+        // representations_submodule.add_function(wrap_pyfunction!(
+        //     ev_representations::python::create_averaged_timesurface_py,
+        //     &representations_submodule
+        // )?)?;
+        // representations_submodule.add_function(wrap_pyfunction!(
+        //     ev_representations::python::create_bina_rep_py,
+        //     &representations_submodule
+        // )?)?;
 
         // Add clean aliases without _py suffix for better API
         representations_submodule.add(
@@ -125,26 +195,27 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "create_voxel_grid",
             representations_submodule.getattr("create_voxel_grid_py")?,
         )?;
-        representations_submodule.add(
-            "create_enhanced_voxel_grid",
-            representations_submodule.getattr("create_enhanced_voxel_grid_py")?,
-        )?;
-        representations_submodule.add(
-            "create_enhanced_frame",
-            representations_submodule.getattr("create_enhanced_frame_py")?,
-        )?;
-        representations_submodule.add(
-            "create_timesurface",
-            representations_submodule.getattr("create_timesurface_py")?,
-        )?;
-        representations_submodule.add(
-            "create_averaged_timesurface",
-            representations_submodule.getattr("create_averaged_timesurface_py")?,
-        )?;
-        representations_submodule.add(
-            "create_bina_rep",
-            representations_submodule.getattr("create_bina_rep_py")?,
-        )?;
+        // TODO: Re-enable these aliases after functions are updated for DataFrame-first architecture
+        // representations_submodule.add(
+        //     "create_enhanced_voxel_grid",
+        //     representations_submodule.getattr("create_enhanced_voxel_grid_py")?,
+        // )?;
+        // representations_submodule.add(
+        //     "create_enhanced_frame",
+        //     representations_submodule.getattr("create_enhanced_frame_py")?,
+        // )?;
+        // representations_submodule.add(
+        //     "create_timesurface",
+        //     representations_submodule.getattr("create_timesurface_py")?,
+        // )?;
+        // representations_submodule.add(
+        //     "create_averaged_timesurface",
+        //     representations_submodule.getattr("create_averaged_timesurface_py")?,
+        // )?;
+        // representations_submodule.add(
+        //     "create_bina_rep",
+        //     representations_submodule.getattr("create_bina_rep_py")?,
+        // )?;
     }
 
     m.add_submodule(&representations_submodule)?;

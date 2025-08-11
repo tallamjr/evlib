@@ -20,8 +20,13 @@
 /// - Prophesee EVT2.1 specification
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt21.html
 /// - OpenEB standalone samples
-use crate::ev_core::{Event, Events};
+use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
+use crate::ev_formats::streaming::Event;
+use crate::ev_formats::EventFormat;
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
@@ -391,7 +396,7 @@ impl Evt21Reader {
     pub fn read_file<P: AsRef<Path>>(
         &self,
         path: P,
-    ) -> Result<(Events, Evt21Metadata), Evt21Error> {
+    ) -> Result<(DataFrame, Evt21Metadata), Evt21Error> {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
@@ -412,7 +417,7 @@ impl Evt21Reader {
             file_size,
             header_size,
             data_size: file_size - header_size,
-            estimated_event_count: Some(events.len() as u64),
+            estimated_event_count: Some(events.height() as u64),
             ..metadata
         };
 
@@ -424,18 +429,69 @@ impl Evt21Reader {
         &self,
         path: P,
         load_config: &LoadConfig,
-    ) -> Result<Events, Evt21Error> {
-        let (mut events, _) = self.read_file(path)?;
+    ) -> Result<DataFrame, Evt21Error> {
+        let (df, _) = self.read_file(path)?;
 
-        // Apply LoadConfig filters
-        events.retain(|event| load_config.passes_filters(event));
+        #[cfg(feature = "polars")]
+        {
+            use polars::prelude::*;
+            let mut df = df;
 
-        // Sort if requested
-        if load_config.sort {
-            events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+            // Apply time window filter if specified
+            if let (Some(start), Some(end)) = (load_config.t_start, load_config.t_end) {
+                df = df
+                    .lazy()
+                    .filter(col("t").gt_eq(lit(start)).and(col("t").lt_eq(lit(end))))
+                    .collect()
+                    .map_err(|e| Evt21Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Time window filter failed: {}", e),
+                    })?;
+            }
+
+            // Apply bounding box filter if specified
+            if let (Some(x_min), Some(x_max), Some(y_min), Some(y_max)) = (
+                load_config.min_x,
+                load_config.max_x,
+                load_config.min_y,
+                load_config.max_y,
+            ) {
+                df = df
+                    .lazy()
+                    .filter(
+                        col("x")
+                            .gt_eq(lit(x_min))
+                            .and(col("x").lt_eq(lit(x_max)))
+                            .and(col("y").gt_eq(lit(y_min)))
+                            .and(col("y").lt_eq(lit(y_max))),
+                    )
+                    .collect()
+                    .map_err(|e| Evt21Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Bounding box filter failed: {}", e),
+                    })?;
+            }
+
+            // Sort if requested
+            if load_config.sort {
+                df = df.sort(["t"], Default::default()).map_err(|e| {
+                    Evt21Error::InvalidBinaryData {
+                        offset: 0,
+                        message: format!("Sort failed: {}", e),
+                    }
+                })?;
+            }
+
+            Ok(df)
         }
 
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(Evt21Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            })
+        }
     }
 
     /// Parse EVT2.1 header
@@ -574,201 +630,216 @@ impl Evt21Reader {
         file: &mut File,
         header_size: u64,
         metadata: &Evt21Metadata,
-    ) -> Result<Events, Evt21Error> {
-        // Seek to binary data start
-        file.seek(SeekFrom::Start(header_size))?;
+    ) -> Result<DataFrame, Evt21Error> {
+        // Use DataFrame-based implementation
+        #[cfg(feature = "polars")]
+        {
+            // Seek to binary data start
+            file.seek(SeekFrom::Start(header_size))?;
 
-        let mut events = Events::new();
-        let mut buffer = vec![0u8; self.config.chunk_size * 8]; // 8 bytes per 64-bit word
+            // Estimate total events for builder capacity
+            let estimated_events = ((metadata.data_size) / 8) as usize; // 8 bytes per 64-bit word
+            let mut builder = EventDataFrameBuilder::new(EventFormat::EVT21, estimated_events);
+            let mut buffer = vec![0u8; self.config.chunk_size * 8]; // 8 bytes per 64-bit word
 
-        // State for timestamp reconstruction
-        let mut current_time_base: u64 = 0;
-        let mut first_time_base_set = false;
-        let mut time_high_loop_count = 0u64;
+            // State for timestamp reconstruction
+            let mut current_time_base: u64 = 0;
+            let mut first_time_base_set = false;
+            let mut time_high_loop_count = 0u64;
 
-        // Constants for 64-bit timestamp handling
-        const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 50) - 1) << 10; // 50-bit time base to avoid overflow
-        const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 10);
-        const LOOP_THRESHOLD: u64 = 10 << 10; // Threshold for loop detection
+            // Constants for 64-bit timestamp handling
+            const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 50) - 1) << 10;
+            const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 10);
+            const LOOP_THRESHOLD: u64 = 10 << 10;
 
-        let mut bytes_read_total = 0;
+            let mut bytes_read_total = 0;
 
-        loop {
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // End of file
-            }
+            loop {
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break; // End of file
+                }
 
-            bytes_read_total += bytes_read;
-            let words_in_chunk = bytes_read / 8;
+                bytes_read_total += bytes_read;
+                let words_in_chunk = bytes_read / 8;
 
-            // Process events in chunks
-            for i in 0..words_in_chunk {
-                let word_offset =
-                    header_size + (bytes_read_total - bytes_read) as u64 + (i * 8) as u64;
-                let raw_bytes = &buffer[i * 8..(i + 1) * 8];
+                // Process events in chunks
+                for i in 0..words_in_chunk {
+                    let word_offset =
+                        header_size + (bytes_read_total - bytes_read) as u64 + (i * 8) as u64;
+                    let raw_bytes = &buffer[i * 8..(i + 1) * 8];
 
-                // Parse raw event (little-endian)
-                let raw_data = u64::from_le_bytes([
-                    raw_bytes[0],
-                    raw_bytes[1],
-                    raw_bytes[2],
-                    raw_bytes[3],
-                    raw_bytes[4],
-                    raw_bytes[5],
-                    raw_bytes[6],
-                    raw_bytes[7],
-                ]);
+                    // Parse raw event (little-endian)
+                    let raw_data = u64::from_le_bytes([
+                        raw_bytes[0],
+                        raw_bytes[1],
+                        raw_bytes[2],
+                        raw_bytes[3],
+                        raw_bytes[4],
+                        raw_bytes[5],
+                        raw_bytes[6],
+                        raw_bytes[7],
+                    ]);
 
-                let raw_event = RawEvt21Event { data: raw_data };
+                    let raw_event = RawEvt21Event { data: raw_data };
 
-                match raw_event.event_type() {
-                    Ok(event_type) => {
-                        match event_type {
-                            Evt21EventType::TimeHigh => {
-                                let time_event =
-                                    raw_event.as_time_high_event().map_err(|mut e| {
-                                        if let Evt21Error::InvalidEventType { offset, .. } = &mut e
+                    match raw_event.event_type() {
+                        Ok(event_type) => {
+                            match event_type {
+                                Evt21EventType::TimeHigh => {
+                                    if let Ok(time_event) = raw_event.as_time_high_event() {
+                                        let new_time_base = time_event.timestamp << 10;
+                                        let new_time_base_with_loops =
+                                            new_time_base + time_high_loop_count * TIME_LOOP;
+
+                                        // Handle time loop detection
+                                        if current_time_base > new_time_base_with_loops
+                                            && current_time_base - new_time_base_with_loops
+                                                >= MAX_TIMESTAMP_BASE - LOOP_THRESHOLD
                                         {
-                                            *offset = word_offset;
+                                            time_high_loop_count += 1;
+                                            current_time_base =
+                                                new_time_base + time_high_loop_count * TIME_LOOP;
+                                        } else {
+                                            current_time_base = new_time_base_with_loops;
                                         }
-                                        e
-                                    })?;
 
-                                let new_time_base = time_event.timestamp << 10;
-                                let new_time_base_with_loops =
-                                    new_time_base + time_high_loop_count * TIME_LOOP;
-
-                                // Handle time loop detection
-                                if current_time_base > new_time_base_with_loops
-                                    && current_time_base - new_time_base_with_loops
-                                        >= MAX_TIMESTAMP_BASE - LOOP_THRESHOLD
-                                {
-                                    time_high_loop_count += 1;
-                                    current_time_base =
-                                        new_time_base + time_high_loop_count * TIME_LOOP;
-                                } else {
-                                    current_time_base = new_time_base_with_loops;
+                                        first_time_base_set = true;
+                                    }
                                 }
+                                Evt21EventType::EvtNeg | Evt21EventType::EvtPos => {
+                                    // Skip vectorized events until we have a time base
+                                    if !first_time_base_set {
+                                        continue;
+                                    }
 
-                                first_time_base_set = true;
-                            }
-                            Evt21EventType::EvtNeg | Evt21EventType::EvtPos => {
-                                // Skip vectorized events until we have a time base
-                                if !first_time_base_set {
-                                    continue;
-                                }
+                                    if let Ok(vectorized_event) = raw_event.as_vectorized_event() {
+                                        // Decode vectorized event into individual events
+                                        if self.config.decode_vectorized {
+                                            // Iterate through the 32-bit validity mask
+                                            for bit_index in 0..32 {
+                                                if (vectorized_event.validity_mask >> bit_index) & 1
+                                                    != 0
+                                                {
+                                                    let x =
+                                                        vectorized_event.x_base + bit_index as u16;
+                                                    let y = vectorized_event.y;
+                                                    let full_timestamp = current_time_base
+                                                        + vectorized_event.timestamp as u64;
+                                                    let timestamp = full_timestamp as f64;
+                                                    let polarity = vectorized_event.polarity;
 
-                                let vectorized_event =
-                                    raw_event.as_vectorized_event().map_err(|mut e| {
-                                        if let Evt21Error::InvalidEventType { offset, .. } = &mut e
-                                        {
-                                            *offset = word_offset;
-                                        }
-                                        e
-                                    })?;
+                                                    // Validate coordinates if configured
+                                                    if self.config.validate_coordinates {
+                                                        if let Some((max_x, max_y)) =
+                                                            metadata.sensor_resolution
+                                                        {
+                                                            if x >= max_x || y >= max_y {
+                                                                if self.config.skip_invalid_events {
+                                                                    continue;
+                                                                } else {
+                                                                    return Err(Evt21Error::CoordinateOutOfBounds { x, y, max_x, max_y });
+                                                                }
+                                                            }
+                                                        }
+                                                    }
 
-                                // Decode vectorized event into individual events
-                                if self.config.decode_vectorized {
-                                    let decoded_events = self.decode_vectorized_event(
-                                        &vectorized_event,
-                                        current_time_base,
-                                        metadata,
-                                    )?;
+                                                    // Add event directly to DataFrame builder
+                                                    builder.add_event(x, y, timestamp, polarity);
 
-                                    for event in decoded_events {
-                                        events.push(event);
-
-                                        // Check max events limit
-                                        if let Some(max_events) = self.config.max_events {
-                                            if events.len() >= max_events {
-                                                return Ok(events);
+                                                    // Check max events limit
+                                                    if let Some(max_events) = self.config.max_events
+                                                    {
+                                                        if builder.len() >= max_events {
+                                                            return builder.build().map_err(|e| {
+                                                                Evt21Error::InvalidBinaryData {
+                                                                    offset: word_offset,
+                                                                    message: format!("DataFrame build failed: {}", e),
+                                                                }
+                                                            });
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            Evt21EventType::ExtTrigger => {
-                                // Skip external trigger events for now
-                                // Could be implemented if needed
-                            }
-                            Evt21EventType::VendorType2
-                            | Evt21EventType::VendorType3
-                            | Evt21EventType::VendorType4
-                            | Evt21EventType::VendorType5
-                            | Evt21EventType::VendorType6
-                            | Evt21EventType::VendorType7
-                            | Evt21EventType::VendorType9
-                            | Evt21EventType::VendorType11
-                            | Evt21EventType::VendorType12
-                            | Evt21EventType::VendorType13 => {
-                                // Skip vendor-specific events for now
-                                // Could be implemented if needed
-                            }
-                            Evt21EventType::Others | Evt21EventType::Continued => {
-                                // Skip vendor-specific OTHERS and CONTINUED events
-                                // These are documented as vendor-specific in the EVT2.1 spec
+                                _ => {
+                                    // Skip other event types
+                                    continue;
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            let mut error = e;
-                            if let Evt21Error::InvalidEventType { offset, .. } = &mut error {
-                                *offset = word_offset;
+                        Err(_) => {
+                            if !self.config.skip_invalid_events {
+                                return Err(Evt21Error::InvalidEventType {
+                                    type_value: 0,
+                                    offset: word_offset,
+                                });
                             }
-                            return Err(error);
                         }
                     }
                 }
             }
+
+            builder.build().map_err(|e| Evt21Error::InvalidBinaryData {
+                offset: 0,
+                message: format!("DataFrame build failed: {}", e),
+            })
         }
 
-        Ok(events)
+        #[cfg(not(feature = "polars"))]
+        {
+            Err(Evt21Error::InvalidBinaryData {
+                offset: 0,
+                message: "Polars feature not enabled for DataFrame support".to_string(),
+            })
+        }
     }
 
     /// Decode a vectorized event into individual events
-    fn decode_vectorized_event(
+    /// Used primarily for testing and standalone event processing
+    pub fn decode_vectorized_event(
         &self,
         vectorized_event: &VectorizedEvent,
         current_time_base: u64,
         metadata: &Evt21Metadata,
     ) -> Result<Vec<Event>, Evt21Error> {
         let mut events = Vec::new();
-        let full_timestamp = current_time_base + vectorized_event.timestamp as u64;
 
         // Iterate through the 32-bit validity mask
         for bit_index in 0..32 {
             if (vectorized_event.validity_mask >> bit_index) & 1 != 0 {
                 let x = vectorized_event.x_base + bit_index as u16;
                 let y = vectorized_event.y;
+                let full_timestamp = current_time_base + vectorized_event.timestamp as u64;
+                let timestamp = full_timestamp as f64 / 1_000_000.0; // Convert to seconds
+                let polarity = if vectorized_event.polarity { 1 } else { -1 };
 
                 // Validate coordinates if configured
                 if self.config.validate_coordinates {
                     if let Some((max_x, max_y)) = metadata.sensor_resolution {
                         if x >= max_x || y >= max_y {
-                            let error = Evt21Error::CoordinateOutOfBounds { x, y, max_x, max_y };
-
                             if self.config.skip_invalid_events {
                                 continue;
                             } else {
-                                return Err(error);
+                                return Err(Evt21Error::CoordinateOutOfBounds {
+                                    x,
+                                    y,
+                                    max_x,
+                                    max_y,
+                                });
                             }
                         }
                     }
                 }
 
-                // Create event
-                let event = Event {
-                    t: full_timestamp as f64 / 1_000_000.0, // Convert microseconds to seconds
+                events.push(Event {
+                    t: timestamp,
                     x,
                     y,
-                    polarity: vectorized_event.polarity,
-                };
-
-                events.push(event);
+                    polarity,
+                });
             }
         }
 

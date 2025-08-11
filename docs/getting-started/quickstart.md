@@ -16,7 +16,7 @@ print(f"Loaded {len(df)} events")
 # Access data columns
 xs = df['x'].to_numpy()
 ys = df['y'].to_numpy()
-ts = df['timestamp'].to_numpy()
+ts = df['t'].to_numpy()
 ps = df['polarity'].to_numpy()
 ```
 
@@ -32,10 +32,10 @@ events = evlib.load_events("data/slider_depth/events.txt")
 
 # Time window filtering
 filtered_events = events.filter(
-    (pl.col('timestamp') >= 0.0) & (pl.col('timestamp') <= 1.0)
+    (pl.col('t') >= 0.0) & (pl.col('t') <= 1.0)
 )
 df = filtered_events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 
 # Spatial bounds filtering
 spatial_events = events.filter(
@@ -43,7 +43,7 @@ spatial_events = events.filter(
     (pl.col('y') >= 100) & (pl.col('y') <= 300)
 )
 df = spatial_events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 
 # Polarity filtering
 pos_events = events.filter(pl.col('polarity') == 1)  # Positive events only
@@ -51,7 +51,7 @@ neg_events = events.filter(pl.col('polarity') == -1)  # Negative events only
 
 # Convert to numpy arrays if needed
 pos_df = pos_events.collect()
-pos_xs, pos_ys, pos_ts, pos_ps = pos_df['x'].to_numpy(), pos_df['y'].to_numpy(), pos_df['timestamp'].to_numpy(), pos_df['polarity'].to_numpy()
+pos_xs, pos_ys, pos_ts, pos_ps = pos_df['x'].to_numpy(), pos_df['y'].to_numpy(), pos_df['t'].to_numpy(), pos_df['polarity'].to_numpy()
 ```
 
 ## Event Representations
@@ -80,7 +80,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs = df['x'].to_numpy()
 ys = df['y'].to_numpy()
-ts = df['timestamp'].to_numpy()
+ts = df['t'].to_numpy()
 ps = df['polarity'].to_numpy()
 
 print(f"Loaded {len(df)} events for visualization")
@@ -112,7 +112,7 @@ ps_aug = ps.copy()
 print(f"Original events: {len(xs)}")
 print(f"Flipped coordinates: x_max={xs_flipped.max()}, x_min={xs_flipped.min()}")
 
-# Note: For timestamp-based augmentation, handle the datetime format properly
+# Note: For timestamp-based augmentation, handle the duration[μs] format properly
 # or convert to numeric values first
 ```
 
@@ -135,12 +135,12 @@ print(f"Event columns: {df.columns}")
 
 ### Text Files
 ```python
-# Standard format: timestamp x y polarity
+# Standard format: t x y polarity
 # 0.1 320 240 1
 # 0.2 321 241 -1
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ### HDF5 Files
@@ -156,7 +156,7 @@ xs = df['x'].to_numpy().astype(np.int64)
 ys = df['y'].to_numpy().astype(np.int64)
 ps = df['polarity'].to_numpy().astype(np.int64)
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save events to HDF5 format
 output_path = "quickstart_output.h5"
@@ -171,12 +171,12 @@ print(f"Working with {len(df)} events from original DataFrame")
 
 ### Custom Column Mapping
 ```python
-# For files with different column order: x y polarity timestamp
+# For files with different column order: x y polarity t
 # Note: Column mapping not currently supported in this version
-# Use standard format: timestamp x y polarity
+# Use standard format: t x y polarity
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ## Performance Tips

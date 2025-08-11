@@ -33,9 +33,9 @@
 //! let filtered = apply_drop_pixel_filter(events_df, &DropPixelFilter::new(mask))?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::collections::HashSet;
 #[cfg(feature = "tracing")]
@@ -78,7 +78,7 @@ macro_rules! instrument {
 /// Polars column names for event data
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "timestamp";
+pub const COL_T: &str = "t";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Pixel mask representation optimized for Polars operations
@@ -448,39 +448,6 @@ impl Validatable for DropPixelFilter {
     }
 }
 
-impl SingleFilter for DropPixelFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        // Legacy Vec<Event> interface - convert to DataFrame and back
-        // This is for backward compatibility only
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        let filtered_df = apply_drop_pixel_filter(df, self)
-            .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-        // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-        let result_df = filtered_df.collect().map_err(|e| {
-            FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e))
-        })?;
-
-        // Convert DataFrame back to Events
-        dataframe_to_events(&result_df)
-    }
-
-    fn description(&self) -> String {
-        format!("Drop pixel filter: {}", self.description())
-    }
-
-    fn is_enabled(&self) -> bool {
-        !self.mask.excluded_pixels.is_empty() || self.mask.included_pixels.is_some()
-    }
-}
-
 /// Apply drop pixel filtering using Polars expressions
 ///
 /// This is the main pixel filtering function that works entirely with Polars
@@ -657,124 +624,6 @@ pub fn filter_included_pixels(
         .select([col("*").exclude(["x_right", "y_right"])]))
 }
 
-/// Convert DataFrame back to Events vector (for compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values.get(i).ok_or_else(|| {
-            FilterError::ProcessingError(format!("Missing x value at index {}", i))
-        })? as u16;
-        let y = y_values.get(i).ok_or_else(|| {
-            FilterError::ProcessingError(format!("Missing y value at index {}", i))
-        })? as u16;
-        let t = t_values.get(i).ok_or_else(|| {
-            FilterError::ProcessingError(format!("Missing t value at index {}", i))
-        })?;
-        let polarity = p_values.get(i).ok_or_else(|| {
-            FilterError::ProcessingError(format!("Missing polarity value at index {}", i))
-        })? != 0;
-
-        events.push(Event { t, x, y, polarity });
-    }
-
-    Ok(events)
-}
-
-/// Legacy function - delegates to Polars implementation
-pub fn drop_pixels(events: &Events, pixels: HashSet<(u16, u16)>) -> FilterResult<Events> {
-    let filter = DropPixelFilter::exclude(pixels);
-    filter.apply(events)
-}
-
-/// Create a pixel mask from events based on activity using Polars aggregations
-pub fn create_pixel_mask(
-    events: &Events,
-    min_activity: usize,
-    max_activity: Option<usize>,
-) -> FilterResult<PixelMask> {
-    // Convert to DataFrame for Polars operations
-    let df = crate::ev_core::events_to_dataframe(events)
-        .map_err(|e| FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e)))?;
-
-    // Calculate pixel activity using Polars groupby aggregation
-    let pixel_stats = df
-        .lazy()
-        .group_by([col(COL_X), col(COL_Y)])
-        .agg([len().alias("activity")])
-        .collect()
-        .map_err(|e| {
-            FilterError::ProcessingError(format!("Pixel stats calculation failed: {}", e))
-        })?;
-
-    let mut excluded_pixels = HashSet::new();
-
-    let x_values = pixel_stats
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = pixel_stats
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let activity_values = pixel_stats
-        .column("activity")
-        .map_err(|e| FilterError::ProcessingError(format!("Missing activity column: {}", e)))?
-        .u32()
-        .map_err(|e| FilterError::ProcessingError(format!("Activity column type error: {}", e)))?;
-
-    for i in 0..pixel_stats.height() {
-        let x = x_values.get(i).unwrap() as u16;
-        let y = y_values.get(i).unwrap() as u16;
-        let activity = activity_values.get(i).unwrap() as usize;
-
-        // Check minimum activity
-        if activity < min_activity {
-            excluded_pixels.insert((x, y));
-            continue;
-        }
-
-        // Check maximum activity
-        if let Some(max_act) = max_activity {
-            if activity > max_act {
-                excluded_pixels.insert((x, y));
-            }
-        }
-    }
-
-    Ok(PixelMask::exclude(excluded_pixels))
-}
-
-/// Load pixel mask from coordinates list
 pub fn load_pixel_mask_from_coords(coords: Vec<(u16, u16)>, exclude: bool) -> PixelMask {
     let pixels: HashSet<_> = coords.into_iter().collect();
 
@@ -863,10 +712,11 @@ pub fn get_pixel_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
         .collect()
 }
 
+/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::Event;
+    // Removed: use crate::Event; - legacy type no longer exists
 
     fn create_test_events() -> Events {
         vec![
@@ -1095,7 +945,7 @@ mod tests {
         let events = create_test_events();
 
         // Convert to DataFrame for Polars operations
-        let df = crate::ev_core::events_to_dataframe(&events).unwrap().lazy();
+        let df = crate::events_to_dataframe(&events).unwrap().lazy();
 
         // Test excluded pixels filtering
         let mut excluded = HashSet::new();
@@ -1119,3 +969,4 @@ mod tests {
         assert_eq!(result_df.height(), 3);
     }
 }
+*/

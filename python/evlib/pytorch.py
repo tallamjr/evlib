@@ -48,7 +48,7 @@ class PolarsDataset(IterableDataset):
             features = torch.stack([
                 batch["x"].float(),
                 batch["y"].float(),
-                batch["timestamp"].float()
+                batch["t"].float()
             ], dim=1)
             labels = batch["polarity"].long()
             return {"features": features, "labels": labels}
@@ -226,8 +226,6 @@ def load_rvt_data(
             os.environ["HDF5_PLUGIN_PATH"] = hdf5plugin.PLUGIN_PATH
         except ImportError:
             # Try alternative plugin path setup
-            from pathlib import Path
-
             plugin_path = (
                 Path(__file__).parent.parent.parent / ".venv/lib/python3.10/site-packages/hdf5plugin/plugins"
             )
@@ -342,7 +340,7 @@ def load_rvt_data(
         # Basic metadata
         feature_data["sample_idx"] = np.arange(n_samples)
         feature_data["label"] = training_labels
-        feature_data["timestamp"] = training_timestamps.astype(np.float64)
+        feature_data["t"] = training_timestamps.astype(np.float64)
         feature_data["confidence"] = training_confidences.astype(np.float32)
 
         # Bounding box features
@@ -375,7 +373,7 @@ def load_rvt_data(
         # Add normalized features
         df = df.with_columns(
             [
-                (pl.col("timestamp") / pl.col("timestamp").max()).alias("timestamp_norm"),
+                (pl.col("t") / pl.col("t").max()).alias("t_norm"),
                 (pl.col("bbox_area") / pl.col("bbox_area").max()).alias("bbox_area_norm"),
                 (pl.col("total_activity") / pl.col("total_activity").max()).alias("activity_norm"),
             ]
@@ -434,7 +432,7 @@ def create_rvt_transform():
                 feature_tensors.append(batch[key])
 
         # Add normalized features
-        for key in ["timestamp_norm", "bbox_area_norm", "activity_norm"]:
+        for key in ["t_norm", "bbox_area_norm", "activity_norm"]:
             if key in batch:
                 feature_tensors.append(batch[key])
 
@@ -468,11 +466,11 @@ def create_basic_event_transform():
     def extract_event_features(batch: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
         """Transform raw event data to features"""
         # Convert timestamp from microseconds to seconds
-        if batch["timestamp"].dtype == torch.int64:
+        if batch["t"].dtype == torch.int64:
             # Duration in microseconds, convert to float seconds
-            timestamp = batch["timestamp"].float() / 1_000_000
+            timestamp = batch["t"].float() / 1_000_000
         else:
-            timestamp = batch["timestamp"].float()
+            timestamp = batch["t"].float()
 
         # Stack coordinate and temporal features
         features = torch.stack(

@@ -18,7 +18,7 @@ macro_rules! warn {
 
 use crate::ev_filtering::{
     DenoiseFilter, DownsamplingFilter, DropPixelFilter, HotPixelFilter, PolarityFilter,
-    SingleFilter, SpatialFilter, TemporalFilter,
+    SpatialFilter, TemporalFilter,
 };
 
 /// Result type for filtering operations
@@ -544,26 +544,26 @@ impl FilterConfig {
     pub fn description(&self) -> String {
         let mut parts = Vec::new();
 
-        if let Some(filter) = &self.temporal_filter {
-            parts.push(format!("Temporal({})", filter.description()));
+        if let Some(_filter) = &self.temporal_filter {
+            parts.push("Temporal(filter)".to_string());
         }
-        if let Some(filter) = &self.spatial_filter {
-            parts.push(format!("Spatial({})", filter.description()));
+        if let Some(_filter) = &self.spatial_filter {
+            parts.push("Spatial(filter)".to_string());
         }
-        if let Some(filter) = &self.polarity_filter {
-            parts.push(format!("Polarity({})", filter.description()));
+        if let Some(_filter) = &self.polarity_filter {
+            parts.push("Polarity(filter)".to_string());
         }
-        if let Some(filter) = &self.hot_pixel_filter {
-            parts.push(format!("HotPixel({})", filter.description()));
+        if let Some(_filter) = &self.hot_pixel_filter {
+            parts.push("HotPixel(filter)".to_string());
         }
-        if let Some(filter) = &self.denoise_filter {
-            parts.push(format!("Denoise({})", filter.description()));
+        if let Some(_filter) = &self.denoise_filter {
+            parts.push("Denoise(filter)".to_string());
         }
-        if let Some(filter) = &self.drop_pixel_filter {
-            parts.push(format!("DropPixel({})", filter.description()));
+        if let Some(_filter) = &self.drop_pixel_filter {
+            parts.push("DropPixel(filter)".to_string());
         }
-        if let Some(filter) = &self.downsampling_filter {
-            parts.push(format!("Downsample({})", filter.description()));
+        if let Some(_filter) = &self.downsampling_filter {
+            parts.push("Downsample(filter)".to_string());
         }
 
         if parts.is_empty() {

@@ -736,7 +736,8 @@ data/gen4_1mpx_processed_RVT
 
 data/slider_depth
 
-data/prophersee
+data/prophersee/samples/*
+!data/prophersee/samples/evt2
 
 tests/data/output.*
 tests/data/filtered_events.parquet

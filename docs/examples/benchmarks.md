@@ -32,7 +32,7 @@ def benchmark_text_loading():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
     evlib_time = time.time() - start
 
     # Pure Python loading
@@ -69,7 +69,7 @@ def benchmark_hdf5_performance():
     start = time.time()
     events2 = evlib.load_events("test_evlib.h5")
     df2 = events2.collect()
-    xs2, ys2, ts2, ps2 = df2['x'].to_numpy(), df2['y'].to_numpy(), df2['timestamp'].to_numpy(), df2['polarity'].to_numpy()
+    xs2, ys2, ts2, ps2 = df2['x'].to_numpy(), df2['y'].to_numpy(), df2['t'].to_numpy(), df2['polarity'].to_numpy()
     evlib_load_time = time.time() - start
 
     print(f"Save time: {evlib_save_time:.3f}s")
@@ -96,7 +96,7 @@ def benchmark_voxel_grid():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # evlib implementation
     start = time.time()
@@ -150,7 +150,7 @@ def benchmark_smooth_voxel():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # evlib smooth voxel
     start = time.time()
@@ -184,7 +184,7 @@ def benchmark_augmentation():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # evlib flip
     start = time.time()
@@ -216,7 +216,7 @@ def benchmark_noise_addition():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # evlib noise addition
     start = time.time()
@@ -250,7 +250,7 @@ def benchmark_model_loading():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",

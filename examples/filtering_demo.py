@@ -65,7 +65,7 @@ def create_demo_events(num_events=10000):
         {
             "x": x,
             "y": y,
-            "timestamp": pl.Series(timestamps_us, dtype=pl.Duration(time_unit="us")),
+            "t": pl.Series(timestamps_us, dtype=pl.Duration(time_unit="us")),
             "polarity": polarity,
         }
     )
@@ -122,18 +122,12 @@ def demo_preprocessing_pipeline():
     # Create demo data
     events = create_demo_events(num_events=15000)
 
-    # Apply complete preprocessing
-    processed = evf.preprocess_events(
-        events,
-        t_start=0.2,
-        t_end=1.8,
-        roi=(100, 500, 100, 400),
-        polarity=1,  # Keep only positive events
-        remove_hot_pixels=True,
-        remove_noise=True,
-        hot_pixel_threshold=99.0,
-        refractory_period_us=1000,
-    )
+    # Apply complete preprocessing using filter chaining
+    filtered = evf.filter_by_time(events, t_start=0.2, t_end=1.8)
+    filtered = evf.filter_by_roi(filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+    filtered = evf.filter_by_polarity(filtered, polarity=1)  # Keep only positive events
+    filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.0)
+    processed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
 
     print(f"\nFinal processed events: {len(processed.collect()):,}")
 
@@ -197,7 +191,7 @@ def main():
     print("  • Polarity-based filtering")
     print("  • Hot pixel detection and removal")
     print("  • Noise filtering with refractory periods")
-    print("  • Complete preprocessing pipeline")
+    print("  • Complete preprocessing using filter chaining")
     print("  • Efficient Polars DataFrame operations")
     print("  • Progress reporting for large datasets")
 

@@ -330,7 +330,7 @@ import polars as pl
 
 # Use Polars for high-performance processing
 # processed = events.filter(
-#     (pl.col("timestamp") > 1.0) &
+#     (pl.col("t") > 1.0) &
 #     (pl.col("polarity") == 1)
 # ).collect()
 #

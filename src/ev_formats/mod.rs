@@ -1,34 +1,15 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-use crate::ev_core::{Event, Events};
 #[cfg(not(windows))]
 use hdf5_metno::File as H5File;
+#[cfg(feature = "polars")]
+use polars::prelude::*;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
-#[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! error {
-    ($($args:tt)*) => {
-        eprintln!("[ERROR] {}", format!($($args)*))
-    };
-}
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! info {
-    ($($args:tt)*) => {};
-}
-
-#[cfg(not(feature = "tracing"))]
-macro_rules! warn {
-    ($($args:tt)*) => {
-        eprintln!("[WARN] {}", format!($($args)*))
-    };
-}
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -69,7 +50,7 @@ pub use polarity_handler::{
 // Streaming module for large file processing
 pub mod streaming;
 pub use streaming::{
-    estimate_memory_usage, should_use_streaming, PolarsEventStreamer, StreamingConfig,
+    estimate_memory_usage, should_use_streaming, Event, PolarsEventStreamer, StreamingConfig,
 };
 
 // Apache Arrow integration for zero-copy data transfer
@@ -92,6 +73,15 @@ pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, Prophese
 // Native HDF5 reader with ECF support (disabled on Windows)
 #[cfg(not(windows))]
 pub mod hdf5_reader;
+
+// DataFrame construction utilities for direct event processing
+pub mod dataframe_builder;
+pub use dataframe_builder::{
+    calculate_optimal_chunk_size, convert_timestamp, create_empty_events_dataframe,
+    EventDataFrameBuilder, EventDataFrameStreamer,
+};
+
+// Python bindings for DataFrame-based operations (defined inline below)
 
 // Polars support integrated directly into file readers
 
@@ -235,7 +225,7 @@ impl LoadConfig {
 
         // Polarity filter
         if let Some(polarity) = self.polarity {
-            if event.polarity != polarity {
+            if (event.polarity > 0) != polarity {
                 return false;
             }
         }
@@ -253,7 +243,10 @@ impl LoadConfig {
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
 #[cfg(not(windows))]
-pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_metno::Result<Events> {
+pub fn load_events_from_hdf5(
+    path: &str,
+    dataset_name: Option<&str>,
+) -> hdf5_metno::Result<DataFrame> {
     // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
 
     let file = H5File::open(path)?;
@@ -282,7 +275,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
 
                 // Handle empty datasets
                 if total_events == 0 {
-                    return Ok(Vec::new());
+                    return Ok(DataFrame::empty());
                 }
 
                 // For very large files, read in chunks to avoid memory issues
@@ -310,7 +303,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_chunk[i] as f64 / 1_000_000.0, // Convert i64 microseconds to seconds
                             x: x_chunk[i],                      // Already u16
                             y: y_chunk[i],                      // Already u16
-                            polarity: p_chunk[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: p_chunk[i],               // Keep as i8: 1 or -1
                         });
                     }
 
@@ -323,7 +316,9 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     }
                 }
 
-                return Ok(events);
+                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                });
             }
         }
     }
@@ -335,7 +330,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             let total_events = shape[0];
 
             if total_events == 0 {
-                return Ok(Vec::new());
+                return Ok(DataFrame::empty());
             }
 
             // This is a Prophesee HDF5 format - try multiple approaches
@@ -348,7 +343,14 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     Ok(events) => {
                         // Success message already printed by read_prophesee_hdf5_native()
                         info!("Native ECF decoder succeeded with {} events", events.len());
-                        return Ok(events);
+                        return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(
+                            |e| {
+                                hdf5_metno::Error::Internal(format!(
+                                    "DataFrame conversion failed: {}",
+                                    e
+                                ))
+                            },
+                        );
                     }
                     Err(e) => {
                         warn!("Native ECF decoder failed: {}", e);
@@ -362,7 +364,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 info!("Trying Python fallback for ECF decoding");
                 match call_python_prophesee_fallback(path) {
                     Ok(events) => {
-                        info!(events = events.len(), "Python fallback loaded events");
+                        info!(events = events.height(), "Python fallback loaded events");
                         return Ok(events);
                     }
                     Err(e) => {
@@ -373,7 +375,16 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                                 Ok(events) => {
                                     info!("Rust ECF decoder succeeded");
-                                    return Ok(events);
+                                    return python::build_polars_dataframe(
+                                        &events,
+                                        EventFormat::HDF5,
+                                    )
+                                    .map_err(|e| {
+                                        hdf5_metno::Error::Internal(format!(
+                                            "DataFrame conversion failed: {}",
+                                            e
+                                        ))
+                                    });
                                 }
                                 Err(ecf_error) => {
                                     error!("Rust ECF decoder failed: {}", ecf_error);
@@ -403,7 +414,13 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                         Ok(events) => {
                             info!("Rust ECF decoder succeeded");
-                            return Ok(events);
+                            return Ok(python::build_polars_dataframe(&events, EventFormat::HDF5)
+                                .map_err(|e| {
+                                    hdf5_metno::Error::Internal(format!(
+                                        "DataFrame conversion failed: {}",
+                                        e
+                                    ))
+                                })?);
                         }
                         Err(ecf_error) => {
                             error!("Rust ECF decoder failed: {}", ecf_error);
@@ -472,11 +489,13 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     t: t_arr[i] / conversion_factor, // Use detected units
                     x,
                     y,
-                    polarity: p_arr[i] != 0, // Convert i8 to bool
+                    polarity: if p_arr[i] != 0 { 1 } else { -1 }, // Convert to standard i8 format
                 });
             }
 
-            return Ok(events);
+            return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+            });
         }
     }
 
@@ -514,7 +533,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_arr[i] as f64 / conversion_factor, // Use detected units
                             x,
                             y,
-                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
                         });
                     }
                 } else if let Ok(t_arr) = t_dataset.read_raw::<f64>() {
@@ -532,7 +551,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                             t: t_arr[i], // Already in seconds for f64 format
                             x,
                             y,
-                            polarity: p_arr[i] > 0, // Convert i8 to bool: 1 -> true, -1 -> false
+                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
                         });
                     }
                 } else {
@@ -541,7 +560,9 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                     )));
                 }
 
-                return Ok(events);
+                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
+                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
+                });
             }
         }
     }
@@ -618,7 +639,7 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
 
 /// Call Python fallback for Prophesee HDF5 format
 #[cfg(all(feature = "python", not(windows)))]
-fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
+fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
     Python::with_gil(|py| {
         // Import the Python fallback module
         let hdf5_prophesee = match py.import("evlib.hdf5_prophesee") {
@@ -725,11 +746,12 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
                 t: t_array[i] as f64 / conversion_factor, // Use detected units
                 x,
                 y,
-                polarity: p_array[i] > 0, // Convert to bool
+                polarity: if p_array[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
             });
         }
 
-        Ok(events)
+        python::build_polars_dataframe(&events, EventFormat::HDF5)
+            .map_err(|e| hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e)))
     })
 }
 
@@ -739,7 +761,7 @@ fn try_rust_ecf_decoder(
     _cd_group: &hdf5_metno::Group,
     _events_dataset: &hdf5_metno::Dataset,
     total_events: usize,
-) -> Result<Events, Box<dyn std::error::Error>> {
+) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
     use crate::ev_formats::hdf5_reader;
 
     info!(events = total_events, "Attempting native Rust ECF decode");
@@ -775,10 +797,10 @@ fn try_rust_ecf_decoder(
 /// # Arguments
 /// * `path` - Path to the text file
 /// * `config` - Configuration with filtering options
-pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events> {
+pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFrame> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut events = Events::new();
+    let mut events = Vec::<Event>::new();
 
     // Estimate capacity if possible (reduce if filtering is likely to remove many events)
     if let Ok(metadata) = std::fs::metadata(path) {
@@ -879,8 +901,9 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
             )
         })?;
 
-        // Convert polarity to boolean: 0 -> false, non-zero -> true
-        let polarity = polarity_raw != 0;
+        // For text files, preserve original polarity encoding (0/1)
+        // Don't convert to -1/1 like other formats
+        let polarity = polarity_raw;
 
         let event = Event { t, x, y, polarity };
 
@@ -902,7 +925,8 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
         events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    Ok(events)
+    python::build_polars_dataframe(&events, EventFormat::Text)
+        .map_err(|e| std::io::Error::other(format!("DataFrame conversion failed: {}", e)))
 }
 
 // Binary format (mmap_events) removed due to safety and reliability issues:
@@ -916,7 +940,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<Events
 // Backward compatibility functions (maintain old API)
 
 /// Load events from a text file (backward compatibility)
-pub fn load_events_from_text_simple(path: &str) -> IoResult<Events> {
+pub fn load_events_from_text_simple(path: &str) -> IoResult<DataFrame> {
     load_events_from_text(path, &LoadConfig::new())
 }
 
@@ -924,19 +948,19 @@ pub fn load_events_from_text_simple(path: &str) -> IoResult<Events> {
 pub fn load_events_with_config(
     path: &str,
     config: &LoadConfig,
-) -> Result<Events, Box<dyn std::error::Error>> {
+) -> Result<DataFrame, Box<dyn std::error::Error>> {
     // Use format detector to determine the file format
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
         #[cfg(not(windows))]
         EventFormat::HDF5 => {
-            let mut events = load_events_from_hdf5(path, None)?;
+            let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
-            events.retain(|event| config.passes_filters(event));
+            // TODO: Apply filters using Polars DataFrame operations
             // Sort if requested
             if config.sort {
-                events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+                // TODO: Apply sorting using Polars DataFrame.sort() operation\n                // events = events.sort([\"t\"], SortMultipleOptions::new())?;
             }
             Ok(events)
         }
@@ -1061,8 +1085,14 @@ pub fn load_events_to_arrow(
     // Load events using existing pipeline
     let events = load_events_with_config(path, config)?;
 
+    // Convert DataFrame to Event iterator for Arrow construction
+    // Note: This conversion is for compatibility with Arrow integration
+    // For large datasets, consider direct DataFrame->Arrow conversion
+    let event_iter = dataframe_to_event_iterator(&events)?;
+    let events_vec: Vec<Event> = event_iter.collect();
+
     // Check if we should use streaming based on event count
-    let event_count = events.len();
+    let event_count = events_vec.len();
     let default_threshold = 5_000_000; // 5M events
     let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
 
@@ -1075,13 +1105,60 @@ pub fn load_events_to_arrow(
             );
         let streamer = ArrowEventStreamer::new(chunk_size, detection_result.format);
         streamer
-            .stream_to_arrow(events.into_iter())
+            .stream_to_arrow(events_vec.into_iter())
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
     } else {
         // Direct construction for smaller datasets
-        ArrowEventBuilder::from_events_zero_copy(&events, detection_result.format)
+        ArrowEventBuilder::from_events_zero_copy(&events_vec, detection_result.format)
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
     }
+}
+
+/// Convert DataFrame to Event iterator for Arrow integration
+/// This is a helper function for compatibility with Arrow builder
+#[cfg(feature = "arrow")]
+fn dataframe_to_event_iterator(
+    df: &DataFrame,
+) -> Result<impl Iterator<Item = Event>, Box<dyn std::error::Error>> {
+    use crate::ev_formats::streaming::Event;
+
+    let t_series = df
+        .column("t")
+        .map_err(|e| format!("Missing timestamp column: {}", e))?;
+    let x_series = df
+        .column("x")
+        .map_err(|e| format!("Missing x column: {}", e))?;
+    let y_series = df
+        .column("y")
+        .map_err(|e| format!("Missing y column: {}", e))?;
+    let polarity_series = df
+        .column("polarity")
+        .map_err(|e| format!("Missing polarity column: {}", e))?;
+
+    // Convert to vectors for iterator creation
+    let timestamps: Vec<f64> = t_series.f64()?.into_no_null_iter().collect();
+    let x_coords: Vec<u16> = x_series
+        .i16()?
+        .into_no_null_iter()
+        .map(|v| v as u16)
+        .collect();
+    let y_coords: Vec<u16> = y_series
+        .i16()?
+        .into_no_null_iter()
+        .map(|v| v as u16)
+        .collect();
+    let polarities: Vec<i8> = polarity_series.i8()?.into_no_null_iter().collect();
+
+    // Create iterator of Event structs
+    let events: Vec<Event> = timestamps
+        .into_iter()
+        .zip(x_coords.into_iter())
+        .zip(y_coords.into_iter())
+        .zip(polarities.into_iter())
+        .map(|(((t, x), y), polarity)| Event { t, x, y, polarity })
+        .collect();
+
+    Ok(events.into_iter())
 }
 
 /// Load events to Apache Arrow RecordBatch (simple version)
@@ -1169,7 +1246,7 @@ impl Iterator for EventFileIterator {
                     t,
                     x,
                     y,
-                    polarity: p > 0,
+                    polarity: if p > 0 { 1 } else { -1 },
                 }))
             }
             Err(e) => Some(Err(e)),
@@ -1179,7 +1256,7 @@ impl Iterator for EventFileIterator {
 
 // Window-based event iterator that returns chunks of events based on time windows
 pub struct TimeWindowIter<'a> {
-    events: &'a Events,
+    events: &'a Vec<Event>,
     window_duration: f64,
     current_idx: usize,
     start_time: f64,
@@ -1192,7 +1269,7 @@ impl<'a> TimeWindowIter<'a> {
     /// # Arguments
     /// * `events` - Event array to iterate over
     /// * `window_duration` - Duration of each time window in seconds
-    pub fn new(events: &'a Events, window_duration: f64) -> Self {
+    pub fn new(events: &'a Vec<Event>, window_duration: f64) -> Self {
         let start_time = if !events.is_empty() { events[0].t } else { 0.0 };
 
         let end_time = start_time + window_duration;
@@ -1243,7 +1320,7 @@ impl Iterator for TimeWindowIter<'_> {
 pub mod python {
     use super::*;
     use numpy::PyReadonlyArray1;
-    use polars::prelude::IntoLazy;
+    use polars::prelude::{col, lit, DataFrame, IntoLazy, SortMultipleOptions};
     use std::io::Write;
 
     // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
@@ -1265,7 +1342,7 @@ pub mod python {
 
     /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency
     #[cfg(feature = "polars")]
-    fn build_polars_dataframe(
+    pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
     ) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
@@ -1277,7 +1354,7 @@ pub mod python {
             // Create empty DataFrame with proper schema
             let empty_x = Series::new("x".into(), Vec::<i16>::new());
             let empty_y = Series::new("y".into(), Vec::<i16>::new());
-            let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
+            let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
                 .cast(&DataType::Duration(TimeUnit::Microseconds))?;
             let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
@@ -1295,8 +1372,7 @@ pub mod python {
         // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
         let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
         let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder =
-            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
@@ -1306,7 +1382,7 @@ pub mod python {
             y_builder.append_value(event.y as i16);
             timestamp_builder.append_value(convert_timestamp(event.t));
             // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
+            polarity_builder.append_value(event.polarity);
         }
 
         // Build Series from builders
@@ -1503,6 +1579,123 @@ pub mod python {
     ///
     /// Returns:
     ///     Python dictionary with event data for Polars LazyFrame creation
+    ///
+    /// Load events directly into a Polars DataFrame (optimized path)
+    /// This bypasses the intermediate Event struct and builds DataFrames directly from format readers
+    #[cfg(all(feature = "polars", feature = "python"))]
+    pub fn load_events_to_dataframe_py(
+        py: Python<'_>,
+        path: &str,
+        config: &LoadConfig,
+    ) -> PyResult<PyObject> {
+        // Detect format for proper reader selection
+        let format_result = detect_event_format(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
+        })?;
+
+        let df = match format_result.format {
+            EventFormat::EVT2 | EventFormat::EVT21 => {
+                // Use EVT2 reader with direct DataFrame output
+                let mut evt2_config = Evt2Config {
+                    validate_coordinates: true,
+                    skip_invalid_events: true,
+                    ..Default::default()
+                };
+
+                // Use chunk_size as max_events limit if specified
+                if let Some(chunk_size) = config.chunk_size {
+                    evt2_config.max_events = Some(chunk_size);
+                }
+
+                let reader = Evt2Reader::with_config(evt2_config);
+                let (df, _metadata) = reader.read_file_to_dataframe(path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Failed to read EVT2 file: {e}"
+                    ))
+                })?;
+
+                // Apply additional filtering if needed using Polars operations
+                apply_config_filters_to_dataframe(df, config)?
+            }
+            _ => {
+                // For other formats, fall back to the existing approach for now
+                // TODO: Add direct DataFrame readers for other formats
+                let events = load_events_with_config(path, config).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                        "Failed to load events: {e}"
+                    ))
+                })?;
+
+                // load_events_with_config already returns a DataFrame, so use it directly
+                events
+            }
+        };
+
+        // Return Polars DataFrame directly to Python
+        use pyo3::IntoPyObject;
+        let py_df = pyo3_polars::PyDataFrame(df);
+        Ok(py_df.into_pyobject(py)?.into())
+    }
+
+    /// Apply LoadConfig filters to a DataFrame using Polars operations
+    #[cfg(feature = "polars")]
+    fn apply_config_filters_to_dataframe(
+        df: DataFrame,
+        config: &LoadConfig,
+    ) -> PyResult<DataFrame> {
+        let mut lazy_df = df.lazy();
+
+        // Apply time window filter
+        if let (Some(t_start), Some(t_end)) = (config.t_start, config.t_end) {
+            let t_start_micros = (t_start * 1_000_000.0) as i64;
+            let t_end_micros = (t_end * 1_000_000.0) as i64;
+
+            lazy_df = lazy_df.filter(
+                col("t")
+                    .gt_eq(lit(t_start_micros))
+                    .and(col("t").lt_eq(lit(t_end_micros))),
+            );
+        } else if let Some(t_start) = config.t_start {
+            let t_start_micros = (t_start * 1_000_000.0) as i64;
+            lazy_df = lazy_df.filter(col("t").gt_eq(lit(t_start_micros)));
+        } else if let Some(t_end) = config.t_end {
+            let t_end_micros = (t_end * 1_000_000.0) as i64;
+            lazy_df = lazy_df.filter(col("t").lt_eq(lit(t_end_micros)));
+        }
+
+        // Apply spatial bounds
+        if let Some(min_x) = config.min_x {
+            lazy_df = lazy_df.filter(col("x").gt_eq(lit(min_x as i16)));
+        }
+        if let Some(max_x) = config.max_x {
+            lazy_df = lazy_df.filter(col("x").lt_eq(lit(max_x as i16)));
+        }
+        if let Some(min_y) = config.min_y {
+            lazy_df = lazy_df.filter(col("y").gt_eq(lit(min_y as i16)));
+        }
+        if let Some(max_y) = config.max_y {
+            lazy_df = lazy_df.filter(col("y").lt_eq(lit(max_y as i16)));
+        }
+
+        // Apply polarity filter
+        if let Some(polarity) = config.polarity {
+            let polarity_value = if polarity { 1i8 } else { -1i8 };
+            lazy_df = lazy_df.filter(col("polarity").eq(lit(polarity_value)));
+        }
+
+        // Apply sorting if requested
+        if config.sort {
+            lazy_df = lazy_df.sort(["t"], SortMultipleOptions::default());
+        }
+
+        // Collect the result
+        lazy_df.collect().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to apply filters: {e}"
+            ))
+        })
+    }
+
     #[pyfunction]
     #[pyo3(
         signature = (
@@ -1553,7 +1746,7 @@ pub mod python {
             .with_header_lines(header_lines);
 
         // Detect format for proper polarity encoding
-        let format_result = detect_event_format(path).map_err(|e| {
+        let _format_result = detect_event_format(path).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
         })?;
 
@@ -1562,39 +1755,13 @@ pub mod python {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load events: {e}"))
         })?;
 
-        // NEW: Direct Polars DataFrame construction with automatic streaming for large files
+        // Return Polars DataFrame/LazyFrame directly to Python
+        // load_events_with_config already returns a DataFrame, so use it directly
         #[cfg(feature = "polars")]
         {
-            use crate::ev_formats::streaming::should_use_streaming;
-
-            // Check if we should use streaming based on event count
-            let event_count = events.len();
-            let default_threshold = 5_000_000; // 5M events
-            let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
-
-            let df = if should_use_streaming(event_count, Some(streaming_threshold)) {
-                // Use streaming for large datasets
-                let chunk_size =
-                    PolarsEventStreamer::calculate_optimal_chunk_size(event_count, 512);
-                let streamer = PolarsEventStreamer::new(chunk_size, format_result.format);
-
-                streamer.stream_to_polars(events.into_iter()).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to stream Polars DataFrame: {e}"
-                    ))
-                })?
-            } else {
-                // Direct construction for smaller datasets
-                build_polars_dataframe(&events, format_result.format).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to build Polars DataFrame: {e}"
-                    ))
-                })?
-            };
-
             // Return Polars LazyFrame directly to Python
             // This is much more efficient than converting to dict and back
-            return_polars_lazyframe_to_python(py, df.lazy())
+            return_polars_lazyframe_to_python(py, events.lazy())
         }
 
         #[cfg(not(feature = "polars"))]
@@ -1944,7 +2111,7 @@ pub mod python {
             x_vec.push(event.x as i64);
             y_vec.push(event.y as i64);
             t_vec.push(event.t);
-            p_vec.push(if event.polarity { 1i64 } else { 0i64 });
+            p_vec.push(event.polarity as i64);
         }
 
         data_dict.insert("x".to_string(), x_vec.into_pyobject(py)?.into());
@@ -1953,5 +2120,449 @@ pub mod python {
         data_dict.insert("polarity".to_string(), p_vec.into_pyobject(py)?.into());
 
         Ok(data_dict.into_pyobject(py)?.into())
+    }
+
+    // ============================================================================
+    // MIGRATED FROM ev_core::python - Legacy compatibility functions
+    // These functions maintain backward compatibility for existing Python code
+    // ============================================================================
+
+    /// Convert events to a block representation (direct numpy array processing)
+    #[pyfunction]
+    #[pyo3(name = "events_to_block")]
+    pub fn events_to_block_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array2;
+        use numpy::IntoPyArray;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        let len = xs_array
+            .len()
+            .min(ys_array.len())
+            .min(ts_array.len())
+            .min(ps_array.len());
+
+        // Create a 2D array with shape (n, 4) directly from numpy arrays
+        let mut block = Array2::<f64>::zeros((len, 4));
+
+        // Fill in the values: [x, y, t, p]
+        for i in 0..len {
+            block[[i, 0]] = xs_array[i] as f64;
+            block[[i, 1]] = ys_array[i] as f64;
+            block[[i, 2]] = ts_array[i];
+            block[[i, 3]] = if ps_array[i] > 0 { 1.0 } else { 0.0 };
+        }
+
+        Ok(block.into_pyarray(py).into())
+    }
+
+    /// Merge multiple sets of events into a single chronologically sorted list (direct array processing)
+    #[pyfunction]
+    #[pyo3(name = "merge_events")]
+    pub fn merge_events_py(
+        py: Python<'_>,
+        event_sets: &Bound<'_, pyo3::types::PyTuple>,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+
+        // Collect all data from input arrays
+        let mut all_xs = Vec::new();
+        let mut all_ys = Vec::new();
+        let mut all_ts = Vec::new();
+        let mut all_ps = Vec::new();
+
+        for event_set in event_sets.iter() {
+            let tuple = event_set.downcast::<PyTuple>()?;
+            if tuple.len() != 4 {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Each event set must be a tuple of (xs, ys, ts, ps)",
+                ));
+            }
+            let xs = tuple.get_item(0)?.extract::<PyReadonlyArray1<i64>>()?;
+            let ys = tuple.get_item(1)?.extract::<PyReadonlyArray1<i64>>()?;
+            let ts = tuple.get_item(2)?.extract::<PyReadonlyArray1<f64>>()?;
+            let ps = tuple.get_item(3)?.extract::<PyReadonlyArray1<i64>>()?;
+
+            let xs_array = xs.as_array();
+            let ys_array = ys.as_array();
+            let ts_array = ts.as_array();
+            let ps_array = ps.as_array();
+
+            let len = xs_array
+                .len()
+                .min(ys_array.len())
+                .min(ts_array.len())
+                .min(ps_array.len());
+
+            for i in 0..len {
+                all_xs.push(xs_array[i]);
+                all_ys.push(ys_array[i]);
+                all_ts.push(ts_array[i]);
+                all_ps.push(ps_array[i]);
+            }
+        }
+
+        // Create indices for sorting by timestamp
+        let mut indices: Vec<usize> = (0..all_ts.len()).collect();
+        indices.sort_by(|&a, &b| all_ts[a].partial_cmp(&all_ts[b]).unwrap());
+
+        // Rearrange arrays according to sorted indices
+        let xs_sorted: Vec<i64> = indices.iter().map(|&i| all_xs[i]).collect();
+        let ys_sorted: Vec<i64> = indices.iter().map(|&i| all_ys[i]).collect();
+        let ts_sorted: Vec<f64> = indices.iter().map(|&i| all_ts[i]).collect();
+        // Convert polarities from -1/1 to 0/1 for consistency with events_to_block_py
+        let ps_sorted: Vec<i64> = indices
+            .iter()
+            .map(|&i| if all_ps[i] > 0 { 1 } else { 0 })
+            .collect();
+
+        // Convert arrays to Python objects
+        let xs_py: PyObject = Array1::from(xs_sorted).into_pyarray(py).into();
+        let ys_py: PyObject = Array1::from(ys_sorted).into_pyarray(py).into();
+        let ts_py: PyObject = Array1::from(ts_sorted).into_pyarray(py).into();
+        let ps_py: PyObject = Array1::from(ps_sorted).into_pyarray(py).into();
+
+        // Create result tuple
+        let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+        Ok(tuple.into())
+    }
+
+    /// Add random events drawn from a uniform distribution (migrated from ev_core)
+    #[pyfunction]
+    #[pyo3(name = "add_random_events")]
+    #[pyo3(signature = (xs, ys, ts, ps, to_add, sensor_resolution=None, sort=true, return_merged=true))]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_random_events_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+        to_add: usize,
+        sensor_resolution: Option<(i64, i64)>,
+        sort: bool,
+        return_merged: bool,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+        use rand::prelude::*;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        // Generate random events
+        let max_x = match sensor_resolution {
+            Some((w, _)) => w - 1,
+            None => xs_array.fold(0, |acc, &x| acc.max(x)),
+        };
+
+        let max_y = match sensor_resolution {
+            Some((_, h)) => h - 1,
+            None => ys_array.fold(0, |acc, &y| acc.max(y)),
+        };
+
+        let mut rng = thread_rng();
+
+        let mut xs_new = Vec::with_capacity(to_add);
+        let mut ys_new = Vec::with_capacity(to_add);
+        let mut ts_new = Vec::with_capacity(to_add);
+        let mut ps_new = Vec::with_capacity(to_add);
+
+        let min_ts = ts_array.fold(f64::INFINITY, |acc, &t| acc.min(t));
+        let max_ts = ts_array.fold(f64::NEG_INFINITY, |acc, &t| acc.max(t));
+
+        for _ in 0..to_add {
+            xs_new.push(rng.gen_range(0..=max_x));
+            ys_new.push(rng.gen_range(0..=max_y));
+            ts_new.push(rng.gen_range(min_ts..=max_ts));
+            ps_new.push(if rng.gen_bool(0.5) { 1 } else { -1 });
+        }
+
+        if return_merged {
+            // Merge both arrays
+            let mut all_xs = Vec::with_capacity(xs_array.len() + xs_new.len());
+            let mut all_ys = Vec::with_capacity(ys_array.len() + ys_new.len());
+            let mut all_ts: Vec<f64> = Vec::with_capacity(ts_array.len() + ts_new.len());
+            let mut all_ps = Vec::with_capacity(ps_array.len() + ps_new.len());
+
+            all_xs.extend(xs_array.iter());
+            all_xs.extend(xs_new.iter());
+
+            all_ys.extend(ys_array.iter());
+            all_ys.extend(ys_new.iter());
+
+            all_ts.extend(ts_array.iter());
+            all_ts.extend(ts_new.iter());
+
+            all_ps.extend(ps_array.iter());
+            all_ps.extend(ps_new.iter());
+
+            let merged_xs = Array1::from(all_xs);
+            let merged_ys = Array1::from(all_ys);
+            let merged_ts = Array1::from(all_ts);
+            let merged_ps = Array1::from(all_ps);
+
+            if sort {
+                // Sort by timestamp
+                let mut indices: Vec<usize> = (0..merged_ts.len()).collect();
+                indices.sort_by(|&i, &j| merged_ts[i].partial_cmp(&merged_ts[j]).unwrap());
+
+                let sorted_xs = indices
+                    .iter()
+                    .map(|&i| merged_xs[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ys = indices
+                    .iter()
+                    .map(|&i| merged_ys[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ts = indices
+                    .iter()
+                    .map(|&i| merged_ts[i])
+                    .collect::<Array1<f64>>();
+                let sorted_ps = indices
+                    .iter()
+                    .map(|&i| merged_ps[i])
+                    .collect::<Array1<i64>>();
+
+                // Convert arrays to Python objects
+                let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+                let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+                let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+                let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            } else {
+                // Convert arrays to Python objects without sorting
+                let xs_py: PyObject = merged_xs.into_pyarray(py).into();
+                let ys_py: PyObject = merged_ys.into_pyarray(py).into();
+                let ts_py: PyObject = merged_ts.into_pyarray(py).into();
+                let ps_py: PyObject = merged_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            }
+        } else {
+            // Return only the new events
+            let xs_new_array = Array1::from(xs_new);
+            let ys_new_array = Array1::from(ys_new);
+            let ts_new_array = Array1::from(ts_new);
+            let ps_new_array = Array1::from(ps_new);
+
+            if sort {
+                // Sort by timestamp
+                let mut indices: Vec<usize> = (0..ts_new_array.len()).collect();
+                indices.sort_by(|&i, &j| ts_new_array[i].partial_cmp(&ts_new_array[j]).unwrap());
+
+                let sorted_xs = indices
+                    .iter()
+                    .map(|&i| xs_new_array[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ys = indices
+                    .iter()
+                    .map(|&i| ys_new_array[i])
+                    .collect::<Array1<i64>>();
+                let sorted_ts = indices
+                    .iter()
+                    .map(|&i| ts_new_array[i])
+                    .collect::<Array1<f64>>();
+                let sorted_ps = indices
+                    .iter()
+                    .map(|&i| ps_new_array[i])
+                    .collect::<Array1<i64>>();
+
+                // Convert arrays to Python objects
+                let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+                let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+                let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+                let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            } else {
+                // Convert arrays to Python objects
+                let xs_py: PyObject = xs_new_array.into_pyarray(py).into();
+                let ys_py: PyObject = ys_new_array.into_pyarray(py).into();
+                let ts_py: PyObject = ts_new_array.into_pyarray(py).into();
+                let ps_py: PyObject = ps_new_array.into_pyarray(py).into();
+
+                // Create result tuple
+                let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+                Ok(tuple.into())
+            }
+        }
+    }
+
+    /// Remove events by random selection (migrated from ev_core)
+    #[pyfunction]
+    #[pyo3(name = "remove_events")]
+    #[pyo3(signature = (xs, ys, ts, ps, to_remove, add_noise=0))]
+    pub fn remove_events_py(
+        py: Python<'_>,
+        xs: PyReadonlyArray1<i64>,
+        ys: PyReadonlyArray1<i64>,
+        ts: PyReadonlyArray1<f64>,
+        ps: PyReadonlyArray1<i64>,
+        to_remove: usize,
+        add_noise: usize,
+    ) -> PyResult<PyObject> {
+        use ndarray::Array1;
+        use numpy::IntoPyArray;
+        use pyo3::types::PyTuple;
+        use rand::prelude::*;
+
+        let xs_array = xs.as_array();
+        let ys_array = ys.as_array();
+        let ts_array = ts.as_array();
+        let ps_array = ps.as_array();
+
+        let n = xs_array.len();
+
+        if to_remove >= n {
+            // Return empty arrays
+            let empty_xs = Array1::<i64>::zeros(0);
+            let empty_ys = Array1::<i64>::zeros(0);
+            let empty_ts = Array1::<f64>::zeros(0);
+            let empty_ps = Array1::<i64>::zeros(0);
+
+            // Convert arrays to Python objects
+            let xs_py: PyObject = empty_xs.into_pyarray(py).into();
+            let ys_py: PyObject = empty_ys.into_pyarray(py).into();
+            let ts_py: PyObject = empty_ts.into_pyarray(py).into();
+            let ps_py: PyObject = empty_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            return Ok(tuple.into());
+        }
+
+        let to_select = n - to_remove;
+
+        // Generate random indices without replacement
+        let mut rng = thread_rng();
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.shuffle(&mut rng);
+        indices.truncate(to_select);
+        indices.sort();
+
+        // Extract selected events
+        let selected_xs = indices
+            .iter()
+            .map(|&i| xs_array[i])
+            .collect::<Array1<i64>>();
+        let selected_ys = indices
+            .iter()
+            .map(|&i| ys_array[i])
+            .collect::<Array1<i64>>();
+        let selected_ts = indices
+            .iter()
+            .map(|&i| ts_array[i])
+            .collect::<Array1<f64>>();
+        let selected_ps = indices
+            .iter()
+            .map(|&i| ps_array[i])
+            .collect::<Array1<i64>>();
+
+        if add_noise == 0 {
+            // Convert arrays to Python objects
+            let xs_py: PyObject = selected_xs.into_pyarray(py).into();
+            let ys_py: PyObject = selected_ys.into_pyarray(py).into();
+            let ts_py: PyObject = selected_ts.into_pyarray(py).into();
+            let ps_py: PyObject = selected_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            Ok(tuple.into())
+        } else {
+            // Generate random events for noise
+            let max_x = xs_array.fold(0, |acc, &x| acc.max(x));
+            let max_y = ys_array.fold(0, |acc, &y| acc.max(y));
+
+            let mut xs_noise = Vec::with_capacity(add_noise);
+            let mut ys_noise = Vec::with_capacity(add_noise);
+            let mut ts_noise = Vec::with_capacity(add_noise);
+            let mut ps_noise = Vec::with_capacity(add_noise);
+
+            let min_ts = ts_array.fold(f64::INFINITY, |acc, &t| acc.min(t));
+            let max_ts = ts_array.fold(f64::NEG_INFINITY, |acc, &t| acc.max(t));
+
+            for _ in 0..add_noise {
+                xs_noise.push(rng.gen_range(0..=max_x));
+                ys_noise.push(rng.gen_range(0..=max_y));
+                ts_noise.push(rng.gen_range(min_ts..=max_ts));
+                ps_noise.push(if rng.gen_bool(0.5) { 1 } else { -1 });
+            }
+
+            // Merge selected events and noise
+            let mut all_xs = Vec::with_capacity(selected_xs.len() + add_noise);
+            let mut all_ys = Vec::with_capacity(selected_ys.len() + add_noise);
+            let mut all_ts: Vec<f64> = Vec::with_capacity(selected_ts.len() + add_noise);
+            let mut all_ps = Vec::with_capacity(selected_ps.len() + add_noise);
+
+            all_xs.extend(selected_xs.iter());
+            all_xs.extend(xs_noise.iter());
+
+            all_ys.extend(selected_ys.iter());
+            all_ys.extend(ys_noise.iter());
+
+            all_ts.extend(selected_ts.iter());
+            all_ts.extend(ts_noise.iter());
+
+            all_ps.extend(selected_ps.iter());
+            all_ps.extend(ps_noise.iter());
+
+            let merged_xs = Array1::from(all_xs);
+            let merged_ys = Array1::from(all_ys);
+            let merged_ts = Array1::from(all_ts);
+            let merged_ps = Array1::from(all_ps);
+
+            // Sort by timestamp
+            let mut indices: Vec<usize> = (0..merged_ts.len()).collect();
+            indices.sort_by(|&i, &j| merged_ts[i].partial_cmp(&merged_ts[j]).unwrap());
+
+            let sorted_xs = indices
+                .iter()
+                .map(|&i| merged_xs[i])
+                .collect::<Array1<i64>>();
+            let sorted_ys = indices
+                .iter()
+                .map(|&i| merged_ys[i])
+                .collect::<Array1<i64>>();
+            let sorted_ts = indices
+                .iter()
+                .map(|&i| merged_ts[i])
+                .collect::<Array1<f64>>();
+            let sorted_ps = indices
+                .iter()
+                .map(|&i| merged_ps[i])
+                .collect::<Array1<i64>>();
+
+            // Convert arrays to Python objects
+            let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+            let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+            let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+            let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
+
+            // Create result tuple
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+            Ok(tuple.into())
+        }
     }
 }

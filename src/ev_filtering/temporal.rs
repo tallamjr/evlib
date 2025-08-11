@@ -31,9 +31,9 @@
 //! let filtered = apply_temporal_filter(events_df, &TemporalFilter::time_window(1.0, 5.0))?;
 //! ```
 
-use crate::ev_core::{Event, Events};
+// Removed: use crate::{Event, Events}; - legacy types no longer exist
 use crate::ev_filtering::config::Validatable;
-use crate::ev_filtering::{FilterError, FilterResult, SingleFilter};
+use crate::ev_filtering::FilterError;
 use polars::prelude::*;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info, instrument, warn};
@@ -75,7 +75,7 @@ macro_rules! instrument {
 /// Polars column names for event data
 pub const COL_X: &str = "x";
 pub const COL_Y: &str = "y";
-pub const COL_T: &str = "timestamp";
+pub const COL_T: &str = "t";
 pub const COL_POLARITY: &str = "polarity";
 
 /// Temporal filtering configuration optimized for Polars operations
@@ -270,57 +270,36 @@ impl TemporalFilter {
                 .and((col(COL_T).dt().total_microseconds() / lit(1_000_000.0)).lt_eq(lit(t_end))),
         ))
     }
-}
 
-impl SingleFilter for TemporalFilter {
-    fn apply(&self, events: &Events) -> FilterResult<Events> {
-        // Legacy Vec<Event> interface - convert to DataFrame and back
-        // This is for backward compatibility only
-        warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-
-        let df = crate::ev_core::events_to_dataframe(events)
-            .map_err(|e| {
-                FilterError::ProcessingError(format!("DataFrame conversion failed: {}", e))
-            })?
-            .lazy();
-
-        let filtered_df = apply_temporal_filter(df, self)
-            .map_err(|e| FilterError::ProcessingError(format!("Polars filtering failed: {}", e)))?;
-
-        // Convert back to Vec<Event> - this is inefficient but maintains compatibility
-        let result_df = filtered_df.collect().map_err(|e| {
-            FilterError::ProcessingError(format!("LazyFrame collection failed: {}", e))
-        })?;
-
-        // Convert DataFrame back to Events
-        dataframe_to_events(&result_df)
+    /// Apply temporal filtering directly to DataFrame (recommended approach)
+    ///
+    /// This is the high-performance DataFrame-native method that should be used
+    /// instead of the legacy Vec<Event> approach when possible.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input LazyFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered LazyFrame with temporal constraints applied
+    pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
+        apply_temporal_filter(df, self)
     }
 
-    fn description(&self) -> String {
-        match (
-            &self.t_start,
-            &self.t_end,
-            &self.duration,
-            &self.middle_fraction,
-        ) {
-            (Some(start), Some(end), _, _) => {
-                format!("Temporal filter: [{:.3}, {:.3}]s", start, end)
-            }
-            (Some(start), _, Some(dur), _) => {
-                format!("Temporal filter: {:.3}s + {:.3}s duration", start, dur)
-            }
-            (Some(start), _, _, _) => format!("Temporal filter: from {:.3}s", start),
-            (_, Some(end), _, _) => format!("Temporal filter: until {:.3}s", end),
-            (_, _, _, Some(frac)) => format!("Temporal filter: middle {:.1}%", frac * 100.0),
-            _ => "Temporal filter: no constraints".to_string(),
-        }
-    }
-
-    fn is_enabled(&self) -> bool {
-        self.t_start.is_some()
-            || self.t_end.is_some()
-            || self.duration.is_some()
-            || self.middle_fraction.is_some()
+    /// Apply temporal filtering directly to DataFrame and return DataFrame
+    ///
+    /// Convenience method that applies filtering and collects the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `df` - Input DataFrame containing event data
+    ///
+    /// # Returns
+    ///
+    /// Filtered DataFrame with temporal constraints applied
+    pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
+        apply_temporal_filter(df.lazy(), self)?.collect()
     }
 }
 
@@ -441,10 +420,23 @@ pub fn filter_time_window(
     }
 }
 
-/// Legacy function for backward compatibility - delegates to Polars implementation
-pub fn filter_by_time(events: &Events, t_start: f64, t_end: f64) -> FilterResult<Events> {
+/// Filter events by time window - DataFrame-native version (recommended)
+///
+/// This function applies temporal filtering directly to a LazyFrame for optimal performance.
+/// Use this instead of the legacy Vec<Event> version when possible.
+///
+/// # Arguments
+///
+/// * `df` - Input LazyFrame containing event data
+/// * `t_start` - Start time in seconds
+/// * `t_end` - End time in seconds
+///
+/// # Returns
+///
+/// Filtered LazyFrame
+pub fn filter_by_time_df(df: LazyFrame, t_start: f64, t_end: f64) -> PolarsResult<LazyFrame> {
     let filter = TemporalFilter::time_window(t_start, t_end);
-    filter.apply(events)
+    filter.apply_to_dataframe(df)
 }
 
 /// Get temporal statistics using Polars aggregations
@@ -508,69 +500,10 @@ pub fn calculate_event_rates(df: LazyFrame, window_size: f64) -> PolarsResult<Da
         .collect()
 }
 
-/// Helper function to convert DataFrame back to Events (for legacy compatibility)
-fn dataframe_to_events(df: &DataFrame) -> FilterResult<Events> {
-    let height = df.height();
-    let mut events = Vec::with_capacity(height);
-
-    let x_series = df
-        .column(COL_X)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing x column: {}", e)))?;
-    let y_series = df
-        .column(COL_Y)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing y column: {}", e)))?;
-    let t_series = df
-        .column(COL_T)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing t column: {}", e)))?;
-    let p_series = df
-        .column(COL_POLARITY)
-        .map_err(|e| FilterError::ProcessingError(format!("Missing polarity column: {}", e)))?;
-
-    let x_values = x_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("X column type error: {}", e)))?;
-    let y_values = y_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Y column type error: {}", e)))?;
-    let t_values = t_series
-        .f64()
-        .map_err(|e| FilterError::ProcessingError(format!("T column type error: {}", e)))?;
-    let p_values = p_series
-        .i64()
-        .map_err(|e| FilterError::ProcessingError(format!("Polarity column type error: {}", e)))?;
-
-    for i in 0..height {
-        let x = x_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing x value".to_string()))?
-            as u16;
-        let y = y_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing y value".to_string()))?
-            as u16;
-        let t = t_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing t value".to_string()))?;
-        let p = p_values
-            .get(i)
-            .ok_or_else(|| FilterError::ProcessingError("Missing polarity value".to_string()))?
-            > 0;
-
-        events.push(Event {
-            x,
-            y,
-            t,
-            polarity: p,
-        });
-    }
-
-    Ok(events)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::{events_to_dataframe, Event};
+    use crate::{events_to_dataframe, Event};
 
     fn create_test_events() -> Vec<Event> {
         vec![
@@ -630,6 +563,31 @@ mod tests {
 
         let filtered = filter.apply(&events).unwrap();
         assert_eq!(filtered.len(), 3); // Events at t=2,3,4
+    }
+
+    #[test]
+    fn test_temporal_filter_dataframe_native() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+        let filter = TemporalFilter::time_window(2.0, 4.0);
+
+        let filtered = filter.apply_to_dataframe(df)?;
+        let result = filtered.collect()?;
+        assert_eq!(result.height(), 3); // Events at t=2,3,4
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filter_by_time_dataframe() -> PolarsResult<()> {
+        let events = create_test_events();
+        let df = events_to_dataframe(&events)?.lazy();
+
+        let filtered = filter_by_time_df(df, 2.0, 4.0)?;
+        let result = filtered.collect()?;
+        assert_eq!(result.height(), 3); // Events at t=2,3,4
+
+        Ok(())
     }
 
     #[test]

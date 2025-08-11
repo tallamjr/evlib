@@ -43,13 +43,13 @@ df = events.collect()
 # Access DataFrame columns as NumPy arrays
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 
 # Note: Custom column order requires format-specific handling
 # Standard evlib.load_events handles most common formats automatically
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 **Advantages:**
@@ -94,7 +94,7 @@ xs = df['x'].to_numpy().astype(np.int64)
 ys = df['y'].to_numpy().astype(np.int64)
 ps = df['polarity'].to_numpy().astype(np.int64)
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5
 output_path = "formats_output.h5"
@@ -189,7 +189,7 @@ print(f"Columns: {df.columns}")  # ['x', 'y', 'timestamp', 'polarity']
 # Access DataFrame columns as NumPy arrays if needed
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 print(f"X coordinates: {xs}")
 print(f"Y coordinates: {ys}")
 print(f"Timestamps: {ts}")
@@ -226,7 +226,7 @@ df = events.collect()
 # Access DataFrame columns as NumPy arrays
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 **Features:**
@@ -253,7 +253,7 @@ df = events.collect()
 # Access DataFrame columns as NumPy arrays
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 ```
 
 ## Format Detection
@@ -297,7 +297,7 @@ df = events.collect()
 # Access DataFrame columns - polarity encoding is handled automatically
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['timestamp'].to_numpy(), df['polarity'].to_numpy()
+xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 # Check if conversion happened correctly
 import numpy as np
 print(f"Unique polarities: {np.unique(ps)}")  # Should be [-1, 1]
@@ -379,7 +379,7 @@ df = events.collect()
 xs = df['x'].to_numpy().astype(np.int64)
 ys = df['y'].to_numpy().astype(np.int64)
 ps = df['polarity'].to_numpy().astype(np.int64)
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
 
 print("Created HDF5 file with structure:")
@@ -466,7 +466,7 @@ def convert_to_hdf5(input_file, output_file):
     # Convert to NumPy for saving
     xs = df['x'].to_numpy()
     ys = df['y'].to_numpy()
-    ts = df['timestamp'].to_numpy()
+    ts = df['t'].to_numpy()
     ps = df['polarity'].to_numpy()
 
     # Save as HDF5
@@ -537,8 +537,8 @@ def process_large_file(file_path, time_window=1.0):
     # Get duration estimate efficiently
     events = evlib.load_events(file_path)
     time_stats = events.select([
-        pl.col("timestamp").min().alias("t_min"),
-        pl.col("timestamp").max().alias("t_max")
+        pl.col("t").min().alias("t_min"),
+        pl.col("t").max().alias("t_max")
     ]).collect()
 
     t_min = time_stats["t_min"][0].total_seconds()
