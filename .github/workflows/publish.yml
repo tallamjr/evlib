@@ -170,9 +170,9 @@ jobs:
             cd /workspace
 
             # Install system dependencies
-            yum install -y hdf5-devel pkgconfig cmake glib2-devel || {
+            yum install -y openssl-devel pkgconfig cmake glib2-devel
+            yum install -y hdf5-devel || {
               echo "HDF5 not available, building without HDF5 support"
-              yum install -y pkgconfig cmake glib2-devel
               export NO_HDF5=1
             }
 
