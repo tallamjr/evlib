@@ -158,7 +158,7 @@ class BaseModel(ABC):
             {
                 "x": xs.astype(np.int16),
                 "y": ys.astype(np.int16),
-                "timestamp": pl.Series((ts * 1e6).astype(np.int64)).cast(pl.Duration(time_unit="us")),
+                "t": pl.Series((ts * 1e6).astype(np.int64)).cast(pl.Duration(time_unit="us")),
                 "polarity": ps.astype(np.int8),
             }
         )
