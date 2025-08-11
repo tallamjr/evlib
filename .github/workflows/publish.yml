@@ -57,6 +57,7 @@ jobs:
   build-wheels:
     runs-on: ${{ matrix.os }}
     needs: [check-version]
+    timeout-minutes: 30
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
@@ -153,6 +154,7 @@ jobs:
   build-wheels-manylinux:
     runs-on: ubuntu-latest
     needs: [check-version]
+    timeout-minutes: 20
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
@@ -162,13 +164,17 @@ jobs:
 
       - name: Build manylinux wheels for GLIBC 2.17+ compatibility
         run: |
-          # Use manylinux2014 container for maximum GLIBC compatibility (GLIBC 2.17+)
-          docker run --rm -v $(pwd):/workspace quay.io/pypa/manylinux2014_x86_64 bash -c '
+          # Use manylinux_2_28 container for better package availability (GLIBC 2.28+)
+          docker run --rm -v $(pwd):/workspace quay.io/pypa/manylinux_2_28_x86_64 bash -c '
             set -e
             cd /workspace
 
             # Install system dependencies
-            yum install -y hdf5-devel pkgconfig cmake glib2-devel
+            yum install -y hdf5-devel pkgconfig cmake glib2-devel || {
+              echo "HDF5 not available, building without HDF5 support"
+              yum install -y pkgconfig cmake glib2-devel
+              export NO_HDF5=1
+            }
 
             # Install Rust nightly toolchain
             curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly
@@ -182,18 +188,23 @@ jobs:
                 # Install maturin for this Python version
                 "$PYBIN/pip" install maturin>=1.7.4
 
-                # Build the wheel
-                "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
+                # Build the wheel - with or without HDF5 depending on availability
+                if [ "${NO_HDF5:-}" = "1" ]; then
+                  echo "Building without HDF5 support for maximum compatibility"
+                  "$PYBIN/maturin" build --release --features python --no-default-features --interpreter "$PYBIN/python" --out dist
+                else
+                  "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
+                fi
               fi
             done
 
-            # Repair wheels for manylinux2014 compatibility
-            echo "Repairing wheels for manylinux2014 compatibility..."
+            # Repair wheels for manylinux_2_28 compatibility
+            echo "Repairing wheels for manylinux_2_28 compatibility..."
             mkdir -p dist_repaired
             for wheel in dist/*.whl; do
               if [ -f "$wheel" ]; then
                 echo "Repairing: $wheel"
-                auditwheel repair "$wheel" --plat manylinux2014_x86_64 -w dist_repaired/
+                auditwheel repair "$wheel" --plat manylinux_2_28_x86_64 -w dist_repaired/
               fi
             done
 
@@ -209,7 +220,7 @@ jobs:
       - name: Upload manylinux wheels as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-manylinux2014-x86_64
+          name: wheels-manylinux_2_28-x86_64
           path: dist/*.whl
 
   publish-pypi:
