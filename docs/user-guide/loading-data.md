@@ -17,7 +17,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 print(f"Loaded {len(xs)} events")
 ```
 
@@ -28,7 +28,7 @@ print(f"Loaded {len(xs)} events")
 The most common format for event data:
 
 ```
-# Standard format: timestamp x y polarity
+# Standard format: t x y polarity
 0.000100 320 240 1
 0.000200 321 241 -1
 0.000300 319 239 1
@@ -45,7 +45,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 ### HDF5 Files (.h5, .hdf5)
@@ -64,7 +64,7 @@ df = events.collect()
 xs = df['x'].to_numpy().astype(np.int64)
 ys = df['y'].to_numpy().astype(np.int64)
 ps = df['polarity'].to_numpy().astype(np.int64)
-ts = df['timestamp'].dt.total_seconds().to_numpy().astype(np.float64)
+ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5 for efficient storage
 evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
@@ -148,16 +148,17 @@ neg_df = neg_events.collect()
 All filters can be combined:
 
 ```python
-# Complex filtering example using preprocessing pipeline
+# Complex filtering example using multiple filters
 import evlib.filtering as evf
-processed_events = evf.preprocess_events(
-    "data/slider_depth/events.txt",
-    t_start=2.0, t_end=8.0,      # Time window
-    roi=(100, 540, 50, 430),     # Spatial bounds (x_min, x_max, y_min, y_max)
-    polarity=1,                  # Positive events only
-    remove_hot_pixels=True,
-    remove_noise=True
-)
+
+events = evlib.load_events("data/slider_depth/events.txt")
+# Apply filters in sequence to create preprocessing pipeline
+filtered = evf.filter_by_time(events, t_start=2.0, t_end=8.0)
+filtered = evf.filter_by_roi(filtered, x_min=100, x_max=540, y_min=50, y_max=430)
+filtered = evf.filter_by_polarity(filtered, polarity=1)
+filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
+processed_events = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
+
 df = processed_events.collect()
 ```
 
@@ -168,7 +169,7 @@ df = processed_events.collect()
 If your files have different column arrangements:
 
 ```python
-# File format: x y polarity timestamp
+# File format: x y polarity t
 # 320 240 1 0.000100
 # Note: Column specification may require direct Rust access
 # Note: Custom column mapping requires direct format access
@@ -177,7 +178,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 ### Files with Headers
@@ -195,7 +196,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 ### Multiple Headers
@@ -209,7 +210,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 ## Performance Optimization
@@ -242,7 +243,7 @@ Choose the right format for your needs:
 Apply filters during loading, not after:
 
 ```python
-# GOOD: Filter during loading using high-level API
+# GOOD: Filter during loading using filtering module
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
 filtered_events = evf.filter_by_time(events, t_start=1.0, t_end=2.0)
@@ -252,7 +253,7 @@ df = filtered_events.collect()
 events = evlib.load_events("data/slider_depth/events.txt")
 import polars as pl
 filtered = events.filter(
-    (pl.col("timestamp") >= 1.0) & (pl.col("timestamp") <= 2.0)
+    (pl.col("t") >= 1.0) & (pl.col("t") <= 2.0)
 )
 df = filtered.collect()
 
@@ -261,8 +262,8 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
-# Convert timestamps to seconds for comparison
+ts = df['t'].dt.total_seconds().to_numpy()
+# Convert durations to seconds for comparison
 ts_seconds = ts.astype('float64') / 1e6  # Convert microseconds to seconds
 mask = (ts_seconds >= 1.0) & (ts_seconds <= 2.0)
 xs, ys, ts, ps = xs[mask], ys[mask], ts[mask], ps[mask]
@@ -300,10 +301,10 @@ Validate loaded data:
 def validate_events(df):
     """Validate event data integrity"""
     assert len(df) > 0, "No events loaded"
-    assert all(col in df.columns for col in ['x', 'y', 'timestamp', 'polarity']), "Required columns missing"
+    assert all(col in df.columns for col in ['x', 'y', 't', 'polarity']), "Required columns missing"
     assert (df['x'] >= 0).all(), "X coordinates must be non-negative"
     assert (df['y'] >= 0).all(), "Y coordinates must be non-negative"
-    assert df['timestamp'].is_sorted(), "Timestamps must be sorted"
+    assert df['t'].is_sorted(), "Timestamps must be sorted"
     assert df['polarity'].is_in([1, -1]).all(), "Polarities must be +1 or -1"
     print(f"SUCCESS: Validation passed for {len(df)} events")
 ```
@@ -319,9 +320,9 @@ df = events.collect()
 
 # Basic statistics using Polars
 print(f"Events: {len(df):,}")
-print(f"Duration: {(df['timestamp'].max() - df['timestamp'].min()).total_seconds():.2f} seconds")
+print(f"Duration: {(df['t'].max() - df['t'].min()).total_seconds():.2f} seconds")
 print(f"Resolution: {df['x'].max()+1} x {df['y'].max()+1}")
-print(f"Event rate: {len(df)/(df['timestamp'].max() - df['timestamp'].min()).total_seconds():.0f} events/sec")
+print(f"Event rate: {len(df)/(df['t'].max() - df['t'].min()).total_seconds():.0f} events/sec")
 ```
 
 ### Temporal Segmentation
@@ -330,12 +331,12 @@ print(f"Event rate: {len(df)/(df['timestamp'].max() - df['timestamp'].min()).tot
 # Process video in 0.1 second segments
 # events = evlib.load_events("data/slider_depth/events.txt")
 # df = events.collect()
-# duration = (df['timestamp'].max() - df['timestamp'].min()).total_seconds()
+# duration = (df['t'].max() - df['t'].min()).total_seconds()
 # segment_length = 0.1
 # n_segments = int(duration / segment_length)
 #
 # for i in range(n_segments):
-#     t_start = df['timestamp'].min().total_seconds() + i * segment_length
+#     t_start = df['t'].min().total_seconds() + i * segment_length
 #     t_end = t_start + segment_length
 #
 #     # Load segment using filtering
@@ -383,6 +384,7 @@ datasets/
 ### 2. Data Pipeline
 ```python
 def create_data_pipeline(input_file, output_dir):
+    import evlib.filtering as evf
     # 1. Load and validate
     events = evlib.load_events(input_file)
     df = events.collect()
@@ -391,7 +393,7 @@ def create_data_pipeline(input_file, output_dir):
     # 2. Save as HDF5 for faster future loading
     h5_file = f"{output_dir}/events.h5"
     # Convert timestamps to seconds for saving
-    ts_seconds = df['timestamp'].dt.total_seconds().to_numpy()
+    ts_seconds = df['t'].dt.total_seconds().to_numpy()
     evlib.formats.save_events_to_hdf5(
         df['x'].to_numpy(), df['y'].to_numpy(),
         ts_seconds, df['polarity'].to_numpy(),
@@ -400,10 +402,11 @@ def create_data_pipeline(input_file, output_dir):
 
     # 3. Create filtered versions
     pos_file = f"{output_dir}/positive_events.h5"
-    pos_events = evlib.filter_by_polarity(input_file, polarity=1)
+    events = evlib.load_events(input_file)
+    pos_events = evf.filter_by_polarity(events, polarity=1)
     pos_df = pos_events.collect()
     # Convert timestamps to seconds for saving
-    pos_ts_seconds = pos_df['timestamp'].dt.total_seconds().to_numpy()
+    pos_ts_seconds = pos_df['t'].dt.total_seconds().to_numpy()
     evlib.formats.save_events_to_hdf5(
         pos_df['x'].to_numpy(), pos_df['y'].to_numpy(),
         pos_ts_seconds, pos_df['polarity'].to_numpy(),
@@ -418,14 +421,15 @@ def create_data_pipeline(input_file, output_dir):
 def process_large_dataset(file_path, time_window=1.0):
     """Process large dataset in time windows"""
     import polars as pl
+    import evlib.filtering as evf
 
     # Get total duration efficiently
     events = evlib.load_events(file_path)
 
     # Get min/max timestamps without collecting all data
     time_stats = events.select([
-        pl.col("timestamp").min().alias("t_min"),
-        pl.col("timestamp").max().alias("t_max")
+        pl.col("t").min().alias("t_min"),
+        pl.col("t").max().alias("t_max")
     ]).collect()
 
     t_start = time_stats["t_min"][0].total_seconds()
@@ -437,8 +441,9 @@ def process_large_dataset(file_path, time_window=1.0):
         window_end = current_time + time_window
 
         try:
-            window_events = evlib.filter_by_time(
-                file_path,
+            events = evlib.load_events(file_path)
+            window_events = evf.filter_by_time(
+                events,
                 t_start=current_time,
                 t_end=window_end
             )
@@ -480,14 +485,16 @@ events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 **Problem**: Memory errors with large files
 ```python
 # Solution: Use time window filtering
-events = evlib.filtering.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=0.0, t_end=10.0)
-df = events.collect()  # Uses optimal engine for large data
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=10.0)
+df = filtered_events.collect()  # Uses optimal engine for large data
 ```
 
 ## Next Steps

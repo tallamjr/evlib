@@ -24,7 +24,7 @@ def load_sample_data():
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         pol = df["polarity"].to_numpy()
-        timestamp = df["timestamp"].cast(float).to_numpy() / 1_000_000  # Convert to seconds
+        timestamp = df["t"].dt.total_seconds().to_numpy()  # Convert Duration to seconds
 
         print(f"Successfully loaded {len(x)} events from {filename}")
         return x, y, pol, timestamp

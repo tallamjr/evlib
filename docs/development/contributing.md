@@ -266,7 +266,7 @@ def test_custom_representation():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # Test function
     voxel_lazy = evr.create_voxel_grid(
@@ -320,7 +320,7 @@ def create_custom_representation(xs, ys, ts, ps, width, height, parameter):
     >>> df = events.collect()
     >>> xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
 # Convert Duration timestamps to seconds (float64)
-ts = df['timestamp'].dt.total_seconds().to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
     >>> custom = evlib.representations.create_custom_representation(
     ...     xs, ys, ts, ps, 640, 480, 1.0
     ... )
@@ -345,7 +345,7 @@ def benchmark_custom_representation():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # Benchmark evlib
     start = time.time()

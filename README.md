@@ -150,12 +150,12 @@ lf = evlib.load_events("data/prophersee/samples/evt2/80_balls.raw")
 # Basic event information
 print(f"Loaded {len(df)} events")
 print(f"Resolution: {df['x'].max()} x {df['y'].max()}")
-print(f"Duration: {df['timestamp'].max() - df['timestamp'].min()}")
+print(f"Duration: {df['t'].max() - df['t'].min()}")
 
 # Convert to NumPy arrays for compatibility
 x_coords = df['x'].to_numpy()
 y_coords = df['y'].to_numpy()
-timestamps = df['timestamp'].to_numpy()
+timestamps = df['t'].to_numpy()
 polarities = df['polarity'].to_numpy()
 ```
 
@@ -169,7 +169,7 @@ events = evlib.load_events("data/prophersee/samples/evt3/pedestrians.raw")
 
 # Time filtering using Polars operations
 time_filtered = events.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 0.1) & (pl.col('time_seconds') <= 0.5)
 )
@@ -230,11 +230,11 @@ print(f"Created voxel grid with {len(voxel)} voxels")
 # Convert timestamp and ensure proper dtypes for advanced functions
 small_events = events.limit(10000).collect()
 converted_events = small_events.with_columns([
-    pl.col('timestamp').dt.total_microseconds().cast(pl.Float64).alias('t'),
+    pl.col('t').dt.total_microseconds().cast(pl.Float64).alias('t_microseconds'),
     pl.col('x').cast(pl.Int64),
     pl.col('y').cast(pl.Int64),
     pl.col('polarity').cast(pl.Int64)
-]).drop('timestamp')
+]).select(['x', 'y', 't_microseconds', 'polarity']).rename({'t_microseconds': 't'})
 
 # Create time surface representation
 time_surface = evr.create_timesurface(
@@ -365,13 +365,13 @@ import polars as pl
 # Chain operations with LazyFrames for optimal performance
 events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 result = events.filter(pl.col("polarity") == 1).with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us"),
+    pl.col("t").dt.total_microseconds().alias("time_us"),
     (pl.col("x") + pl.col("y")).alias("diagonal_pos")
 ]).collect()
 
 # Memory-efficient temporal analysis
 time_stats = events.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).group_by([
     (pl.col("time_us") // 1_000_000).alias("time_second")  # Group by second
 ]).agg([
@@ -381,12 +381,12 @@ time_stats = events.with_columns([
 
 # Complex filtering operations with Polars
 filtered = events.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 0.1) & (pl.col('time_seconds') <= 0.5)
 )
 analysis = filtered.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).collect()
 ```
 
@@ -416,7 +416,7 @@ complex_filtered = events.filter(
 
 # Temporal analysis with Polars operations
 rates = events.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).group_by([
     (pl.col("time_us") // 10_000).alias("time_10ms")  # Group by 10ms
 ]).agg([
@@ -426,12 +426,12 @@ rates = events.with_columns([
 
 # Save processed data (working example)
 processed = events.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 0.1) & (pl.col('time_seconds') <= 0.5)
 )
 processed_df = processed.collect()
-data_arrays = processed_df.select(["x", "y", "timestamp", "polarity"]).to_numpy()
+data_arrays = processed_df.select(["x", "y", "t", "polarity"]).to_numpy()
 x, y, t_us, p = data_arrays.T
 # Convert Duration microseconds to seconds for save function
 t = t_us.astype('float64') / 1_000_000
@@ -490,7 +490,7 @@ events_large = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5"
 
 # Memory-efficient filtering on large datasets using Polars
 filtered = events_large.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 1.0) & (pl.col('time_seconds') <= 2.0)
 )
@@ -549,7 +549,7 @@ events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 
 # Apply filtering before collecting to reduce memory usage
 filtered = events.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 0.1) & (pl.col('time_seconds') <= 0.5)
 )
@@ -576,7 +576,7 @@ result = events.filter(
 df = result.collect()
 
 # Or chain Polars operations
-result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).collect()
+result = events.filter(pl.col("polarity") == 1).select(["x", "y", "t"]).collect()
 ```
 
 **Issue**: Memory usage higher than expected
@@ -620,7 +620,7 @@ description = evlib.formats.get_format_description("HDF5")
 
 # Advanced filtering using Polars operations
 filtered = events.with_columns([
-    (pl.col('timestamp').dt.total_microseconds() / 1_000_000).alias('time_seconds')
+    (pl.col('t').dt.total_microseconds() / 1_000_000).alias('time_seconds')
 ]).filter(
     (pl.col('time_seconds') >= 0.1) & (pl.col('time_seconds') <= 0.5)
 )
@@ -634,11 +634,11 @@ voxel = evr.create_voxel_grid(events_df, _height=180, _width=240, nbins=3)
 # Advanced representations (with proper data conversion)
 small_events = events.limit(10000).collect()
 converted_events = small_events.with_columns([
-    pl.col('timestamp').dt.total_microseconds().cast(pl.Float64).alias('t'),
+    pl.col('t').dt.total_microseconds().cast(pl.Float64).alias('t_microseconds'),
     pl.col('x').cast(pl.Int64),
     pl.col('y').cast(pl.Int64),
     pl.col('polarity').cast(pl.Int64)
-]).drop('timestamp')
+]).select(['x', 'y', 't_microseconds', 'polarity']).rename({'t_microseconds': 't'})
 time_surface = evr.create_timesurface(converted_events, height=180, width=240, dt=50000.0, tau=10000.0)
 
 # Neural network models (limited functionality)
@@ -646,7 +646,7 @@ from evlib.models import ModelConfig  # If available
 
 # Data saving (working examples)
 df = events.collect()
-data_arrays = df.select(["x", "y", "timestamp", "polarity"]).to_numpy()
+data_arrays = df.select(["x", "y", "t", "polarity"]).to_numpy()
 x, y, t_us, p = data_arrays.T
 # Convert Duration microseconds to seconds for save functions
 t = t_us.astype('float64') / 1_000_000
@@ -668,7 +668,9 @@ evlib includes an optimized PyTorch dataloader implementation that showcases bes
 ### Quick Start
 ```python
 # New: Use the built-in PyTorch integration
-from evlib.pytorch import create_dataloader, load_rvt_data
+import torch
+from torch.utils.data import DataLoader
+from evlib.pytorch import create_dataloader, load_rvt_data, PolarsDataset, create_rvt_transform
 
 # Option 1: One-liner for RVT data
 dataloader = create_dataloader("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000",
@@ -677,14 +679,27 @@ dataloader = create_dataloader("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-
 # Option 2: Manual setup for custom transforms
 lazy_df = load_rvt_data("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000")
 
-# Option 3: Raw event data
+# Option 3: Raw event data from various formats
 import evlib
-events = evlib.load_events("path/to/events.h5")
+events = evlib.load_events("data/gen4_1mpx_original/val/moorea_2019-02-21_000_td_2257500000_2317500000_td.h5")
 dataloader = create_dataloader(events, data_type="events")
 
-# Define transform to extract features and labels from LazyFrame
-def split_features_labels(batch):
-    """Transform to separate RVT features and labels from Polars batch"""
+# Alternative raw data examples
+# events = evlib.load_events("data/eTram/h5/val_2/val_night_007_td.h5")  # eTram dataset
+# events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")  # Prophesee format
+# events = evlib.load_events("data/slider_depth/events.txt")  # Text format
+
+# Option 4: Advanced - Custom transform using provided functions
+if lazy_df is not None:
+    # Use the built-in RVT transform
+    transform = create_rvt_transform()
+    dataset = PolarsDataset(lazy_df, batch_size=256, shuffle=True,
+                           transform=transform, drop_last=True)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=0)
+
+# Option 5: Custom transform (if you need to modify the feature extraction)
+def custom_split_features_labels(batch):
+    """Custom transform to separate RVT features and labels from Polars batch"""
     feature_tensors = []
 
     # Add all temporal bin features (mean, std, max, nonzero for each bin)
@@ -704,8 +719,8 @@ def split_features_labels(batch):
         if key in batch:
             feature_tensors.append(batch[key])
 
-    # Add normalized features
-    for key in ["timestamp_norm", "bbox_area_norm", "activity_norm"]:
+    # Add normalized features (note: actual feature name is "t_norm", not "timestamp_norm")
+    for key in ["t_norm", "bbox_area_norm", "activity_norm"]:
         if key in batch:
             feature_tensors.append(batch[key])
 
@@ -714,11 +729,6 @@ def split_features_labels(batch):
     labels = batch["label"].long()                  # Shape: (batch_size,)
 
     return {"features": features, "labels": labels}
-
-# Create efficient dataloader with transform
-dataset = PolarsDataset(lazy_df, batch_size=256, shuffle=True,
-                       transform=split_features_labels, drop_last=True)
-dataloader = DataLoader(dataset, batch_size=None, num_workers=0)
 
 # Train with real event camera data
 for batch in dataloader:

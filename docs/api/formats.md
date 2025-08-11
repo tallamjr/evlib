@@ -29,17 +29,18 @@ df = events.collect()
 
 # Time window filtering using evlib.filtering
 import evlib.filtering as evf
-filtered_events = evf.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=0.0, t_end=1.0)
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=1.0)
 
-# Spatial filtering using preprocessing
-processed_events = evf.preprocess_events("data/slider_depth/events.txt", roi=(100, 500, 100, 300))
+# Spatial filtering using filtering functions
+roi_filtered = evf.filter_by_roi(events, x_min=100, x_max=500, y_min=100, y_max=300)
 
 # Polarity filtering using Polars
 import polars as pl
 events = evlib.load_events("data/slider_depth/events.txt")
 positive_events = events.filter(pl.col('polarity') == 1)
 
-# Data is sorted by timestamp by default when using evlib.load_events
+# Data is sorted by time by default when using evlib.load_events
 ```
 
 **Parameters:**
@@ -51,15 +52,15 @@ positive_events = events.filter(pl.col('polarity') == 1)
 - `min_y` (int, optional): Minimum y coordinate (inclusive)
 - `max_y` (int, optional): Maximum y coordinate (inclusive)
 - `polarity` (int, optional): Polarity filter (1 for positive, -1 for negative)
-- `sort` (bool): Sort events by timestamp after loading
+- `sort` (bool): Sort events by time after loading
 - `x_col` (int, optional): Column index for x coordinate (0-based)
 - `y_col` (int, optional): Column index for y coordinate (0-based)
-- `t_col` (int, optional): Column index for timestamp (0-based)
+- `t_col` (int, optional): Column index for time (0-based)
 - `p_col` (int, optional): Column index for polarity (0-based)
 - `header_lines` (int): Number of header lines to skip
 
 **Returns:**
-- `dict`: Dictionary with keys ["x", "y", "timestamp", "polarity"] for Polars integration
+- `dict`: Dictionary with keys ["x", "y", "t", "polarity"] for Polars integration
 
 ### save_events_to_hdf5
 
@@ -114,7 +115,7 @@ evlib.formats.save_events_to_text(xs, ys, ts, ps, "output.txt")
 
 **Standard Format:**
 ```
-# timestamp x y polarity
+# t x y polarity
 0.000100 320 240 1
 0.000200 321 241 -1
 0.000300 319 239 1
@@ -123,12 +124,12 @@ evlib.formats.save_events_to_text(xs, ys, ts, ps, "output.txt")
 **Custom Column Mapping:**
 ```python
 # For files with different column order, preprocessing is recommended
-# x y polarity timestamp
+# x y polarity t
 # 320 240 1 0.000100
 # Note: Use evlib.load_events with standard format for best compatibility
 events = evlib.load_events("data/slider_depth/events.txt")  # Handles standard formats
 df = events.collect()
-# Access data: df['x'], df['y'], df['timestamp'], df['polarity']
+# Access data: df['x'], df['y'], df['t'], df['polarity']
 ```
 
 ### HDF5 Files
@@ -145,7 +146,7 @@ HDF5 files are automatically detected and loaded. The format supports:
 
 # Structure 2: separate root datasets
 # Example paths: /t, /x, /y, /p
-# Alternative names: /timestamps, /x_pos, /y_pos, /polarity
+# Alternative names: /time, /x_pos, /y_pos, /polarity
 # Short names: /ts, /xs, /ys, /ps
 ```
 

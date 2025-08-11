@@ -78,7 +78,7 @@ The project includes comprehensive real-world datasets for testing:
 - **Events**: 1,000,000+ events
 - **Duration**: ~10 seconds
 - **Resolution**: 346x240 pixels
-- **Format**: Text file with timestamp, x, y, polarity
+- **Format**: Text file with t, x, y, polarity
 - **Scene**: Slider moving at different depths
 - **File**: `data/slider_depth/events.txt` (22MB)
 
@@ -103,7 +103,7 @@ def load_test_data():
 # Smaller subset for fast tests
 def load_test_data_small():
     events = evlib.load_events("data/slider_depth/events.txt")
-    filtered = events.filter((pl.col('timestamp') >= 0.0) & (pl.col('timestamp') <= 1.0))
+    filtered = events.filter((pl.col('t') >= 0.0) & (pl.col('t') <= 1.0))
     return filtered
 ```
 
@@ -119,7 +119,7 @@ def validate_test_data():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # Basic validation
     assert len(xs) > 100000, "Insufficient events for testing"
@@ -209,14 +209,14 @@ class TestEventLoading:
     def test_load_events_time_filter(self):
         """Test time filtering during loading"""
         events = evlib.load_events("data/slider_depth/events.txt")
-        filtered = events.filter((pl.col('timestamp') >= 1.0) & (pl.col('timestamp') <= 2.0))
+        filtered = events.filter((pl.col('t') >= 1.0) & (pl.col('t') <= 2.0))
         df = filtered.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
         ts = df['timestamp'].dt.total_seconds().to_numpy()
 
         assert len(xs) > 0, "No events loaded with time filter"
-        # Convert timestamps to seconds for comparison
+        # Convert durations to seconds for comparison
         ts_seconds = ts.astype('float64') / 1e6  # Convert microseconds to seconds
         assert np.all(ts_seconds >= 1.0), "Events before t_start found"
         assert np.all(ts_seconds <= 2.0), "Events after t_end found"
@@ -246,7 +246,7 @@ class TestEventLoading:
         pos_df = pos_events.collect()
         pos_xs, pos_ys, pos_ps = pos_df['x'].to_numpy(), pos_df['y'].to_numpy(), pos_df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        pos_ts = pos_df['timestamp'].dt.total_seconds().to_numpy()
+        pos_ts = pos_df['t'].dt.total_seconds().to_numpy()
 
         assert len(pos_xs) > 0, "No positive events loaded"
         assert np.all(pos_ps == 1), "Non-positive events found"
@@ -256,7 +256,7 @@ class TestEventLoading:
         neg_df = neg_events.collect()
         neg_xs, neg_ys, neg_ps = neg_df['x'].to_numpy(), neg_df['y'].to_numpy(), neg_df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        neg_ts = neg_df['timestamp'].dt.total_seconds().to_numpy()
+        neg_ts = neg_df['t'].dt.total_seconds().to_numpy()
 
         assert len(neg_xs) > 0, "No negative events loaded"
         assert np.all(neg_ps == -1), "Non-negative events found"
@@ -404,7 +404,8 @@ class TestEventProcessingPipeline:
         """Test neural network model integration"""
         # Load events using filtering API
         import evlib.filtering as evf
-        filtered_events = evf.filter_by_time("data/slider_depth/events.txt", t_start=0.0, t_end=1.0)
+        events = evlib.load_events("data/slider_depth/events.txt")
+        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=1.0)
         df = filtered_events.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
@@ -454,7 +455,8 @@ class TestEventRepresentations:
 
         # Load test data with filtering
         import evlib.filtering as evf
-        filtered_events = evf.filter_by_time("data/slider_depth/events.txt", t_start=0.0, t_end=0.5)
+        events = evlib.load_events("data/slider_depth/events.txt")
+        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=0.5)
 
         # Create stacked histogram
         hist_lazy = evr.create_stacked_histogram(
@@ -472,7 +474,8 @@ class TestEventRepresentations:
         import evlib.representations as evr
 
         # Load events with filtering
-        filtered_events = evf.filter_by_time("data/slider_depth/events.txt", t_start=0.0, t_end=0.1)
+        events = evlib.load_events("data/slider_depth/events.txt")
+        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=0.1)
 
         # Create voxel grid twice
         voxel_lazy1 = evr.create_voxel_grid(
@@ -509,7 +512,7 @@ class TestPerformanceBenchmarks:
         df = events.collect()
         self.xs, self.ys, self.ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        self.ts = df['timestamp'].dt.total_seconds().to_numpy()
+        self.ts = df['t'].dt.total_seconds().to_numpy()
 
     def benchmark_voxel_grid_creation(self):
         """Benchmark voxel grid creation vs pure Python"""
@@ -573,7 +576,7 @@ class TestPerformanceBenchmarks:
         events = evlib.load_events(file_path)
         df = events.collect()
         xs1, ys1, ps1 = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-        ts1 = df['timestamp'].dt.total_seconds().to_numpy()
+        ts1 = df['t'].dt.total_seconds().to_numpy()
         evlib_time = time.time() - start
 
         # NumPy loading
@@ -868,8 +871,10 @@ def sample_events():
 @pytest.fixture(scope="session")
 def small_events():
     """Load small subset of events for fast tests"""
-    return evlib.filtering.filter_by_time(
-        evlib.load_events("data/slider_depth/events.txt"),
+    import evlib.filtering as evf
+    events = evlib.load_events("data/slider_depth/events.txt")
+    return evf.filter_by_time(
+        events,
         t_start=0.0, t_end=0.1
     )
 
@@ -935,7 +940,7 @@ def test_debug_example():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     # Add debug prints
     print(f"Loaded {len(xs)} events")
@@ -977,7 +982,7 @@ def profile_test():
     df = events.collect()
     xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
     # Convert Duration timestamps to seconds (float64)
-    ts = df['timestamp'].dt.total_seconds().to_numpy()
+    ts = df['t'].dt.total_seconds().to_numpy()
 
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",

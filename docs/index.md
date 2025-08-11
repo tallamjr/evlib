@@ -104,12 +104,12 @@ lf = evlib.load_events("data/slider_depth/events.txt")
 # Basic event information
 print(f"Loaded {len(df)} events")
 print(f"Resolution: {df['x'].max()} x {df['y'].max()}")
-print(f"Duration: {df['timestamp'].max() - df['timestamp'].min()}")
+print(f"Duration: {df['t'].max() - df['t'].min()}")
 
 # Convert to NumPy arrays for compatibility
 x_coords = df['x'].to_numpy()
 y_coords = df['y'].to_numpy()
-timestamps = df['timestamp'].to_numpy()
+timestamps = df['t'].to_numpy()
 polarities = df['polarity'].to_numpy()
 ```
 
@@ -119,23 +119,19 @@ import evlib
 import evlib.filtering as evf
 
 # High-level preprocessing pipeline
-processed = evlib.filtering.preprocess_events(
-    "data/slider_depth/events.txt",
-    t_start=0.1, t_end=0.5,
-    roi=(100, 500, 100, 400),
-    polarity=1,
-    remove_hot_pixels=True,
-    remove_noise=True,
-    hot_pixel_threshold=99.9,
-    refractory_period_us=1000
-)
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evf.filter_by_roi(filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+filtered = evf.filter_by_polarity(filtered, polarity=1)
+filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
+processed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
 
 # Individual filters (work with LazyFrames)
 events = evlib.load_events("data/slider_depth/events.txt")
-time_filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
-spatial_filtered = evlib.filtering.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
-clean_events = evlib.filtering.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
-denoised = evlib.filtering.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
+time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
+denoised = evf.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
 ```
 
 ### Event Representations
@@ -286,13 +282,13 @@ import polars as pl
 # Chain operations with LazyFrames for optimal performance
 events = evlib.load_events("data/slider_depth/events.txt")
 result = events.filter(pl.col("polarity") == 1).with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us"),
+    pl.col("t").dt.total_microseconds().alias("time_us"),
     (pl.col("x") + pl.col("y")).alias("diagonal_pos")
 ]).collect()
 
 # Memory-efficient temporal analysis
 time_stats = events.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).group_by([
     (pl.col("time_us") // 1_000_000).alias("time_second")  # Group by second
 ]).agg([
@@ -302,9 +298,9 @@ time_stats = events.with_columns([
 
 # Combine with filtering module for complex operations
 import evlib.filtering as evf
-filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 analysis = filtered.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).collect()
 ```
 
@@ -320,7 +316,7 @@ print(f"Detected format: {format_info}")
 
 # Spatial filtering using dedicated filtering functions (preferred)
 events = evlib.load_events("data/slider_depth/events.txt")
-spatial_filtered = evlib.filtering.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
+spatial_filtered = evf.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
 
 # Or using direct Polars operations
 manual_filtered = events.filter(
@@ -330,7 +326,7 @@ manual_filtered = events.filter(
 
 # Temporal analysis with Polars operations
 rates = events.with_columns([
-    pl.col("timestamp").dt.total_microseconds().alias("time_us")
+    pl.col("t").dt.total_microseconds().alias("time_us")
 ]).group_by([
     (pl.col("time_us") // 10_000).alias("time_10ms")  # Group by 10ms
 ]).agg([
@@ -339,9 +335,10 @@ rates = events.with_columns([
 ]).collect()
 
 # Save processed data
-processed = evlib.filtering.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
+events = evlib.load_events("data/slider_depth/events.txt")
+processed = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 processed_df = processed.collect()
-x, y, t_us, p = processed_df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+x, y, t_us, p = processed_df.select(["x", "y", "t", "polarity"]).to_numpy().T
 # Ensure correct dtypes for save function
 x = x.astype(np.int64)
 y = y.astype(np.int64)
@@ -403,12 +400,12 @@ events_large = evlib.load_events("data/slider_depth/events.txt")
 # Same API, automatically uses streaming for memory efficiency
 
 # Memory-efficient filtering on large datasets using filtering module
-filtered = evlib.filtering.filter_by_time(events_large, t_start=1.0, t_end=2.0)
-positive_events = evlib.filtering.filter_by_polarity(filtered, polarity=1)
+filtered = evf.filter_by_time(events_large, t_start=1.0, t_end=2.0)
+positive_events = evf.filter_by_polarity(filtered, polarity=1)
 
 # Or using direct Polars operations
 manual_filtered = events_large.filter(
-    (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) &
+    (pl.col("t").dt.total_microseconds() / 1_000_000 > 1.0) &
     (pl.col("polarity") == 1)
 ).collect()
 ```
@@ -460,7 +457,7 @@ events = evlib.load_events("data/slider_depth/events.txt")
 # Streaming activates automatically for files >5M events
 
 # Apply filtering before collecting to reduce memory usage
-filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 df = filtered.collect()  # Only collect when needed
 
 # Or stream to disk using Polars
@@ -477,11 +474,11 @@ import polars as pl
 events = evlib.load_events("data/slider_depth/events.txt")
 
 # Use filtering module for optimized operations
-result = evlib.filtering.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
+result = evf.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
 df = result.collect()
 
 # Or chain Polars operations
-result = events.filter(pl.col("polarity") == 1).select(["x", "y", "timestamp"]).collect()
+result = events.filter(pl.col("polarity") == 1).select(["x", "y", "t"]).collect()
 ```
 
 **Issue**: Memory usage higher than expected
@@ -524,8 +521,9 @@ format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
 description = evlib.formats.get_format_description("HDF5")
 
 # Advanced filtering
-filtered = evlib.filtering.preprocess_events("data/slider_depth/events.txt", t_start=0.1, t_end=0.5)
-time_filtered = evlib.filtering.filter_by_time(events, t_start=0.1, t_end=0.5)
+events = evlib.load_events("data/slider_depth/events.txt")
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 
 # Event representations
 events = evlib.load_events("data/slider_depth/events.txt")
@@ -540,7 +538,7 @@ print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack 
 # Data saving (need to get arrays first)
 import numpy as np
 df = events.collect()
-x, y, t_dur, p = df.select(["x", "y", "timestamp", "polarity"]).to_numpy().T
+x, y, t_dur, p = df.select(["x", "y", "t", "polarity"]).to_numpy().T
 # Ensure correct dtypes for save functions
 x = x.astype(np.int64)
 y = y.astype(np.int64)

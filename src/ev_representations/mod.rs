@@ -2048,10 +2048,7 @@ pub mod python {
             .lazy()
             .with_columns([
                 // Convert timestamp to microseconds if it's a duration type
-                col("timestamp")
-                    .dt()
-                    .total_microseconds()
-                    .alias("timestamp_us"),
+                col("t").dt().total_microseconds().alias("timestamp_us"),
             ])
             .with_columns([
                 // Calculate time offset from sequence start
@@ -2152,10 +2149,7 @@ pub mod python {
         // Process using logarithmic time binning
         let result = df
             .lazy()
-            .with_columns([col("timestamp")
-                .dt()
-                .total_microseconds()
-                .alias("timestamp_us")])
+            .with_columns([col("t").dt().total_microseconds().alias("timestamp_us")])
             .with_columns([
                 // Create window assignments
                 ((col("timestamp_us") - col("timestamp_us").min()) / lit(window_duration_us))
@@ -2228,10 +2222,7 @@ pub mod python {
         // Process using temporal binning across entire dataset
         let result = df
             .lazy()
-            .with_columns([col("timestamp")
-                .dt()
-                .total_microseconds()
-                .alias("timestamp_us")])
+            .with_columns([col("t").dt().total_microseconds().alias("timestamp_us")])
             .with_columns([
                 // Temporal binning across entire dataset (simplified)
                 ((col("timestamp_us") - col("timestamp_us").min()) * lit(nbins)

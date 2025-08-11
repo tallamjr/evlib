@@ -26,14 +26,14 @@ def test_create_stacked_histogram():
             events_lf = evlib.load_events(tmp.name)
             events_df = events_lf.collect()  # Convert LazyFrame to DataFrame
 
-            # Fix column names - function expects 'timestamp' but we have 't' (Duration type)
+            # The function expects 't' column, which is what we have
             import polars as pl
 
-            if "t" in events_df.columns and "timestamp" not in events_df.columns:
-                events_df = events_df.rename({"t": "timestamp"})
+            # Ensure we have the expected column format
+            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_stacked_histogram - expects DataFrame, returns DataFrame
-            hist_df = evr.create_stacked_histogram(events_df, 64, 64, nbins=5, window_duration_ms=100)
+            # Test create_stacked_histogram_py - expects DataFrame, returns DataFrame
+            hist_df = evr.create_stacked_histogram_py(events_df, 64, 64, nbins=5, window_duration_ms=100)
 
             # Validate output is DataFrame
 
@@ -78,14 +78,14 @@ def test_create_voxel_grid():
             events_lf = evlib.load_events(tmp.name)
             events_df = events_lf.collect()  # Convert LazyFrame to DataFrame
 
-            # Fix column names - function expects 'timestamp' but we have 't' (Duration type)
+            # The function expects 't' column, which is what we have
             import polars as pl
 
-            if "t" in events_df.columns and "timestamp" not in events_df.columns:
-                events_df = events_df.rename({"t": "timestamp"})
+            # Ensure we have the expected column format
+            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_voxel_grid - expects DataFrame, returns DataFrame
-            voxel_df = evr.create_voxel_grid(events_df, 64, 64, nbins=5)
+            # Test create_voxel_grid_py - expects DataFrame, returns DataFrame
+            voxel_df = evr.create_voxel_grid_py(events_df, 64, 64, nbins=5)
 
             # Validate output is DataFrame
 
@@ -128,14 +128,14 @@ def test_create_mixed_density_stack():
             events_lf = evlib.load_events(tmp.name)
             events_df = events_lf.collect()  # Convert LazyFrame to DataFrame
 
-            # Fix column names - function expects 'timestamp' but we have 't' (Duration type)
+            # The function expects 't' column, which is what we have
             import polars as pl
 
-            if "t" in events_df.columns and "timestamp" not in events_df.columns:
-                events_df = events_df.rename({"t": "timestamp"})
+            # Ensure we have the expected column format
+            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_mixed_density_stack - expects DataFrame, returns DataFrame
-            mixed_df = evr.create_mixed_density_stack(events_df, 64, 64, nbins=10, window_duration_ms=50.0)
+            # Test create_mixed_density_stack_py - expects DataFrame, returns DataFrame
+            mixed_df = evr.create_mixed_density_stack_py(events_df, 64, 64, nbins=10, window_duration_ms=50.0)
 
             # Validate output is DataFrame
             assert isinstance(mixed_df, pl.DataFrame)

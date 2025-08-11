@@ -226,8 +226,6 @@ def load_rvt_data(
             os.environ["HDF5_PLUGIN_PATH"] = hdf5plugin.PLUGIN_PATH
         except ImportError:
             # Try alternative plugin path setup
-            from pathlib import Path
-
             plugin_path = (
                 Path(__file__).parent.parent.parent / ".venv/lib/python3.10/site-packages/hdf5plugin/plugins"
             )
@@ -434,7 +432,7 @@ def create_rvt_transform():
                 feature_tensors.append(batch[key])
 
         # Add normalized features
-        for key in ["timestamp_norm", "bbox_area_norm", "activity_norm"]:
+        for key in ["t_norm", "bbox_area_norm", "activity_norm"]:
             if key in batch:
                 feature_tensors.append(batch[key])
 
