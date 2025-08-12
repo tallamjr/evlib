@@ -461,10 +461,10 @@ events = evlib.load_events("data/slider_depth/events.txt")
 
 # Apply filtering before collecting to reduce memory usage
 events_df = events.collect()  # Convert LazyFrame to DataFrame first
-filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
+filtered_df = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 
-# Or stream to disk using Polars
-filtered.sink_parquet("filtered_events.parquet")
+# Or save to disk using DataFrame
+filtered_df.write_parquet("filtered_events.parquet")
 ```
 
 **Issue**: Slow loading performance

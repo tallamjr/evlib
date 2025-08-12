@@ -377,8 +377,10 @@ full_res = evlib.load_events("data/slider_depth/events.txt")
 full_df = full_res.collect()
 
 # Quarter resolution (downsample by 4)
-quarter_res = evlib.filtering.filter_by_roi(evlib.load_events("data/slider_depth/events.txt"), x_min=0, x_max=159, y_min=0, y_max=119)
-quarter_df = quarter_res.collect()
+import evlib.filtering as evf
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()  # Convert to DataFrame first
+quarter_df = evf.filter_by_roi(events_df, x_min=0, x_max=159, y_min=0, y_max=119)
 ```
 
 ## Best Practices
