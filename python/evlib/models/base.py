@@ -153,8 +153,8 @@ class BaseModel(ABC):
         except ImportError:
             raise ImportError("Polars is required for voxel grid creation")
 
-        # Convert to Polars DataFrame for voxel grid creation
-        events_df = pl.DataFrame(
+        # Convert to Polars LazyFrame for voxel grid creation
+        events_lf = pl.LazyFrame(
             {
                 "x": xs.astype(np.int16),
                 "y": ys.astype(np.int16),
@@ -164,7 +164,7 @@ class BaseModel(ABC):
         )
 
         # Create voxel grid using evlib representations
-        voxel_df = evlib.representations.create_voxel_grid(events_df, height, width, self.config.num_bins)
+        voxel_df = evlib.representations.create_voxel_grid(events_lf, height, width, self.config.num_bins)
 
         # Convert back to numpy array format (num_bins, height, width)
         voxel_array = np.zeros((self.config.num_bins, height, width), dtype=np.float32)
@@ -175,10 +175,13 @@ class BaseModel(ABC):
         else:
             voxel_data = voxel_df
 
-        for row in voxel_data.iter_rows():
-            time_bin, y, x, value = row
+        for row in voxel_data.iter_rows(named=True):
+            x = row["x"]
+            y = row["y"]
+            time_bin = row["time_bin"]
+            contribution = row["contribution"]
             if 0 <= x < width and 0 <= y < height and 0 <= time_bin < self.config.num_bins:
-                voxel_array[time_bin, y, x] = value
+                voxel_array[time_bin, y, x] = contribution
 
         return voxel_array
 

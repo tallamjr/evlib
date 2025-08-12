@@ -746,7 +746,7 @@ output.*
 output_example.*
 events.parquet
 
-tasks/*.md
+**/tasks/*.md
 
 python/evlib/models/weights
 
