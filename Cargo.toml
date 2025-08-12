@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.7.10"
+version         = "0.7.11"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 resolver        = "2"
