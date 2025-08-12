@@ -733,9 +733,11 @@ for batch in dataloader:
     labels = batch["labels"]      # Shape: (256,) - object class labels
 
     # Your PyTorch training loop here
-    outputs = model(features)
-    loss = criterion(outputs, labels)
+    # outputs = model(features)
+    # loss = criterion(outputs, labels)
     # ... backward pass, optimizer step, etc.
+    print(f"Batch features shape: {features.shape}, labels shape: {labels.shape}")
+    break  # Just show the data format
 ```
 
 ### Architecture Overview
