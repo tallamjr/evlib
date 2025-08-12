@@ -32,24 +32,23 @@ def test_create_stacked_histogram():
             # Ensure we have the expected column format
             assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_stacked_histogram_py - expects DataFrame, returns DataFrame
-            hist_df = evr.create_stacked_histogram_py(events_df, 64, 64, nbins=5, window_duration_ms=100)
+            # Test create_stacked_histogram - expects LazyFrame, returns DataFrame
+            hist_df = evr.create_stacked_histogram(events_lf, 64, 64, bins=5, window_duration_ms=100)
 
             # Validate output is DataFrame
 
             assert isinstance(hist_df, pl.DataFrame)
 
-            # Should have columns: [window_id, channel, time_bin, y, x, count, channel_time_bin]
-            expected_columns = ["window_id", "channel", "time_bin", "y", "x", "count", "channel_time_bin"]
+            # Should have columns: [time_bin, polarity, y, x, count]
+            expected_columns = ["time_bin", "polarity", "y", "x", "count"]
             assert all(col in hist_df.columns for col in expected_columns)
 
-            # Check data types (Rust uses efficient types)
-            assert hist_df["window_id"].dtype == pl.Int64
-            assert hist_df["channel"].dtype == pl.Int8  # Polarity is -1/1, fits in Int8
-            assert hist_df["time_bin"].dtype == pl.Int16  # Time bins are small numbers, fits in Int16
+            # Check data types
+            assert hist_df["time_bin"].dtype == pl.Int32
+            assert hist_df["polarity"].dtype in [pl.Int8, pl.Int16, pl.Int64]  # Polarity
             assert hist_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
             assert hist_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
-            assert hist_df["count"].dtype == pl.UInt32
+            assert hist_df["count"].dtype == pl.UInt32  # Count is unsigned
 
             print(f"Success: create_stacked_histogram returned DataFrame with {len(hist_df)} rows")
 
@@ -84,22 +83,22 @@ def test_create_voxel_grid():
             # Ensure we have the expected column format
             assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_voxel_grid_py - expects DataFrame, returns DataFrame
-            voxel_df = evr.create_voxel_grid_py(events_df, 64, 64, nbins=5)
+            # Test voxel_grid - expects LazyFrame, returns DataFrame
+            voxel_df = evr.voxel_grid(events_lf, 64, 64, n_time_bins=5)
 
             # Validate output is DataFrame
 
             assert isinstance(voxel_df, pl.DataFrame)
 
-            # Should have columns: [time_bin, y, x, value]
-            expected_columns = ["time_bin", "y", "x", "value"]
+            # Should have columns: [x, y, time_bin, contribution]
+            expected_columns = ["x", "y", "time_bin", "contribution"]
             assert all(col in voxel_df.columns for col in expected_columns)
 
-            # Check data types (Rust uses efficient types)
-            assert voxel_df["time_bin"].dtype == pl.Int16  # Time bins are small numbers, fits in Int16
+            # Check data types
+            assert voxel_df["time_bin"].dtype == pl.Int32
             assert voxel_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
             assert voxel_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
-            assert voxel_df["value"].dtype == pl.Int32  # Implementation returns Int32 for value
+            assert voxel_df["contribution"].dtype in [pl.Float64, pl.Float32]  # Contribution values
 
             print(f"Success: create_voxel_grid returned DataFrame with {len(voxel_df)} rows")
 
@@ -134,22 +133,21 @@ def test_create_mixed_density_stack():
             # Ensure we have the expected column format
             assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
 
-            # Test create_mixed_density_stack_py - expects DataFrame, returns DataFrame
-            mixed_df = evr.create_mixed_density_stack_py(events_df, 64, 64, nbins=10, window_duration_ms=50.0)
+            # Test create_mixed_density_stack - expects LazyFrame, returns DataFrame
+            mixed_df = evr.create_mixed_density_stack(events_lf, 64, 64)
 
             # Validate output is DataFrame
             assert isinstance(mixed_df, pl.DataFrame)
 
-            # Should have columns: [window_id, time_bin, y, x, polarity_sum]
-            expected_columns = ["window_id", "time_bin", "y", "x", "polarity_sum"]
+            # Should have columns: [x, y, polarity_sum, count]
+            expected_columns = ["x", "y", "polarity_sum", "count"]
             assert all(col in mixed_df.columns for col in expected_columns)
 
             # Check data types
-            assert mixed_df["window_id"].dtype == pl.Int64
-            assert mixed_df["time_bin"].dtype == pl.Int16  # Time bins are small numbers, fits in Int16
             assert mixed_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
             assert mixed_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
             assert mixed_df["polarity_sum"].dtype == pl.Int64  # Sum of polarities
+            assert mixed_df["count"].dtype == pl.UInt32  # Count is unsigned
 
             print(f"Success: create_mixed_density_stack returned DataFrame with {len(mixed_df)} rows")
 
