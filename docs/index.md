@@ -120,15 +120,17 @@ import evlib.filtering as evf
 
 # High-level preprocessing pipeline
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+events_df = events.collect()  # Convert LazyFrame to DataFrame
+filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 filtered = evf.filter_by_roi(filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 filtered = evf.filter_by_polarity(filtered, polarity=1)
 filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
 processed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
 
-# Individual filters (work with LazyFrames)
+# Individual filters (work with DataFrames)
 events = evlib.load_events("data/slider_depth/events.txt")
-time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+events_df = events.collect()  # Convert LazyFrame to DataFrame
+time_filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 spatial_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 clean_events = evf.filter_hot_pixels(spatial_filtered, threshold_percentile=99.9)
 denoised = evf.filter_noise(clean_events, method="refractory", refractory_period_us=1000)
@@ -141,26 +143,24 @@ import evlib.representations as evr
 
 # Create voxel grid representation (reliable alternative to stacked histogram)
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
+# Functions accept both LazyFrame and DataFrame - no need to .collect() explicitly
 voxel_df = evr.create_voxel_grid(
-    events_df,
+    events,  # Can pass LazyFrame directly
     height=480, width=640,
     n_time_bins=10
 )
 
 # Create mixed density stack representation
 mixed_df = evr.create_mixed_density_stack(
-    events_df,
-    height=480, width=640,
-    window_duration_ms=50.0
+    events,  # Can pass LazyFrame directly
+    height=480, width=640
 )
 print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
 # High-level preprocessing for neural networks
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
 data_df = evr.create_voxel_grid(
-    events_df,
+    events,  # Can pass LazyFrame directly
     height=480, width=640,
     n_time_bins=10
 )
@@ -171,8 +171,7 @@ import time
 
 start_time = time.time()
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
-results_df = evr.create_voxel_grid(events_df, height=480, width=640, n_time_bins=10)
+results_df = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=10)
 processing_time = time.time() - start_time
 
 print(f"evlib processing: {processing_time:.3f}s for {len(results_df)} voxel grid entries")
@@ -298,10 +297,11 @@ time_stats = events.with_columns([
 
 # Combine with filtering module for complex operations
 import evlib.filtering as evf
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 analysis = filtered.with_columns([
     pl.col("t").dt.total_microseconds().alias("time_us")
-]).collect()
+])
 ```
 
 #### Utility Functions
@@ -316,7 +316,8 @@ print(f"Detected format: {format_info}")
 
 # Spatial filtering using dedicated filtering functions (preferred)
 events = evlib.load_events("data/slider_depth/events.txt")
-spatial_filtered = evf.filter_by_roi(events, x_min=100, x_max=200, y_min=50, y_max=150)
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+spatial_filtered = evf.filter_by_roi(events_df, x_min=100, x_max=200, y_min=50, y_max=150)
 
 # Or using direct Polars operations
 manual_filtered = events.filter(
@@ -335,10 +336,11 @@ rates = events.with_columns([
 ]).collect()
 
 # Save processed data
+import numpy as np
 events = evlib.load_events("data/slider_depth/events.txt")
-processed = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
-processed_df = processed.collect()
-x, y, t_us, p = processed_df.select(["x", "y", "t", "polarity"]).to_numpy().T
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+processed = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
+x, y, t_us, p = processed.select(["x", "y", "t", "polarity"]).to_numpy().T
 # Ensure correct dtypes for save function
 x = x.astype(np.int64)
 y = y.astype(np.int64)
@@ -400,7 +402,8 @@ events_large = evlib.load_events("data/slider_depth/events.txt")
 # Same API, automatically uses streaming for memory efficiency
 
 # Memory-efficient filtering on large datasets using filtering module
-filtered = evf.filter_by_time(events_large, t_start=1.0, t_end=2.0)
+events_large_df = events_large.collect()  # Convert LazyFrame to DataFrame first
+filtered = evf.filter_by_time(events_large_df, t_start=1.0, t_end=2.0)
 positive_events = evf.filter_by_polarity(filtered, polarity=1)
 
 # Or using direct Polars operations
@@ -457,8 +460,8 @@ events = evlib.load_events("data/slider_depth/events.txt")
 # Streaming activates automatically for files >5M events
 
 # Apply filtering before collecting to reduce memory usage
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
-df = filtered.collect()  # Only collect when needed
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 
 # Or stream to disk using Polars
 filtered.sink_parquet("filtered_events.parquet")
@@ -474,8 +477,8 @@ import polars as pl
 events = evlib.load_events("data/slider_depth/events.txt")
 
 # Use filtering module for optimized operations
-result = evf.filter_by_roi(events, x_min=0, x_max=640, y_min=0, y_max=480)
-df = result.collect()
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+result = evf.filter_by_roi(events_df, x_min=0, x_max=640, y_min=0, y_max=480)
 
 # Or chain Polars operations
 result = events.filter(pl.col("polarity") == 1).select(["x", "y", "t"]).collect()
@@ -522,8 +525,9 @@ description = evlib.formats.get_format_description("HDF5")
 
 # Advanced filtering
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
-time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
+time_filtered = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
 
 # Event representations
 events = evlib.load_events("data/slider_depth/events.txt")

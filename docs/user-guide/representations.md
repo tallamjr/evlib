@@ -25,10 +25,11 @@ import evlib.representations as evr
 
 # Create stacked histogram (recommended for neural networks)
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
+# Note: Can pass LazyFrame directly - no need to .collect() explicitly
 
 # Use a subset that spans sufficient time for window creation
 # In test environments, we may have limited data, so adjust window size
+events_df = events.collect()  # Only collect when we need to inspect the data
 total_events = len(events_df)
 time_span = (events_df['t'].max() - events_df['t'].min()).total_seconds()
 
@@ -41,12 +42,11 @@ else:
     print(f"Using standard window duration: {window_duration_ms}ms for {total_events} events")
 
 hist_df = evr.create_stacked_histogram(
-    events_df,
-    height=480,                 # Ignored parameter (spatial clipping simplified)
-    width=640,                  # Ignored parameter (spatial clipping simplified)
+    events,  # Pass LazyFrame directly - function handles collection internally
+    height=480,
+    width=640,
     bins=10,                    # Temporal bins per window
-    window_duration_ms=window_duration_ms,
-    _count_cutoff=10             # Ignored parameter (count limiting simplified)
+    window_duration_ms=window_duration_ms
 )
 
 # Process results
@@ -70,18 +70,20 @@ import evlib.representations as evr
 
 # Test performance with different bin counts
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
+# Only collect when we need to inspect the data for parameters
+events_df_sample = events.collect()
 
 # Use appropriate subset based on available data
-total_events = len(events_df)
+total_events = len(events_df_sample)
 if total_events > 10000:
-    events_df = events_df.head(10000)  # Use 10k events for performance testing
-    print(f"Using {len(events_df)} events for performance testing")
+    events_subset = events_df_sample.head(10000).lazy()  # Convert back to LazyFrame
+    print(f"Using 10k events for performance testing")
 else:
+    events_subset = events  # Use original LazyFrame
     print(f"Using all {total_events} available events for testing")
 
 # Calculate appropriate window duration
-time_range = events_df['t'].max() - events_df['t'].min()
+time_range = events_df_sample['t'].max() - events_df_sample['t'].min()
 time_span_sec = time_range.total_seconds()
 
 if time_span_sec < 0.1:  # Less than 100ms of data
@@ -95,7 +97,7 @@ print(f"Using window duration: {window_duration_ms:.1f}ms")
 for nbins in [5, 10, 15]:
     start_time = time.time()
     hist_df = evr.create_stacked_histogram(
-        events_df,
+        events_subset,  # Pass LazyFrame directly
         height=480, width=640,
         bins=nbins,
         window_duration_ms=window_duration_ms

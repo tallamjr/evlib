@@ -36,6 +36,8 @@ The most common format for event data:
 
 **Loading text files:**
 ```python
+import evlib
+
 # High-performance Polars LazyFrame (recommended)
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
@@ -53,6 +55,9 @@ ts = df['t'].dt.total_seconds().to_numpy()
 Efficient binary format with fast loading:
 
 ```python
+import evlib
+import numpy as np
+
 # HDF5 format provides efficient binary storage
 # Load existing HDF5 datasets (e.g., from eTram dataset)
 # events = evlib.load_events("data/eTram/h5/val_2/val_night_011_td.h5")
@@ -88,10 +93,11 @@ Load only events within a specific time range:
 
 ```python
 # Load events between 1.0 and 5.0 seconds using filtering
+import evlib
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered_events = evf.filter_by_time(events, t_start=1.0, t_end=5.0)
-df = events.collect()
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered_events = evf.filter_by_time(events_df, t_start=1.0, t_end=5.0)
 
 # Or load with parameters
 events = evlib.load_events("data/slider_depth/events.txt", t_start=1.0, t_end=5.0)
@@ -108,10 +114,11 @@ Filter events by pixel coordinates:
 
 ```python
 # Load events in center region only
+import evlib
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered_events = evf.filter_by_roi(events, x_min=200, x_max=440, y_min=120, y_max=360)
-df = filtered_events.collect()
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered_events = evf.filter_by_roi(events_df, x_min=200, x_max=440, y_min=120, y_max=360)
 
 # Or use load_events with parameters
 events = evlib.load_events("data/slider_depth/events.txt", min_x=200, max_x=440, min_y=120, max_y=360)
@@ -128,14 +135,14 @@ Separate positive and negative events:
 
 ```python
 # Load only positive (ON) events
+import evlib
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-pos_events = evf.filter_by_polarity(events, polarity=1)
-pos_df = pos_events.collect()
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+pos_events = evf.filter_by_polarity(events_df, polarity=1)
 
 # Load only negative (OFF) events
-neg_events = evf.filter_by_polarity(events, polarity=0)  # Note: using 0 for negative in this dataset
-neg_df = neg_events.collect()
+neg_events = evf.filter_by_polarity(events_df, polarity=0)  # Note: using 0 for negative in this dataset
 ```
 
 **Why use polarity filtering:**
@@ -149,17 +156,17 @@ All filters can be combined:
 
 ```python
 # Complex filtering example using multiple filters
+import evlib
 import evlib.filtering as evf
 
 events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
 # Apply filters in sequence to create preprocessing pipeline
-filtered = evf.filter_by_time(events, t_start=2.0, t_end=8.0)
+filtered = evf.filter_by_time(events_df, t_start=2.0, t_end=8.0)
 filtered = evf.filter_by_roi(filtered, x_min=100, x_max=540, y_min=50, y_max=430)
 filtered = evf.filter_by_polarity(filtered, polarity=1)
 filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
 processed_events = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
-
-df = processed_events.collect()
 ```
 
 ## Custom File Formats
@@ -174,6 +181,7 @@ If your files have different column arrangements:
 # Note: Column specification may require direct Rust access
 # Note: Custom column mapping requires direct format access
 # Use standard evlib.load_events for most cases
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
@@ -192,6 +200,7 @@ Skip header lines in your files:
 # Note: Header handling may require direct Rust access
 # Note: Header handling requires preprocessing or manual file handling
 # Standard evlib.load_events handles most common formats
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
@@ -206,6 +215,7 @@ ts = df['t'].dt.total_seconds().to_numpy()
 # Note: Header handling may require direct Rust access
 # Note: Complex header handling requires preprocessing
 # Standard evlib.load_events handles most common formats
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
@@ -221,6 +231,7 @@ For very large files, use chunked loading:
 
 ```python
 # Process large files efficiently with time windows
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt", t_start=0.0, t_end=10.0)
 df = events.collect()  # Uses optimal Polars engine
 
@@ -244,10 +255,11 @@ Apply filters during loading, not after:
 
 ```python
 # GOOD: Filter during loading using filtering module
+import evlib
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered_events = evf.filter_by_time(events, t_start=1.0, t_end=2.0)
-df = filtered_events.collect()
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered_events = evf.filter_by_time(events_df, t_start=1.0, t_end=2.0)
 
 # GOOD: Use Polars filtering (lazy evaluation)
 events = evlib.load_events("data/slider_depth/events.txt")
@@ -276,6 +288,8 @@ xs, ys, ts, ps = xs[mask], ys[mask], ts[mask], ps[mask]
 Always handle potential errors:
 
 ```python
+import evlib
+
 def load_events_safely(file_path):
     try:
         events = evlib.load_events(file_path)
@@ -315,6 +329,7 @@ def validate_events(df):
 
 ```python
 # Load slider_depth dataset (1M+ events)
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 
@@ -357,6 +372,7 @@ print("# Load and process each segment separately")
 
 ```python
 # Load events at different spatial resolutions
+import evlib
 full_res = evlib.load_events("data/slider_depth/events.txt")
 full_df = full_res.collect()
 
@@ -384,6 +400,7 @@ datasets/
 ### 2. Data Pipeline
 ```python
 def create_data_pipeline(input_file, output_dir):
+    import evlib
     import evlib.filtering as evf
     # 1. Load and validate
     events = evlib.load_events(input_file)
@@ -403,13 +420,13 @@ def create_data_pipeline(input_file, output_dir):
     # 3. Create filtered versions
     pos_file = f"{output_dir}/positive_events.h5"
     events = evlib.load_events(input_file)
-    pos_events = evf.filter_by_polarity(events, polarity=1)
-    pos_df = pos_events.collect()
+    events_df = events.collect()  # Convert LazyFrame to DataFrame first
+    pos_events = evf.filter_by_polarity(events_df, polarity=1)
     # Convert timestamps to seconds for saving
-    pos_ts_seconds = pos_df['t'].dt.total_seconds().to_numpy()
+    pos_ts_seconds = pos_events['t'].dt.total_seconds().to_numpy()
     evlib.formats.save_events_to_hdf5(
-        pos_df['x'].to_numpy(), pos_df['y'].to_numpy(),
-        pos_ts_seconds, pos_df['polarity'].to_numpy(),
+        pos_events['x'].to_numpy(), pos_events['y'].to_numpy(),
+        pos_ts_seconds, pos_events['polarity'].to_numpy(),
         pos_file
     )
 
@@ -420,6 +437,7 @@ def create_data_pipeline(input_file, output_dir):
 ```python
 def process_large_dataset(file_path, time_window=1.0):
     """Process large dataset in time windows"""
+    import evlib
     import polars as pl
     import evlib.filtering as evf
 
@@ -467,6 +485,7 @@ def process_large_dataset(file_path, time_window=1.0):
 **Problem**: `FileNotFoundError`
 ```python
 # Solution: Check file path and existence
+import evlib
 import os
 if os.path.exists("data/slider_depth/events.txt"):
     events = evlib.load_events("data/slider_depth/events.txt")
@@ -481,6 +500,7 @@ else:
 # Note: Column specification requires direct Rust access
 # Note: Column specification requires preprocessing or format handling
 # Standard evlib.load_events handles standard formats
+import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
@@ -491,10 +511,11 @@ ts = df['t'].dt.total_seconds().to_numpy()
 **Problem**: Memory errors with large files
 ```python
 # Solution: Use time window filtering
+import evlib
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=10.0)
-df = filtered_events.collect()  # Uses optimal engine for large data
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+filtered_events = evf.filter_by_time(events_df, t_start=0.0, t_end=10.0)
 ```
 
 ## Next Steps

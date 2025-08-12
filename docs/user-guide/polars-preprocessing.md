@@ -144,12 +144,11 @@ import evlib.representations as evr
 
 # evlib preprocessing with Polars (high-performance)
 events = evlib.load_events("data/slider_depth/events.txt")
-events_df = events.collect()
-# Use voxel grid or mixed density stack (stacked histogram has a known issue)
+# Pass LazyFrame directly - functions handle collection internally
 voxel_df = evr.create_voxel_grid(
-    events_df,
-    width=640,    # Ignored parameter
-    height=480,   # Ignored parameter
+    events,  # Can pass LazyFrame or DataFrame
+    width=640,
+    height=480,
     n_time_bins=10
 )
 print(f"Voxel grid created with {len(voxel_df)} entries")
@@ -196,6 +195,8 @@ print(f"Voxel grid created with {len(voxel_df)} entries")
 ### Batch Processing
 
 ```python
+import evlib
+import evlib.representations as evr
 import glob
 from pathlib import Path
 

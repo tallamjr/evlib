@@ -668,6 +668,7 @@ evlib includes an optimized PyTorch dataloader implementation that showcases bes
 ### Quick Start
 ```python
 # New: Use the built-in PyTorch integration
+import evlib
 import torch
 from torch.utils.data import DataLoader
 from evlib.pytorch import create_dataloader, load_rvt_data, PolarsDataset, create_rvt_transform
