@@ -142,27 +142,27 @@ import evlib.representations as evr
 # Create voxel grid representation (reliable alternative to stacked histogram)
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
-voxel_df = evr.create_voxel_grid_py(
+voxel_df = evr.create_voxel_grid(
     events_df,
-    _height=480, _width=640,
-    nbins=10
+    height=480, width=640,
+    n_time_bins=10
 )
 
 # Create mixed density stack representation
-mixed_df = evr.create_mixed_density_stack_py(
+mixed_df = evr.create_mixed_density_stack(
     events_df,
-    _height=480, _width=640,
-    nbins=10, window_duration_ms=50.0
+    height=480, width=640,
+    window_duration_ms=50.0
 )
 print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
 # High-level preprocessing for neural networks
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
-data_df = evr.create_voxel_grid_py(
+data_df = evr.create_voxel_grid(
     events_df,
-    _height=480, _width=640,
-    nbins=10
+    height=480, width=640,
+    n_time_bins=10
 )
 print(f"Preprocessed {len(data_df)} entries for detection pipeline")
 
@@ -172,7 +172,7 @@ import time
 start_time = time.time()
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
-results_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=10)
+results_df = evr.create_voxel_grid(events_df, height=480, width=640, n_time_bins=10)
 processing_time = time.time() - start_time
 
 print(f"evlib processing: {processing_time:.3f}s for {len(results_df)} voxel grid entries")
@@ -528,8 +528,8 @@ time_filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
 # Event representations
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
-voxel_df = evr.create_voxel_grid_py(events_df, _height=480, _width=640, nbins=10)
-mixed_df = evr.create_mixed_density_stack_py(events_df, _height=480, _width=640, nbins=10)
+voxel_df = evr.create_voxel_grid(events_df, height=480, width=640, n_time_bins=10)
+mixed_df = evr.create_mixed_density_stack(events_df, height=480, width=640)
 print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
 # Neural network models (limited functionality)

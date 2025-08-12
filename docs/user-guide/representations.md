@@ -40,11 +40,11 @@ else:
     window_duration_ms = 50.0
     print(f"Using standard window duration: {window_duration_ms}ms for {total_events} events")
 
-hist_df = evr.create_stacked_histogram_py(
+hist_df = evr.create_stacked_histogram(
     events_df,
-    _height=480,                 # Ignored parameter (spatial clipping simplified)
-    _width=640,                  # Ignored parameter (spatial clipping simplified)
-    nbins=10,                    # Temporal bins per window
+    height=480,                 # Ignored parameter (spatial clipping simplified)
+    width=640,                  # Ignored parameter (spatial clipping simplified)
+    bins=10,                    # Temporal bins per window
     window_duration_ms=window_duration_ms,
     _count_cutoff=10             # Ignored parameter (count limiting simplified)
 )
@@ -94,10 +94,10 @@ print(f"Using window duration: {window_duration_ms:.1f}ms")
 
 for nbins in [5, 10, 15]:
     start_time = time.time()
-    hist_df = evr.create_stacked_histogram_py(
+    hist_df = evr.create_stacked_histogram(
         events_df,
-        _height=480, _width=640,
-        nbins=nbins,
+        height=480, width=640,
+        bins=nbins,
         window_duration_ms=window_duration_ms
     )
     duration = time.time() - start_time

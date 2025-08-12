@@ -355,7 +355,7 @@ class TestEventProcessingPipeline:
         # Create voxel grid
         voxel_lazy = evr.create_voxel_grid(
             "data/slider_depth/events.txt",
-            width=640, height=480, nbins=5
+            width=640, height=480, n_time_bins=5
         )
         voxel_df = voxel_lazy.collect()
         voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -415,7 +415,7 @@ class TestEventProcessingPipeline:
         # For now, test basic event processing
         import evlib.representations as evr
         voxel_lazy = evr.create_voxel_grid(
-            filtered_events, width=640, height=480, nbins=5
+            filtered_events, width=640, height=480, n_time_bins=5
         )
         voxel_df = voxel_lazy.collect()
         voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -441,7 +441,7 @@ class TestEventRepresentations:
         # Create voxel grid from events
         voxel_lazy = evr.create_voxel_grid(
             "data/slider_depth/events.txt",
-            width=640, height=480, nbins=5
+            width=640, height=480, n_time_bins=5
         )
         voxel_df = voxel_lazy.collect()
         voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -460,7 +460,7 @@ class TestEventRepresentations:
 
         # Create stacked histogram
         hist_lazy = evr.create_stacked_histogram(
-            filtered_events, width=640, height=480, nbins=10
+            filtered_events, width=640, height=480, n_time_bins=10
         )
         hist_df = hist_lazy.collect()
         hist_grid = hist_df.to_numpy().reshape(10, 480, 640)
@@ -479,13 +479,13 @@ class TestEventRepresentations:
 
         # Create voxel grid twice
         voxel_lazy1 = evr.create_voxel_grid(
-            filtered_events, width=640, height=480, nbins=5
+            filtered_events, width=640, height=480, n_time_bins=5
         )
         voxel_df1 = voxel_lazy1.collect()
         result1 = voxel_df1.to_numpy().reshape(5, 480, 640)
 
         voxel_lazy2 = evr.create_voxel_grid(
-            filtered_events, width=640, height=480, nbins=5
+            filtered_events, width=640, height=480, n_time_bins=5
         )
         voxel_df2 = voxel_lazy2.collect()
         result2 = voxel_df2.to_numpy().reshape(5, 480, 640)
@@ -521,7 +521,7 @@ class TestPerformanceBenchmarks:
         start = time.time()
         voxel_lazy = evr.create_voxel_grid(
             "data/slider_depth/events.txt",
-            width=640, height=480, nbins=5
+            width=640, height=480, n_time_bins=5
         )
         voxel_df = voxel_lazy.collect()
         voxel_evlib = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -613,7 +613,7 @@ class TestPerformanceBenchmarks:
         # Create voxel grid
         voxel_lazy = evr.create_voxel_grid(
             "data/slider_depth/events.txt",
-            width=640, height=480, nbins=5
+            width=640, height=480, n_time_bins=5
         )
         voxel_df = voxel_lazy.collect()
         voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -956,7 +956,7 @@ def test_debug_example():
     import evlib.representations as evr
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        width=640, height=480, nbins=5
+        width=640, height=480, n_time_bins=5
     )
     voxel_df = voxel_lazy.collect()
     voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)
@@ -986,7 +986,7 @@ def profile_test():
 
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        width=640, height=480, nbins=5
+        width=640, height=480, n_time_bins=5
     )
     voxel_df = voxel_lazy.collect()
     voxel_grid = voxel_df.to_numpy().reshape(5, 480, 640)

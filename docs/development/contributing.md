@@ -271,7 +271,7 @@ def test_custom_representation():
     # Test function
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        height=480, width=640, nbins=5
+        height=480, width=640, n_time_bins=5
     )
     result = voxel_lazy.collect()
 
@@ -382,7 +382,7 @@ def test_memory_usage():
     df = events.collect()
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        height=480, width=640, nbins=5
+        height=480, width=640, n_time_bins=5
     )
     result = voxel_lazy.collect()
     return result

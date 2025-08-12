@@ -204,8 +204,8 @@ events_df = events.collect()
 # Create stacked histogram (replaces RVT preprocessing)
 hist = evr.create_stacked_histogram(
     events_df,
-    _height=180, _width=240,
-    nbins=5, window_duration_ms=50.0,
+    height=180, width=240,
+    bins=5, window_duration_ms=50.0,
     _count_cutoff=5
 )
 print(f"Created stacked histogram with {len(hist)} spatial bins")
@@ -213,16 +213,16 @@ print(f"Created stacked histogram with {len(hist)} spatial bins")
 # Create mixed density stack representation
 density = evr.create_mixed_density_stack(
     events_df,
-    _height=180, _width=240,
-    nbins=5, window_duration_ms=50.0
+    height=180, width=240,
+    window_duration_ms=50.0
 )
 print(f"Created mixed density stack with {len(density)} entries")
 
 # Create voxel grid representation
 voxel = evr.create_voxel_grid(
     events_df,
-    _height=180, _width=240,
-    nbins=3
+    height=180, width=240,
+    n_time_bins=3
 )
 print(f"Created voxel grid with {len(voxel)} voxels")
 
@@ -628,8 +628,8 @@ time_filtered = filtered.collect()
 
 # Event representations (working examples)
 events_df = events.collect()
-hist = evr.create_stacked_histogram(events_df, _height=180, _width=240, nbins=5)
-voxel = evr.create_voxel_grid(events_df, _height=180, _width=240, nbins=3)
+hist = evr.create_stacked_histogram(events_df, height=180, width=240, bins=5)
+voxel = evr.create_voxel_grid(events_df, height=180, width=240, n_time_bins=3)
 
 # Advanced representations (with proper data conversion)
 small_events = events.limit(10000).collect()
@@ -672,30 +672,26 @@ import torch
 from torch.utils.data import DataLoader
 from evlib.pytorch import create_dataloader, load_rvt_data, PolarsDataset, create_rvt_transform
 
-# Option 1: One-liner for RVT data
-dataloader = create_dataloader("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000",
-                              data_type="rvt", batch_size=256)
+# Option 1: Raw event data (since RVT data not available in CI)
+events = evlib.load_events("data/slider_depth/events.txt")
+dataloader = create_dataloader(events, data_type="events", batch_size=256)
 
-# Option 2: Manual setup for custom transforms
-lazy_df = load_rvt_data("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000")
+# Option 2: Manual setup for custom transforms (for RVT data when available)
+# lazy_df = load_rvt_data("data/gen4_1mpx_processed_RVT/val/moorea_2019-02-21_000_td_2257500000_2317500000")
 
 # Option 3: Raw event data from various formats
-import evlib
-events = evlib.load_events("data/gen4_1mpx_original/val/moorea_2019-02-21_000_td_2257500000_2317500000_td.h5")
-dataloader = create_dataloader(events, data_type="events")
-
-# Alternative raw data examples
 # events = evlib.load_events("data/eTram/h5/val_2/val_night_007_td.h5")  # eTram dataset
 # events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")  # Prophesee format
-# events = evlib.load_events("data/slider_depth/events.txt")  # Text format
+events = evlib.load_events("data/slider_depth/events.txt")  # Text format
+dataloader = create_dataloader(events, data_type="events")
 
-# Option 4: Advanced - Custom transform using provided functions
-if lazy_df is not None:
-    # Use the built-in RVT transform
-    transform = create_rvt_transform()
-    dataset = PolarsDataset(lazy_df, batch_size=256, shuffle=True,
-                           transform=transform, drop_last=True)
-    dataloader = DataLoader(dataset, batch_size=None, num_workers=0)
+# Option 4: Advanced - Custom transform using provided functions (for RVT data)
+# if lazy_df is not None:
+#     # Use the built-in RVT transform
+#     transform = create_rvt_transform()
+#     dataset = PolarsDataset(lazy_df, batch_size=256, shuffle=True,
+#                            transform=transform, drop_last=True)
+#     dataloader = DataLoader(dataset, batch_size=None, num_workers=0)
 
 # Option 5: Custom transform (if you need to modify the feature extraction)
 def custom_split_features_labels(batch):

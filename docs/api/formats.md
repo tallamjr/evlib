@@ -30,10 +30,11 @@ df = events.collect()
 # Time window filtering using evlib.filtering
 import evlib.filtering as evf
 events = evlib.load_events("data/slider_depth/events.txt")
-filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=1.0)
+events_df = events.collect()
+filtered_events = evf.filter_by_time(events_df, t_start=0.0, t_end=1.0)
 
 # Spatial filtering using filtering functions
-roi_filtered = evf.filter_by_roi(events, x_min=100, x_max=500, y_min=100, y_max=300)
+roi_filtered = evf.filter_by_roi(events_df, x_min=100, x_max=500, y_min=100, y_max=300)
 
 # Polarity filtering using Polars
 import polars as pl
@@ -156,20 +157,25 @@ HDF5 files are automatically detected and loaded. The format supports:
 
 All filters can be combined:
 ```python
-# Complex filtering example using high-level API
+# Complex filtering example using multiple filters
 import evlib.filtering as evf
 import polars as pl
 
-# Use preprocessing pipeline for comprehensive filtering
-processed_events = evf.preprocess_events(
-    "data/slider_depth/events.txt",
-    t_start=1.0, t_end=5.0,        # Time window
-    roi=(100, 500, 100, 400),      # Spatial bounds (min_x, max_x, min_y, max_y)
-    remove_hot_pixels=True
-)
+# Load events and apply multiple filters
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+
+# Apply time filtering
+time_filtered = evf.filter_by_time(events_df, t_start=1.0, t_end=5.0)
+
+# Apply spatial filtering (ROI)
+roi_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
+
+# Apply hot pixel filtering
+processed_events = evf.filter_hot_pixels(roi_filtered)
+
 # Then filter by polarity using Polars
 positive_events = processed_events.filter(pl.col('polarity') == 1)
-df = positive_events.collect()
 ```
 
 ### Performance Optimization
@@ -178,11 +184,12 @@ df = positive_events.collect()
 import evlib.filtering as evf
 
 # For large files, use filtering for efficiency
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
 filtered_events = evf.filter_by_time(
-    evlib.load_events("data/slider_depth/events.txt"),
+    events_df,
     t_start=0.1, t_end=1.0  # Only load events in time range
 )
-df = filtered_events.collect()
 ```
 
 ### Error Handling
@@ -239,6 +246,7 @@ df = events.collect()
 # Apply filtering
 start_time = 0.1
 end_time = 1.0
-filtered_events = evf.filter_by_time(evlib.load_events("data/slider_depth/events.txt"), t_start=start_time, t_end=end_time)
-df = filtered_events.collect()
+events = evlib.load_events("data/slider_depth/events.txt")
+events_df = events.collect()
+filtered_events = evf.filter_by_time(events_df, t_start=start_time, t_end=end_time)
 ```

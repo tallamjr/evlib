@@ -336,7 +336,7 @@ import polars as pl
 #
 # # Create representations directly from file
 # histogram = evlib.create_stacked_histogram(
-#     "path/to/prophesee_file.h5", height=720, width=1280, nbins=10
+#     "path/to/prophesee_file.h5", height=720, width=1280, n_time_bins=10
 # )
 
 print("Processing pipeline example - replace with actual file paths")

@@ -60,7 +60,7 @@ Main function for temporal histogram creation with windowing.
 **Parameters:**
 - `events`: Path to event file or Polars LazyFrame
 - `height`, `width`: Output dimensions
-- `nbins`: Number of temporal bins per window
+- `bins`: Number of temporal bins per window
 - `window_duration_ms`: Duration of each window in milliseconds
 - `stride_ms`: Stride between windows (defaults to window_duration_ms for non-overlapping)
 - `count_cutoff`: Maximum count per bin (None for no limit)
@@ -68,7 +68,7 @@ Main function for temporal histogram creation with windowing.
 **Returns:**
 - Polars LazyFrame with columns [window_id, channel, time_bin, y, x, count, channel_time_bin]
 - channel: 0 for negative polarity, 1 for positive polarity
-- channel_time_bin: combined channel*nbins + time_bin for easier tensor conversion
+- channel_time_bin: combined channel*bins + time_bin for easier tensor conversion
 
 #### `create_mixed_density_stack()`
 
@@ -115,11 +115,11 @@ Traditional voxel grid representation for entire dataset.
 1. **Windowing**: Events divided into time windows (configurable duration/stride)
 2. **Temporal Binning**: Within each window, events binned by normalized timestamp
 3. **Spatial-Temporal Grouping**: Group by (x, y, time_bin, polarity) and count
-4. **Channel Layout**: Negative polarity in bins 0..(nbins-1), positive in bins nbins..(2*nbins-1)
+4. **Channel Layout**: Negative polarity in bins 0..(bins-1), positive in bins bins..(2*bins-1)
 
 #### Mixed Density Implementation
 
-1. **Logarithmic Binning**: Uses `bin = nbins - log(t_norm) / log(0.5)` for temporal distribution
+1. **Logarithmic Binning**: Uses `bin = bins - log(t_norm) / log(0.5)` for temporal distribution
 2. **Polarity Accumulation**: Sums signed polarities instead of counting
 3. **Cumulative Integration**: Applies cumulative sum from newest to oldest bins
 
@@ -146,11 +146,11 @@ import evlib.representations as evr
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
 # Use voxel grid or mixed density stack (stacked histogram has a known issue)
-voxel_df = evr.create_voxel_grid_py(
+voxel_df = evr.create_voxel_grid(
     events_df,
-    _width=640,    # Ignored parameter
-    _height=480,   # Ignored parameter
-    nbins=10
+    width=640,    # Ignored parameter
+    height=480,   # Ignored parameter
+    n_time_bins=10
 )
 print(f"Voxel grid created with {len(voxel_df)} entries")
 ```
