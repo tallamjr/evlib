@@ -198,14 +198,16 @@ jobs:
             --disable-cxx \
             CFLAGS="-O2 -fPIC" \
             LDFLAGS="-Wl,--strip-debug"
-          make -j \$(nproc)
+          make -j $(nproc)
           make install
 
           echo "=== Setting up environment ==="
-          echo "export PKG_CONFIG_PATH=\"/usr/local/hdf5/lib/pkgconfig:\$PKG_CONFIG_PATH\"" >> /etc/environment
-          echo "export LD_LIBRARY_PATH=\"/usr/local/hdf5/lib:\$LD_LIBRARY_PATH\"" >> /etc/environment
-          echo "export HDF5_ROOT=/usr/local/hdf5" >> /etc/environment
-          echo "export HDF5_DIR=/usr/local/hdf5" >> /etc/environment
+
+          # Set environment variables for current session
+          export PKG_CONFIG_PATH="/usr/local/hdf5/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export LD_LIBRARY_PATH="/usr/local/hdf5/lib:$LD_LIBRARY_PATH"
+          export HDF5_ROOT=/usr/local/hdf5
+          export HDF5_DIR=/usr/local/hdf5
 
           # Make libraries available to pkg-config
           mkdir -p /usr/local/lib/pkgconfig
