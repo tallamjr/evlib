@@ -183,13 +183,13 @@ jobs:
           export HDF5_DIR=/usr/local/hdf5
 
           cd /tmp
-          wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_\${HDF5_VERSION}.tar.gz
-          tar -xzf hdf5_\${HDF5_VERSION}.tar.gz
-          cd hdf5-hdf5_\${HDF5_VERSION}
+          wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_1.14.4.3.tar.gz
+          tar -xzf hdf5_1.14.4.3.tar.gz
+          cd hdf5-hdf5_1.14.4.3
 
           # Configure with flags for manylinux2014 compatibility (GLIBC 2.17)
           ./configure \
-            --prefix=\$HDF5_DIR \
+            --prefix=/usr/local/hdf5 \
             --enable-build-mode=production \
             --with-szlib \
             --enable-shared \
@@ -202,23 +202,23 @@ jobs:
           make install
 
           echo "=== Setting up environment ==="
-          echo "export PKG_CONFIG_PATH=\"\$HDF5_DIR/lib/pkgconfig:\\\$PKG_CONFIG_PATH\"" >> /etc/environment
-          echo "export LD_LIBRARY_PATH=\"\$HDF5_DIR/lib:\\\$LD_LIBRARY_PATH\"" >> /etc/environment
-          echo "export HDF5_ROOT=\$HDF5_DIR" >> /etc/environment
-          echo "export HDF5_DIR=\$HDF5_DIR" >> /etc/environment
+          echo "export PKG_CONFIG_PATH=\"/usr/local/hdf5/lib/pkgconfig:\$PKG_CONFIG_PATH\"" >> /etc/environment
+          echo "export LD_LIBRARY_PATH=\"/usr/local/hdf5/lib:\$LD_LIBRARY_PATH\"" >> /etc/environment
+          echo "export HDF5_ROOT=/usr/local/hdf5" >> /etc/environment
+          echo "export HDF5_DIR=/usr/local/hdf5" >> /etc/environment
 
           # Make libraries available to pkg-config
           mkdir -p /usr/local/lib/pkgconfig
-          if [ -f "\$HDF5_DIR/lib/pkgconfig/hdf5.pc" ]; then
-            cp \$HDF5_DIR/lib/pkgconfig/hdf5.pc /usr/local/lib/pkgconfig/
+          if [ -f "/usr/local/hdf5/lib/pkgconfig/hdf5.pc" ]; then
+            cp /usr/local/hdf5/lib/pkgconfig/hdf5.pc /usr/local/lib/pkgconfig/
           fi
 
           # Add library path to system
-          echo "\$HDF5_DIR/lib" > /etc/ld.so.conf.d/hdf5.conf
+          echo "/usr/local/hdf5/lib" > /etc/ld.so.conf.d/hdf5.conf
           ldconfig
 
           echo "=== HDF5 build complete ==="
-          ls -la \$HDF5_DIR/lib/
+          ls -la /usr/local/hdf5/lib/
           EOF
 
           chmod +x build-hdf5.sh
