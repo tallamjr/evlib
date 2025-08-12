@@ -65,20 +65,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux builds with multiple GLIBC versions
-          - os: ubuntu-20.04  # GLIBC 2.31 - broader compatibility
-            platform: linux
-            arch: x86_64
-            python-version: "3.10"
-          - os: ubuntu-20.04
-            platform: linux
-            arch: x86_64
-            python-version: "3.11"
-          - os: ubuntu-20.04
-            platform: linux
-            arch: x86_64
-            python-version: "3.12"
-
           # macOS builds
           - os: macos-13  # Intel macOS
             platform: macos
@@ -191,7 +177,7 @@ jobs:
                 # Build the wheel - with or without HDF5 depending on availability
                 if [ "${NO_HDF5:-}" = "1" ]; then
                   echo "Building without HDF5 support for maximum compatibility"
-                  "$PYBIN/maturin" build --release --features python --no-default-features --interpreter "$PYBIN/python" --out dist
+                  "$PYBIN/maturin" build --release --features polars,python,tracing --interpreter "$PYBIN/python" --out dist
                 else
                   "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
                 fi

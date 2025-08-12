@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.7.9"
+version         = "0.7.10"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 resolver        = "2"
@@ -85,10 +85,9 @@ async-channel  = "1.6"
 lazy_static    = "1.4"
 byteorder      = "1.5"
 
-# HDF5 dependencies - excluded on Windows due to build complexity
-[target.'cfg(not(windows))'.dependencies]
-hdf5-metno     = { version = "0.10.1", features = ["blosc-all"] }
-hdf5-metno-sys = "0.10.1"
+# HDF5 dependencies - now optional to handle deprecated/missing system packages
+hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
+hdf5-metno-sys = { version = "0.10.1", optional = true }
 
 
 # GStreamer for video processing
@@ -124,9 +123,10 @@ tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
-default        = ["polars", "python", "tracing"]
+default        = ["polars", "python", "tracing", "hdf5"]
 tracing        = ["dep:tracing", "dep:tracing-subscriber"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
+hdf5           = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]
 # cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]

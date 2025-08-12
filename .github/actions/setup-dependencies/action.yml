@@ -34,13 +34,13 @@ runs:
       shell: bash
       run: |
         brew update
-        brew install cmake hdf5@1.10 pkgconf glib
+        brew install cmake hdf5 pkgconf glib
         if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
           brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
         fi
 
         # Set HDF5 environment variables
-        H5P=$(brew --prefix hdf5@1.10)
+        H5P=$(brew --prefix hdf5)
         echo "HDF5_DIR=${H5P}" >> $GITHUB_ENV
         echo "HDF5_ROOT=${H5P}" >> $GITHUB_ENV
         echo "PKG_CONFIG_PATH=${H5P}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
