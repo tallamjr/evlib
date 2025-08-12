@@ -405,11 +405,11 @@ class TestEventProcessingPipeline:
         # Load events using filtering API
         import evlib.filtering as evf
         events = evlib.load_events("data/slider_depth/events.txt")
-        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=1.0)
-        df = filtered_events.collect()
-        xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
+        events_df = events.collect()  # Convert LazyFrame to DataFrame first
+        filtered_events = evf.filter_by_time(events_df, t_start=0.0, t_end=1.0)
+        xs, ys, ps = filtered_events['x'].to_numpy(), filtered_events['y'].to_numpy(), filtered_events['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = filtered_events['t'].dt.total_seconds().to_numpy()
 
         # Note: Neural network processing is under development
         # For now, test basic event processing
@@ -456,11 +456,12 @@ class TestEventRepresentations:
         # Load test data with filtering
         import evlib.filtering as evf
         events = evlib.load_events("data/slider_depth/events.txt")
-        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=0.5)
+        events_df = events.collect()  # Convert LazyFrame to DataFrame first
+        filtered_events = evf.filter_by_time(events_df, t_start=0.0, t_end=0.5)
 
         # Create stacked histogram
         hist_lazy = evr.create_stacked_histogram(
-            filtered_events, width=640, height=480, n_time_bins=10
+            filtered_events, width=640, height=480, bins=10
         )
         hist_df = hist_lazy.collect()
         hist_grid = hist_df.to_numpy().reshape(10, 480, 640)
@@ -475,7 +476,8 @@ class TestEventRepresentations:
 
         # Load events with filtering
         events = evlib.load_events("data/slider_depth/events.txt")
-        filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=0.1)
+        events_df = events.collect()  # Convert LazyFrame to DataFrame first
+        filtered_events = evf.filter_by_time(events_df, t_start=0.0, t_end=0.1)
 
         # Create voxel grid twice
         voxel_lazy1 = evr.create_voxel_grid(

@@ -71,6 +71,7 @@ Save event data to HDF5 format with perfect round-trip compatibility.
 
 **Example Usage:**
 ```python
+import evlib
 import numpy as np
 
 # Prepare event data with correct dtypes
@@ -98,6 +99,7 @@ Save event data to text format.
 
 **Example Usage:**
 ```python
+import evlib
 import numpy as np
 
 # Prepare event data
@@ -172,7 +174,7 @@ time_filtered = evf.filter_by_time(events_df, t_start=1.0, t_end=5.0)
 roi_filtered = evf.filter_by_roi(time_filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 
 # Apply hot pixel filtering
-processed_events = evf.filter_hot_pixels(roi_filtered)
+processed_events = evf.filter_hot_pixels(roi_filtered, threshold_percentile=99.9)
 
 # Then filter by polarity using Polars
 positive_events = processed_events.filter(pl.col('polarity') == 1)

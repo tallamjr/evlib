@@ -16,9 +16,24 @@ import numpy as np
 # Use Polars' native type definition
 EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], GPUEngine]
 
+# Helper type for flexible input handling
+EventsInput = Union[pl.LazyFrame, pl.DataFrame]
+
+
+def _ensure_lazy_frame(events: EventsInput) -> pl.LazyFrame:
+    """Convert DataFrame to LazyFrame if needed, otherwise return as-is."""
+    if isinstance(events, pl.DataFrame):
+        return events.lazy()
+    return events
+
+
+def _collect_with_engine(lazy_frame: pl.LazyFrame, engine: EngineType) -> pl.DataFrame:
+    """Safely collect LazyFrame with specified engine."""
+    return lazy_frame.collect(engine=engine)
+
 
 def create_stacked_histogram(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     bins: int = 10,
@@ -28,7 +43,7 @@ def create_stacked_histogram(
     """Generate stacked histogram with direct Polars engine selection
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         bins: Number of time bins
@@ -40,9 +55,10 @@ def create_stacked_histogram(
     """
 
     time_window = window_duration_ms * 1000  # Convert to microseconds
+    events_lf = _ensure_lazy_frame(events)
 
-    return (
-        events.with_columns(
+    return _collect_with_engine(
+        events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
                 pl.col("t")
@@ -60,13 +76,13 @@ def create_stacked_histogram(
         )
         .group_by(["time_bin", "polarity", "y", "x"])
         .agg(pl.len().alias("count"))
-        .sort(["time_bin", "polarity", "y", "x"])
-        .collect(engine=engine)  # Direct Polars API usage
+        .sort(["time_bin", "polarity", "y", "x"]),
+        engine=engine,
     )
 
 
 def stacked_histogram(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     bins: int = 10,
@@ -78,7 +94,7 @@ def stacked_histogram(
 
 
 def create_voxel_grid(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     n_time_bins: int = 5,
@@ -87,7 +103,7 @@ def create_voxel_grid(
     """Generate voxel grid with bilinear interpolation
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         n_time_bins: Number of temporal bins
@@ -97,8 +113,10 @@ def create_voxel_grid(
         DataFrame with voxel grid contributions
     """
 
-    return (
-        events.with_columns(
+    events_lf = _ensure_lazy_frame(events)
+
+    return _collect_with_engine(
+        events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
                 pl.col("t")
@@ -137,13 +155,13 @@ def create_voxel_grid(
                 pl.col("t_low").alias("time_bin"),
                 (pl.col("polarity") * pl.col("weight_low")).alias("contribution"),
             ]
-        )
-        .collect(engine=engine)  # Direct Polars API usage
+        ),
+        engine=engine,
     )
 
 
 def voxel_grid(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     n_time_bins: int = 5,
@@ -154,7 +172,7 @@ def voxel_grid(
 
 
 def create_mixed_density_stack(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     engine: EngineType = "auto",
@@ -162,7 +180,7 @@ def create_mixed_density_stack(
     """Generate mixed density stack representation
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         engine: Polars engine to use
@@ -171,8 +189,10 @@ def create_mixed_density_stack(
         DataFrame with mixed density stack values
     """
 
-    return (
-        events.with_columns(
+    events_lf = _ensure_lazy_frame(events)
+
+    return _collect_with_engine(
+        events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
                 pl.col("t")
@@ -182,13 +202,13 @@ def create_mixed_density_stack(
         )
         .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1))
         .group_by(["x", "y"])
-        .agg([pl.col("polarity").sum().alias("polarity_sum"), pl.len().alias("count")])
-        .collect(engine=engine)  # Direct Polars API usage
+        .agg([pl.col("polarity").sum().alias("polarity_sum"), pl.len().alias("count")]),
+        engine=engine,
     )
 
 
 def time_surface(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     tau: float = 100000.0,  # microseconds
@@ -197,7 +217,7 @@ def time_surface(
     """Generate time surface representation
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         tau: Time constant for exponential decay
@@ -207,8 +227,10 @@ def time_surface(
         DataFrame with time surface values
     """
 
-    return (
-        events.sort("t")
+    events_lf = _ensure_lazy_frame(events)
+
+    return _collect_with_engine(
+        events_lf.sort("t")
         .group_by(["x", "y", "polarity"])
         .agg([pl.col("t").last().alias("last_timestamp"), pl.len().alias("event_count")])
         .with_columns(
@@ -219,13 +241,13 @@ def time_surface(
                 .alias("surface_value")
             ]
         )
-        .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1))
-        .collect(engine=engine)  # Direct Polars API usage
+        .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)),
+        engine=engine,
     )
 
 
 def event_histogram(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     engine: EngineType = "auto",
@@ -233,7 +255,7 @@ def event_histogram(
     """Generate simple event count histogram
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         engine: Polars engine to use
@@ -242,8 +264,10 @@ def event_histogram(
         DataFrame with event counts per pixel and polarity
     """
 
-    return (
-        events.with_columns(
+    events_lf = _ensure_lazy_frame(events)
+
+    return _collect_with_engine(
+        events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic if needed
                 pl.col("t")
@@ -255,13 +279,13 @@ def event_histogram(
         .group_by(["x", "y", "polarity"])
         .agg(
             [pl.len().alias("count"), pl.col("t_us").sum().alias("polarity_sum")]  # Mixed density calculation
-        )
-        .collect(engine=engine)  # Direct Polars API usage
+        ),
+        engine=engine,
     )
 
 
 def preprocess_for_detection(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     bins: int = 5,
@@ -270,7 +294,7 @@ def preprocess_for_detection(
     """Preprocess events for object detection tasks
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         bins: Number of time bins for preprocessing
@@ -283,7 +307,7 @@ def preprocess_for_detection(
 
 
 def benchmark_vs_rvt(
-    events: pl.LazyFrame,
+    events: EventsInput,
     height: int,
     width: int,
     engine: EngineType = "auto",
@@ -291,7 +315,7 @@ def benchmark_vs_rvt(
     """Benchmark representation against RVT format
 
     Args:
-        events: LazyFrame with columns 't', 'x', 'y', 'polarity'
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         height: Sensor height in pixels
         width: Sensor width in pixels
         engine: Polars engine to use

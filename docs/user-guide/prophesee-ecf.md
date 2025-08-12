@@ -62,15 +62,15 @@ import evlib
 
 # For available test file in the repository:
 events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-print(f"Loaded {len(df)} events for testing")
+events_df = events.collect()  # Convert LazyFrame to DataFrame first
+print(f"Loaded {len(events_df)} events for testing")
 
 # Note: For actual Prophesee HDF5 files, use:
 # events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
 
 # Works with all evlib functions
 import evlib.filtering as evf
-filtered = evf.filter_by_time(events, t_start=1.0, t_end=2.0)
+filtered = evf.filter_by_time(events_df, t_start=1.0, t_end=2.0)
 ```
 
 ## Implementation Details
@@ -104,7 +104,8 @@ For environments where Rust bindings aren't available:
 **Location:** `python/evlib/ecf_decoder.py`
 
 ```python
-from evlib.ecf_decoder import decode_ecf_compressed_chunk
+import evlib
+# from evlib.ecf_decoder import decode_ecf_compressed_chunk  # Not available in current build
 
 # Decode raw ECF-compressed bytes from Prophesee file
 import h5py
@@ -172,6 +173,7 @@ ls -la /usr/lib/x86_64-linux-gnu/hdf5/plugins
 ### Test ECF Installation
 
 ```python
+import evlib
 import os
 import h5py
 
@@ -306,6 +308,7 @@ except Exception as e:
 ### Direct ECF Decoder Access
 
 ```python
+import evlib
 # ECF decoding is handled internally by evlib
 # Direct decoder access is not needed for normal usage
 #
@@ -335,8 +338,8 @@ import polars as pl
 # ).collect()
 #
 # # Create representations directly from file
-# histogram = evlib.create_stacked_histogram(
-#     "path/to/prophesee_file.h5", height=720, width=1280, n_time_bins=10
+# histogram = evlib.representations.create_stacked_histogram(
+#     "path/to/prophesee_file.h5", height=720, width=1280, bins=10
 # )
 
 print("Processing pipeline example - replace with actual file paths")
