@@ -136,102 +136,113 @@ jobs:
           name: wheels-${{ matrix.platform }}-${{ matrix.arch }}-py${{ matrix.python-version }}
           path: dist/*.whl
 
-  # Additional legacy Linux build for maximum GLIBC compatibility
-  build-wheels-manylinux:
+  # Build manylinux wheels using maturin-action with HDF5 support
+  build-wheels-linux:
     runs-on: ubuntu-latest
     needs: [check-version]
-    timeout-minutes: 20
+    timeout-minutes: 30
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
 
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build manylinux wheels for GLIBC 2.17+ compatibility
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build-wheels-linux-${{ matrix.python-version }}
+
+      - name: Build HDF5 and create build script
         run: |
-          # Use manylinux_2_28 container for better package availability (GLIBC 2.28+)
-          docker run --rm -v $(pwd):/workspace quay.io/pypa/manylinux_2_28_x86_64 bash -c '
-            set -e
-            cd /workspace
+          # Create a pre-build script for HDF5
+          cat > build-hdf5.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          set -x
 
-            # Install system dependencies and build tools
-            yum install -y openssl-devel pkgconfig cmake glib2-devel wget tar make gcc-c++ zlib-devel
+          echo "=== Installing system dependencies ==="
+          yum install -y openssl-devel pkgconfig cmake3 wget tar make gcc-c++ zlib-devel
+          # Use cmake3 for manylinux2014 compatibility
+          ln -sf /usr/bin/cmake3 /usr/bin/cmake
 
-            # Build HDF5 from source (following h5py approach for manylinux compatibility)
-            echo "Building HDF5 from source for manylinux compatibility"
-            export HDF5_VERSION=1.14.4.3
-            export HDF5_DIR=/usr/local/hdf5
+          echo "=== Building HDF5 from source ==="
+          export HDF5_VERSION=1.14.4.3
+          export HDF5_DIR=/usr/local/hdf5
 
-            # Download and build HDF5
-            cd /tmp
-            wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_${HDF5_VERSION}.tar.gz
-            tar -xzf hdf5_${HDF5_VERSION}.tar.gz
-            cd hdf5-hdf5_${HDF5_VERSION}
+          cd /tmp
+          wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_\${HDF5_VERSION}.tar.gz
+          tar -xzf hdf5_\${HDF5_VERSION}.tar.gz
+          cd hdf5-hdf5_\${HDF5_VERSION}
 
-            # Configure with production flags and szip support
-            ./configure --prefix=$HDF5_DIR --enable-build-mode=production --with-szlib --enable-shared --disable-static
-            make -j $(nproc)
-            make install
+          # Configure with flags for manylinux2014 compatibility (GLIBC 2.17)
+          ./configure \
+            --prefix=\$HDF5_DIR \
+            --enable-build-mode=production \
+            --with-szlib \
+            --enable-shared \
+            --disable-static \
+            --disable-fortran \
+            --disable-cxx \
+            CFLAGS="-O2 -fPIC" \
+            LDFLAGS="-Wl,--strip-debug"
+          make -j \$(nproc)
+          make install
 
-            # Set environment variables for pkg-config and build systems
-            export PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-            export LD_LIBRARY_PATH="$HDF5_DIR/lib:$LD_LIBRARY_PATH"
-            export HDF5_ROOT=$HDF5_DIR
+          echo "=== Setting up environment ==="
+          echo "export PKG_CONFIG_PATH=\"\$HDF5_DIR/lib/pkgconfig:\\\$PKG_CONFIG_PATH\"" >> /etc/environment
+          echo "export LD_LIBRARY_PATH=\"\$HDF5_DIR/lib:\\\$LD_LIBRARY_PATH\"" >> /etc/environment
+          echo "export HDF5_ROOT=\$HDF5_DIR" >> /etc/environment
+          echo "export HDF5_DIR=\$HDF5_DIR" >> /etc/environment
 
-            # Cleanup
-            cd /workspace
-            rm -rf /tmp/hdf5*
+          # Make libraries available to pkg-config
+          mkdir -p /usr/local/lib/pkgconfig
+          if [ -f "\$HDF5_DIR/lib/pkgconfig/hdf5.pc" ]; then
+            cp \$HDF5_DIR/lib/pkgconfig/hdf5.pc /usr/local/lib/pkgconfig/
+          fi
 
-            # Install Rust nightly toolchain
-            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly
-            source ~/.cargo/env
+          # Add library path to system
+          echo "\$HDF5_DIR/lib" > /etc/ld.so.conf.d/hdf5.conf
+          ldconfig
 
-            # Build for each supported Python version
-            for PYBIN in /opt/python/cp{310,311,312}-*/bin; do
-              if [ -d "$PYBIN" ]; then
-                echo "Building wheel for Python: $PYBIN"
+          echo "=== HDF5 build complete ==="
+          ls -la \$HDF5_DIR/lib/
+          EOF
 
-                # Install maturin for this Python version
-                "$PYBIN/pip" install maturin>=1.7.4
+          chmod +x build-hdf5.sh
 
-                # Build wheel with HDF5 support using custom-built HDF5
-                echo "Building wheel with HDF5 support"
-                export HDF5_DIR=/usr/local/hdf5
-                export PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-                export LD_LIBRARY_PATH="$HDF5_DIR/lib:$LD_LIBRARY_PATH"
-                export HDF5_ROOT=$HDF5_DIR
-                "$PYBIN/maturin" build --release --features python --interpreter "$PYBIN/python" --out dist
-            done
+      - name: Build wheels with maturin-action
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --features python --interpreter python${{ matrix.python-version }}
+          rust-toolchain: nightly
+          manylinux: 2014
+          before-script-linux: ./build-hdf5.sh
+        env:
+          MATURIN_PEP517_ARGS: --features python
 
-            # Repair wheels for manylinux_2_28 compatibility
-            echo "Repairing wheels for manylinux_2_28 compatibility..."
-            mkdir -p dist_repaired
-            for wheel in dist/*.whl; do
-              if [ -f "$wheel" ]; then
-                echo "Repairing: $wheel"
-                auditwheel repair "$wheel" --plat manylinux_2_28_x86_64 -w dist_repaired/
-              fi
-            done
-
-            # Replace original wheels with repaired ones
-            rm -f dist/*.whl
-            mv dist_repaired/*.whl dist/ 2>/dev/null || true
-            rmdir dist_repaired 2>/dev/null || true
-
-            echo "Final wheels:"
-            ls -la dist/*.whl
-          '
-
-      - name: Upload manylinux wheels as artifacts
+      - name: Upload Linux wheels as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-manylinux_2_28-x86_64
-          path: dist/*.whl
+          name: wheels-linux-py${{ matrix.python-version }}
+          path: target/wheels/*.whl
 
   publish-pypi:
     runs-on: ubuntu-latest
-    needs: [check-version, build-wheels, build-wheels-manylinux]
+    needs: [check-version, build-wheels, build-wheels-linux]
     if: |
       needs.check-version.outputs.should_publish == 'true' &&
       (github.event_name == 'push' || github.event.inputs.publish_to == 'both' || github.event.inputs.publish_to == 'pypi' || github.event.inputs.publish_to == '')
