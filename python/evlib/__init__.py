@@ -1,14 +1,14 @@
 """
 evlib: Event Camera Data Processing Library
 
-A robust event camera processing library with Rust backend and Python bindings.
+A robust event camera processing library with Python-first representations and Rust backend.
 
 ## Core Features
 
 - **Universal Format Support**: Load data from H5, AEDAT, EVT2/3, AER, and text formats
 - **Automatic Format Detection**: No need to specify format types manually
 - **Polars DataFrame Support**: High-performance DataFrame operations
-- **Stacked Histogram Representations**: Efficient event-to-representation conversion
+- **Pure Python Representations**: Efficient event-to-representation conversion with direct Polars API
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
 ## Quick Start
@@ -73,13 +73,11 @@ try:
         # Access submodules from the compiled module
         core = rust_module.core
         formats = rust_module.formats
-        representations = rust_module.representations
         filtering = rust_module.filtering
 
         # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
         sys.modules[__name__ + ".core"] = core
         sys.modules[__name__ + ".formats"] = formats
-        sys.modules[__name__ + ".representations"] = representations
         sys.modules[__name__ + ".filtering"] = filtering
 
         # Make key functions directly accessible
@@ -140,6 +138,12 @@ except ImportError:
     _gpu_available = False
     _engine_type = "streaming"
 
+# Import Python representations module (migration from Rust PyO3 to pure Python)
+try:
+    from . import representations
+except ImportError:
+    representations = None
+
 # Import optional Python-only submodules with graceful fallback
 try:
     from . import models
@@ -147,10 +151,29 @@ except ImportError:
     models = None
 
 
-# Representation functions are now available directly from Rust module
-# evlib.create_stacked_histogram() and evlib.representations.create_stacked_histogram()
-# evlib.create_mixed_density_stack() and evlib.representations.create_mixed_density_stack()
-# evlib.create_voxel_grid() and evlib.representations.create_voxel_grid()
+# Make representation functions directly accessible for backwards compatibility
+if representations:
+    # Debug: Check if we're entering this block
+    import os
+
+    if os.environ.get("DEBUG_EVLIB"):
+        print(f"DEBUG: representations is available: {representations}")
+        print(
+            f"DEBUG: representations has preprocess_for_detection: {hasattr(representations, 'preprocess_for_detection')}"
+        )
+
+    # Explicitly assign to module namespace
+    globals()["create_stacked_histogram"] = representations.create_stacked_histogram
+    globals()["create_mixed_density_stack"] = representations.create_mixed_density_stack
+    globals()["create_voxel_grid"] = representations.create_voxel_grid
+    globals()["preprocess_for_detection"] = representations.preprocess_for_detection
+    globals()["benchmark_vs_rvt"] = representations.benchmark_vs_rvt
+
+    # Register Python representations module in sys.modules
+    sys.modules[__name__ + ".representations"] = representations
+
+    if os.environ.get("DEBUG_EVLIB"):
+        print(f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}")
 
 
 try:
