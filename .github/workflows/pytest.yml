@@ -58,13 +58,13 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5
+          uv run pytest -v tests/ -m "not slow and not integration"
           uv run pytest --nbmake examples/*.ipynb -v --no-cov
 
       - name: Test documentation examples
         run: |
           source .venv/bin/activate
-          uv run pytest --markdown-docs README.md docs/ -v --tb=short --maxfail=10
+          uv run pytest --markdown-docs README.md docs/ -v --tb=short
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'

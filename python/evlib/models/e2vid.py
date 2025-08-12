@@ -470,6 +470,58 @@ class E2VID(BaseModel):
             print(f"Error loading pretrained weights: {e}")
             print("Using randomly initialized weights.")
 
+    def events_to_voxel_grid(
+        self,
+        xs: np.ndarray,
+        ys: np.ndarray,
+        ts: np.ndarray,
+        ps: np.ndarray,
+        height: int,
+        width: int,
+    ) -> np.ndarray:
+        """Convert events to voxel grid representation for E2VID.
+
+        This uses a simple temporal binning approach that's appropriate for E2VID,
+        rather than the more complex bilinear interpolation in evlib.representations.
+
+        Args:
+            xs: X coordinates of events
+            ys: Y coordinates of events
+            ts: Timestamps of events
+            ps: Polarities of events
+            height: Grid height
+            width: Grid width
+
+        Returns:
+            Voxel grid as numpy array of shape (num_bins, height, width)
+        """
+        if len(ts) == 0:
+            return np.zeros((self.config.num_bins, height, width), dtype=np.float32)
+
+        # Normalise timestamps to [0, 1]
+        t_min, t_max = ts.min(), ts.max()
+        if t_max == t_min:
+            t_normalised = np.zeros_like(ts)
+        else:
+            t_normalised = (ts - t_min) / (t_max - t_min)
+
+        # Create voxel grid
+        voxel_grid = np.zeros((self.config.num_bins, height, width), dtype=np.float32)
+
+        # Compute temporal bin indices (simple binning, no interpolation)
+        t_idx = (t_normalised * (self.config.num_bins - 1)).astype(np.int32)
+        t_idx = np.clip(t_idx, 0, self.config.num_bins - 1)
+
+        # Clip spatial coordinates
+        xs_clipped = np.clip(xs.astype(np.int32), 0, width - 1)
+        ys_clipped = np.clip(ys.astype(np.int32), 0, height - 1)
+
+        # Accumulate polarities (simple accumulation, no interpolation)
+        for i in range(len(xs)):
+            voxel_grid[t_idx[i], ys_clipped[i], xs_clipped[i]] += ps[i]
+
+        return voxel_grid
+
     def reconstruct(
         self,
         events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],

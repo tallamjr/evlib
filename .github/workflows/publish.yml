@@ -212,17 +212,30 @@ jobs:
           rust-toolchain: nightly
           manylinux: 2014
           before-script-linux: |
+            # Save current directory
+            ORIGINAL_DIR=$(pwd)
+
+            # Install system dependencies
             yum install -y openssl-devel pkgconfig cmake3 wget tar make gcc-c++ zlib-devel
+
+            # Build HDF5 in temporary directory
             cd /tmp
             wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_1.14.4.3.tar.gz
             tar -xzf hdf5_1.14.4.3.tar.gz
             cd hdf5-hdf5_1.14.4.3
             ./configure --prefix=/usr/local/hdf5 --enable-build-mode=production --with-szlib --enable-shared --disable-static --disable-fortran --disable-cxx CFLAGS="-O2 -fPIC"
             make -j $(nproc) && make install
+
+            # Configure system for HDF5
             echo "/usr/local/hdf5/lib" > /etc/ld.so.conf.d/hdf5.conf
             ldconfig
             mkdir -p /usr/local/lib/pkgconfig
             [ -f "/usr/local/hdf5/lib/pkgconfig/hdf5.pc" ] && cp /usr/local/hdf5/lib/pkgconfig/hdf5.pc /usr/local/lib/pkgconfig/
+
+            # Return to project directory
+            cd "$ORIGINAL_DIR"
+
+            # Set environment variables for the build
             export PKG_CONFIG_PATH="/usr/local/hdf5/lib/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
             export LD_LIBRARY_PATH="/usr/local/hdf5/lib:$LD_LIBRARY_PATH"
             export HDF5_ROOT="/usr/local/hdf5"

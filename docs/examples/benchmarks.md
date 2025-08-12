@@ -102,7 +102,7 @@ def benchmark_voxel_grid():
     start = time.time()
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        height=480, width=640, nbins=5
+        height=480, width=640, n_time_bins=5
     )
     voxel_df = voxel_lazy.collect()
     evlib_time = time.time() - start
@@ -254,7 +254,7 @@ def benchmark_model_loading():
 
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        height=480, width=640, nbins=5
+        height=480, width=640, n_time_bins=5
     )
     voxel_df = voxel_lazy.collect()
 
@@ -294,7 +294,7 @@ def benchmark_memory_usage():
     # Create voxel grid
     voxel_lazy = evr.create_voxel_grid(
         "data/slider_depth/events.txt",
-        height=480, width=640, nbins=5
+        height=480, width=640, n_time_bins=5
     )
     voxel_df = voxel_lazy.collect()
     voxel_memory = process.memory_info().rss / 1024 / 1024  # MB

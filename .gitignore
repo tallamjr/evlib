@@ -746,8 +746,11 @@ output.*
 output_example.*
 events.parquet
 
+**/tasks/*.md
+
 python/evlib/models/weights
 
 .github/DRAFTS/*.md
+.github/DRAFTS/*.py
 
 libs/
