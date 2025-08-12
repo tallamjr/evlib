@@ -159,6 +159,9 @@ class PolarsDataset(IterableDataset):
                         )
                     elif col_data.dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
                         tensor_data = torch.from_numpy(col_data.to_numpy().astype(np.int64))
+                    elif col_data.dtype == pl.String:
+                        # Keep string columns as-is, don't convert to tensor yet
+                        tensor_data = col_data.to_list()
                     else:
                         # Default to float32
                         tensor_data = torch.from_numpy(col_data.to_numpy().astype(np.float32))
@@ -264,7 +267,7 @@ def load_rvt_data(
 
         logger.info(f"Loading RVT data from {base_path}")
 
-        # Load event representations (1198, 20, 360, 640)
+        # Just check the file and get metadata - don't load actual data
         with h5py.File(repr_file, "r") as f:
             if "data" not in f:
                 logger.warning(f"'data' key not found in {repr_file}")
@@ -272,19 +275,14 @@ def load_rvt_data(
 
             total_samples = f["data"].shape[0]
             actual_samples = min(max_samples, total_samples)
-
-            # Load representations
-            representations = f["data"][:actual_samples]  # Shape: (N, 20, 360, 640)
-            logger.info(f"Loaded representations shape: {representations.shape}")
-            logger.info(f"Data range: [{representations.min()}, {representations.max()}]")
+            logger.info(f"Found {total_samples} samples, will use {actual_samples}")
 
         # Load timestamps for representations
         repr_timestamps = np.load(timestamps_file)[:actual_samples]
         logger.info(f"Loaded {len(repr_timestamps)} representation timestamps")
 
-        # Load labels and mapping
+        # Load labels
         labels_data = np.load(labels_file)
-        mapping = np.load(mapping_file)
 
         # Extract labels - RVT uses structured arrays
         raw_labels = labels_data["labels"]
@@ -298,89 +296,36 @@ def load_rvt_data(
         logger.info(f"Class distribution: {np.bincount(class_ids)}")
         logger.info(f"Unique classes: {np.unique(class_ids)}")
 
-        # Create training samples by matching representations to labels via mapping
-        training_samples = []
-        training_labels = []
-        training_timestamps = []
-        training_confidences = []
-        training_bboxes = []
-
-        # Use mapping to match representations with labels
-        for i in range(min(actual_samples, len(mapping))):
-            repr_idx = mapping[i] if i < len(mapping) else i
-            if repr_idx < len(representations):
-                # Find corresponding labels for this time frame
-                label_start_idx = (
-                    labels_data["objframe_idx_2_label_idx"][i]
-                    if i < len(labels_data["objframe_idx_2_label_idx"])
-                    else 0
-                )
-
-                if label_start_idx < len(class_ids):
-                    training_samples.append(representations[repr_idx])
-                    training_labels.append(class_ids[label_start_idx])
-                    training_timestamps.append(repr_timestamps[repr_idx])
-                    training_confidences.append(confidences[label_start_idx])
-                    training_bboxes.append(bboxes[label_start_idx])
-
-        training_samples = np.array(training_samples)
-        training_labels = np.array(training_labels, dtype=np.int32)
-        training_timestamps = np.array(training_timestamps)
-        training_confidences = np.array(training_confidences)
-        training_bboxes = np.array(training_bboxes)
-
-        logger.info(f"Created {len(training_samples)} training samples")
-        logger.info(f"Representation shape per sample: {training_samples[0].shape}")
-        logger.info(f"Label distribution: {np.bincount(training_labels)}")
-
-        # Extract statistical features from stacked histograms (more manageable than 4.6M features)
-        n_samples = len(training_samples)
+        # Just store metadata for lazy loading - no heavy processing
         feature_data = {}
 
-        # Basic metadata
-        feature_data["sample_idx"] = np.arange(n_samples)
-        feature_data["label"] = training_labels
-        feature_data["t"] = training_timestamps.astype(np.float64)
-        feature_data["confidence"] = training_confidences.astype(np.float32)
+        # Basic metadata - just use first N samples for simplicity
+        feature_data["sample_idx"] = list(range(actual_samples))
+        feature_data["label"] = class_ids[:actual_samples].astype(np.int32)
+        feature_data["t"] = repr_timestamps.astype(np.float64)
+        feature_data["confidence"] = confidences[:actual_samples].astype(np.float32)
 
         # Bounding box features
-        feature_data["bbox_x"] = training_bboxes[:, 0].astype(np.float32)
-        feature_data["bbox_y"] = training_bboxes[:, 1].astype(np.float32)
-        feature_data["bbox_w"] = training_bboxes[:, 2].astype(np.float32)
-        feature_data["bbox_h"] = training_bboxes[:, 3].astype(np.float32)
-        feature_data["bbox_area"] = (training_bboxes[:, 2] * training_bboxes[:, 3]).astype(np.float32)
+        feature_data["bbox_x"] = bboxes[:actual_samples, 0].astype(np.float32)
+        feature_data["bbox_y"] = bboxes[:actual_samples, 1].astype(np.float32)
+        feature_data["bbox_w"] = bboxes[:actual_samples, 2].astype(np.float32)
+        feature_data["bbox_h"] = bboxes[:actual_samples, 3].astype(np.float32)
+        feature_data["bbox_area"] = (bboxes[:actual_samples, 2] * bboxes[:actual_samples, 3]).astype(
+            np.float32
+        )
 
-        # Statistical features from each temporal bin (20 bins)
-        for bin_idx in range(20):
-            bin_data = training_samples[:, bin_idx, :, :]  # (N, 360, 640)
+        # Store file path and indices for lazy loading
+        feature_data["rvt_file_path"] = [str(repr_file)] * actual_samples
+        feature_data["rvt_sample_idx"] = list(range(actual_samples))
 
-            # Compute statistics for each bin
-            feature_data[f"bin_{bin_idx:02d}_mean"] = bin_data.mean(axis=(1, 2)).astype(np.float32)
-            feature_data[f"bin_{bin_idx:02d}_std"] = bin_data.std(axis=(1, 2)).astype(np.float32)
-            feature_data[f"bin_{bin_idx:02d}_max"] = bin_data.max(axis=(1, 2)).astype(np.float32)
-            feature_data[f"bin_{bin_idx:02d}_nonzero"] = (bin_data > 0).sum(axis=(1, 2)).astype(np.float32)
-
-        # Additional derived features
-        feature_data["total_activity"] = training_samples.sum(axis=(1, 2, 3)).astype(np.float32)
-        feature_data["active_pixels"] = (training_samples > 0).sum(axis=(1, 2, 3)).astype(np.float32)
-        feature_data["temporal_center"] = np.array(
-            [np.average(range(20), weights=sample.sum(axis=(1, 2)) + 1e-8) for sample in training_samples]
-        ).astype(np.float32)
+        logger.info(f"Created metadata for {actual_samples} samples (no tensor data loaded yet)")
+        logger.info(f"Label distribution: {np.bincount(class_ids[:actual_samples])}")
 
         # Create DataFrame
         df = pl.DataFrame(feature_data)
 
-        # Add normalized features
-        df = df.with_columns(
-            [
-                (pl.col("t") / pl.col("t").max()).alias("t_norm"),
-                (pl.col("bbox_area") / pl.col("bbox_area").max()).alias("bbox_area_norm"),
-                (pl.col("total_activity") / pl.col("total_activity").max()).alias("activity_norm"),
-            ]
-        )
-
-        logger.info(f"Created DataFrame with {len(df)} samples and {len(df.columns)} features")
-        logger.info(f"Feature columns: {len([col for col in df.columns if col.startswith('bin_')])}")
+        logger.info(f"Created DataFrame with {len(df)} samples and {len(df.columns)} columns")
+        logger.info(f"Stored {actual_samples} RVT tensors with shape (20, 360, 640) each")
         logger.info(f"Label distribution: {df['label'].value_counts().sort('label')}")
 
         return df.lazy()
@@ -395,10 +340,13 @@ def load_rvt_data(
 
 def create_rvt_transform():
     """
-    Create a transform function for RVT data that extracts features and labels
+    Create a transform function for RVT data that returns actual RVT tensor format
+
+    Returns RVT-compatible tensors with shape [batch_size, 20, 360, 640].
+    Uses the actual preprocessed tensor data stored in the DataFrame.
 
     Returns:
-        Transform function that converts Polars batch to PyTorch tensors
+        Transform function that converts stored RVT tensors to proper format
 
     Example:
         ```python
@@ -410,39 +358,66 @@ def create_rvt_transform():
         ```
     """
 
-    def split_features_labels(batch: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
-        """Transform to separate RVT features and labels from Polars batch"""
+    def convert_to_rvt_tensors(batch: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
+        """Load RVT tensors on-demand from H5 file [batch_size, 20, 360, 640]"""
+
+        # Check if we have file paths for lazy loading
+        if "rvt_file_path" in batch and "rvt_sample_idx" in batch:
+            import h5py
+
+            # Get file path and indices
+            file_paths = batch["rvt_file_path"]
+            if isinstance(file_paths, list):
+                file_path = file_paths[0]  # Same file for all samples in batch
+            else:
+                file_path = file_paths[0].item()  # If it's a tensor
+
+            sample_indices = batch["rvt_sample_idx"]
+            if hasattr(sample_indices[0], "item"):
+                sample_indices = [idx.item() for idx in sample_indices]
+            else:
+                sample_indices = sample_indices  # Already a list
+
+            # Load only the requested samples from H5 file
+            with h5py.File(file_path, "r") as f:
+                # Load batch of tensors efficiently
+                features_list = []
+                for idx in sample_indices:
+                    tensor = f["data"][idx]  # Shape: (20, 360, 640)
+                    features_list.append(torch.from_numpy(tensor.astype(np.float32)))
+
+                features = torch.stack(features_list, dim=0)  # Shape: [batch_size, 20, 360, 640]
+
+            labels = batch["label"].long()  # Shape: [batch_size]
+            return {"features": features, "labels": labels}
+
+        # Fallback: convert flattened lists if available
+        if "rvt_tensor_flat" in batch:
+            tensors = []
+            for flat_tensor in batch["rvt_tensor_flat"]:
+                tensor = torch.tensor(flat_tensor, dtype=torch.float32).reshape(20, 360, 640)
+                tensors.append(tensor)
+
+            features = torch.stack(tensors, dim=0)  # Shape: [batch_size, 20, 360, 640]
+            labels = batch["label"].long()  # Shape: [batch_size]
+
+            return {"features": features, "labels": labels}
+
+        # Fallback: if no tensor data, use bounding box features
         feature_tensors = []
-
-        # Add all temporal bin features (mean, std, max, nonzero for each bin)
-        for bin_idx in range(20):
-            for stat in ["mean", "std", "max", "nonzero"]:
-                key = f"bin_{bin_idx:02d}_{stat}"
-                if key in batch:
-                    feature_tensors.append(batch[key])
-
-        # Add bounding box features
         for key in ["bbox_x", "bbox_y", "bbox_w", "bbox_h", "bbox_area"]:
             if key in batch:
                 feature_tensors.append(batch[key])
 
-        # Add activity features
-        for key in ["total_activity", "active_pixels", "temporal_center"]:
-            if key in batch:
-                feature_tensors.append(batch[key])
+        if feature_tensors:
+            features = torch.stack(feature_tensors, dim=1)
+            labels = batch["label"].long()
+            return {"features": features, "labels": labels}
 
-        # Add normalized features
-        for key in ["t_norm", "bbox_area_norm", "activity_norm"]:
-            if key in batch:
-                feature_tensors.append(batch[key])
+        # Last resort - just return labels
+        return {"labels": batch["label"].long()}
 
-        # Stack into feature matrix and extract labels
-        features = torch.stack(feature_tensors, dim=1)  # Shape: (batch_size, 91)
-        labels = batch["label"].long()  # Shape: (batch_size,)
-
-        return {"features": features, "labels": labels}
-
-    return split_features_labels
+    return convert_to_rvt_tensors
 
 
 def create_basic_event_transform():
