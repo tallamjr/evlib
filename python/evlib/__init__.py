@@ -73,12 +73,12 @@ try:
         # Access submodules from the compiled module
         core = rust_module.core
         formats = rust_module.formats
-        filtering = rust_module.filtering
+        rust_filtering = rust_module.filtering
 
         # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
         sys.modules[__name__ + ".core"] = core
         sys.modules[__name__ + ".formats"] = formats
-        sys.modules[__name__ + ".filtering"] = filtering
+        # Don't register Rust filtering yet - we'll decide below
 
         # Make key functions directly accessible
         save_events_to_hdf5 = formats.save_events_to_hdf5
@@ -144,6 +144,12 @@ try:
 except ImportError:
     representations = None
 
+# Import Python filtering module (migration from Rust PyO3 to pure Python)
+try:
+    from . import filtering as python_filtering
+except ImportError:
+    python_filtering = None
+
 # Import optional Python-only submodules with graceful fallback
 try:
     from . import models
@@ -174,6 +180,26 @@ if representations:
 
     if os.environ.get("DEBUG_EVLIB"):
         print(f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}")
+
+# Choose filtering module: Python implementation preferred over Rust
+if python_filtering:
+    # Use Python filtering module
+    filtering = python_filtering
+
+    # Register Python filtering module in sys.modules
+    sys.modules[__name__ + ".filtering"] = python_filtering
+
+    if os.environ.get("DEBUG_EVLIB"):
+        print("DEBUG: Using Python filtering module")
+else:
+    # Fallback to Rust filtering module
+    filtering = rust_filtering
+
+    # Register Rust filtering module in sys.modules
+    sys.modules[__name__ + ".filtering"] = rust_filtering
+
+    if os.environ.get("DEBUG_EVLIB"):
+        print("DEBUG: Using Rust filtering module (Python not available)")
 
 
 try:
