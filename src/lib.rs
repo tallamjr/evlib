@@ -2,7 +2,6 @@
 pub mod ev_augmentation;
 pub mod ev_filtering;
 pub mod ev_formats;
-pub mod ev_representations;
 
 // Tracing configuration for structured logging
 pub mod tracing_config;
