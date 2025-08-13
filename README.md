@@ -255,6 +255,63 @@ avg_time_surface = evr.create_averaged_timesurface(
 print(f"Created averaged time surface with {len(avg_time_surface)} pixels")
 ```
 
+RVT processing example:
+
+```python notest
+# Let's load in some un-procedded RVT data, i.e. gen4_1mpx_original
+In [5]: events = evlib.load_events("/Users/tallam/github/tallamjr/origin/evlib/data/gen4_1mpx
+      ⋮ _original/val/moorea_2019-02-21_000_td_2257500000_2317500000_td.h5")
+
+In [6]: events
+Out[6]: <LazyFrame at 0x11D6EBE30>
+
+# How many events in this window
+In [7]: events.select(pl.len()).collect(engine="streaming")
+Out[7]:
+shape: (1, 1)
+┌───────────┐
+│ len       │
+│ ---       │
+│ u32       │
+╞═══════════╡
+│ 540124055 │
+└───────────┘
+
+# That's 500+ million events!
+# Now let's process it and create stacked histograms ready for the RVT model
+In [8]: hist = evr.create_stacked_histogram(
+   ...:     events,
+   ...:     height=480, width=640,
+   ...:     bins=10, window_duration_ms=50.0
+   ...: )
+   ...: print(f"Created stacked histogram with {len(hist)} spatial bins")
+Created stacked histogram with 1519652 spatial bins
+
+# 500M -> 1.5M in seconds :-)
+In [9]: hist
+Out[9]:
+shape: (1_519_652, 5)
+┌──────────┬──────────┬─────┬─────┬───────┐
+│ time_bin ┆ polarity ┆ y   ┆ x   ┆ count │
+│ ---      ┆ ---      ┆ --- ┆ --- ┆ ---   │
+│ i32      ┆ i8       ┆ i16 ┆ i16 ┆ u32   │
+╞══════════╪══════════╪═════╪═════╪═══════╡
+│ 0        ┆ 1        ┆ 0   ┆ 0   ┆ 4     │
+│ 0        ┆ 1        ┆ 0   ┆ 1   ┆ 3     │
+│ 0        ┆ 1        ┆ 0   ┆ 2   ┆ 5     │
+│ 0        ┆ 1        ┆ 0   ┆ 3   ┆ 6     │
+│ 0        ┆ 1        ┆ 0   ┆ 4   ┆ 5     │
+│ …        ┆ …        ┆ …   ┆ …   ┆ …     │
+│ 9        ┆ 1        ┆ 479 ┆ 563 ┆ 1     │
+│ 9        ┆ 1        ┆ 479 ┆ 624 ┆ 1     │
+│ 9        ┆ 1        ┆ 479 ┆ 626 ┆ 1     │
+│ 9        ┆ 1        ┆ 479 ┆ 638 ┆ 1     │
+│ 9        ┆ 1        ┆ 479 ┆ 639 ┆ 1     │
+└──────────┴──────────┴─────┴─────┴───────┘
+
+
+```
+
 ## Installation
 
 ### Basic Installation
