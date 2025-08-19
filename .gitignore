@@ -722,6 +722,7 @@ tests/*.png
 .cargo/config.toml
 
 data/eTram
+data/eTram_processed/
 
 data/etap
 data/dynamic*
@@ -754,3 +755,5 @@ python/evlib/models/weights
 .github/DRAFTS/*.py
 
 libs/
+
+outputs

@@ -156,6 +156,11 @@ try:
 except ImportError:
     models = None
 
+try:
+    from . import visualization
+except ImportError:
+    visualization = None
+
 
 # Make representation functions directly accessible for backwards compatibility
 if representations:
@@ -418,6 +423,8 @@ if representations:
     )
 if filtering:
     __all__.append("filtering")
+if visualization:
+    __all__.append("visualization")
 
 
 if streaming_utils:

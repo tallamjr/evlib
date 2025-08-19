@@ -3,8 +3,10 @@
 
 // Import Event type from streaming module and define Events type alias
 use crate::ev_formats::streaming::Event;
-use candle_core::{Result as CandleResult, Tensor};
 use image::{Rgb, RgbImage};
+
+#[cfg(feature = "candle")]
+use candle_core::{Result as CandleResult, Tensor};
 
 // Define Events type alias for compatibility
 type Events = Vec<Event>;
@@ -164,6 +166,7 @@ pub fn overlay_events_on_frame(
 /// # Arguments
 /// * `tensor` - 2D or 3D tensor to convert to image
 /// * `colormap` - Optional colormap to use: "gray", "jet", "viridis", "plasma"
+#[cfg(feature = "candle")]
 pub fn tensor_to_image(tensor: &Tensor, colormap: Option<&str>) -> CandleResult<RgbImage> {
     let shape = tensor.shape();
 
@@ -265,7 +268,10 @@ pub fn tensor_to_image(tensor: &Tensor, colormap: Option<&str>) -> CandleResult<
 /// # Arguments
 /// * `events` - Events to visualize
 /// * `num_bins` - Number of time bins
-pub fn visualize_temporal_histogram(events: &Events, num_bins: usize) -> CandleResult<RgbImage> {
+pub fn visualize_temporal_histogram(
+    events: &Events,
+    num_bins: usize,
+) -> Result<RgbImage, Box<dyn std::error::Error>> {
     if events.is_empty() {
         return Ok(RgbImage::new(num_bins as u32, 100));
     }
@@ -356,7 +362,9 @@ pub fn visualize_temporal_histogram(events: &Events, num_bins: usize) -> CandleR
 /// Helper function to convert DataFrame back to Events for visualization
 /// This is necessary because visualization typically needs materialized data
 #[cfg(feature = "polars")]
-fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
+fn dataframe_to_events_for_visualization(
+    df: polars::prelude::LazyFrame,
+) -> Result<Events, polars::prelude::PolarsError> {
     let df = df.collect()?;
 
     let x_series = df.column("x")?;
@@ -536,6 +544,7 @@ pub mod realtime;
 #[cfg(feature = "terminal")]
 pub mod terminal;
 
+pub mod video_writer;
 pub mod web_server;
 
 /// Python bindings for the visualization module
@@ -594,81 +603,8 @@ pub mod python {
         Ok(array.into_pyarray(py).to_object(py))
     }
 
-    /// Convert events to an RGB image for visualization (DataFrame interface)
-    #[cfg(feature = "polars")]
-    #[pyfunction]
-    #[pyo3(name = "draw_events_to_image_df")]
-    pub fn draw_events_to_image_df_py(
-        py: Python<'_>,
-        events_lf: &PyLazyFrame,
-        resolution: Option<(i64, i64)>,
-        color_mode: Option<&str>,
-    ) -> PyResult<PyObject> {
-        // Extract LazyFrame from Python
-        let lf = events_lf.lazy_frame.clone();
-
-        // Determine resolution
-        let res = match resolution {
-            Some((w, h)) => (w as u16, h as u16),
-            None => {
-                // For DataFrames, we need to compute resolution from data
-                // This requires collecting the DataFrame to get max values
-                let df = lf.clone().collect().map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!(
-                        "Failed to collect DataFrame: {}",
-                        e
-                    ))
-                })?;
-
-                let x_max = df
-                    .column("x")
-                    .map_err(|e| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!(
-                            "Missing 'x' column: {}",
-                            e
-                        ))
-                    })?
-                    .max::<i64>()
-                    .unwrap_or(0) as u16
-                    + 1;
-
-                let y_max = df
-                    .column("y")
-                    .map_err(|e| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!(
-                            "Missing 'y' column: {}",
-                            e
-                        ))
-                    })?
-                    .max::<i64>()
-                    .unwrap_or(0) as u16
-                    + 1;
-
-                (x_max, y_max)
-            }
-        };
-
-        // Draw events to image using DataFrame interface
-        let img =
-            draw_events_to_image_df(lf, res, color_mode.unwrap_or("polarity")).map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("Image rendering failed: {}", e))
-            })?;
-
-        // Convert to numpy array
-        let (width, height) = (img.width() as usize, img.height() as usize);
-        let mut array = numpy::ndarray::Array3::<u8>::zeros((height, width, 3));
-
-        for y in 0..height {
-            for x in 0..width {
-                let pixel = img.get_pixel(x as u32, y as u32);
-                array[[y, x, 0]] = pixel[0];
-                array[[y, x, 1]] = pixel[1];
-                array[[y, x, 2]] = pixel[2];
-            }
-        }
-
-        Ok(array.into_pyarray(py).to_object(py))
-    }
+    // DataFrame-based visualization is handled through the Python layer
+    // This avoids complex PyLazyFrame handling in Rust
 
     /// Python wrapper for realtime visualization config
     #[pyclass]

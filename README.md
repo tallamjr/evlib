@@ -133,7 +133,7 @@ robotics, autonomous vehicles, and augmented reality.
 Below is an overview of what the data "looks" like...
 
 <center>
-<img src="./wasm-evlib/wasm-sim.png" style="width:480px;height:320px;">
+<img src="./wasm/wasm-sim.png" style="width:480px;height:320px;">
 </center>
 
 
