@@ -59,7 +59,7 @@ class VisualizationConfig:
     # Statistics overlay
     show_stats: bool = True
     stats_color: Tuple[int, int, int] = (255, 255, 255)  # White
-    stats_font_scale: float = 0.6
+    stats_font_scale: float = 0.8
     stats_thickness: int = 1
 
     # Video output
@@ -312,11 +312,11 @@ class EventFrameRenderer:
         return frame_uint8
 
     def _add_stats_overlay(self, frame: np.ndarray, stats: Dict, timestamp_s: float) -> np.ndarray:
-        """Add statistics overlay to frame."""
+        """Add compact statistics overlay to frame."""
         overlay_frame = frame.copy()
 
-        # Prepare statistics text
-        y_offset = 30
+        # Prepare compact statistics text
+        y_offset = 18
         stats_lines = [
             f"FPS: {stats.get('fps', 0.0):.1f}",
             f"Events/s: {stats.get('events_per_sec', 0):,}",
@@ -325,18 +325,22 @@ class EventFrameRenderer:
             f"Frame: {self.frame_count}",
         ]
 
-        # Add background rectangle for better text visibility
-        bg_height = len(stats_lines) * 25 + 10
-        cv2.rectangle(overlay_frame, (10, 5), (200, bg_height), (0, 0, 0), -1)
-        cv2.rectangle(overlay_frame, (10, 5), (200, bg_height), (64, 64, 64), 1)
+        # Calculate smaller background rectangle
+        line_height = 14  # Reduced from 20
+        bg_height = len(stats_lines) * line_height + 8  # Reduced padding
+        bg_width = 160  # Reduced from 200
 
-        # Add text
+        # Add smaller background rectangle
+        cv2.rectangle(overlay_frame, (8, 3), (bg_width, bg_height), (0, 0, 0), -1)
+        cv2.rectangle(overlay_frame, (8, 3), (bg_width, bg_height), (64, 64, 64), 1)
+
+        # Add text with smaller font (DUPLEX for better readability at small sizes)
         for i, line in enumerate(stats_lines):
             cv2.putText(
                 overlay_frame,
                 line,
-                (15, y_offset + i * 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
+                (12, y_offset + i * line_height),
+                cv2.FONT_HERSHEY_PLAIN,
                 self.config.stats_font_scale,
                 self.config.stats_color,
                 self.config.stats_thickness,
