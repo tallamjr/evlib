@@ -48,6 +48,10 @@ class VisualizationConfig:
     negative_color: Tuple[int, int, int] = (255, 128, 0)  # Bright blue (BGR format for OpenCV)
     background_color: Tuple[int, int, int] = (200, 180, 150)  # Pastel blue (BGR format for OpenCV)
 
+    # Colormap visualization mode
+    use_colormap: bool = False  # Enable thermal/jet-like colormap visualization
+    colormap_type: str = "jet"  # OpenCV colormap: jet, hot, plasma, viridis, etc.
+
     # Temporal effects
     decay_ms: float = 100.0  # Event decay time in milliseconds
     frame_duration_ms: float = 33.33  # Frame duration (1000/fps)
@@ -284,24 +288,12 @@ class EventFrameRenderer:
         else:
             negative_norm = negative_events
 
-        # Create RGB frame (BGR format for OpenCV) with background
-        frame = self.decay_buffer.copy()
-
-        # Set background color where no events are present
-        background_mask = frame.sum(axis=2) == 0
-        frame[background_mask] = self.config.background_color
-
-        # Add positive events (red) with higher contrast
-        pos_mask = positive_norm > 0
-        frame[pos_mask, 2] = np.minimum(255, positive_norm[pos_mask] * 1.5)  # Boost red intensity
-        frame[pos_mask, 0] = self.config.background_color[0]  # Keep background blue
-        frame[pos_mask, 1] = self.config.background_color[1]  # Keep background green
-
-        # Add negative events (bright blue) with higher contrast
-        neg_mask = negative_norm > 0
-        frame[neg_mask, 0] = np.minimum(255, negative_norm[neg_mask] * 1.5)  # Boost blue intensity
-        frame[neg_mask, 1] = np.minimum(255, negative_norm[neg_mask] * 0.8)  # Some green for brightness
-        frame[neg_mask, 2] = self.config.background_color[2]  # Keep background red
+        # Choose rendering mode based on configuration
+        if self.config.use_colormap:
+            frame = self._render_colormap_frame(positive_events, negative_events)
+        else:
+            # Original polarity-based rendering
+            frame = self._render_polarity_frame(positive_norm, negative_norm)
 
         # Update decay buffer
         self.decay_buffer = frame.copy()
@@ -352,6 +344,81 @@ class EventFrameRenderer:
             )
 
         return overlay_frame
+
+    def _render_polarity_frame(self, positive_norm: np.ndarray, negative_norm: np.ndarray) -> np.ndarray:
+        """Original polarity-based rendering with red/blue colors."""
+        # Create RGB frame (BGR format for OpenCV) with background
+        frame = self.decay_buffer.copy()
+
+        # Set background color where no events are present
+        background_mask = frame.sum(axis=2) == 0
+        frame[background_mask] = self.config.background_color
+
+        # Add positive events (red) with higher contrast
+        pos_mask = positive_norm > 0
+        frame[pos_mask, 2] = np.minimum(255, positive_norm[pos_mask] * 1.5)  # Boost red intensity
+        frame[pos_mask, 0] = self.config.background_color[0]  # Keep background blue
+        frame[pos_mask, 1] = self.config.background_color[1]  # Keep background green
+
+        # Add negative events (bright blue) with higher contrast
+        neg_mask = negative_norm > 0
+        frame[neg_mask, 0] = np.minimum(255, negative_norm[neg_mask] * 1.5)  # Boost blue intensity
+        frame[neg_mask, 1] = np.minimum(255, negative_norm[neg_mask] * 0.8)  # Some green for brightness
+        frame[neg_mask, 2] = self.config.background_color[2]  # Keep background red
+
+        return frame
+
+    def _render_colormap_frame(self, positive_events: np.ndarray, negative_events: np.ndarray) -> np.ndarray:
+        """Enhanced colormap-based rendering similar to thermal/jet visualization."""
+        # Combine positive and negative events into intensity map
+        # Weight negative events slightly less to differentiate from positive
+        combined_intensity = positive_events + (negative_events * 0.7)
+
+        # Normalize to 0-255 range for colormap application
+        if combined_intensity.max() > 0:
+            intensity_norm = (combined_intensity / combined_intensity.max() * 255).astype(np.uint8)
+        else:
+            intensity_norm = combined_intensity.astype(np.uint8)
+
+        # Apply OpenCV colormap
+        colormap_dict = {
+            "jet": cv2.COLORMAP_JET,
+            "hot": cv2.COLORMAP_HOT,
+            "plasma": cv2.COLORMAP_PLASMA,
+            "viridis": cv2.COLORMAP_VIRIDIS,
+            "inferno": cv2.COLORMAP_INFERNO,
+            "magma": cv2.COLORMAP_MAGMA,
+            "rainbow": cv2.COLORMAP_RAINBOW,
+            "ocean": cv2.COLORMAP_OCEAN,
+            "summer": cv2.COLORMAP_SUMMER,
+            "spring": cv2.COLORMAP_SPRING,
+            "cool": cv2.COLORMAP_COOL,
+            "hsv": cv2.COLORMAP_HSV,
+            "pink": cv2.COLORMAP_PINK,
+            "bone": cv2.COLORMAP_BONE,
+        }
+
+        colormap = colormap_dict.get(self.config.colormap_type.lower(), cv2.COLORMAP_JET)
+
+        # Apply colormap
+        colored_frame = cv2.applyColorMap(intensity_norm, colormap)
+
+        # Apply temporal decay
+        if hasattr(self, "decay_buffer") and self.decay_buffer is not None:
+            decay_factor = np.exp(-self.config.frame_duration_ms / self.config.decay_ms)
+            colored_frame = colored_frame.astype(np.float32)
+            colored_frame = colored_frame * (1 - decay_factor) + self.decay_buffer * decay_factor
+
+        # Set background for areas with no events
+        no_events_mask = intensity_norm == 0
+        if self.config.colormap_type.lower() in ["jet", "hot", "plasma"]:
+            # For thermal-like colormaps, use dark background
+            colored_frame[no_events_mask] = [0, 0, 0]  # Black background
+        else:
+            # For other colormaps, use configured background
+            colored_frame[no_events_mask] = self.config.background_color
+
+        return colored_frame.astype(np.float32)
 
     def reset(self):
         """Reset the renderer state."""

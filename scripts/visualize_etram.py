@@ -99,6 +99,14 @@ Examples:
   # Time range selection
   python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 \\
     --output test.mp4 --start-time 10.0 --duration 5.0
+
+  # Thermal/jet colormap visualization
+  python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 \\
+    --output test_thermal.mp4 --colormap --colormap-type jet
+
+  # Plasma colormap with high frame rate
+  python scripts/visualize_etram.py --batch data/eTram_processed/test \\
+    --output-dir outputs/ --colormap --colormap-type plasma --fps 60
         """,
     )
 
@@ -153,6 +161,35 @@ Examples:
         type=parse_color,
         default=(0, 0, 0),  # Black in BGR
         help="Background color as R,G,B (default: 0,0,0)",
+    )
+
+    # Colormap visualization options
+    parser.add_argument(
+        "--colormap",
+        action="store_true",
+        help="Use thermal/jet-like colormap visualization instead of polarity colors",
+    )
+    parser.add_argument(
+        "--colormap-type",
+        type=str,
+        default="jet",
+        choices=[
+            "jet",
+            "hot",
+            "plasma",
+            "viridis",
+            "inferno",
+            "magma",
+            "rainbow",
+            "ocean",
+            "summer",
+            "spring",
+            "cool",
+            "hsv",
+            "pink",
+            "bone",
+        ],
+        help="Colormap type for enhanced visualization (default: jet)",
     )
 
     # Time selection
@@ -212,6 +249,8 @@ Examples:
             show_stats=not args.no_stats,
             stats_color=args.stats_color,
             codec=args.codec,
+            use_colormap=args.colormap,
+            colormap_type=args.colormap_type,
         )
 
         # Create visualizer
@@ -223,6 +262,10 @@ Examples:
         logger.info(f"FPS: {config.fps}")
         logger.info(f"Decay: {config.decay_ms}ms")
         logger.info(f"Codec: {config.codec}")
+        if config.use_colormap:
+            logger.info(f"Visualization: {config.colormap_type.upper()} colormap")
+        else:
+            logger.info("Visualization: Polarity-based (red/blue)")
 
         start_time = time.time()
 

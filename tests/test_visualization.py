@@ -63,6 +63,16 @@ class TestVisualizationConfig:
         assert config.decay_ms == 50.0
         assert config.show_stats is False
 
+    def test_colormap_config(self):
+        """Test colormap configuration."""
+        config = viz.VisualizationConfig(
+            use_colormap=True,
+            colormap_type="plasma",
+        )
+
+        assert config.use_colormap is True
+        assert config.colormap_type == "plasma"
+
 
 class TesteTramDataLoader:
     """Test eTram data loader functionality."""
@@ -255,6 +265,48 @@ class TestEventFrameRenderer:
         # After reset, decay buffer should be filled with background color
         expected_background = np.array(renderer.config.background_color, dtype=np.float32)
         assert np.allclose(renderer.decay_buffer, expected_background)
+
+    def test_colormap_rendering(self, config):
+        """Test colormap-based rendering."""
+        # Create config with colormap enabled
+        colormap_config = viz.VisualizationConfig(
+            width=100, height=100, fps=10.0, use_colormap=True, colormap_type="jet"
+        )
+        renderer = viz.EventFrameRenderer(colormap_config)
+
+        # Create mock event data
+        event_data = np.zeros((20, 100, 100), dtype=np.uint8)
+        event_data[0, 10, 20] = 100  # Positive event
+        event_data[1, 30, 40] = 80  # Negative event
+
+        frame = renderer.render_frame(event_data, timestamp_s=1.0)
+
+        assert frame.shape == (100, 100, 3)
+        assert frame.dtype == np.uint8
+
+        # Check that frame has some color variation (not all background)
+        assert np.var(frame) > 0
+
+    def test_different_colormaps(self, config):
+        """Test different colormap types."""
+        colormaps = ["jet", "hot", "plasma", "viridis", "inferno"]
+
+        for colormap_type in colormaps:
+            colormap_config = viz.VisualizationConfig(
+                width=50, height=50, fps=10.0, use_colormap=True, colormap_type=colormap_type
+            )
+            renderer = viz.EventFrameRenderer(colormap_config)
+
+            # Create event data with some intensity
+            event_data = np.zeros((20, 50, 50), dtype=np.uint8)
+            event_data[0, 25, 25] = 150  # Strong positive event
+
+            frame = renderer.render_frame(event_data, timestamp_s=1.0)
+
+            assert frame.shape == (50, 50, 3)
+            assert frame.dtype == np.uint8
+            # Ensure the frame has been modified from background
+            assert np.any(frame[25, 25] != [0, 0, 0])  # Should not be black at event location
 
 
 class TesteTramVisualizer:
