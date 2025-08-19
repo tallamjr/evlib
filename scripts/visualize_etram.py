@@ -159,8 +159,8 @@ Examples:
     parser.add_argument(
         "--background-color",
         type=parse_color,
-        default=(0, 0, 0),  # Black in BGR
-        help="Background color as R,G,B (default: 0,0,0)",
+        default=(150, 180, 200),  # Light blue in RGB (will be converted to BGR)
+        help="Background color as R,G,B (default: 150,180,200 - light blue)",
     )
 
     # Colormap visualization options

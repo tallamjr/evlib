@@ -46,7 +46,7 @@ class VisualizationConfig:
     # Color configuration
     positive_color: Tuple[int, int, int] = (0, 0, 255)  # Red (BGR format for OpenCV)
     negative_color: Tuple[int, int, int] = (255, 128, 0)  # Bright blue (BGR format for OpenCV)
-    background_color: Tuple[int, int, int] = (200, 180, 150)  # Pastel blue (BGR format for OpenCV)
+    background_color: Tuple[int, int, int] = (200, 180, 150)  # Light blue background (BGR format for OpenCV)
 
     # Colormap visualization mode
     use_colormap: bool = False  # Enable thermal/jet-like colormap visualization
@@ -242,11 +242,11 @@ class EventFrameRenderer:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-        # Initialize decay buffer - will be sized to actual data on first frame
-        self.decay_buffer = None
+        # Initialize data dimensions and simple decay buffer
         self.data_height = None
         self.data_width = None
         self.frame_count = 0
+        self.previous_frame = None
 
     def render_frame(
         self, event_data: np.ndarray, timestamp_s: float = 0.0, show_stats: Optional[Dict] = None
@@ -262,18 +262,11 @@ class EventFrameRenderer:
         Returns:
             RGB frame as uint8 array with shape (height, width, 3)
         """
-        # Initialize decay buffer on first frame with actual data dimensions
-        if self.decay_buffer is None:
+        # Initialize dimensions on first frame
+        if self.data_height is None:
             self.data_height, self.data_width = event_data.shape[1], event_data.shape[2]
-            self.decay_buffer = np.zeros((self.data_height, self.data_width, 3), dtype=np.float32)
-            self.decay_buffer[:, :] = self.config.background_color
-
-        # Apply decay to existing buffer
-        decay_factor = np.exp(-self.config.frame_duration_ms / self.config.decay_ms)
-        self.decay_buffer *= decay_factor
 
         # Process event data - sum positive and negative events across bins
-        # Assuming bins represent temporal windows and we want to accumulate
         positive_events = np.sum(event_data[::2], axis=0).astype(np.float32)  # Even bins = positive
         negative_events = np.sum(event_data[1::2], axis=0).astype(np.float32)  # Odd bins = negative
 
@@ -292,11 +285,17 @@ class EventFrameRenderer:
         if self.config.use_colormap:
             frame = self._render_colormap_frame(positive_events, negative_events)
         else:
-            # Original polarity-based rendering
+            # Simplified polarity-based rendering
             frame = self._render_polarity_frame(positive_norm, negative_norm)
 
-        # Update decay buffer
-        self.decay_buffer = frame.copy()
+        # Apply simple temporal decay if we have a previous frame
+        if self.previous_frame is not None and self.config.decay_ms > 0:
+            decay_factor = np.exp(-self.config.frame_duration_ms / self.config.decay_ms)
+            # Blend current frame with decayed previous frame
+            frame = frame + (self.previous_frame * decay_factor)
+
+        # Store current frame for next iteration
+        self.previous_frame = frame.copy()
 
         # Convert to uint8
         frame_uint8 = np.clip(frame, 0, 255).astype(np.uint8)
@@ -346,41 +345,36 @@ class EventFrameRenderer:
         return overlay_frame
 
     def _render_polarity_frame(self, positive_norm: np.ndarray, negative_norm: np.ndarray) -> np.ndarray:
-        """Original polarity-based rendering with red/blue colors."""
-        # Create RGB frame (BGR format for OpenCV) with background
-        frame = self.decay_buffer.copy()
+        """Simplified polarity-based rendering with red/blue colors."""
+        # Start with clean background frame
+        frame = np.full(
+            (self.data_height, self.data_width, 3), self.config.background_color, dtype=np.float32
+        )
 
-        # Set background color where no events are present
-        background_mask = frame.sum(axis=2) == 0
-        frame[background_mask] = self.config.background_color
-
-        # Add positive events (red) with higher contrast
+        # Add positive events (RED) - pure red on background
         pos_mask = positive_norm > 0
-        frame[pos_mask, 2] = np.minimum(255, positive_norm[pos_mask] * 1.5)  # Boost red intensity
-        frame[pos_mask, 0] = self.config.background_color[0]  # Keep background blue
-        frame[pos_mask, 1] = self.config.background_color[1]  # Keep background green
+        if np.any(pos_mask):
+            frame[pos_mask, 0] = 0  # Blue = 0
+            frame[pos_mask, 1] = 0  # Green = 0
+            frame[pos_mask, 2] = 255  # Red = 255 (BGR format)
 
-        # Add negative events (bright blue) with higher contrast
+        # Add negative events (BLUE) - pure blue on background
         neg_mask = negative_norm > 0
-        frame[neg_mask, 0] = np.minimum(255, negative_norm[neg_mask] * 1.5)  # Boost blue intensity
-        frame[neg_mask, 1] = np.minimum(255, negative_norm[neg_mask] * 0.8)  # Some green for brightness
-        frame[neg_mask, 2] = self.config.background_color[2]  # Keep background red
+        if np.any(neg_mask):
+            frame[neg_mask, 0] = 255  # Blue = 255 (BGR format)
+            frame[neg_mask, 1] = 0  # Green = 0
+            frame[neg_mask, 2] = 0  # Red = 0
 
         return frame
 
     def _render_colormap_frame(self, positive_events: np.ndarray, negative_events: np.ndarray) -> np.ndarray:
-        """Enhanced colormap-based rendering similar to thermal/jet visualization."""
-        # Combine positive and negative events into intensity map
-        # Weight negative events slightly less to differentiate from positive
-        combined_intensity = positive_events + (negative_events * 0.7)
+        """Enhanced colormap-based rendering that preserves polarity information."""
+        # Start with configured background color
+        frame = np.full(
+            (self.data_height, self.data_width, 3), self.config.background_color, dtype=np.float32
+        )
 
-        # Normalize to 0-255 range for colormap application
-        if combined_intensity.max() > 0:
-            intensity_norm = (combined_intensity / combined_intensity.max() * 255).astype(np.uint8)
-        else:
-            intensity_norm = combined_intensity.astype(np.uint8)
-
-        # Apply OpenCV colormap
+        # Get colormap configuration
         colormap_dict = {
             "jet": cv2.COLORMAP_JET,
             "hot": cv2.COLORMAP_HOT,
@@ -397,35 +391,47 @@ class EventFrameRenderer:
             "pink": cv2.COLORMAP_PINK,
             "bone": cv2.COLORMAP_BONE,
         }
-
         colormap = colormap_dict.get(self.config.colormap_type.lower(), cv2.COLORMAP_JET)
 
-        # Apply colormap
-        colored_frame = cv2.applyColorMap(intensity_norm, colormap)
+        # Process positive events (warm colors - red/yellow side of colormap)
+        if positive_events.max() > 0:
+            pos_norm = (positive_events / positive_events.max() * 255).astype(np.uint8)
+            pos_colored = cv2.applyColorMap(pos_norm, colormap).astype(np.float32)
 
-        # Apply temporal decay
-        if hasattr(self, "decay_buffer") and self.decay_buffer is not None:
-            decay_factor = np.exp(-self.config.frame_duration_ms / self.config.decay_ms)
-            colored_frame = colored_frame.astype(np.float32)
-            colored_frame = colored_frame * (1 - decay_factor) + self.decay_buffer * decay_factor
+            # Keep only warm colors (shift colormap to red/yellow range)
+            pos_mask = pos_norm > 0
+            frame[pos_mask] = pos_colored[pos_mask]
 
-        # Set background for areas with no events
-        no_events_mask = intensity_norm == 0
-        if self.config.colormap_type.lower() in ["jet", "hot", "plasma"]:
-            # For thermal-like colormaps, use dark background
-            colored_frame[no_events_mask] = [0, 0, 0]  # Black background
-        else:
-            # For other colormaps, use configured background
-            colored_frame[no_events_mask] = self.config.background_color
+        # Process negative events (cool colors - blue/cyan side of colormap)
+        if negative_events.max() > 0:
+            neg_norm = (negative_events / negative_events.max() * 255).astype(np.uint8)
+            neg_colored = cv2.applyColorMap(neg_norm, colormap).astype(np.float32)
 
-        return colored_frame.astype(np.float32)
+            # Shift negative events to cool side of colormap
+            neg_mask = neg_norm > 0
+            if self.config.colormap_type.lower() in ["jet", "rainbow", "hsv"]:
+                # For jet/rainbow: use blue side for negative events
+                neg_colored[neg_mask, 2] = neg_colored[neg_mask, 2] * 0.3  # Reduce red
+                neg_colored[neg_mask, 1] = neg_colored[neg_mask, 1] * 0.6  # Reduce green
+                neg_colored[neg_mask, 0] = np.minimum(255, neg_colored[neg_mask, 0] * 1.5)  # Enhance blue
+            elif self.config.colormap_type.lower() in ["hot", "inferno", "magma"]:
+                # For hot/inferno: use different intensity mapping
+                neg_colored[neg_mask, 0] = neg_colored[neg_mask, 0] * 1.2  # More blue/purple
+                neg_colored[neg_mask, 1] = neg_colored[neg_mask, 1] * 0.8  # Less green
+                neg_colored[neg_mask, 2] = neg_colored[neg_mask, 2] * 0.5  # Less red
+
+            # Blend negative events with existing frame
+            alpha = 0.8
+            frame[neg_mask] = frame[neg_mask] * (1 - alpha) + neg_colored[neg_mask] * alpha
+
+        # Note: Temporal decay removed for simplicity - each frame is independent
+
+        return frame
 
     def reset(self):
         """Reset the renderer state."""
-        if self.decay_buffer is not None:
-            self.decay_buffer.fill(0)
-            self.decay_buffer[:, :] = self.config.background_color
         self.frame_count = 0
+        self.previous_frame = None
 
 
 class eTramVisualizer:
