@@ -238,9 +238,10 @@ class EventFrameRenderer:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-        # Initialize decay buffer for temporal effects with background color
-        self.decay_buffer = np.zeros((config.height, config.width, 3), dtype=np.float32)
-        self.decay_buffer[:, :] = config.background_color
+        # Initialize decay buffer - will be sized to actual data on first frame
+        self.decay_buffer = None
+        self.data_height = None
+        self.data_width = None
         self.frame_count = 0
 
     def render_frame(
@@ -257,6 +258,12 @@ class EventFrameRenderer:
         Returns:
             RGB frame as uint8 array with shape (height, width, 3)
         """
+        # Initialize decay buffer on first frame with actual data dimensions
+        if self.decay_buffer is None:
+            self.data_height, self.data_width = event_data.shape[1], event_data.shape[2]
+            self.decay_buffer = np.zeros((self.data_height, self.data_width, 3), dtype=np.float32)
+            self.decay_buffer[:, :] = self.config.background_color
+
         # Apply decay to existing buffer
         decay_factor = np.exp(-self.config.frame_duration_ms / self.config.decay_ms)
         self.decay_buffer *= decay_factor
@@ -302,6 +309,10 @@ class EventFrameRenderer:
         # Convert to uint8
         frame_uint8 = np.clip(frame, 0, 255).astype(np.uint8)
 
+        # Resize to target resolution if different from data resolution
+        if frame_uint8.shape[0] != self.config.height or frame_uint8.shape[1] != self.config.width:
+            frame_uint8 = cv2.resize(frame_uint8, (self.config.width, self.config.height))
+
         # Add statistics overlay if requested
         if show_stats and self.config.show_stats:
             frame_uint8 = self._add_stats_overlay(frame_uint8, show_stats, timestamp_s)
@@ -344,8 +355,9 @@ class EventFrameRenderer:
 
     def reset(self):
         """Reset the renderer state."""
-        self.decay_buffer.fill(0)
-        self.decay_buffer[:, :] = self.config.background_color
+        if self.decay_buffer is not None:
+            self.decay_buffer.fill(0)
+            self.decay_buffer[:, :] = self.config.background_color
         self.frame_count = 0
 
 
@@ -453,12 +465,8 @@ class eTramVisualizer:
                         "total_events": total_events,
                     }
 
-                    # Render frame
+                    # Render frame (resizing is handled internally)
                     rgb_frame = self.renderer.render_frame(event_data, timestamp_s, stats)
-
-                    # Resize if necessary
-                    if rgb_frame.shape[:2] != (self.config.height, self.config.width):
-                        rgb_frame = cv2.resize(rgb_frame, (self.config.width, self.config.height))
 
                     # Write frame
                     video_writer.write(rgb_frame)

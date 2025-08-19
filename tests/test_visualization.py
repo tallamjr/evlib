@@ -32,8 +32,8 @@ class TestVisualizationConfig:
         assert config.height == 360
         assert config.fps == 30.0
         assert config.positive_color == (0, 0, 255)  # Red in BGR
-        assert config.negative_color == (255, 0, 0)  # Blue in BGR
-        assert config.background_color == (0, 0, 0)  # Black
+        assert config.negative_color == (255, 128, 0)  # Bright blue in BGR
+        assert config.background_color == (200, 180, 150)  # Pastel blue in BGR
         assert config.decay_ms == 100.0
         assert config.show_stats is True
         assert config.codec == "mp4v"
@@ -182,7 +182,7 @@ class TestEventFrameRenderer:
     def test_initialization(self, renderer, config):
         """Test renderer initialization."""
         assert renderer.config == config
-        assert renderer.decay_buffer.shape == (100, 100, 3)
+        assert renderer.decay_buffer is None  # Not initialized until first frame
         assert renderer.frame_count == 0
 
     def test_render_frame_basic(self, renderer):
@@ -200,12 +200,12 @@ class TestEventFrameRenderer:
 
         # Check that positive event created red pixel (BGR format)
         assert frame[10, 20, 2] > 0  # Red channel
-        assert frame[10, 20, 0] == 0  # Blue channel
-        assert frame[10, 20, 1] == 0  # Green channel
+        assert frame[10, 20, 0] == renderer.config.background_color[0]  # Background blue channel
+        assert frame[10, 20, 1] == renderer.config.background_color[1]  # Background green channel
 
         # Check that negative event created blue pixel
         assert frame[30, 40, 0] > 0  # Blue channel
-        assert frame[30, 40, 2] == 0  # Red channel
+        assert frame[30, 40, 2] == renderer.config.background_color[2]  # Background red channel
 
     def test_render_frame_with_stats(self, renderer):
         """Test frame rendering with statistics overlay."""
@@ -245,13 +245,16 @@ class TestEventFrameRenderer:
         renderer.render_frame(event_data)
 
         assert renderer.frame_count == 1
+        assert renderer.decay_buffer is not None
         assert np.any(renderer.decay_buffer > 0)
 
         # Reset
         renderer.reset()
 
         assert renderer.frame_count == 0
-        assert np.all(renderer.decay_buffer == 0)
+        # After reset, decay buffer should be filled with background color
+        expected_background = np.array(renderer.config.background_color, dtype=np.float32)
+        assert np.allclose(renderer.decay_buffer, expected_background)
 
 
 class TesteTramVisualizer:
