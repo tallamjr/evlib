@@ -1016,11 +1016,9 @@ maturin build --release
 
 ## Community & Support
 
-![xkcd](https://imgs.xkcd.com/comics/universal_converter_box.png)
+- [**Issues**](https://github.com/tallamjr/evlib/issues): Report bugs and request features
 
-- **GitHub**: [tallamjr/evlib](https://github.com/tallamjr/evlib)
-- **Issues**: Report bugs and request features
-- **Discussions**: Community Q&A and ideas
+![xkcd](https://imgs.xkcd.com/comics/infrastructures.png)
 
 ## License
 
