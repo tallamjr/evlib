@@ -758,3 +758,6 @@ python/evlib/models/weights
 libs/
 
 outputs
+
+h5
+data/events_gpu_torch.h5

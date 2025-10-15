@@ -1,0 +1,22 @@
+# act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use medium-sized runners for better compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P macos-latest=sickcodes/docker-osx:latest
+-P windows-latest=catthehacker/windows:act-latest
+
+# Default platform for quick testing
+--platform ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Enable verbose output for debugging
+--verbose
+
+# Use host network for better connectivity
+--network host
+
+# Reuse containers for faster iteration
+--reuse
+
+# Environment variables
+--env ACTIONS_RUNNER_DEBUG=true

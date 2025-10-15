@@ -1,7 +1,7 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-#[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 use hdf5_metno::File as H5File;
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -9,7 +9,6 @@ use polars::prelude::*;
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
-use tracing::{error, info, warn};
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -70,8 +69,8 @@ pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 pub mod prophesee_ecf_codec;
 pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, PropheseeEvent};
 
-// Native HDF5 reader with ECF support (disabled on Windows)
-#[cfg(not(windows))]
+// Native HDF5 reader with ECF support (optional feature)
+#[cfg(feature = "hdf5")]
 pub mod hdf5_reader;
 
 // DataFrame construction utilities for direct event processing
@@ -242,7 +241,7 @@ impl LoadConfig {
 /// # Arguments
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
-#[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 pub fn load_events_from_hdf5(
     path: &str,
     dataset_name: Option<&str>,
@@ -575,6 +574,7 @@ pub fn load_events_from_hdf5(
 
 /// Detect timestamp units based on magnitude of timestamps
 /// Returns the conversion factor to convert to seconds
+#[allow(dead_code)]
 fn detect_timestamp_units(timestamps: &[i64]) -> f64 {
     if timestamps.is_empty() {
         return 1_000_000.0; // Default to microseconds
@@ -605,6 +605,7 @@ fn detect_timestamp_units(timestamps: &[i64]) -> f64 {
 
 /// Detect timestamp units for f64 arrays
 /// Returns the conversion factor to convert to seconds
+#[allow(dead_code)]
 fn detect_timestamp_units_f64(timestamps: &[f64]) -> f64 {
     if timestamps.is_empty() {
         return 1_000_000.0; // Default to microseconds
@@ -631,6 +632,7 @@ fn detect_timestamp_units_f64(timestamps: &[f64]) -> f64 {
 }
 
 /// Validate that coordinates are within reasonable bounds for event cameras
+#[allow(dead_code)]
 fn validate_coordinates(x: u16, y: u16) -> bool {
     // Most event cameras have resolutions <= 1280x720 (Gen4) or 640x480 (DAVIS)
     // Allow some margin for unusual sensors, but reject clearly invalid values
@@ -638,7 +640,7 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
 }
 
 /// Call Python fallback for Prophesee HDF5 format
-#[cfg(all(feature = "python", not(windows)))]
+#[cfg(all(feature = "python", feature = "hdf5"))]
 fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
     Python::with_gil(|py| {
         // Import the Python fallback module
@@ -756,7 +758,7 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
 }
 
 /// Try to decode Prophesee HDF5 data using our Rust ECF decoder
-#[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 fn try_rust_ecf_decoder(
     _cd_group: &hdf5_metno::Group,
     _events_dataset: &hdf5_metno::Dataset,
@@ -953,7 +955,7 @@ pub fn load_events_with_config(
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
-        #[cfg(not(windows))]
+        #[cfg(feature = "hdf5")]
         EventFormat::HDF5 => {
             let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
@@ -964,10 +966,10 @@ pub fn load_events_with_config(
             }
             Ok(events)
         }
-        #[cfg(windows)]
+        #[cfg(not(feature = "hdf5"))]
         EventFormat::HDF5 => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "HDF5 support is disabled on Windows due to build complexity.",
+            "HDF5 support is not enabled. Build with --features hdf5 to enable.",
         ))),
         EventFormat::Text => Ok(load_events_from_text(path, config)?),
         EventFormat::AEDAT1 | EventFormat::AEDAT2 | EventFormat::AEDAT3 | EventFormat::AEDAT4 => {
@@ -1776,7 +1778,7 @@ pub mod python {
     /// Save events to an HDF5 file
     #[pyfunction]
     #[pyo3(name = "save_events_to_hdf5")]
-    #[cfg(not(windows))]
+    #[cfg(feature = "hdf5")]
     pub fn save_events_to_hdf5_py(
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,

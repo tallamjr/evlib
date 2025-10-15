@@ -92,31 +92,68 @@ jobs:
             arch: arm64
             python-version: "3.12"
 
+          # Windows builds (no HDF5 support)
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            python-version: "3.10"
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            python-version: "3.11"
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            python-version: "3.12"
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup dependencies
+      - name: Setup dependencies (Unix)
+        if: matrix.platform != 'windows'
         uses: ./.github/actions/setup-dependencies
         with:
           python-version: ${{ matrix.python-version }}
           os: ${{ matrix.os }}
 
+      - name: Setup Python (Windows)
+        if: matrix.platform == 'windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install UV (Windows)
+        if: matrix.platform == 'windows'
+        run: pip install uv
+
+      - name: Create venv (Windows)
+        if: matrix.platform == 'windows'
+        run: uv venv --python ${{ matrix.python-version }}
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
-          targets: ${{ matrix.platform == 'linux' && 'x86_64-unknown-linux-gnu' || matrix.platform == 'macos' && matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
+          targets: ${{ matrix.platform == 'linux' && 'x86_64-unknown-linux-gnu' || matrix.platform == 'macos' && matrix.arch == 'arm64' && 'aarch64-apple-darwin' || matrix.platform == 'windows' && 'x86_64-pc-windows-msvc' || 'x86_64-apple-darwin' }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           key: build-wheels-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.arch }}
 
-      - name: Install maturin
+      - name: Install maturin (Unix)
+        if: matrix.platform != 'windows'
         run: |
           source .venv/bin/activate
           uv pip install maturin>=1.7.4
 
-      - name: Build wheels
+      - name: Install maturin (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          .venv\Scripts\activate
+          uv pip install maturin>=1.7.4
+
+      - name: Build wheels (Unix)
+        if: matrix.platform != 'windows'
         run: |
           source .venv/bin/activate
 
@@ -127,8 +164,17 @@ jobs:
             export CARGO_BUILD_TARGET="x86_64-apple-darwin"
           fi
 
-          # Build wheel
-          maturin build --release --features python --interpreter python${{ matrix.python-version }} --out dist
+          # Build wheel with HDF5 support on Unix
+          maturin build --release --features python,hdf5,polars --interpreter python${{ matrix.python-version }} --out dist
+
+      - name: Build wheels (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          .venv\Scripts\activate
+          # Windows builds exclude HDF5 due to build complexity
+          maturin build --release --features python,polars --interpreter python --out dist
+        env:
+          CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
 
       - name: Upload wheels as artifacts
         uses: actions/upload-artifact@v4

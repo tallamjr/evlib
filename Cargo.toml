@@ -123,7 +123,11 @@ tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
-default        = ["polars", "python", "tracing", "hdf5"]
+# Platform-specific defaults:
+# - Unix (Linux/macOS): Include HDF5 support
+# - Windows: Exclude HDF5 due to build complexity
+default        = ["polars", "python", "tracing"]
+default-unix   = ["default", "hdf5"]
 tracing        = ["dep:tracing", "dep:tracing-subscriber"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 hdf5           = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]

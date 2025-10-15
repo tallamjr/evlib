@@ -53,7 +53,14 @@ jobs:
       - name: Install dependencies
         run: |
           source .venv/bin/activate
-          uv pip install .[all]
+          # On macOS, build h5py from source to ensure compatibility with system HDF5
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            export HDF5_DIR="${HDF5_DIR}"
+            uv pip install --no-binary h5py "h5py>=3.8.0"
+            uv pip install .[all]
+          else
+            uv pip install .[all]
+          fi
 
       - name: Run tests
         run: |

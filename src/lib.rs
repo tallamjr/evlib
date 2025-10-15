@@ -110,7 +110,7 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     // Add top-level save functions (wrappers around formats functions)
-    #[cfg(not(windows))]
+    #[cfg(feature = "hdf5")]
     m.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
         m
@@ -152,7 +152,7 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &formats_submodule
     )?)?;
 
-    #[cfg(not(windows))]
+    #[cfg(feature = "hdf5")]
     formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::save_events_to_hdf5_py,
         &formats_submodule

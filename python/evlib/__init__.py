@@ -84,7 +84,7 @@ try:
         # Don't register Rust filtering yet - we'll decide below
 
         # Make key functions directly accessible
-        save_events_to_hdf5 = formats.save_events_to_hdf5
+        # save_events_to_hdf5 handled below with fallback logic
         save_events_to_text = formats.save_events_to_text
         detect_format = formats.detect_format
         get_format_description = formats.get_format_description
@@ -284,6 +284,75 @@ def collect_with_optimal_engine(lazy_frame):
     """
     engine = get_recommended_engine()
     return lazy_frame.collect(engine=engine)
+
+
+def _save_events_to_hdf5_python(xs, ys, ts, ps, path):
+    """
+    Python fallback for HDF5 save using h5py.
+
+    This function is used on Windows or when the Rust HDF5 feature is unavailable.
+
+    Args:
+        xs: NumPy array of x coordinates
+        ys: NumPy array of y coordinates
+        ts: NumPy array of timestamps
+        ps: NumPy array of polarities
+        path: Output HDF5 file path
+    """
+    try:
+        import h5py
+        import numpy as np
+    except ImportError as e:
+        raise ImportError(
+            f"h5py is required for HDF5 save on this platform. Install with: pip install h5py\n"
+            f"Original error: {e}"
+        )
+
+    # Validate array lengths
+    n = len(ts)
+    if len(xs) != n or len(ys) != n or len(ps) != n:
+        raise ValueError("Arrays must have the same length")
+
+    # Ensure arrays are NumPy arrays
+    xs = np.asarray(xs, dtype=np.uint16)
+    ys = np.asarray(ys, dtype=np.uint16)
+    ts = np.asarray(ts, dtype=np.float64)
+    ps = np.asarray(ps, dtype=np.int8)
+
+    # Create HDF5 file and write datasets
+    with h5py.File(path, "w") as f:
+        grp = f.create_group("events")
+        grp.create_dataset("xs", data=xs, compression="gzip", compression_opts=9)
+        grp.create_dataset("ys", data=ys, compression="gzip", compression_opts=9)
+        grp.create_dataset("ts", data=ts, compression="gzip", compression_opts=9)
+        grp.create_dataset("ps", data=ps, compression="gzip", compression_opts=9)
+
+
+def save_events_to_hdf5(xs, ys, ts, ps, path):
+    """
+    Save events to an HDF5 file.
+
+    This function automatically uses the best available implementation:
+    - Rust (hdf5-metno) on Linux/macOS with HDF5 feature enabled
+    - Python (h5py) fallback on Windows or when Rust HDF5 is unavailable
+
+    Args:
+        xs: Array of x coordinates (NumPy array or compatible)
+        ys: Array of y coordinates (NumPy array or compatible)
+        ts: Array of timestamps (NumPy array or compatible)
+        ps: Array of polarities (NumPy array or compatible)
+        path: Output HDF5 file path
+    """
+    # Try Rust implementation first if available
+    if hasattr(formats, "save_events_to_hdf5"):
+        try:
+            return formats.save_events_to_hdf5(xs, ys, ts, ps, path)
+        except AttributeError:
+            # Rust function not available, fall through to Python
+            pass
+
+    # Use Python fallback
+    return _save_events_to_hdf5_python(xs, ys, ts, ps, path)
 
 
 def setup_hdf5_plugins():
