@@ -9,6 +9,8 @@ use polars::prelude::*;
 use pyo3::prelude::*;
 #[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
+#[cfg(all(feature = "hdf5", feature = "tracing"))]
+use tracing::{error, info, warn};
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
