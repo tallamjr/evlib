@@ -50,17 +50,27 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Install dependencies
+      - name: Install maturin
+        run: |
+          source .venv/bin/activate
+          uv pip install maturin>=1.7.4
+
+      - name: Build evlib with HDF5 support
+        run: |
+          source .venv/bin/activate
+          # Build with HDF5 feature on Unix platforms
+          maturin develop --features python,hdf5,polars
+
+      - name: Install Python dependencies
         run: |
           source .venv/bin/activate
           # On macOS, build h5py from source to ensure compatibility with system HDF5
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             export HDF5_DIR="${HDF5_DIR}"
             uv pip install --no-binary h5py "h5py>=3.8.0"
-            uv pip install .[all]
-          else
-            uv pip install .[all]
           fi
+          # Install remaining Python dependencies (skip build since we already built)
+          uv pip install --no-build-isolation -e .[all]
 
       - name: Run tests
         run: |
