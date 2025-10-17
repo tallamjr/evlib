@@ -322,6 +322,7 @@ impl PolarityEncoding {
 
 // Helper for floating point ordering
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[allow(clippy::derive_ord_xor_partial_ord)]
 struct OrderedFloat(f64);
 
 impl From<f64> for OrderedFloat {
