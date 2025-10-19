@@ -58,8 +58,8 @@ jobs:
       - name: Build evlib with HDF5 support
         run: |
           source .venv/bin/activate
-          # Build with HDF5 feature on Unix platforms
-          maturin develop --features python,hdf5,polars
+          # Build with HDF5 feature on Unix platforms (hdf5 feature enables HDF5 file support)
+          maturin develop --features hdf5
 
       - name: Install Python dependencies
         run: |
