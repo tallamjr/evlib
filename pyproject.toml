@@ -70,7 +70,6 @@ all = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module", "python", "arrow"]
 python-source = "python"
 module-name = "evlib"
 # Strip the library for minimum file size
