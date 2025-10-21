@@ -55,19 +55,16 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Install maturin
-        run: |
-          source .venv/bin/activate
-          uv pip install maturin>=1.7.4
+        run: uv pip install maturin>=1.7.4
 
       - name: Build evlib with HDF5 support
         run: |
-          source .venv/bin/activate
           # Build with default features (includes python, polars, tracing, hdf5)
-          maturin develop
+          uv run maturin develop
+        shell: bash
 
       - name: Install Python dependencies
         run: |
-          source .venv/bin/activate
           # On macOS, build h5py from source to ensure compatibility with system HDF5
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             export HDF5_DIR="${HDF5_DIR}"
@@ -75,12 +72,13 @@ jobs:
           fi
           # Install remaining Python dependencies (skip build since we already built)
           uv pip install --no-build-isolation -e .[all]
+        shell: bash
 
       - name: Run tests
         run: |
-          source .venv/bin/activate
           uv run pytest -v tests/ -m "not slow and not integration"
           uv run pytest --nbmake examples/*.ipynb -v --no-cov
+        shell: bash
 
       # Temporarily disabled - documentation tests need fixing
       # - name: Test documentation examples
@@ -90,9 +88,8 @@ jobs:
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-        run: |
-          source .venv/bin/activate
-          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        run: uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        shell: bash
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
