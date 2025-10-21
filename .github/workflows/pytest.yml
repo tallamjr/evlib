@@ -57,10 +57,15 @@ jobs:
       - name: Install maturin
         run: uv pip install maturin>=1.7.4
 
-      - name: Build evlib with HDF5 support
+      - name: Build evlib
         run: |
-          # Build with default features (includes python, polars, tracing, hdf5)
-          uv run maturin develop
+          # Windows: Build without HDF5 (not supported on Windows)
+          # Unix: Build with default features (includes python, polars, tracing, hdf5)
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            uv run maturin develop --no-default-features --features python,polars,tracing
+          else
+            uv run maturin develop
+          fi
         shell: bash
 
       - name: Install Python dependencies
