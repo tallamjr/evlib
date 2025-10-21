@@ -30,8 +30,8 @@ classifiers = [
 ]
 dependencies = [
   "numpy >= 1.24.0",
-  "h5py >= 3.8.0",
-  "hdf5plugin >= 5.1.0",
+  "h5py >= 3.8.0 ; sys_platform != 'win32'",
+  "hdf5plugin >= 5.1.0 ; sys_platform != 'win32'",
   "polars >= 1.30.0",
   "pyarrow >= 21.0.0",
   "pandera[polars] >= 0.18.0",

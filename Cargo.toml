@@ -85,11 +85,6 @@ async-channel  = "1.6"
 lazy_static    = "1.4"
 byteorder      = "1.5"
 
-# HDF5 dependencies - now optional to handle deprecated/missing system packages
-hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
-hdf5-metno-sys = { version = "0.10.1", optional = true }
-
-
 # GStreamer for video processing
 gstreamer      = { version = "0.22", optional = true }
 gstreamer-app  = { version = "0.22", optional = true }
@@ -117,6 +112,12 @@ futures        = "0.3"
 ratatui        = { version = "0.28", optional = true }
 crossterm      = { version = "0.28", optional = true }
 clap           = { version = "4.0", features = ["derive"], optional = true }
+
+# Platform-specific dependencies
+# HDF5 support only on Unix (Linux/macOS) - not available on Windows
+[target.'cfg(unix)'.dependencies]
+hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
+hdf5-metno-sys = { version = "0.10.1", optional = true }
 
 [dev-dependencies]
 tempfile       = "3.8"
