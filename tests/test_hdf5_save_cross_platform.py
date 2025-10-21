@@ -13,7 +13,7 @@ import pytest
 
 
 def test_hdf5_save_python_fallback():
-    """Test Python h5py fallback for HDF5 save."""
+    """Test HDF5 save functionality (uses h5py fallback when Rust unavailable)."""
     h5py = pytest.importorskip("h5py")
     import evlib
 
@@ -29,8 +29,8 @@ def test_hdf5_save_python_fallback():
         tmp_path = tmp.name
 
     try:
-        # Use the Python fallback directly
-        evlib._save_events_to_hdf5_python(xs, ys, ts, ps, tmp_path)
+        # Use the public save function (uses Python fallback when Rust not available)
+        evlib.save_events_to_hdf5(xs, ys, ts, ps, tmp_path)
 
         # Verify file was created
         assert os.path.exists(tmp_path)
