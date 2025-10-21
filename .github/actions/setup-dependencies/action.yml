@@ -53,6 +53,12 @@ runs:
       shell: bash
       run: |
         uv venv --python "${{ inputs.python-version }}"
-        source .venv/bin/activate
-        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
-        echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+        # Activate venv in a cross-platform way by setting env vars directly
+        # Note: Use forward slashes in bash - GitHub Actions handles conversion
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+          echo "$PWD/.venv/Scripts" >> $GITHUB_PATH
+        else
+          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+          echo "$PWD/.venv/bin" >> $GITHUB_PATH
+        fi
