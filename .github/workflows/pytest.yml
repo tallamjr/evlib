@@ -10,6 +10,8 @@ on:
       - "docs/**"
       - "README.md"
       - "pyproject.toml"
+      - "Cargo.toml"
+      - ".github/workflows/pytest.yml"
       - "pytest.ini"
   pull_request:
     paths:
@@ -19,6 +21,8 @@ on:
       - "docs/**"
       - "README.md"
       - "pyproject.toml"
+      - "Cargo.toml"
+      - ".github/workflows/pytest.yml"
       - "pytest.ini"
   workflow_dispatch:
 
@@ -58,8 +62,8 @@ jobs:
       - name: Build evlib with HDF5 support
         run: |
           source .venv/bin/activate
-          # Build with HDF5 feature on Unix platforms (hdf5 feature enables HDF5 file support)
-          maturin develop --features hdf5
+          # Build with default features (includes python, polars, tracing, hdf5)
+          maturin develop
 
       - name: Install Python dependencies
         run: |
