@@ -1,18 +1,15 @@
 // Apache Arrow integration for zero-copy event data transfer
 // This module provides Arrow array creation and schema management for evlib
 
-#[cfg(feature = "arrow")]
 use arrow::{
     array::{ArrayBuilder, Int16Builder, Int8Builder, RecordBatch},
     datatypes::{DataType, Field, Schema, TimeUnit},
 };
 
-#[cfg(feature = "arrow")]
 use arrow_array::{
     builder::DurationMicrosecondBuilder, DurationMicrosecondArray, Int16Array, Int8Array,
 };
 
-#[cfg(feature = "arrow")]
 use std::sync::Arc;
 
 use crate::ev_formats::{streaming::Event, EventFormat};
@@ -39,14 +36,6 @@ pub enum ArrowBuilderError {
     FeatureNotEnabled,
 }
 
-#[cfg(not(feature = "arrow"))]
-impl From<ArrowBuilderError> for Box<dyn std::error::Error + Send + Sync> {
-    fn from(e: ArrowBuilderError) -> Self {
-        Box::new(e)
-    }
-}
-
-#[cfg(feature = "arrow")]
 impl From<arrow::error::ArrowError> for ArrowBuilderError {
     fn from(e: arrow::error::ArrowError) -> Self {
         ArrowBuilderError::ArrayConstruction(e.to_string())
@@ -59,7 +48,6 @@ impl From<arrow::error::ArrowError> for ArrowBuilderError {
 /// - x, y: Int16 (saves 50% memory vs Int32, sufficient for most sensors)
 /// - timestamp: Duration(Microseconds) (Int64 with time semantics)
 /// - polarity: Int8 (saves 87.5% memory vs Int64, supports -1/0/1 values)
-#[cfg(feature = "arrow")]
 pub fn create_event_arrow_schema() -> Schema {
     Schema::new(vec![
         Field::new("x", DataType::Int16, false),
@@ -73,7 +61,6 @@ pub fn create_event_arrow_schema() -> Schema {
 ///
 /// Provides zero-copy construction from Event vectors with format-specific
 /// polarity encoding and optimised memory layout.
-#[cfg(feature = "arrow")]
 pub struct ArrowEventBuilder {
     x_builder: Int16Builder,
     y_builder: Int16Builder,
@@ -84,7 +71,6 @@ pub struct ArrowEventBuilder {
     schema: Arc<Schema>,
 }
 
-#[cfg(feature = "arrow")]
 impl ArrowEventBuilder {
     /// Create a new ArrowEventBuilder with specified capacity
     ///
@@ -337,14 +323,12 @@ impl ArrowEventBuilder {
 ///
 /// Provides chunked processing of large event streams while maintaining
 /// memory efficiency and producing Arrow RecordBatches.
-#[cfg(feature = "arrow")]
 pub struct ArrowEventStreamer {
     chunk_size: usize,
     format: EventFormat,
     schema: Arc<Schema>,
 }
 
-#[cfg(feature = "arrow")]
 impl ArrowEventStreamer {
     /// Create a new ArrowEventStreamer
     ///
@@ -457,7 +441,6 @@ impl ArrowEventStreamer {
 ///
 /// # Returns
 /// Result containing Events vector
-#[cfg(feature = "arrow")]
 pub fn arrow_to_events(batch: &RecordBatch) -> Result<Events, ArrowBuilderError> {
     use arrow::array::{Array, DurationMicrosecondArray, Int16Array, Int8Array};
 
@@ -528,41 +511,6 @@ pub fn arrow_to_events(batch: &RecordBatch) -> Result<Events, ArrowBuilderError>
     Ok(events)
 }
 
-// Stub implementations for when Arrow feature is disabled
-
-#[cfg(not(feature = "arrow"))]
-pub fn create_event_arrow_schema() -> Result<(), ArrowBuilderError> {
-    Err(ArrowBuilderError::FeatureNotEnabled)
-}
-
-#[cfg(not(feature = "arrow"))]
-pub struct ArrowEventBuilder;
-
-#[cfg(not(feature = "arrow"))]
-impl ArrowEventBuilder {
-    pub fn new(_capacity: usize, _format: EventFormat) -> Result<Self, ArrowBuilderError> {
-        Err(ArrowBuilderError::FeatureNotEnabled)
-    }
-
-    pub fn from_events_zero_copy(
-        _events: &[Event],
-        _format: EventFormat,
-    ) -> Result<(), ArrowBuilderError> {
-        Err(ArrowBuilderError::FeatureNotEnabled)
-    }
-}
-
-#[cfg(not(feature = "arrow"))]
-pub struct ArrowEventStreamer;
-
-#[cfg(not(feature = "arrow"))]
-impl ArrowEventStreamer {
-    pub fn new(_chunk_size: usize, _format: EventFormat) -> Result<Self, ArrowBuilderError> {
-        Err(ArrowBuilderError::FeatureNotEnabled)
-    }
-}
-
-/* Commented out - legacy Event/Events types no longer exist
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -592,7 +540,6 @@ mod tests {
         ]
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_create_event_arrow_schema() {
         let schema = create_event_arrow_schema();
@@ -602,7 +549,6 @@ mod tests {
         assert_eq!(field_names, vec!["x", "y", "t", "polarity"]);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_arrow_event_builder_empty() {
         let builder = ArrowEventBuilder::new(0, EventFormat::HDF5);
@@ -611,7 +557,6 @@ mod tests {
         assert_eq!(builder.capacity(), 0);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_arrow_event_builder_basic() {
         let events = create_test_events();
@@ -623,7 +568,6 @@ mod tests {
         assert_eq!(batch.schema().fields().len(), 4);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_polarity_encoding_evt2() {
         let events = create_test_events();
@@ -642,7 +586,6 @@ mod tests {
         assert_eq!(polarity_array.value(2), 1i8); // true -> 1
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_polarity_encoding_text() {
         let events = create_test_events();
@@ -661,7 +604,6 @@ mod tests {
         assert_eq!(polarity_array.value(2), 1i8); // true -> 1
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_timestamp_conversion() {
         let events = vec![
@@ -699,7 +641,6 @@ mod tests {
         assert_eq!(timestamp_array.value(2), 1_000_000i64); // Already in microseconds
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_arrow_to_events_conversion() {
         let events = create_test_events();
@@ -718,7 +659,6 @@ mod tests {
         assert_eq!(converted_events[0].polarity, true);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn test_arrow_event_streamer() {
         let events = create_test_events();
@@ -732,11 +672,9 @@ mod tests {
         assert_eq!(batch.num_columns(), 4);
     }
 
-    #[cfg(not(feature = "arrow"))]
     #[test]
     fn test_arrow_disabled() {
         let result = create_event_arrow_schema();
         assert!(matches!(result, Err(ArrowBuilderError::FeatureNotEnabled)));
     }
 }
-*/

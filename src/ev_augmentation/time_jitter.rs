@@ -35,13 +35,9 @@ use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable}
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 
 // Polars column names for event data consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 #[cfg(feature = "tracing")]
 use tracing::{debug, instrument};
@@ -80,7 +76,6 @@ macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Time jitter augmentation configuration
@@ -162,7 +157,6 @@ impl TimeJitterAugmentation {
     /// # Returns
     ///
     /// Jittered LazyFrame with temporal noise applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_time_jitter(df, self)
     }
@@ -178,7 +172,6 @@ impl TimeJitterAugmentation {
     /// # Returns
     ///
     /// Jittered DataFrame with temporal noise applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
         apply_time_jitter(df.lazy(), self)?.collect()
     }
@@ -220,7 +213,6 @@ impl Validatable for TimeJitterAugmentation {
 /// let config = TimeJitterAugmentation::new(1000.0);
 /// let jittered = apply_time_jitter(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
 #[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
 pub fn apply_time_jitter(
     df: LazyFrame,
@@ -247,7 +239,6 @@ pub fn apply_time_jitter(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_time_jitter_polars(
     df: LazyFrame,
     config: &TimeJitterAugmentation,
@@ -268,7 +259,6 @@ pub fn apply_time_jitter_polars(
 /// # Returns
 ///
 /// Jittered LazyFrame
-#[cfg(feature = "polars")]
 pub fn apply_time_jitter_df(df: LazyFrame, std_us: f64) -> PolarsResult<LazyFrame> {
     let config = TimeJitterAugmentation::new(std_us);
     apply_time_jitter(df, &config)

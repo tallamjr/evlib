@@ -43,10 +43,8 @@ macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_POLARITY, COL_T};
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Time reversal augmentation configuration
@@ -213,7 +211,6 @@ pub fn time_reversal(
 */
 
 /// Apply time reversal using Polars operations
-#[cfg(feature = "polars")]
 #[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
 pub fn apply_time_reversal_polars(
     df: LazyFrame,

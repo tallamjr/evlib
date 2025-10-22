@@ -46,17 +46,12 @@
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 use std::fmt;
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 // Column names for DataFrame consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 
 // Sub-modules
@@ -146,7 +141,6 @@ pub use temporal::TemporalFilter;
 /// let filtered_df = filter_events_dataframe(df, &config)?;
 /// // Use filtered_df directly or collect() to DataFrame if needed
 /// ```
-#[cfg(feature = "polars")]
 pub fn filter_events_dataframe(df: LazyFrame, config: &FilterConfig) -> PolarsResult<LazyFrame> {
     let mut filtered_df = df;
 

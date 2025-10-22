@@ -6,7 +6,6 @@
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 
-#[cfg(feature = "polars")]
 use crate::ev_augmentation::COL_T;
 #[cfg(feature = "tracing")]
 use tracing::{debug, instrument};
@@ -45,7 +44,6 @@ macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Time skew augmentation configuration
@@ -233,7 +231,6 @@ impl Validatable for TimeSkewAugmentation {
 /// # Returns
 ///
 /// * `PolarsResult<LazyFrame>` - Skewed events as LazyFrame
-#[cfg(feature = "polars")]
 #[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
 pub fn apply_time_skew_polars(
     df: LazyFrame,

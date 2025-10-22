@@ -939,7 +939,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_polars_pixel_filtering() {
         let events = create_test_events();

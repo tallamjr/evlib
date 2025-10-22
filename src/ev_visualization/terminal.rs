@@ -30,7 +30,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Configuration for terminal-based event visualization
@@ -129,7 +128,6 @@ impl TerminalEventVisualizer {
     }
 
     /// Add events from DataFrame to the visualization buffer
-    #[cfg(feature = "polars")]
     pub fn add_events_from_dataframe(&mut self, df: LazyFrame) -> Result<(), PolarsError> {
         let events = dataframe_to_events_for_visualization(df)?;
         self.add_events_impl(events);
@@ -543,7 +541,6 @@ pub fn create_terminal_event_viewer(
 }
 
 /// Helper function to convert DataFrame back to Events for visualization
-#[cfg(feature = "polars")]
 fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
     let df = df.collect()?;
 

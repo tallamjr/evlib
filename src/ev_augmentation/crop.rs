@@ -50,10 +50,8 @@ macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_X, COL_Y};
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Center crop augmentation
@@ -390,7 +388,6 @@ pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> Augmenta
 */
 
 /// Apply center crop using Polars operations
-#[cfg(feature = "polars")]
 pub fn apply_center_crop_polars(
     df: LazyFrame,
     config: &CenterCropAugmentation,
@@ -417,7 +414,6 @@ pub fn apply_center_crop_polars(
 
 /* Commented out - depends on legacy random_crop function
 /// Apply random crop using Polars operations
-#[cfg(feature = "polars")]
 pub fn apply_random_crop_polars(
     df: LazyFrame,
     config: &RandomCropAugmentation,
@@ -642,7 +638,6 @@ mod tests {
         assert_eq!(y_end, 60); // 20 + 40
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_center_crop_polars() {
         use crate::events_to_dataframe;
@@ -670,7 +665,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_random_crop_polars() {
         use crate::events_to_dataframe;

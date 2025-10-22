@@ -3,17 +3,14 @@
 //! This module provides Python bindings for all augmentation operations
 //! to enable usage from Python code.
 
-#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
-#[cfg(feature = "python")]
 use crate::ev_augmentation::AugmentationConfig as RustAugmentationConfig;
 
 // Removed: use crate::Events; - legacy type no longer exists
 
 /* Commented out - legacy Event/Events types no longer exist
 /// Apply spatial jitter augmentation to events
-#[cfg(feature = "python")]
 #[pyfunction]
 pub fn spatial_jitter_py(
     events: Vec<(f64, u16, u16, bool)>, // (t, x, y, polarity)
@@ -62,7 +59,6 @@ pub fn spatial_jitter_py(
 }
 
 /// Apply time jitter augmentation to events
-#[cfg(feature = "python")]
 #[pyfunction]
 pub fn time_jitter_py(
     events: Vec<(f64, u16, u16, bool)>,
@@ -94,7 +90,6 @@ pub fn time_jitter_py(
 }
 
 /// Apply time skew augmentation to events
-#[cfg(feature = "python")]
 #[pyfunction]
 pub fn time_skew_py(
     events: Vec<(f64, u16, u16, bool)>,
@@ -127,7 +122,6 @@ pub fn time_skew_py(
 }
 
 /// Apply geometric transformations to events
-#[cfg(feature = "python")]
 #[pyfunction]
 pub fn geometric_transforms_py(
     events: Vec<(f64, u16, u16, bool)>,
@@ -166,14 +160,12 @@ pub fn geometric_transforms_py(
 }
 
 /// Python wrapper for AugmentationConfig
-#[cfg(feature = "python")]
 #[pyclass]
 #[derive(Default)]
 pub struct AugmentationConfig {
     inner: RustAugmentationConfig,
 }
 
-#[cfg(feature = "python")]
 #[pymethods]
 impl AugmentationConfig {
     pub fn with_spatial_jitter(mut slf: PyRefMut<Self>, var_x: f64, var_y: f64) -> PyRefMut<Self> {
@@ -284,7 +276,6 @@ impl AugmentationConfig {
 }
 
 /// Apply augmentations using config
-#[cfg(feature = "python")]
 #[pyfunction]
 #[pyo3(name = "augment_events")]
 pub fn augment_events_py(
@@ -339,14 +330,12 @@ pub fn augment_events_py(
 
 /// Python wrapper for AugmentationConfig
 /// This provides a minimal implementation that doesn't depend on legacy Event/Events types
-#[cfg(feature = "python")]
 #[pyclass]
 #[derive(Default)]
 pub struct AugmentationConfig {
     inner: RustAugmentationConfig,
 }
 
-#[cfg(feature = "python")]
 #[pymethods]
 impl AugmentationConfig {
     #[new]
@@ -438,7 +427,6 @@ impl AugmentationConfig {
 }
 
 /// Register all augmentation functions in a Python module
-#[cfg(feature = "python")]
 pub fn register_augmentation_functions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register the minimal AugmentationConfig class
     m.add_class::<AugmentationConfig>()?;

@@ -47,17 +47,12 @@
 use std::fmt;
 use tracing::{debug, info};
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 // Column names for DataFrame consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 
 /// DataFrame-first augmentation function that applies augmentations entirely using LazyFrame operations
@@ -87,7 +82,6 @@ pub const COL_POLARITY: &str = "polarity";
 ///     .with_time_jitter(1000.0);
 /// let augmented_df = augment_events_dataframe(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
 pub fn augment_events_dataframe(
     df: LazyFrame,
     config: &AugmentationConfig,
@@ -232,21 +226,12 @@ pub trait SingleAugmentation {
 /// ```
 pub fn augment_events(events: &Events, config: &AugmentationConfig) -> AugmentationResult<Events> {
     // Use Polars-first implementation when available for better performance
-    #[cfg(feature = "polars")]
     {
         augment_events_polars(events, config)
     }
 
     // Fallback to Vec<Event> implementation when Polars is not available
-    #[cfg(not(feature = "polars"))]
-    {
-        let mut augmented_events = events.clone();
 
-        // Apply augmentations in order
-        // 1. Spatial jitter - modifies spatial coordinates
-        if let Some(spatial_jitter) = &config.spatial_jitter {
-            augmented_events = spatial_jitter.apply(&augmented_events)?;
-        }
 
         // 2. Geometric transforms - modifies spatial coordinates and polarity
         if let Some(geometric_transforms) = &config.geometric_transforms {
@@ -314,7 +299,6 @@ pub fn augment_events(events: &Events, config: &AugmentationConfig) -> Augmentat
 /// This function processes events through a pipeline of augmentations based on the provided
 /// configuration using Polars LazyFrame operations throughout. It provides significant
 /// performance improvements over the Vec<Event> approach.
-#[cfg(feature = "polars")]
 pub fn augment_events_polars(
     events: &Events,
     config: &AugmentationConfig,
@@ -421,7 +405,6 @@ pub fn augment_events_polars(
 }
 
 /// Convert DataFrame back to Events vector for legacy compatibility
-#[cfg(feature = "polars")]
 fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
     let height = df.height();
     let mut events = Vec::with_capacity(height);

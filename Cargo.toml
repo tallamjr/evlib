@@ -98,10 +98,6 @@ serde_json     = "1.0"
 num_cpus       = "1.16"
 thiserror      = "1.0"
 
-# Structured logging and tracing (disabled on Windows due to CI dependency resolution issues)
-tracing        = { version = "0.1.40", optional = true }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"], optional = true }
-
 # WebSocket server
 warp           = "0.3"
 uuid           = { version = "1.6", features = ["v4", "serde"] }
@@ -114,10 +110,12 @@ crossterm      = { version = "0.28", optional = true }
 clap           = { version = "4.0", features = ["derive"], optional = true }
 
 # Platform-specific dependencies
-# HDF5 support only on Unix (Linux/macOS) - not available on Windows
+# HDF5 and tracing only on Unix (Linux/macOS) - not available on Windows
 [target.'cfg(unix)'.dependencies]
 hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
 hdf5-metno-sys = { version = "0.10.1", optional = true }
+tracing        = { version = "0.1.40", optional = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"], optional = true }
 
 [dev-dependencies]
 tempfile       = "3.8"
@@ -125,9 +123,9 @@ criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
 # Platform-specific defaults:
-# - Unix (Linux/macOS): Include HDF5 support
-# - Windows: Exclude HDF5 due to build complexity
-default        = ["polars", "python", "tracing", "hdf5"]
+# - Unix (Linux/macOS): Include HDF5 and tracing support
+# - Windows: HDF5 and tracing excluded (platform limitations)
+default        = ["polars", "python", "tracing", "hdf5", "arrow"]
 default-unix   = ["default"]
 tracing        = ["dep:tracing", "dep:tracing-subscriber"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]

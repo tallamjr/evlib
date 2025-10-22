@@ -80,17 +80,12 @@ macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 // Polars column names for event data consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 
 /// Geometric transform augmentation configuration
@@ -195,7 +190,6 @@ impl GeometricTransformAugmentation {
     /// # Returns
     ///
     /// Transformed LazyFrame with geometric transforms applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_geometric_transforms(df, self)
     }
@@ -211,7 +205,6 @@ impl GeometricTransformAugmentation {
     /// # Returns
     ///
     /// Transformed DataFrame with geometric transforms applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
         apply_geometric_transforms(df.lazy(), self)?.collect()
     }
@@ -250,7 +243,6 @@ impl Validatable for GeometricTransformAugmentation {
 //         #[cfg(not(feature = "tracing"))]
 //         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 //
-//         #[cfg(feature = "polars")]
 //         {
 //             let df = crate::events_to_dataframe(events)
 //                 .map_err(|e| {
@@ -413,7 +405,6 @@ impl Validatable for GeometricTransformAugmentation {
 ///     .with_flip_lr_probability(0.5);
 /// let transformed = apply_geometric_transforms(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
 #[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
 pub fn apply_geometric_transforms(
     df: LazyFrame,
@@ -472,7 +463,6 @@ pub fn apply_geometric_transforms(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_geometric_transforms_polars(
     df: LazyFrame,
     config: &GeometricTransformAugmentation,
@@ -484,28 +474,24 @@ pub fn apply_geometric_transforms_polars(
 ///
 /// These functions apply geometric transformations directly to a LazyFrame for optimal performance.
 /// Use these instead of the legacy Vec<Event> versions when possible.
-#[cfg(feature = "polars")]
 pub fn apply_flip_lr_df(df: LazyFrame, sensor_width: u16) -> PolarsResult<LazyFrame> {
     let config =
         GeometricTransformAugmentation::new(sensor_width, 480).with_flip_lr_probability(1.0);
     apply_geometric_transforms(df, &config)
 }
 
-#[cfg(feature = "polars")]
 pub fn apply_flip_ud_df(df: LazyFrame, sensor_height: u16) -> PolarsResult<LazyFrame> {
     let config =
         GeometricTransformAugmentation::new(640, sensor_height).with_flip_ud_probability(1.0);
     apply_geometric_transforms(df, &config)
 }
 
-#[cfg(feature = "polars")]
 pub fn apply_flip_polarity_df(df: LazyFrame) -> PolarsResult<LazyFrame> {
     let config = GeometricTransformAugmentation::new(640, 480).with_flip_polarity_probability(1.0);
     apply_geometric_transforms(df, &config)
 }
 
 // /// Helper function to convert DataFrame back to Events (for legacy compatibility)
-// #[cfg(feature = "polars")]
 // fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
 //     let height = df.height();
 //     let mut events = Vec::with_capacity(height);
@@ -664,7 +650,6 @@ fn test_validation() {
 //     }
 // }
 
-// #[cfg(feature = "polars")]
 // #[test]
 // fn test_geometric_transforms_dataframe_native() -> PolarsResult<()> {
 //     use crate::events_to_dataframe;
@@ -694,7 +679,6 @@ fn test_validation() {
 //     Ok(())
 // }
 
-// #[cfg(feature = "polars")]
 // #[test]
 // fn test_apply_geometric_transforms() -> PolarsResult<()> {
 //     use crate::events_to_dataframe;
@@ -728,7 +712,6 @@ fn test_validation() {
 //     Ok(())
 // }
 
-// #[cfg(feature = "polars")]
 // #[test]
 // fn test_geometric_transforms_convenience_functions() -> PolarsResult<()> {
 //     use crate::events_to_dataframe;
@@ -754,7 +737,6 @@ fn test_validation() {
 //     Ok(())
 // }
 
-// #[cfg(feature = "polars")]
 // #[test]
 // fn test_geometric_transforms_legacy_compatibility() {
 //     let events = create_test_events();

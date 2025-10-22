@@ -1,5 +1,6 @@
 /// EVT3 binary event reader for Prophesee event camera data
 ///
+///
 /// This module provides a reader for EVT3 (Event Data 3.0) format used by Prophesee event cameras.
 /// EVT3 is a 16-bit vectorized data format designed for data compactness and vector event data support.
 /// It avoids transmitting redundant event data for time, y, and x values.
@@ -16,14 +17,11 @@
 use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
 use crate::ev_formats::EventFormat;
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
-
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-
 /// EVT3 event types encoded in 4-bit field
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -61,10 +59,8 @@ pub enum Evt3EventType {
     /// Continued 12 event (reserved)
     Continued12 = 0xF,
 }
-
 impl TryFrom<u8> for Evt3EventType {
     type Error = Evt3Error;
-
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(Evt3EventType::AddrY),
@@ -90,21 +86,18 @@ impl TryFrom<u8> for Evt3EventType {
         }
     }
 }
-
 /// Raw EVT3 event structure (16-bit word)
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct RawEvt3Event {
     pub data: u16,
 }
-
 impl RawEvt3Event {
     /// Extract event type from raw data
     pub fn event_type(&self) -> Result<Evt3EventType, Evt3Error> {
         let type_bits = (self.data & 0x000F) as u8;
         Evt3EventType::try_from(type_bits)
     }
-
     /// Parse as Y address event
     pub fn as_y_addr_event(&self) -> Result<YAddrEvent, Evt3Error> {
         if self.event_type()? != Evt3EventType::AddrY {
@@ -113,13 +106,11 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(YAddrEvent {
             y: (self.data >> 4) & 0x7FF,
             orig: ((self.data >> 15) & 0x1) != 0,
         })
     }
-
     /// Parse as X address event
     pub fn as_x_addr_event(&self) -> Result<XAddrEvent, Evt3Error> {
         if self.event_type()? != Evt3EventType::AddrX {
@@ -128,13 +119,11 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(XAddrEvent {
             x: (self.data >> 4) & 0x7FF,
             polarity: ((self.data >> 15) & 0x1) != 0,
         })
     }
-
     /// Parse as vector base X event
     pub fn as_vect_base_x_event(&self) -> Result<VectBaseXEvent, Evt3Error> {
         if self.event_type()? != Evt3EventType::VectBaseX {
@@ -143,13 +132,11 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(VectBaseXEvent {
             x: (self.data >> 4) & 0x7FF,
             polarity: ((self.data >> 15) & 0x1) != 0,
         })
     }
-
     /// Parse as vector 12 event
     pub fn as_vect12_event(&self) -> Result<Vect12Event, Evt3Error> {
         if self.event_type()? != Evt3EventType::Vect12 {
@@ -158,12 +145,10 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(Vect12Event {
             valid: (self.data >> 4) & 0xFFF,
         })
     }
-
     /// Parse as vector 8 event
     pub fn as_vect8_event(&self) -> Result<Vect8Event, Evt3Error> {
         if self.event_type()? != Evt3EventType::Vect8 {
@@ -172,12 +157,10 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(Vect8Event {
             valid: ((self.data >> 4) & 0xFF) as u8,
         })
     }
-
     /// Parse as time event (low or high)
     pub fn as_time_event(&self) -> Result<TimeEvent, Evt3Error> {
         let event_type = self.event_type()?;
@@ -187,13 +170,11 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(TimeEvent {
             time: (self.data >> 4) & 0xFFF,
             is_high: event_type == Evt3EventType::TimeHigh,
         })
     }
-
     /// Parse as external trigger event
     pub fn as_ext_trigger_event(&self) -> Result<ExtTriggerEvent, Evt3Error> {
         if self.event_type()? != Evt3EventType::ExtTrigger {
@@ -202,61 +183,52 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
-
         Ok(ExtTriggerEvent {
             value: ((self.data >> 4) & 0x1) != 0,
             id: ((self.data >> 5) & 0x1F) as u8,
         })
     }
 }
-
 /// Y address event structure
 #[derive(Debug, Clone, Copy)]
 pub struct YAddrEvent {
     pub y: u16,
     pub orig: bool, // System type: false = Master, true = Slave
 }
-
 /// X address event structure
 #[derive(Debug, Clone, Copy)]
 pub struct XAddrEvent {
     pub x: u16,
     pub polarity: bool,
 }
-
 /// Vector base X event structure
 #[derive(Debug, Clone, Copy)]
 pub struct VectBaseXEvent {
     pub x: u16,
     pub polarity: bool,
 }
-
 /// Vector 12 event structure
 #[derive(Debug, Clone, Copy)]
 pub struct Vect12Event {
     pub valid: u16, // 12-bit validity mask
 }
-
 /// Vector 8 event structure
 #[derive(Debug, Clone, Copy)]
 pub struct Vect8Event {
     pub valid: u8, // 8-bit validity mask
 }
-
 /// Time event structure (low or high)
 #[derive(Debug, Clone, Copy)]
 pub struct TimeEvent {
     pub time: u16,
     pub is_high: bool,
 }
-
 /// External trigger event structure
 #[derive(Debug, Clone, Copy)]
 pub struct ExtTriggerEvent {
     pub value: bool,
     pub id: u8,
 }
-
 /// Errors that can occur during EVT3 reading
 #[derive(Debug)]
 pub enum Evt3Error {
@@ -284,7 +256,6 @@ pub enum Evt3Error {
     PolarityError(Box<dyn std::error::Error + Send + Sync>),
     DecodingError(String),
 }
-
 impl std::fmt::Display for Evt3Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -314,7 +285,6 @@ impl std::fmt::Display for Evt3Error {
         }
     }
 }
-
 impl std::error::Error for Evt3Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -324,13 +294,11 @@ impl std::error::Error for Evt3Error {
         }
     }
 }
-
 impl From<std::io::Error> for Evt3Error {
     fn from(error: std::io::Error) -> Self {
         Evt3Error::Io(error)
     }
 }
-
 /// Configuration for EVT3 reader
 #[derive(Debug, Clone)]
 pub struct Evt3Config {
@@ -347,7 +315,6 @@ pub struct Evt3Config {
     /// Polarity encoding configuration
     pub polarity_encoding: Option<PolarityEncoding>,
 }
-
 impl Default for Evt3Config {
     fn default() -> Self {
         Self {
@@ -360,7 +327,6 @@ impl Default for Evt3Config {
         }
     }
 }
-
 /// Metadata extracted from EVT3 header
 #[derive(Debug, Clone, Default)]
 pub struct Evt3Metadata {
@@ -377,7 +343,6 @@ pub struct Evt3Metadata {
     /// Estimated event count
     pub estimated_event_count: Option<u64>,
 }
-
 /// Decoder state for EVT3 events
 #[derive(Debug, Clone, Default)]
 struct DecoderState {
@@ -397,13 +362,11 @@ struct DecoderState {
     /// Whether we have a valid timestamp
     has_timestamp: bool,
 }
-
 /// EVT3 reader implementation
 pub struct Evt3Reader {
     config: Evt3Config,
     polarity_handler: Option<PolarityHandler>,
 }
-
 impl Evt3Reader {
     /// Create new EVT3 reader with default configuration
     pub fn new() -> Self {
@@ -412,20 +375,17 @@ impl Evt3Reader {
             polarity_handler: None,
         }
     }
-
     /// Create new EVT3 reader with custom configuration
     pub fn with_config(config: Evt3Config) -> Self {
         let polarity_handler = config
             .polarity_encoding
             .as_ref()
             .map(|_encoding| PolarityHandler::new());
-
         Self {
             config,
             polarity_handler,
         }
     }
-
     /// Read EVT3 file and return events with metadata
     pub fn read_file<P: AsRef<Path>>(
         &self,
@@ -434,19 +394,15 @@ impl Evt3Reader {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
-
         // Parse header
         let (metadata, header_size) = self.parse_header(&mut file)?;
-
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-
         // Apply polarity encoding if configured
         if let Some(ref _handler) = self.polarity_handler {
             // For now, we'll skip polarity conversion as the implementation needs adjustment
             // The events already use the standard -1/1 encoding
         }
-
         let final_metadata = Evt3Metadata {
             file_size,
             header_size,
@@ -454,10 +410,8 @@ impl Evt3Reader {
             estimated_event_count: Some(events.height() as u64),
             ..metadata
         };
-
         Ok((events, final_metadata))
     }
-
     /// Read EVT3 file with LoadConfig filtering
     pub fn read_with_config<P: AsRef<Path>>(
         &self,
@@ -465,12 +419,9 @@ impl Evt3Reader {
         load_config: &LoadConfig,
     ) -> Result<DataFrame, Evt3Error> {
         let (df, _) = self.read_file(path)?;
-
-        #[cfg(feature = "polars")]
         {
             use polars::prelude::*;
             let mut df = df;
-
             // Apply time window filter if specified
             if let (Some(start), Some(end)) = (load_config.t_start, load_config.t_end) {
                 df = df
@@ -482,7 +433,6 @@ impl Evt3Reader {
                         message: format!("Time window filter failed: {}", e),
                     })?;
             }
-
             // Apply bounding box filter if specified
             if let (Some(x_min), Some(x_max), Some(y_min), Some(y_max)) = (
                 load_config.min_x,
@@ -505,7 +455,6 @@ impl Evt3Reader {
                         message: format!("Bounding box filter failed: {}", e),
                     })?;
             }
-
             // Sort if requested
             if load_config.sort {
                 df = df.sort(["t"], Default::default()).map_err(|e| {
@@ -515,26 +464,15 @@ impl Evt3Reader {
                     }
                 })?;
             }
-
             Ok(df)
         }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            Err(Evt3Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            })
-        }
     }
-
     /// Parse EVT3 header
     pub fn parse_header(&self, file: &mut File) -> Result<(Evt3Metadata, u64), Evt3Error> {
         let mut metadata = Evt3Metadata::default();
         let mut byte_buffer = [0u8; 1];
         let mut current_line = Vec::new();
         let mut header_size = 0u64;
-
         loop {
             let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
@@ -542,7 +480,6 @@ impl Evt3Reader {
                 if !current_line.is_empty() {
                     let line_str = String::from_utf8_lossy(&current_line);
                     let line = line_str.trim_end();
-
                     // Check if this line starts with "%" - if not, it's the start of binary data
                     if !line.starts_with("% ") {
                         // This line doesn't start with "% " so binary data has started
@@ -550,15 +487,12 @@ impl Evt3Reader {
                         header_size -= current_line.len() as u64;
                         break;
                     }
-
                     if line == "% end" {
                         break;
                     }
-
                     // Process header line
                     self.process_header_line(line, &mut metadata)?;
                 }
-
                 // End of file reached - this is OK if we have some valid header data
                 if !metadata.properties.is_empty() || metadata.sensor_resolution.is_some() {
                     break;
@@ -568,15 +502,12 @@ impl Evt3Reader {
                     ));
                 }
             }
-
             let byte = byte_buffer[0];
             header_size += 1;
-
             if byte == b'\n' {
                 // End of line - process the line
                 let line_str = String::from_utf8_lossy(&current_line);
                 let line = line_str.trim_end();
-
                 // Check if this line starts with "%" - if not, it's the start of binary data
                 if !line.starts_with("% ") && !line.is_empty() {
                     // This line doesn't start with "% " so binary data has started
@@ -584,16 +515,13 @@ impl Evt3Reader {
                     header_size -= current_line.len() as u64 + 1; // +1 for the newline
                     break;
                 }
-
                 if line == "% end" {
                     break;
                 }
-
                 // Process header line
                 if !line.is_empty() {
                     self.process_header_line(line, &mut metadata)?;
                 }
-
                 // Clear current line for next iteration
                 current_line.clear();
             } else {
@@ -601,17 +529,14 @@ impl Evt3Reader {
                 current_line.push(byte);
             }
         }
-
         // For Prophesee EVT3 files, sensor resolution might not be in header
         // Set a default resolution if missing (will be auto-detected from events)
         if metadata.sensor_resolution.is_none() {
             // Common resolutions for Prophesee Gen4 cameras
             metadata.sensor_resolution = Some((1280, 720)); // Default, will be updated during event parsing
         }
-
         Ok((metadata, header_size))
     }
-
     /// Process a single header line
     fn process_header_line(
         &self,
@@ -644,20 +569,16 @@ impl Evt3Reader {
         }
         Ok(())
     }
-
     /// Parse format line (e.g., "EVT3;height=720;width=1280")
     fn parse_format_line(&self, line: &str, metadata: &mut Evt3Metadata) -> Result<(), Evt3Error> {
         let parts: Vec<&str> = line.split(';').collect();
-
         if parts.is_empty() || parts[0] != "EVT3" {
             return Err(Evt3Error::InvalidHeader(format!(
                 "Expected EVT3 format, got: {line}"
             )));
         }
-
         let mut width = None;
         let mut height = None;
-
         for part in parts.iter().skip(1) {
             if let Some((key, value)) = part.split_once('=') {
                 match key {
@@ -679,14 +600,11 @@ impl Evt3Reader {
                 }
             }
         }
-
         if let (Some(w), Some(h)) = (width, height) {
             metadata.sensor_resolution = Some((w, h));
         }
-
         Ok(())
     }
-
     /// Parse geometry line (e.g., "1280x720")
     fn parse_geometry_line(
         &self,
@@ -700,17 +618,14 @@ impl Evt3Reader {
             let height = height_str.parse().map_err(|_| {
                 Evt3Error::InvalidHeader(format!("Invalid height in geometry: {height_str}"))
             })?;
-
             metadata.sensor_resolution = Some((width, height));
         } else {
             return Err(Evt3Error::InvalidHeader(format!(
                 "Invalid geometry format: {line}"
             )));
         }
-
         Ok(())
     }
-
     /// Read binary event data
     fn read_binary_data(
         &self,
@@ -719,38 +634,30 @@ impl Evt3Reader {
         metadata: &Evt3Metadata,
     ) -> Result<DataFrame, Evt3Error> {
         // Use DataFrame-based implementation
-        #[cfg(feature = "polars")]
         {
             // Seek to binary data start
             file.seek(SeekFrom::Start(header_size))?;
-
             // Estimate total events for builder capacity
             let estimated_events = ((metadata.data_size) / 2) as usize; // 2 bytes per event
             let mut builder = EventDataFrameBuilder::new(EventFormat::EVT3, estimated_events);
             let mut buffer = vec![0u8; self.config.chunk_size * 2]; // 2 bytes per event
             let mut decoder_state = DecoderState::default();
-
             let mut bytes_read_total = 0;
-
             loop {
                 let bytes_read = file.read(&mut buffer)?;
                 if bytes_read == 0 {
                     break; // End of file
                 }
-
                 bytes_read_total += bytes_read;
                 let events_in_chunk = bytes_read / 2;
-
                 // Process events in chunks
                 for i in 0..events_in_chunk {
                     let event_offset =
                         header_size + (bytes_read_total - bytes_read) as u64 + (i * 2) as u64;
                     let raw_bytes = &buffer[i * 2..(i + 1) * 2];
-
                     // Parse raw event (little-endian)
                     let raw_data = u16::from_le_bytes([raw_bytes[0], raw_bytes[1]]);
                     let raw_event = RawEvt3Event { data: raw_data };
-
                     match raw_event.event_type() {
                         Ok(event_type) => {
                             match event_type {
@@ -786,7 +693,6 @@ impl Evt3Reader {
                                             let y = decoder_state.current_y;
                                             let timestamp = decoder_state.current_timestamp as f64;
                                             let polarity = x_event.polarity;
-
                                             // Validate coordinates if configured
                                             if self.config.validate_coordinates {
                                                 if let Some((max_x, max_y)) =
@@ -808,10 +714,8 @@ impl Evt3Reader {
                                                     }
                                                 }
                                             }
-
                                             // Add event directly to DataFrame builder
                                             builder.add_event(x, y, timestamp, polarity);
-
                                             // Check max events limit
                                             if let Some(max_events) = self.config.max_events {
                                                 if builder.len() >= max_events {
@@ -848,7 +752,6 @@ impl Evt3Reader {
                                                 let timestamp =
                                                     decoder_state.current_timestamp as f64;
                                                 let polarity = decoder_state.vect_base_polarity;
-
                                                 // Validate coordinates if configured
                                                 if self.config.validate_coordinates {
                                                     if let Some((max_x, max_y)) =
@@ -863,10 +766,8 @@ impl Evt3Reader {
                                                         }
                                                     }
                                                 }
-
                                                 // Add event directly to DataFrame builder
                                                 builder.add_event(x, y, timestamp, polarity);
-
                                                 // Check max events limit
                                                 if let Some(max_events) = self.config.max_events {
                                                     if builder.len() >= max_events {
@@ -883,7 +784,6 @@ impl Evt3Reader {
                                                 }
                                             }
                                         }
-
                                         // Update vector base X
                                         decoder_state.vect_base_x += 12;
                                     }
@@ -901,7 +801,6 @@ impl Evt3Reader {
                                                 let timestamp =
                                                     decoder_state.current_timestamp as f64;
                                                 let polarity = decoder_state.vect_base_polarity;
-
                                                 // Validate coordinates if configured
                                                 if self.config.validate_coordinates {
                                                     if let Some((max_x, max_y)) =
@@ -916,10 +815,8 @@ impl Evt3Reader {
                                                         }
                                                     }
                                                 }
-
                                                 // Add event directly to DataFrame builder
                                                 builder.add_event(x, y, timestamp, polarity);
-
                                                 // Check max events limit
                                                 if let Some(max_events) = self.config.max_events {
                                                     if builder.len() >= max_events {
@@ -936,7 +833,6 @@ impl Evt3Reader {
                                                 }
                                             }
                                         }
-
                                         // Update vector base X
                                         decoder_state.vect_base_x += 8;
                                     }
@@ -958,132 +854,98 @@ impl Evt3Reader {
                     }
                 }
             }
-
             builder.build().map_err(|e| Evt3Error::InvalidBinaryData {
                 offset: 0,
                 message: format!("DataFrame build failed: {}", e),
             })
         }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            Err(Evt3Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            })
-        }
     }
 }
-
 impl Default for Evt3Reader {
     fn default() -> Self {
         Self::new()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn test_evt3_event_type_parsing() {
         // Test Y address event
         let raw_event = RawEvt3Event { data: 0x0000 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrY);
-
         // Test X address event
         let raw_event = RawEvt3Event { data: 0x0002 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrX);
-
         // Test Vector Base X event
         let raw_event = RawEvt3Event { data: 0x0003 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::VectBaseX);
-
         // Test Vector 12 event
         let raw_event = RawEvt3Event { data: 0x0004 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect12);
-
         // Test Vector 8 event
         let raw_event = RawEvt3Event { data: 0x0005 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect8);
-
         // Test Time Low event
         let raw_event = RawEvt3Event { data: 0x0006 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeLow);
-
         // Test Time High event
         let raw_event = RawEvt3Event { data: 0x0008 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeHigh);
-
         // Test External Trigger event
         let raw_event = RawEvt3Event { data: 0x000A };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::ExtTrigger);
-
         // Test Reserved event types
         let raw_event = RawEvt3Event { data: 0x0001 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Reserved1);
-
         let raw_event = RawEvt3Event { data: 0x0007 };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued4);
-
         let raw_event = RawEvt3Event { data: 0x000E };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Others);
-
         let raw_event = RawEvt3Event { data: 0x000F };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued12);
     }
-
     #[test]
     fn test_y_addr_event_parsing() {
         // Test Y address event at y=300, orig=true
         let raw_data = (1u16 << 15) | (300u16 << 4);
         let raw_event = RawEvt3Event { data: raw_data };
-
         let y_event = raw_event.as_y_addr_event().unwrap();
         assert_eq!(y_event.y, 300);
         assert!(y_event.orig);
     }
-
     #[test]
     fn test_x_addr_event_parsing() {
         // Test X address event at x=500, polarity=true
         let raw_data = (1u16 << 15) | (500u16 << 4) | 0x2;
         let raw_event = RawEvt3Event { data: raw_data };
-
         let x_event = raw_event.as_x_addr_event().unwrap();
         assert_eq!(x_event.x, 500);
         assert!(x_event.polarity);
     }
-
     #[test]
     fn test_vect12_event_parsing() {
         // Test Vector 12 event with validity mask 0xABC
         let raw_data = (0xABCu16 << 4) | 0x4;
         let raw_event = RawEvt3Event { data: raw_data };
-
         let vect12_event = raw_event.as_vect12_event().unwrap();
         assert_eq!(vect12_event.valid, 0xABC);
     }
-
     #[test]
     fn test_time_event_parsing() {
         // Test Time Low event with time=0x123
         let raw_data = (0x123u16 << 4) | 0x6;
         let raw_event = RawEvt3Event { data: raw_data };
-
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x123);
         assert!(!time_event.is_high);
-
         // Test Time High event with time=0x456
         let raw_data = (0x456u16 << 4) | 0x8;
         let raw_event = RawEvt3Event { data: raw_data };
-
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x456);
         assert!(time_event.is_high);
     }
-
     #[test]
     fn test_decoder_state_default() {
         let state = DecoderState::default();
@@ -1095,7 +957,6 @@ mod tests {
         assert!(!state.has_y);
         assert!(!state.has_timestamp);
     }
-
     #[test]
     fn test_evt3_config_default() {
         let config = Evt3Config::default();

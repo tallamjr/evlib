@@ -11,12 +11,10 @@ pub mod tracing_config;
 // numpy use removed due to unused warnings
 
 // Python utility functions (previously in ev_core::python)
-#[cfg(feature = "python")]
 pub mod python {
     use pyo3::prelude::*;
     use pyo3::types::PyAny;
 
-    #[cfg(all(feature = "polars", feature = "python"))]
     pub fn extract_lazy_frame(py_obj: &Bound<'_, PyAny>) -> PyResult<polars::prelude::LazyFrame> {
         use polars::prelude::IntoLazy;
         use pyo3_polars::PyDataFrame;
@@ -41,7 +39,6 @@ pub mod python {
         ))
     }
 
-    #[cfg(all(feature = "polars", feature = "python"))]
     pub fn lazy_frame_to_python(
         lf: polars::prelude::LazyFrame,
         py: Python<'_>,
@@ -56,20 +53,6 @@ pub mod python {
         let py_dataframe = PyDataFrame(df);
         Ok(py_dataframe.into_pyobject(py)?.into())
     }
-
-    #[cfg(not(all(feature = "polars", feature = "python")))]
-    pub fn extract_lazy_frame(_py_obj: &Bound<'_, PyAny>) -> PyResult<()> {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars and Python features are required for LazyFrame operations",
-        ))
-    }
-
-    #[cfg(not(all(feature = "polars", feature = "python")))]
-    pub fn lazy_frame_to_python(_lf: (), _py: Python<'_>) -> PyResult<PyObject> {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars and Python features are required for LazyFrame operations",
-        ))
-    }
 }
 
 // Test modules
@@ -78,16 +61,13 @@ pub mod python {
 // #[cfg(test)]
 // mod test_polarity_conversion;
 
-#[cfg(feature = "python")]
 use pyo3::prelude::*;
-#[cfg(feature = "python")]
 use pyo3::wrap_pyfunction;
 
 /// Minimal Python module with only working functionality
 ///
 /// This library provides basic event camera data processing with focus on
 /// working file loading and core functionality only.
-#[cfg(feature = "python")]
 #[pymodule]
 fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register helper functions
@@ -100,14 +80,11 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add top-level detect_format function (wrapper around formats.detect_format)
     m.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, m)?)?;
 
-    // Add top-level arrow functions (requires both python and arrow features)
-    #[cfg(all(feature = "python", feature = "arrow"))]
-    {
-        m.add_function(wrap_pyfunction!(
-            ev_formats::python::load_events_to_pyarrow,
-            m
-        )?)?;
-    }
+    // Add top-level arrow functions
+    m.add_function(wrap_pyfunction!(
+        ev_formats::python::load_events_to_pyarrow,
+        m
+    )?)?;
 
     // Add top-level save functions (wrappers around formats functions)
     #[cfg(feature = "hdf5")]
@@ -119,26 +96,22 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register legacy "core" module using migrated functions from ev_formats
     // These functions maintain backward compatibility for existing Python code
     let core_submodule = PyModule::new(m.py(), "core")?;
-    // PyO3 0.25 API compatible
-    #[cfg(feature = "python")]
-    {
-        core_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::events_to_block_py,
-            &core_submodule
-        )?)?;
-        core_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::merge_events_py,
-            &core_submodule
-        )?)?;
-        core_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::add_random_events_py,
-            &core_submodule
-        )?)?;
-        core_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::remove_events_py,
-            &core_submodule
-        )?)?;
-    }
+    core_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::events_to_block_py,
+        &core_submodule
+    )?)?;
+    core_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::merge_events_py,
+        &core_submodule
+    )?)?;
+    core_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::add_random_events_py,
+        &core_submodule
+    )?)?;
+    core_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::remove_events_py,
+        &core_submodule
+    )?)?;
     m.add_submodule(&core_submodule)?;
 
     // Note: Representations module now implemented in Python (issue #34)
@@ -178,71 +151,53 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &formats_submodule
     )?)?;
 
-    // Add Apache Arrow integration functions (requires both python and arrow features)
-    #[cfg(all(feature = "python", feature = "arrow"))]
-    {
-        formats_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::load_events_to_pyarrow,
-            &formats_submodule
-        )?)?;
-        formats_submodule.add_function(wrap_pyfunction!(
-            ev_formats::python::pyarrow_to_events_py,
-            &formats_submodule
-        )?)?;
-    }
+    // Add Apache Arrow integration functions
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::load_events_to_pyarrow,
+        &formats_submodule
+    )?)?;
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::pyarrow_to_events_py,
+        &formats_submodule
+    )?)?;
 
     m.add_submodule(&formats_submodule)?;
 
     // Register tracing_config module for Python logging control
     let tracing_submodule = PyModule::new(m.py(), "tracing_config")?;
-    #[cfg(feature = "python")]
-    {
-        tracing_submodule.add_function(wrap_pyfunction!(
-            tracing_config::python::init_py,
-            &tracing_submodule
-        )?)?;
-        tracing_submodule.add_function(wrap_pyfunction!(
-            tracing_config::python::init_debug_py,
-            &tracing_submodule
-        )?)?;
-        tracing_submodule.add_function(wrap_pyfunction!(
-            tracing_config::python::init_with_filter_py,
-            &tracing_submodule
-        )?)?;
-        tracing_submodule.add_function(wrap_pyfunction!(
-            tracing_config::python::init_production_py,
-            &tracing_submodule
-        )?)?;
-        tracing_submodule.add_function(wrap_pyfunction!(
-            tracing_config::python::init_development_py,
-            &tracing_submodule
-        )?)?;
-
-        // Functions are already exported with clean names via #[pyo3(name = "...")] attributes
-        // No need for additional aliases
-    }
+    tracing_submodule.add_function(wrap_pyfunction!(
+        tracing_config::python::init_py,
+        &tracing_submodule
+    )?)?;
+    tracing_submodule.add_function(wrap_pyfunction!(
+        tracing_config::python::init_debug_py,
+        &tracing_submodule
+    )?)?;
+    tracing_submodule.add_function(wrap_pyfunction!(
+        tracing_config::python::init_with_filter_py,
+        &tracing_submodule
+    )?)?;
+    tracing_submodule.add_function(wrap_pyfunction!(
+        tracing_config::python::init_production_py,
+        &tracing_submodule
+    )?)?;
+    tracing_submodule.add_function(wrap_pyfunction!(
+        tracing_config::python::init_development_py,
+        &tracing_submodule
+    )?)?;
     m.add_submodule(&tracing_submodule)?;
 
     // Register ev_filtering module as "filtering" in Python - NEW HIGH-PERFORMANCE FILTERING
     let filtering_submodule = PyModule::new(m.py(), "filtering")?;
-    #[cfg(feature = "python")]
-    {
-        ev_filtering::python::register_filtering_functions(&filtering_submodule)?;
-    }
+    ev_filtering::python::register_filtering_functions(&filtering_submodule)?;
     m.add_submodule(&filtering_submodule)?;
 
     // Also add filtering functions to top-level module for convenience
-    #[cfg(feature = "python")]
-    {
-        ev_filtering::python::register_filtering_functions(m)?;
-    }
+    ev_filtering::python::register_filtering_functions(m)?;
 
     // Register ev_augmentation module as "ev_augmentation" in Python - NEW AUGMENTATION FUNCTIONALITY
     let augmentation_submodule = PyModule::new(m.py(), "ev_augmentation")?;
-    #[cfg(feature = "python")]
-    {
-        ev_augmentation::python::register_augmentation_functions(&augmentation_submodule)?;
-    }
+    ev_augmentation::python::register_augmentation_functions(&augmentation_submodule)?;
     m.add_submodule(&augmentation_submodule)?;
 
     // Build info
@@ -252,14 +207,7 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Returns the version of the library
-#[cfg(feature = "python")]
 #[pyfunction]
 fn version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
-}
-
-/// Returns the version of the library (non-Python version)
-#[cfg(not(feature = "python"))]
-pub fn version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
 }

@@ -1,5 +1,6 @@
 /// EVT2.1 binary event reader for Prophesee event camera data
 ///
+///
 /// This module provides a reader for EVT2.1 (Event Data 2.1) format used by Prophesee event cameras.
 /// EVT2.1 is a 64-bit vectorized data format designed for high-speed event processing with improved
 /// compression through vectorized events that can encode up to 32 pixels per event word.
@@ -24,14 +25,11 @@ use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
 use crate::ev_formats::streaming::Event;
 use crate::ev_formats::EventFormat;
 use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
-
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
-
 /// EVT2.1 event types encoded in 4-bit field
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -69,10 +67,8 @@ pub enum Evt21EventType {
     /// CONTINUED event type - extra data for events arriving in multiple words
     Continued = 0x0F,
 }
-
 impl TryFrom<u8> for Evt21EventType {
     type Error = Evt21Error;
-
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x00 => Ok(Evt21EventType::EvtNeg),
@@ -98,21 +94,18 @@ impl TryFrom<u8> for Evt21EventType {
         }
     }
 }
-
 /// Raw EVT2.1 event structure (64-bit word)
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct RawEvt21Event {
     pub data: u64,
 }
-
 impl RawEvt21Event {
     /// Extract event type from raw data
     pub fn event_type(&self) -> Result<Evt21EventType, Evt21Error> {
         let type_bits = ((self.data >> 60) & 0x0F) as u8;
         Evt21EventType::try_from(type_bits)
     }
-
     /// Parse as vectorized event (EVT_NEG or EVT_POS)
     pub fn as_vectorized_event(&self) -> Result<VectorizedEvent, Evt21Error> {
         let event_type = self.event_type()?;
@@ -122,23 +115,17 @@ impl RawEvt21Event {
                 offset: 0,
             });
         }
-
         let polarity = matches!(event_type, Evt21EventType::EvtPos);
-
         // Extract fields from 64-bit word per official EVT2.1 specification
         // Bits 63-60: 4-bit event type (already extracted above)
         // Bits 59-54: 6-bit timestamp (least significant bits)
         let timestamp = ((self.data >> 54) & 0x3F) as u16;
-
         // Bits 53-43: 11-bit X coordinate (aligned on 32)
         let x_base = ((self.data >> 43) & 0x7FF) as u16;
-
         // Bits 42-32: 11-bit Y coordinate
         let y = ((self.data >> 32) & 0x7FF) as u16;
-
         // Bits 31-0: 32-bit validity mask (representing 32 pixel events)
         let validity_mask = (self.data & 0xFFFFFFFF) as u32;
-
         Ok(VectorizedEvent {
             x_base,
             y,
@@ -147,7 +134,6 @@ impl RawEvt21Event {
             validity_mask,
         })
     }
-
     /// Parse as Time High event
     pub fn as_time_high_event(&self) -> Result<TimeHighEvent, Evt21Error> {
         if self.event_type()? != Evt21EventType::TimeHigh {
@@ -156,12 +142,10 @@ impl RawEvt21Event {
                 offset: 0,
             });
         }
-
         Ok(TimeHighEvent {
             timestamp: (self.data >> 32) & 0x0FFFFFFF,
         })
     }
-
     /// Parse as External Trigger event
     pub fn as_ext_trigger_event(&self) -> Result<ExtTriggerEvent, Evt21Error> {
         if self.event_type()? != Evt21EventType::ExtTrigger {
@@ -170,14 +154,12 @@ impl RawEvt21Event {
                 offset: 0,
             });
         }
-
         Ok(ExtTriggerEvent {
             value: ((self.data >> 32) & 0x1) != 0,
             id: ((self.data >> 40) & 0x1F) as u8,
             timestamp: ((self.data >> 54) & 0x3F) as u16,
         })
     }
-
     /// Parse as vendor-specific event
     pub fn as_vendor_event(&self) -> Result<VendorEvent, Evt21Error> {
         let event_type = self.event_type()?;
@@ -199,14 +181,12 @@ impl RawEvt21Event {
                 offset: 0,
             });
         }
-
         Ok(VendorEvent {
             event_type,
             data: (self.data >> 4) & 0x0FFFFFFFFFFFFFFF,
         })
     }
 }
-
 /// Vectorized event structure for EVT_NEG and EVT_POS
 #[derive(Debug, Clone, Copy)]
 pub struct VectorizedEvent {
@@ -216,13 +196,11 @@ pub struct VectorizedEvent {
     pub polarity: bool,     // Event polarity (true for EVT_POS, false for EVT_NEG)
     pub validity_mask: u32, // 32-bit mask indicating valid pixels
 }
-
 /// Time High event structure for 64-bit timestamps
 #[derive(Debug, Clone, Copy)]
 pub struct TimeHighEvent {
     pub timestamp: u64, // 60-bit timestamp (MSB of full timestamp)
 }
-
 /// External Trigger event structure
 #[derive(Debug, Clone, Copy)]
 pub struct ExtTriggerEvent {
@@ -230,14 +208,12 @@ pub struct ExtTriggerEvent {
     pub id: u8,         // Trigger channel ID (5 bits)
     pub timestamp: u16, // 10-bit timestamp (LSB of full timestamp)
 }
-
 /// Vendor-specific event structure
 #[derive(Debug, Clone, Copy)]
 pub struct VendorEvent {
     pub event_type: Evt21EventType,
     pub data: u64, // 60-bit vendor-specific data
 }
-
 /// Errors that can occur during EVT2.1 reading
 #[derive(Debug)]
 pub enum Evt21Error {
@@ -265,7 +241,6 @@ pub enum Evt21Error {
     PolarityError(Box<dyn std::error::Error + Send + Sync>),
     VectorizedDecodingError(String),
 }
-
 impl std::fmt::Display for Evt21Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -297,7 +272,6 @@ impl std::fmt::Display for Evt21Error {
         }
     }
 }
-
 impl std::error::Error for Evt21Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -307,13 +281,11 @@ impl std::error::Error for Evt21Error {
         }
     }
 }
-
 impl From<std::io::Error> for Evt21Error {
     fn from(error: std::io::Error) -> Self {
         Evt21Error::Io(error)
     }
 }
-
 /// Configuration for EVT2.1 reader
 #[derive(Debug, Clone)]
 pub struct Evt21Config {
@@ -332,7 +304,6 @@ pub struct Evt21Config {
     /// Whether to decode vectorized events (if false, only individual events)
     pub decode_vectorized: bool,
 }
-
 impl Default for Evt21Config {
     fn default() -> Self {
         Self {
@@ -346,7 +317,6 @@ impl Default for Evt21Config {
         }
     }
 }
-
 /// Metadata extracted from EVT2.1 header
 #[derive(Debug, Clone, Default)]
 pub struct Evt21Metadata {
@@ -363,13 +333,11 @@ pub struct Evt21Metadata {
     /// Estimated event count
     pub estimated_event_count: Option<u64>,
 }
-
 /// EVT2.1 reader implementation
 pub struct Evt21Reader {
     config: Evt21Config,
     polarity_handler: Option<PolarityHandler>,
 }
-
 impl Evt21Reader {
     /// Create new EVT2.1 reader with default configuration
     pub fn new() -> Self {
@@ -378,20 +346,17 @@ impl Evt21Reader {
             polarity_handler: None,
         }
     }
-
     /// Create new EVT2.1 reader with custom configuration
     pub fn with_config(config: Evt21Config) -> Self {
         let polarity_handler = config
             .polarity_encoding
             .as_ref()
             .map(|_encoding| PolarityHandler::new());
-
         Self {
             config,
             polarity_handler,
         }
     }
-
     /// Read EVT2.1 file and return events with metadata
     pub fn read_file<P: AsRef<Path>>(
         &self,
@@ -400,19 +365,15 @@ impl Evt21Reader {
         let path = path.as_ref();
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len();
-
         // Parse header
         let (metadata, header_size) = self.parse_header(&mut file)?;
-
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-
         // Apply polarity encoding if configured
         if let Some(ref _handler) = self.polarity_handler {
             // For now, we'll skip polarity conversion as the implementation needs adjustment
             // The events already use the standard -1/1 encoding
         }
-
         let final_metadata = Evt21Metadata {
             file_size,
             header_size,
@@ -420,10 +381,8 @@ impl Evt21Reader {
             estimated_event_count: Some(events.height() as u64),
             ..metadata
         };
-
         Ok((events, final_metadata))
     }
-
     /// Read EVT2.1 file with LoadConfig filtering
     pub fn read_with_config<P: AsRef<Path>>(
         &self,
@@ -431,12 +390,9 @@ impl Evt21Reader {
         load_config: &LoadConfig,
     ) -> Result<DataFrame, Evt21Error> {
         let (df, _) = self.read_file(path)?;
-
-        #[cfg(feature = "polars")]
         {
             use polars::prelude::*;
             let mut df = df;
-
             // Apply time window filter if specified
             if let (Some(start), Some(end)) = (load_config.t_start, load_config.t_end) {
                 df = df
@@ -448,7 +404,6 @@ impl Evt21Reader {
                         message: format!("Time window filter failed: {}", e),
                     })?;
             }
-
             // Apply bounding box filter if specified
             if let (Some(x_min), Some(x_max), Some(y_min), Some(y_max)) = (
                 load_config.min_x,
@@ -471,7 +426,6 @@ impl Evt21Reader {
                         message: format!("Bounding box filter failed: {}", e),
                     })?;
             }
-
             // Sort if requested
             if load_config.sort {
                 df = df.sort(["t"], Default::default()).map_err(|e| {
@@ -481,16 +435,7 @@ impl Evt21Reader {
                     }
                 })?;
             }
-
             Ok(df)
-        }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            Err(Evt21Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            })
         }
     }
 
@@ -499,7 +444,6 @@ impl Evt21Reader {
         let mut reader = BufReader::new(file);
         let mut metadata = Evt21Metadata::default();
         let mut header_size = 0u64;
-
         // Read header line by line
         loop {
             let mut line = String::new();
@@ -509,14 +453,11 @@ impl Evt21Reader {
                     "Unexpected end of file".to_string(),
                 ));
             }
-
             header_size += bytes_read as u64;
             let line = line.trim_end();
-
             if line == "% end" {
                 break;
             }
-
             // Parse header fields
             if let Some(stripped) = line.strip_prefix("% ") {
                 if let Some((key, value)) = stripped.split_once(' ') {
@@ -543,17 +484,14 @@ impl Evt21Reader {
                 }
             }
         }
-
         // Validate required fields
         if metadata.sensor_resolution.is_none() {
             return Err(Evt21Error::InvalidHeader(
                 "Missing sensor resolution".to_string(),
             ));
         }
-
         Ok((metadata, header_size))
     }
-
     /// Parse format line (e.g., "EVT21;height=720;width=1280")
     fn parse_format_line(
         &self,
@@ -561,16 +499,13 @@ impl Evt21Reader {
         metadata: &mut Evt21Metadata,
     ) -> Result<(), Evt21Error> {
         let parts: Vec<&str> = line.split(';').collect();
-
         if parts.is_empty() || !parts[0].starts_with("EVT2") {
             return Err(Evt21Error::InvalidHeader(format!(
                 "Expected EVT2.1 format, got: {line}"
             )));
         }
-
         let mut width = None;
         let mut height = None;
-
         for part in parts.iter().skip(1) {
             if let Some((key, value)) = part.split_once('=') {
                 match key {
@@ -592,14 +527,11 @@ impl Evt21Reader {
                 }
             }
         }
-
         if let (Some(w), Some(h)) = (width, height) {
             metadata.sensor_resolution = Some((w, h));
         }
-
         Ok(())
     }
-
     /// Parse geometry line (e.g., "1280x720")
     fn parse_geometry_line(
         &self,
@@ -613,17 +545,14 @@ impl Evt21Reader {
             let height = height_str.parse().map_err(|_| {
                 Evt21Error::InvalidHeader(format!("Invalid height in geometry: {height_str}"))
             })?;
-
             metadata.sensor_resolution = Some((width, height));
         } else {
             return Err(Evt21Error::InvalidHeader(format!(
                 "Invalid geometry format: {line}"
             )));
         }
-
         Ok(())
     }
-
     /// Read binary event data
     fn read_binary_data(
         &self,
@@ -632,43 +561,34 @@ impl Evt21Reader {
         metadata: &Evt21Metadata,
     ) -> Result<DataFrame, Evt21Error> {
         // Use DataFrame-based implementation
-        #[cfg(feature = "polars")]
         {
             // Seek to binary data start
             file.seek(SeekFrom::Start(header_size))?;
-
             // Estimate total events for builder capacity
             let estimated_events = ((metadata.data_size) / 8) as usize; // 8 bytes per 64-bit word
             let mut builder = EventDataFrameBuilder::new(EventFormat::EVT21, estimated_events);
             let mut buffer = vec![0u8; self.config.chunk_size * 8]; // 8 bytes per 64-bit word
-
-            // State for timestamp reconstruction
+                                                                    // State for timestamp reconstruction
             let mut current_time_base: u64 = 0;
             let mut first_time_base_set = false;
             let mut time_high_loop_count = 0u64;
-
             // Constants for 64-bit timestamp handling
             const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 50) - 1) << 10;
             const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 10);
             const LOOP_THRESHOLD: u64 = 10 << 10;
-
             let mut bytes_read_total = 0;
-
             loop {
                 let bytes_read = file.read(&mut buffer)?;
                 if bytes_read == 0 {
                     break; // End of file
                 }
-
                 bytes_read_total += bytes_read;
                 let words_in_chunk = bytes_read / 8;
-
                 // Process events in chunks
                 for i in 0..words_in_chunk {
                     let word_offset =
                         header_size + (bytes_read_total - bytes_read) as u64 + (i * 8) as u64;
                     let raw_bytes = &buffer[i * 8..(i + 1) * 8];
-
                     // Parse raw event (little-endian)
                     let raw_data = u64::from_le_bytes([
                         raw_bytes[0],
@@ -680,9 +600,7 @@ impl Evt21Reader {
                         raw_bytes[6],
                         raw_bytes[7],
                     ]);
-
                     let raw_event = RawEvt21Event { data: raw_data };
-
                     match raw_event.event_type() {
                         Ok(event_type) => {
                             match event_type {
@@ -691,7 +609,6 @@ impl Evt21Reader {
                                         let new_time_base = time_event.timestamp << 10;
                                         let new_time_base_with_loops =
                                             new_time_base + time_high_loop_count * TIME_LOOP;
-
                                         // Handle time loop detection
                                         if current_time_base > new_time_base_with_loops
                                             && current_time_base - new_time_base_with_loops
@@ -703,7 +620,6 @@ impl Evt21Reader {
                                         } else {
                                             current_time_base = new_time_base_with_loops;
                                         }
-
                                         first_time_base_set = true;
                                     }
                                 }
@@ -712,7 +628,6 @@ impl Evt21Reader {
                                     if !first_time_base_set {
                                         continue;
                                     }
-
                                     if let Ok(vectorized_event) = raw_event.as_vectorized_event() {
                                         // Decode vectorized event into individual events
                                         if self.config.decode_vectorized {
@@ -728,7 +643,6 @@ impl Evt21Reader {
                                                         + vectorized_event.timestamp as u64;
                                                     let timestamp = full_timestamp as f64;
                                                     let polarity = vectorized_event.polarity;
-
                                                     // Validate coordinates if configured
                                                     if self.config.validate_coordinates {
                                                         if let Some((max_x, max_y)) =
@@ -743,10 +657,8 @@ impl Evt21Reader {
                                                             }
                                                         }
                                                     }
-
                                                     // Add event directly to DataFrame builder
                                                     builder.add_event(x, y, timestamp, polarity);
-
                                                     // Check max events limit
                                                     if let Some(max_events) = self.config.max_events
                                                     {
@@ -781,22 +693,12 @@ impl Evt21Reader {
                     }
                 }
             }
-
             builder.build().map_err(|e| Evt21Error::InvalidBinaryData {
                 offset: 0,
                 message: format!("DataFrame build failed: {}", e),
             })
         }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            Err(Evt21Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            })
-        }
     }
-
     /// Decode a vectorized event into individual events
     /// Used primarily for testing and standalone event processing
     pub fn decode_vectorized_event(
@@ -806,7 +708,6 @@ impl Evt21Reader {
         metadata: &Evt21Metadata,
     ) -> Result<Vec<Event>, Evt21Error> {
         let mut events = Vec::new();
-
         // Iterate through the 32-bit validity mask
         for bit_index in 0..32 {
             if (vectorized_event.validity_mask >> bit_index) & 1 != 0 {
@@ -815,7 +716,6 @@ impl Evt21Reader {
                 let full_timestamp = current_time_base + vectorized_event.timestamp as u64;
                 let timestamp = full_timestamp as f64 / 1_000_000.0; // Convert to seconds
                 let polarity = if vectorized_event.polarity { 1 } else { -1 };
-
                 // Validate coordinates if configured
                 if self.config.validate_coordinates {
                     if let Some((max_x, max_y)) = metadata.sensor_resolution {
@@ -833,7 +733,6 @@ impl Evt21Reader {
                         }
                     }
                 }
-
                 events.push(Event {
                     t: timestamp,
                     x,
@@ -842,24 +741,20 @@ impl Evt21Reader {
                 });
             }
         }
-
         Ok(events)
     }
 }
-
 impl Default for Evt21Reader {
     fn default() -> Self {
         Self::new()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
     use tempfile::TempDir;
-
     #[test]
     fn test_evt21_event_type_parsing() {
         // Test EVT_NEG event
@@ -867,51 +762,42 @@ mod tests {
             data: 0x0000000000000000, // Event type 0x0 (EvtNeg) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtNeg);
-
         // Test EVT_POS event
         let raw_event = RawEvt21Event {
             data: 0x1000000000000000, // Event type 0x1 (EvtPos) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtPos);
-
         // Test Time High event
         let raw_event = RawEvt21Event {
             data: 0x8000000000000000, // Event type 0x8 (TimeHigh) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::TimeHigh);
-
         // Test External Trigger event
         let raw_event = RawEvt21Event {
             data: 0xA000000000000000, // Event type 0xA (ExtTrigger) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::ExtTrigger);
-
         // Test that all 4-bit values are accepted (event type now at bits 63-60)
         let raw_event = RawEvt21Event {
             data: 0x0000000000000000, // Event type 0x0 (EVT_NEG) at bits 63-60
         };
         assert_eq!(raw_event.event_type().unwrap(), Evt21EventType::EvtNeg);
     }
-
     #[test]
     fn test_vectorized_event_parsing() {
         // Test EVT_POS event at (100, 200) with timestamp 30 and validity mask 0x0000000F
         // Using correct EVT2.1 bit layout from official specification
-
         // Bits 63-60: Event type (0x1 for EVT_POS)
         // Bits 59-54: Timestamp (30)
         // Bits 53-43: X coordinate (100)
         // Bits 42-32: Y coordinate (200)
         // Bits 31-0: Validity mask (0x0000000F)
-
         let raw_data = (0x1u64 << 60) |        // Event type: EVT_POS
                       (30u64 << 54) |          // Timestamp: 30
                       (100u64 << 43) |         // X coordinate: 100
                       (200u64 << 32) |         // Y coordinate: 200
                       0x0000000F; // Validity mask: 0x0000000F
-
         let raw_event = RawEvt21Event { data: raw_data };
-
         let vec_event = raw_event.as_vectorized_event().unwrap();
         assert_eq!(vec_event.x_base, 100);
         assert_eq!(vec_event.y, 200);
@@ -919,50 +805,41 @@ mod tests {
         assert!(vec_event.polarity);
         assert_eq!(vec_event.validity_mask, 0x0000000F);
     }
-
     #[test]
     fn test_time_high_event_parsing() {
         // Test Time High event with timestamp 0x2345678 (28 bits max)
         let raw_data = (0x8u64 << 60) | (0x02345678u64 << 32);
         let raw_event = RawEvt21Event { data: raw_data };
-
         let time_event = raw_event.as_time_high_event().unwrap();
         assert_eq!(time_event.timestamp, 0x02345678);
     }
-
     #[test]
     fn test_ext_trigger_event_parsing() {
         // Test External Trigger event with value=true, id=15, timestamp=30
         // Event type 0xA at bits 63-60, timestamp at bits 59-54, id at bits 44-40, value at bit 32
         let raw_data = (0xAu64 << 60) | (30u64 << 54) | (15u64 << 40) | (1u64 << 32);
         let raw_event = RawEvt21Event { data: raw_data };
-
         let trigger_event = raw_event.as_ext_trigger_event().unwrap();
         assert!(trigger_event.value);
         assert_eq!(trigger_event.id, 15);
         assert_eq!(trigger_event.timestamp, 30);
     }
-
     #[test]
     fn test_header_parsing() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.raw");
-
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "% evt 2.1").unwrap();
         writeln!(file, "% format EVT21;height=720;width=1280").unwrap();
         writeln!(file, "% geometry 1280x720").unwrap();
         writeln!(file, "% end").unwrap();
         file.write_all(&[0u8; 64]).unwrap(); // Some dummy binary data
-
         let reader = Evt21Reader::new();
         let mut file = File::open(&file_path).unwrap();
         let (metadata, header_size) = reader.parse_header(&mut file).unwrap();
-
         assert_eq!(metadata.sensor_resolution, Some((1280, 720)));
         assert!(header_size > 0);
     }
-
     #[test]
     fn test_evt21_config_default() {
         let config = Evt21Config::default();
@@ -972,7 +849,6 @@ mod tests {
         assert_eq!(config.chunk_size, 500_000);
         assert!(config.decode_vectorized);
     }
-
     #[test]
     fn test_decode_vectorized_event() {
         let reader = Evt21Reader::new();
@@ -980,7 +856,6 @@ mod tests {
             sensor_resolution: Some((1280, 720)),
             ..Default::default()
         };
-
         let vectorized_event = VectorizedEvent {
             x_base: 100,
             y: 200,
@@ -988,24 +863,20 @@ mod tests {
             polarity: true,
             validity_mask: 0x0000000F, // First 4 bits set
         };
-
         let events = reader
             .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
             .unwrap();
         assert_eq!(events.len(), 4); // 4 bits set in validity mask
-
-        // Check first event
+                                     // Check first event
         assert_eq!(events[0].x, 100);
         assert_eq!(events[0].y, 200);
         assert!(events[0].polarity);
         assert_eq!(events[0].t, 1.000030); // (1000000 + 30) / 1_000_000.0
-
-        // Check last event
+                                           // Check last event
         assert_eq!(events[3].x, 103);
         assert_eq!(events[3].y, 200);
         assert!(events[3].polarity);
     }
-
     #[test]
     fn test_coordinate_validation() {
         let config = Evt21Config {
@@ -1018,7 +889,6 @@ mod tests {
             sensor_resolution: Some((100, 100)),
             ..Default::default()
         };
-
         let vectorized_event = VectorizedEvent {
             x_base: 98,
             y: 200, // Out of bounds
@@ -1026,7 +896,6 @@ mod tests {
             polarity: true,
             validity_mask: 0x00000001,
         };
-
         let result = reader.decode_vectorized_event(&vectorized_event, 1000000, &metadata);
         assert!(result.is_err());
         assert!(matches!(
@@ -1034,7 +903,6 @@ mod tests {
             Evt21Error::CoordinateOutOfBounds { .. }
         ));
     }
-
     #[test]
     fn test_coordinate_validation_with_skip() {
         let config = Evt21Config {
@@ -1047,7 +915,6 @@ mod tests {
             sensor_resolution: Some((100, 100)),
             ..Default::default()
         };
-
         let vectorized_event = VectorizedEvent {
             x_base: 98,
             y: 200, // Out of bounds
@@ -1055,7 +922,6 @@ mod tests {
             polarity: true,
             validity_mask: 0x00000001,
         };
-
         let events = reader
             .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
             .unwrap();

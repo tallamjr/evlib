@@ -62,10 +62,8 @@ pub fn decimate_events(events: &Events, n: usize) -> AugmentationResult<Events> 
 */
 
 /// Apply decimate using Polars operations
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
-#[cfg(feature = "polars")]
 pub fn apply_decimate_polars(
     df: LazyFrame,
     config: &DecimateAugmentation,

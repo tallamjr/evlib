@@ -36,7 +36,6 @@ pub fn filter_by_time_lf_py(
     t_start: Option<f64>,
     t_end: Option<f64>,
 ) -> PyResult<PyObject> {
-    #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
         let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
@@ -64,13 +63,6 @@ pub fn filter_by_time_lf_py(
         // Convert back to Python LazyFrame
         crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
-
-    #[cfg(not(feature = "polars"))]
-    {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars feature is required for LazyFrame filtering",
-        ))
-    }
 }
 
 /// Filter events by region of interest (LazyFrame compatible)
@@ -95,7 +87,6 @@ pub fn filter_by_roi_lf_py(
     y_min: i64,
     y_max: i64,
 ) -> PyResult<PyObject> {
-    #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
         let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
@@ -118,13 +109,6 @@ pub fn filter_by_roi_lf_py(
         // Convert back to Python LazyFrame
         crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
-
-    #[cfg(not(feature = "polars"))]
-    {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars feature is required for LazyFrame filtering",
-        ))
-    }
 }
 
 /// Filter events by polarity (LazyFrame compatible)
@@ -143,7 +127,6 @@ pub fn filter_by_polarity_lf_py(
     events_lf: &Bound<'_, PyAny>,
     polarity: &Bound<'_, PyAny>,
 ) -> PyResult<PyObject> {
-    #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
         let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
@@ -177,13 +160,6 @@ pub fn filter_by_polarity_lf_py(
         // Convert back to Python LazyFrame
         crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
     }
-
-    #[cfg(not(feature = "polars"))]
-    {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars feature is required for LazyFrame filtering",
-        ))
-    }
 }
 
 /// Remove hot pixels (LazyFrame compatible)
@@ -202,7 +178,6 @@ pub fn filter_hot_pixels_lf_py(
     events_lf: &Bound<'_, PyAny>,
     threshold_percentile: Option<f64>,
 ) -> PyResult<PyObject> {
-    #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
         let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
@@ -222,13 +197,6 @@ pub fn filter_hot_pixels_lf_py(
 
         // Convert back to Python LazyFrame
         crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
-    }
-
-    #[cfg(not(feature = "polars"))]
-    {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars feature is required for LazyFrame filtering",
-        ))
     }
 }
 
@@ -250,7 +218,6 @@ pub fn filter_noise_lf_py(
     method: Option<&str>,
     refractory_period_us: Option<f64>,
 ) -> PyResult<PyObject> {
-    #[cfg(feature = "polars")]
     {
         // Extract LazyFrame from Python
         let lazy_frame = crate::python::extract_lazy_frame(events_lf)?;
@@ -285,13 +252,6 @@ pub fn filter_noise_lf_py(
 
         // Convert back to Python LazyFrame
         crate::python::lazy_frame_to_python(filtered_lf, events_lf.py())
-    }
-
-    #[cfg(not(feature = "polars"))]
-    {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "Polars feature is required for LazyFrame filtering",
-        ))
     }
 }
 

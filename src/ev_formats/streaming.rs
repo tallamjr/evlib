@@ -14,7 +14,6 @@ pub struct Event {
     pub polarity: i8,
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Configuration for streaming event processing
@@ -126,7 +125,6 @@ impl PolarsEventStreamer {
     ///
     /// # Returns
     /// Result containing a Polars DataFrame with all events
-    #[cfg(feature = "polars")]
     #[allow(unused_assignments)]
     pub fn stream_to_polars<I>(&self, events: I) -> PolarsResult<DataFrame>
     where
@@ -218,7 +216,6 @@ impl PolarsEventStreamer {
     ///
     /// # Returns
     /// Result containing a Polars DataFrame for this chunk
-    #[cfg(feature = "polars")]
     pub fn build_chunk(&self, events: &[Event]) -> PolarsResult<DataFrame> {
         use polars::prelude::*;
 
@@ -297,7 +294,6 @@ impl PolarsEventStreamer {
     }
 
     /// Create an empty DataFrame with the correct schema
-    #[cfg(feature = "polars")]
     fn create_empty_dataframe(&self) -> PolarsResult<DataFrame> {
         let empty_x = Series::new("x".into(), Vec::<i16>::new());
         let empty_y = Series::new("y".into(), Vec::<i16>::new());
@@ -423,7 +419,6 @@ mod tests {
         assert!(usage_1m > 0);
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_polars_event_streamer_empty() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
@@ -436,7 +431,6 @@ mod tests {
         assert_eq!(df.width(), 4);
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_polars_event_streamer_small_chunk() {
         let streamer = PolarsEventStreamer::new(2, EventFormat::HDF5);
@@ -473,7 +467,6 @@ mod tests {
         assert_eq!(columns, vec!["x", "y", "t", "polarity"]);
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_polarity_conversion() {
         let streamer_evt2 = PolarsEventStreamer::new(1000, EventFormat::EVT2);
@@ -486,7 +479,6 @@ mod tests {
         assert_eq!(streamer_hdf5.convert_polarity(false), -1i8);
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_timestamp_conversion() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
