@@ -78,8 +78,9 @@ jobs:
 
       - name: Run tests
         run: |
-          uv run pytest -v tests/ -m "not slow and not integration"
-          uv run pytest --nbmake examples/*.ipynb -v --no-cov
+          # Run pytest directly from venv instead of 'uv run' which creates isolated env
+          pytest -v tests/ -m "not slow and not integration"
+          pytest --nbmake examples/*.ipynb -v --no-cov
         shell: bash
 
       # Temporarily disabled - documentation tests need fixing
@@ -90,7 +91,7 @@ jobs:
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-        run: uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        run: pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
         shell: bash
 
       - name: Upload coverage to Codecov
