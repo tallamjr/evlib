@@ -54,26 +54,16 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Install maturin
-        run: uv pip install maturin>=1.7.4
-
-      - name: Build Rust extension
-        run: |
-          # Build with platform-appropriate features
-          # Cargo.toml has platform-specific dependencies for Unix (HDF5, tracing)
-          uv run maturin develop --release
-        shell: bash
-
-      - name: Install Python dependencies
+      - name: Install dependencies and build evlib
         run: |
           # On macOS, build h5py from source to ensure compatibility with system HDF5
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             export HDF5_DIR="${HDF5_DIR}"
             uv pip install --no-binary h5py "h5py>=3.8.0"
           fi
-          # Install extra dependencies (evlib already installed by maturin develop above)
-          # This will only install the dependencies from [all], not rebuild evlib
-          uv pip install .[all]
+          # Install evlib with all extras in one step
+          # This ensures maturin is only invoked once via pip's build-backend
+          MATURIN_PEP517_ARGS="--release" uv pip install -e .[all]
         shell: bash
 
       - name: Run tests
