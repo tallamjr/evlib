@@ -76,6 +76,17 @@ jobs:
           uv pip install .[all]
         shell: bash
 
+      - name: Debug - Find .pyd file location (Windows only)
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo "=== Searching entire workspace for evlib .pyd files ==="
+          find . -name "evlib*.pyd" 2>/dev/null || echo "No evlib .pyd files found with find"
+          echo ""
+          echo "=== Checking sys.prefix/Lib/site-packages ==="
+          python -c "import sys, os; sp = os.path.join(sys.prefix, 'Lib', 'site-packages'); print('Path:', sp); print('Exists:', os.path.isdir(sp))"
+          python -c "import sys, os, glob; sp = os.path.join(sys.prefix, 'Lib', 'site-packages'); print('PYD files there:', glob.glob(os.path.join(sp, '*.pyd')))"
+        shell: bash
+
       - name: Run tests
         run: |
           # Run pytest directly from venv instead of 'uv run' which creates isolated env

@@ -71,6 +71,13 @@ try:
         search_paths.extend(site.getsitepackages())
     if hasattr(site, "getusersitepackages"):
         search_paths.append(site.getusersitepackages())
+
+    # Critical for Windows venv: sys.prefix/Lib/site-packages might not be in getsitepackages()
+    if hasattr(sys, "prefix"):
+        venv_site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
+        if os.path.isdir(venv_site_packages):
+            search_paths.append(venv_site_packages)
+
     # Also check sys.path for virtual environments
     search_paths.extend(sys.path)
 
