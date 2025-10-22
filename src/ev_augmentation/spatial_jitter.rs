@@ -35,15 +35,15 @@ use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable}
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, instrument};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }

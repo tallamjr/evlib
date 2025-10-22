@@ -6,10 +6,10 @@
 use std::error::Error;
 use std::fmt;
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::warn;
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))

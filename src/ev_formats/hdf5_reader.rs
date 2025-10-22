@@ -1,5 +1,5 @@
-// Only compile this module when hdf5 feature is enabled
-#![cfg(feature = "hdf5")]
+// Only compile this module on Unix platforms (Linux/macOS)
+#![cfg(unix)]
 
 /*!
 HDF5 reader with native ECF support.
@@ -17,22 +17,22 @@ use polars::prelude::DataFrame;
 use pyo3::prelude::*;
 use std::io;
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{error, info, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))

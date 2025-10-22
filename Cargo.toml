@@ -112,24 +112,23 @@ clap           = { version = "4.0", features = ["derive"], optional = true }
 # Platform-specific dependencies
 # HDF5 and tracing only on Unix (Linux/macOS) - not available on Windows
 [target.'cfg(unix)'.dependencies]
-hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
-hdf5-metno-sys = { version = "0.10.1", optional = true }
-tracing        = { version = "0.1.40", optional = true }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"], optional = true }
+hdf5-metno     = { version = "0.10.1", features = ["blosc-all"] }
+hdf5-metno-sys = { version = "0.10.1" }
+tracing        = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
 
 [dev-dependencies]
 tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
 
 [features]
-# Platform-specific defaults:
-# - Unix (Linux/macOS): Include HDF5 and tracing support
-# - Windows: HDF5 and tracing excluded (platform limitations)
-default        = ["polars", "python", "tracing", "hdf5", "arrow"]
-default-unix   = ["default"]
-tracing        = ["dep:tracing", "dep:tracing-subscriber"]
+# Default features - automatically platform-aware:
+# - Unix (Linux/macOS): Includes all features (HDF5 and tracing available)
+# - Windows: Excludes HDF5 and tracing (not in dependencies on Windows)
+default        = ["polars", "python", "arrow"]
+
+# Individual feature flags
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
-hdf5           = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]
 # cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies
 gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]

@@ -4,15 +4,15 @@
 use crate::ev_formats::EventFormat;
 use polars::prelude::*;
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::debug;
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }

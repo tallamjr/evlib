@@ -17,10 +17,10 @@ but integrated directly into evlib's Rust backend for optimal performance.
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor};
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::debug;
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }

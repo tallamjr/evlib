@@ -22,22 +22,22 @@
 use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, instrument, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }

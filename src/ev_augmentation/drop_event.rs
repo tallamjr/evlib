@@ -43,36 +43,36 @@ use crate::ev_filtering::downsampling::DownsamplingFilter;
 
 // Tracing imports removed due to unused warnings
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
@@ -171,9 +171,9 @@ impl SingleAugmentation for DropEventAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
         {
@@ -339,9 +339,9 @@ impl SingleAugmentation for DropTimeAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
         {
@@ -515,9 +515,9 @@ impl SingleAugmentation for DropAreaAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
         {
