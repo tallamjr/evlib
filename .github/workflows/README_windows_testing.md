@@ -94,16 +94,19 @@ gh run view --log
 
 ### Build Command
 ```bash
-maturin build --release --features python,polars --interpreter python
+maturin build --release --features python,polars,arrow --interpreter python
 ```
 
 ### Cargo Features
 ```toml
-# Windows-compatible features (no HDF5)
-default = ["polars", "python", "tracing"]
+# Default features (cross-platform)
+default = ["polars", "python", "arrow"]
 
-# Unix features (includes HDF5)
-default-unix = ["default", "hdf5"]
+# Note: HDF5 and tracing are Unix-only dependencies
+# (not feature flags, but platform-specific dependencies)
+[target.'cfg(unix)'.dependencies]
+hdf5-metno = { version = "0.10.1", features = ["blosc-all"] }
+tracing = { version = "0.1.40" }
 ```
 
 ## Workflow Files
