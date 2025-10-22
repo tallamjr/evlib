@@ -54,29 +54,16 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Install maturin
-        run: uv pip install maturin>=1.7.4
-
-      - name: Build evlib
-        run: |
-          # Windows: Build without HDF5 and tracing (Unix-only dependencies)
-          # Unix: Build with default features (includes python, polars, arrow, and HDF5/tracing on Unix)
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            uv run maturin develop --no-default-features --features python,polars,arrow
-          else
-            uv run maturin develop
-          fi
-        shell: bash
-
-      - name: Install Python dependencies
+      - name: Install evlib with all dependencies
         run: |
           # On macOS, build h5py from source to ensure compatibility with system HDF5
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             export HDF5_DIR="${HDF5_DIR}"
             uv pip install --no-binary h5py "h5py>=3.8.0"
           fi
-          # Install remaining Python dependencies (skip build since we already built)
-          uv pip install --no-build-isolation -e .[all]
+          # Install evlib in editable mode with all dependencies
+          # This will use maturin internally to build the Rust extension
+          uv pip install -e .[all]
         shell: bash
 
       - name: Run tests
