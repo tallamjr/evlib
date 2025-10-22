@@ -59,10 +59,10 @@ jobs:
 
       - name: Build evlib
         run: |
-          # Windows: Build without HDF5 (not supported on Windows)
-          # Unix: Build with default features (includes python, polars, tracing, hdf5)
+          # Windows: Build without HDF5 and tracing (Unix-only dependencies)
+          # Unix: Build with default features (includes python, polars, arrow, and HDF5/tracing on Unix)
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            uv run maturin develop --no-default-features --features python,polars,tracing
+            uv run maturin develop --no-default-features --features python,polars,arrow
           else
             uv run maturin develop
           fi
