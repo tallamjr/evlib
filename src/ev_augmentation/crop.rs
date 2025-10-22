@@ -273,7 +273,7 @@ impl SingleAugmentation for RandomCropAugmentation {
 
 /* Commented out - legacy Events type no longer exists
 /// Apply center crop to events
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -326,7 +326,7 @@ pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> Augmenta
 
 /* Commented out - legacy Events type no longer exists
 /// Apply random crop to events
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 

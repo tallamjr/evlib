@@ -1,5 +1,5 @@
 // Only compile this module on Unix platforms (Linux/macOS)
-#![cfg(unix)]
+// Note: Module-level #[cfg(unix)] in mod.rs handles platform gating
 
 /*!
 HDF5 reader with native ECF support.

@@ -118,7 +118,7 @@ impl Validatable for TimeReversalAugmentation {
 
 /* Commented out - legacy SingleAugmentation trait no longer exists
 impl SingleAugmentation for TimeReversalAugmentation {
-    #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
+    #[cfg_attr(unix, instrument(skip(events), level = "debug"))]
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         if events.is_empty() {
             return Ok(events.clone());
@@ -201,7 +201,7 @@ impl SingleAugmentation for TimeReversalAugmentation {
 /// # Returns
 ///
 /// * `AugmentationResult<Events>` - Time-reversed events
-#[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
+#[cfg_attr(unix, instrument(skip(events), level = "debug"))]
 pub fn time_reversal(
     events: &Events,
     config: &TimeReversalAugmentation,
@@ -211,7 +211,7 @@ pub fn time_reversal(
 */
 
 /// Apply time reversal using Polars operations
-#[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
+#[cfg_attr(unix, instrument(skip(df), level = "debug"))]
 pub fn apply_time_reversal_polars(
     df: LazyFrame,
     config: &TimeReversalAugmentation,

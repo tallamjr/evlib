@@ -234,7 +234,7 @@ impl Validatable for UniformNoiseAugmentation {
 /// let config = UniformNoiseAugmentation::new(1000, 640, 480);
 /// let noisy = apply_uniform_noise(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_uniform_noise(
     df: LazyFrame,
     config: &UniformNoiseAugmentation,

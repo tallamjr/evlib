@@ -45,6 +45,9 @@
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 // use crate::ev_formats::streaming::Event; // Currently unused
 use std::fmt;
+
+// Tracing is only available on Unix platforms (Linux/macOS)
+#[cfg(unix)]
 use tracing::{debug, info};
 
 use polars::prelude::*;
@@ -86,6 +89,7 @@ pub fn augment_events_dataframe(
     df: LazyFrame,
     config: &AugmentationConfig,
 ) -> PolarsResult<LazyFrame> {
+    #[cfg(unix)]
     debug!(
         "Applying DataFrame-first augmentation pipeline: {:?}",
         config
@@ -147,6 +151,7 @@ pub fn augment_events_dataframe(
             .map_err(|e| PolarsError::ComputeError(format!("Uniform noise error: {}", e).into()))?;
     }
 
+    #[cfg(unix)]
     info!("DataFrame-first augmentation pipeline completed");
     Ok(augmented_df)
 }

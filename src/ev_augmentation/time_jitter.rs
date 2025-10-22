@@ -213,7 +213,7 @@ impl Validatable for TimeJitterAugmentation {
 /// let config = TimeJitterAugmentation::new(1000.0);
 /// let jittered = apply_time_jitter(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_time_jitter(
     df: LazyFrame,
     config: &TimeJitterAugmentation,

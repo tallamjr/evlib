@@ -231,7 +231,7 @@ impl Validatable for TimeSkewAugmentation {
 /// # Returns
 ///
 /// * `PolarsResult<LazyFrame>` - Skewed events as LazyFrame
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_time_skew_polars(
     df: LazyFrame,
     config: &TimeSkewAugmentation,

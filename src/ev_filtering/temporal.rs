@@ -363,7 +363,7 @@ impl Validatable for TemporalFilter {
 /// let filter = TemporalFilter::time_window(1.0, 5.0);
 /// let filtered = apply_temporal_filter(events_df, &filter)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
+#[cfg_attr(unix, instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_temporal_filter(df: LazyFrame, filter: &TemporalFilter) -> PolarsResult<LazyFrame> {
     debug!("Applying temporal filter: {:?}", filter);
 
@@ -390,7 +390,7 @@ pub fn apply_temporal_filter(df: LazyFrame, filter: &TemporalFilter) -> PolarsRe
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn filter_time_window(
     df: LazyFrame,
     t_start: Option<f64>,
@@ -451,7 +451,7 @@ pub fn filter_by_time_df(df: LazyFrame, t_start: f64, t_end: f64) -> PolarsResul
 /// # Returns
 ///
 /// DataFrame containing temporal statistics
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn get_temporal_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
     df.select([
         col(COL_T).min().alias("t_min"),
@@ -479,7 +479,7 @@ pub fn get_temporal_statistics(df: LazyFrame) -> PolarsResult<DataFrame> {
 /// # Returns
 ///
 /// DataFrame with time windows and corresponding event rates
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn calculate_event_rates(df: LazyFrame, window_size: f64) -> PolarsResult<DataFrame> {
     // Create time bins using Polars expressions
     df.with_columns([((col(COL_T) / lit(window_size))

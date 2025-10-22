@@ -234,7 +234,7 @@ impl Validatable for GeometricTransformAugmentation {
 }
 
 // impl SingleAugmentation for GeometricTransformAugmentation {
-//     #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
+//     #[cfg_attr(unix, instrument(skip(events), level = "debug"))]
 //     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
 //         // Legacy Vec<Event> interface - convert to DataFrame and back
 //         // This is for backward compatibility only
@@ -287,7 +287,7 @@ impl Validatable for GeometricTransformAugmentation {
 // /// # Returns
 // ///
 // /// * `AugmentationResult<Events>` - Transformed events
-// #[cfg_attr(feature = "tracing", instrument(skip(events), level = "debug"))]
+// #[cfg_attr(unix, instrument(skip(events), level = "debug"))]
 // pub fn geometric_transforms(
 //     events: &Events,
 //     config: &GeometricTransformAugmentation,
@@ -405,7 +405,7 @@ impl Validatable for GeometricTransformAugmentation {
 ///     .with_flip_lr_probability(0.5);
 /// let transformed = apply_geometric_transforms(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), level = "debug"))]
+#[cfg_attr(unix, instrument(skip(df), level = "debug"))]
 pub fn apply_geometric_transforms(
     df: LazyFrame,
     config: &GeometricTransformAugmentation,

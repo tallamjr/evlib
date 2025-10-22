@@ -619,7 +619,7 @@ fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
 }
 
 /// Drop events within a time interval
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -700,7 +700,7 @@ pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> Augmentat
 }
 
 /// Drop events within a spatial area
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -802,7 +802,7 @@ pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> Augmentat
 /// let config = DropTimeAugmentation::new(0.2);
 /// let filtered = apply_drop_time(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_time(
     df: LazyFrame,
     config: &DropTimeAugmentation,
@@ -906,7 +906,7 @@ pub fn apply_drop_time_polars(
 /// let config = DropAreaAugmentation::new(0.25, 640, 480);
 /// let filtered = apply_drop_area(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_area(
     df: LazyFrame,
     config: &DropAreaAugmentation,
@@ -1010,7 +1010,7 @@ pub fn apply_drop_area_polars(
 /// let config = DropEventAugmentation::new(0.3);
 /// let filtered = apply_drop_event(events_df, &config)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_event(
     df: LazyFrame,
     config: &DropEventAugmentation,

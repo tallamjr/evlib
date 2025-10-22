@@ -69,7 +69,7 @@ impl EventStats {
     ///
     /// This is the preferred method for calculating statistics as it leverages
     /// Polars' optimized aggregation functions.
-    #[cfg_attr(feature = "tracing", instrument(skip(df)))]
+    #[cfg_attr(unix, instrument(skip(df)))]
     pub fn calculate_from_dataframe(df: LazyFrame) -> PolarsResult<Self> {
         let stats_df = df
             .select([
@@ -163,7 +163,7 @@ pub struct PixelStats {
 ///
 /// This function is much faster than the manual HashMap approach as it leverages
 /// Polars' optimized group operations and vectorized aggregations.
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn calculate_pixel_stats_polars(df: LazyFrame) -> PolarsResult<DataFrame> {
     df.group_by([col(COL_X), col(COL_Y)])
         .agg([
@@ -188,13 +188,13 @@ pub fn calculate_pixel_stats_polars(df: LazyFrame) -> PolarsResult<DataFrame> {
 }
 
 /// Sort DataFrame by timestamp using Polars operations
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn sort_events_by_time_polars(df: LazyFrame) -> PolarsResult<LazyFrame> {
     Ok(df.sort([COL_T], SortMultipleOptions::default()))
 }
 
 /// Check if events are sorted using Polars expressions
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn is_sorted_by_time_polars(df: LazyFrame) -> PolarsResult<bool> {
     let result = df
         .select([(col(COL_T) - col(COL_T).shift(lit(1)))
@@ -217,7 +217,7 @@ pub fn is_sorted_by_time_polars(df: LazyFrame) -> PolarsResult<bool> {
 ///
 /// This function uses Polars' vectorized operations to check for various
 /// data quality issues much faster than manual iteration.
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn validate_events_polars(df: LazyFrame, strict: bool) -> PolarsResult<FilterResult<()>> {
     let validation_df = df
         .select([
@@ -304,7 +304,7 @@ pub mod performance {
     use super::*;
 
     /// Estimate optimal processing strategy based on data characteristics
-    #[cfg_attr(feature = "tracing", instrument(skip(df)))]
+    #[cfg_attr(unix, instrument(skip(df)))]
     pub fn analyze_processing_requirements(df: &LazyFrame) -> PolarsResult<ProcessingStrategy> {
         let analysis = df
             .clone()

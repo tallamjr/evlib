@@ -65,9 +65,11 @@ pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 pub mod prophesee_ecf_codec;
 pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, PropheseeEvent};
 
-// Native HDF5 reader with ECF support (optional feature)
-// File-level guard in hdf5_reader.rs handles feature gating
+// Native HDF5 reader with ECF support (Unix only)
+// HDF5 is only available on Unix platforms (Linux/macOS)
+#[cfg(unix)]
 pub mod hdf5_reader;
+#[cfg(unix)]
 pub use hdf5_reader::load_events_from_hdf5;
 
 // DataFrame construction utilities for direct event processing
