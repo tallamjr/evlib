@@ -57,12 +57,16 @@ try:
     import importlib.util
     import glob
 
-    # Find the compiled module file
+    # Find the compiled module file (.so on Unix, .pyd on Windows)
     current_dir = os.path.dirname(__file__)
     so_files = glob.glob(os.path.join(current_dir, "evlib.cpython-*.so"))
+    pyd_files = glob.glob(os.path.join(current_dir, "evlib.cpython-*.pyd"))
 
-    if so_files:
-        spec = importlib.util.spec_from_file_location("evlib", so_files[0])
+    # Combine both and use the first one found
+    module_files = so_files + pyd_files
+
+    if module_files:
+        spec = importlib.util.spec_from_file_location("evlib", module_files[0])
         rust_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rust_module)
 
