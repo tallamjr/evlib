@@ -28,7 +28,9 @@ import polars as pl
 import pytest
 
 # Skip entire module on Windows - uses HDF5 files
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="HDF5 not available on Windows"
+)
 
 # Import validation helpers from tests directory
 try:
@@ -48,7 +50,9 @@ except ImportError:
     PANDERA_AVAILABLE = False
 
 # Test markers and skip conditions
-requires_pandera = pytest.mark.skipif(not PANDERA_AVAILABLE, reason="pandera not available")
+requires_pandera = pytest.mark.skipif(
+    not PANDERA_AVAILABLE, reason="pandera not available"
+)
 requires_evlib = pytest.mark.skipif(True, reason="Check evlib availability in fixture")
 requires_data = pytest.mark.requires_data
 
@@ -70,7 +74,9 @@ if PANDERA_AVAILABLE:
         t: pl.Duration = Field(description="Timestamp as duration in microseconds")
 
         # Polarity column (binary values)
-        polarity: pl.Int8 = Field(isin=[-1, 1], description="Event polarity (-1=negative, 1=positive)")
+        polarity: pl.Int8 = Field(
+            isin=[-1, 1], description="Event polarity (-1=negative, 1=positive)"
+        )
 
         class Config:
             strict = True
@@ -205,7 +211,9 @@ def sample_events_df(sample_events):
 # =============================================================================
 
 
-def validate_event_schema(df: Union[pl.LazyFrame, pl.DataFrame], schema_class, name: str = "events") -> bool:
+def validate_event_schema(
+    df: Union[pl.LazyFrame, pl.DataFrame], schema_class, name: str = "events"
+) -> bool:
     """Validate event data against pandera schema."""
     if not PANDERA_AVAILABLE:
         print(f"WARNING:  Pandera not available, skipping schema validation for {name}")
@@ -232,7 +240,9 @@ def validate_event_schema(df: Union[pl.LazyFrame, pl.DataFrame], schema_class, n
         return False
 
 
-def validate_monotonic_timestamps(df: Union[pl.LazyFrame, pl.DataFrame], name: str = "events") -> bool:
+def validate_monotonic_timestamps(
+    df: Union[pl.LazyFrame, pl.DataFrame], name: str = "events"
+) -> bool:
     """Validate that timestamps are monotonically increasing."""
     print(f"Validating timestamp monotonicity for {name}...")
 
@@ -246,7 +256,9 @@ def validate_monotonic_timestamps(df: Union[pl.LazyFrame, pl.DataFrame], name: s
     check_df = df_lazy.select(
         [
             pl.col("t"),
-            (pl.col("t").diff() < pl.duration(microseconds=0)).sum().alias("backward_jumps"),
+            (pl.col("t").diff() < pl.duration(microseconds=0))
+            .sum()
+            .alias("backward_jumps"),
         ]
     ).collect()
 
@@ -283,7 +295,9 @@ def validate_coordinate_ranges(
     y_min, y_max = stats["y_min"][0], stats["y_max"][0]
     count = stats["count"][0]
 
-    print(f"  Coordinate ranges: X=[{x_min}, {x_max}], Y=[{y_min}, {y_max}] ({count:,} events)")
+    print(
+        f"  Coordinate ranges: X=[{x_min}, {x_max}], Y=[{y_min}, {y_max}] ({count:,} events)"
+    )
 
     valid = True
 
@@ -335,7 +349,9 @@ class TestTemporalFiltering:
         t_min, t_max = time_stats["t_min"][0], time_stats["t_max"][0]
         duration = t_max - t_min
 
-        print(f"Original time range: [{t_min:.3f}, {t_max:.3f}]s (duration: {duration:.3f}s)")
+        print(
+            f"Original time range: [{t_min:.3f}, {t_max:.3f}]s (duration: {duration:.3f}s)"
+        )
 
         # Apply temporal filter for middle 50% of time range
         window_start = t_min + duration * 0.25
@@ -361,7 +377,9 @@ class TestTemporalFiltering:
         filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
         reduction = (original_count - filtered_count) / original_count
 
-        print(f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)")
+        print(
+            f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)"
+        )
 
         # Validate time window
         filtered_stats = filtered_df.select(
@@ -383,7 +401,9 @@ class TestTemporalFiltering:
         assert filtered_t_max <= window_end, "All events should be before window end"
 
         # Validate schema and monotonicity
-        assert validate_event_schema(filtered_df, TemporalFilterSchema, "temporally filtered events")
+        assert validate_event_schema(
+            filtered_df, TemporalFilterSchema, "temporally filtered events"
+        )
         assert validate_monotonic_timestamps(filtered_df, "temporally filtered events")
 
 
@@ -431,7 +451,9 @@ class TestSpatialFiltering:
         df = sample_events_df.collect()
 
         start_time = time.time()
-        filtered_df = evlib.filtering.filter_by_roi(df, roi_x_min, roi_x_max, roi_y_min, roi_y_max)
+        filtered_df = evlib.filtering.filter_by_roi(
+            df, roi_x_min, roi_x_max, roi_y_min, roi_y_max
+        )
 
         # Convert to LazyFrame for subsequent operations
         filtered_df = filtered_df.lazy()
@@ -444,7 +466,9 @@ class TestSpatialFiltering:
         filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
         reduction = (original_count - filtered_count) / original_count
 
-        print(f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)")
+        print(
+            f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)"
+        )
 
         # Assertions
         assert filtered_count > 0, "Should have events after spatial filtering"
@@ -459,7 +483,9 @@ class TestSpatialFiltering:
         )
 
         # Validate schema
-        assert validate_event_schema(filtered_df, SpatialFilterSchema, "spatially filtered events")
+        assert validate_event_schema(
+            filtered_df, SpatialFilterSchema, "spatially filtered events"
+        )
 
 
 @requires_pandera
@@ -478,7 +504,10 @@ class TestPolarityFiltering:
 
         # Get polarity distribution (count positive events where polarity=1)
         polarity_stats = sample_events_df.select(
-            [(pl.col("polarity") == 1).sum().alias("positive_count"), pl.len().alias("total_count")]
+            [
+                (pl.col("polarity") == 1).sum().alias("positive_count"),
+                pl.len().alias("total_count"),
+            ]
         ).collect()
 
         positive_count = polarity_stats["positive_count"][0]
@@ -486,8 +515,8 @@ class TestPolarityFiltering:
         negative_count = total_count - positive_count
 
         print("Original polarity distribution:")
-        print(f"  Positive: {positive_count:,} ({positive_count/total_count:.1%})")
-        print(f"  Negative: {negative_count:,} ({negative_count/total_count:.1%})")
+        print(f"  Positive: {positive_count:,} ({positive_count / total_count:.1%})")
+        print(f"  Negative: {negative_count:,} ({negative_count / total_count:.1%})")
 
         # Test positive events only
         import evlib.filtering
@@ -507,7 +536,10 @@ class TestPolarityFiltering:
         # Validate results
         filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
         filtered_polarity_stats = filtered_df.select(
-            [(pl.col("polarity") == 1).sum().alias("positive_count"), pl.len().alias("total_count")]
+            [
+                (pl.col("polarity") == 1).sum().alias("positive_count"),
+                pl.len().alias("total_count"),
+            ]
         ).collect()
 
         filtered_positive = filtered_polarity_stats["positive_count"][0]
@@ -517,11 +549,17 @@ class TestPolarityFiltering:
 
         # Assertions
         assert filtered_count > 0, "Should have positive events"
-        assert filtered_positive == filtered_count, "All filtered events should have positive polarity"
-        assert filtered_count <= positive_count, "Should not have more positive events than original"
+        assert filtered_positive == filtered_count, (
+            "All filtered events should have positive polarity"
+        )
+        assert filtered_count <= positive_count, (
+            "Should not have more positive events than original"
+        )
 
         # Validate schema
-        assert validate_event_schema(filtered_df, FilteredEventSchema, "polarity filtered events")
+        assert validate_event_schema(
+            filtered_df, FilteredEventSchema, "polarity filtered events"
+        )
 
 
 @requires_pandera
@@ -575,14 +613,18 @@ class TestHotPixelFiltering:
         filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
         reduction = (original_count - filtered_count) / original_count
 
-        print(f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)")
+        print(
+            f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)"
+        )
 
         # Assertions
         assert filtered_count > 0, "Should have events after hot pixel filtering"
         assert filtered_count <= original_count, "Should not increase event count"
 
         # Validate schema
-        assert validate_event_schema(filtered_df, FilteredEventSchema, "hot pixel filtered events")
+        assert validate_event_schema(
+            filtered_df, FilteredEventSchema, "hot pixel filtered events"
+        )
 
 
 @requires_pandera
@@ -606,7 +648,9 @@ class TestNoiseFiltering:
         df = sample_events_df.collect()
 
         start_time = time.time()
-        filtered_df = evlib.filtering.filter_noise(df, method="refractory", refractory_period_us=1000.0)
+        filtered_df = evlib.filtering.filter_noise(
+            df, method="refractory", refractory_period_us=1000.0
+        )
 
         # Convert to LazyFrame for subsequent operations
         filtered_df = filtered_df.lazy()
@@ -619,7 +663,9 @@ class TestNoiseFiltering:
         filtered_count = filtered_df.select(pl.len()).collect()["len"][0]
         reduction = (original_count - filtered_count) / original_count
 
-        print(f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)")
+        print(
+            f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)"
+        )
 
         # Assertions
         assert filtered_count > 0, "Should have events after noise filtering"
@@ -629,7 +675,9 @@ class TestNoiseFiltering:
         validate_monotonic_timestamps(filtered_df, "noise-filtered events")
 
         # Validate schema
-        assert validate_event_schema(filtered_df, FilteredEventSchema, "noise filtered events")
+        assert validate_event_schema(
+            filtered_df, FilteredEventSchema, "noise filtered events"
+        )
 
 
 # =============================================================================
@@ -694,10 +742,14 @@ class TestCombinedFiltering:
         roi_y_min = int(y_min + (y_max - y_min) * 0.2)
         roi_y_max = int(y_max - (y_max - y_min) * 0.2)
 
-        filtered_df = evlib.filtering.filter_by_roi(filtered_df, roi_x_min, roi_x_max, roi_y_min, roi_y_max)
+        filtered_df = evlib.filtering.filter_by_roi(
+            filtered_df, roi_x_min, roi_x_max, roi_y_min, roi_y_max
+        )
 
         # 3. Hot pixel filter
-        filtered_df = evlib.filtering.filter_hot_pixels(filtered_df, threshold_percentile=90.0)
+        filtered_df = evlib.filtering.filter_hot_pixels(
+            filtered_df, threshold_percentile=90.0
+        )
 
         # 4. Noise filter
         filtered_df = evlib.filtering.filter_noise(
@@ -716,8 +768,12 @@ class TestCombinedFiltering:
         reduction = (original_count - filtered_count) / original_count
 
         print("\nFinal results:")
-        print(f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)")
-        print(f"Processing rate: {original_count / total_filter_time:,.0f} events/second")
+        print(
+            f"Events: {original_count:,} → {filtered_count:,} ({reduction:.1%} reduction)"
+        )
+        print(
+            f"Processing rate: {original_count / total_filter_time:,.0f} events/second"
+        )
 
         # Assertions
         assert filtered_count > 0, "Should have events after combined filtering"
@@ -730,7 +786,9 @@ class TestCombinedFiltering:
         validate_monotonic_timestamps(filtered_df, "final filtered events")
 
         # Validate schema
-        assert validate_event_schema(filtered_df, FilteredEventSchema, "combined filtered events")
+        assert validate_event_schema(
+            filtered_df, FilteredEventSchema, "combined filtered events"
+        )
 
     def test_progressive_filtering(self, sample_events_df):
         """Test that each filter stage progressively reduces event count."""
@@ -777,7 +835,9 @@ class TestCombinedFiltering:
         print(f"After spatial filter: {step2_count:,} events")
 
         # Step 3: Add hot pixel filter
-        step3_df = evlib.filtering.filter_hot_pixels(step2_df, threshold_percentile=95.0)
+        step3_df = evlib.filtering.filter_hot_pixels(
+            step2_df, threshold_percentile=95.0
+        )
         step3_count = len(step3_df)
         print(f"After hot pixel filter: {step3_count:,} events")
 
@@ -787,9 +847,15 @@ class TestCombinedFiltering:
         assert step3_count <= step2_count, "Step 3 should not increase count"
 
         # Validate schemas at each step
-        assert validate_event_schema(step1_df, FilteredEventSchema, "step 1 filtered events")
-        assert validate_event_schema(step2_df, FilteredEventSchema, "step 2 filtered events")
-        assert validate_event_schema(step3_df, FilteredEventSchema, "step 3 filtered events")
+        assert validate_event_schema(
+            step1_df, FilteredEventSchema, "step 1 filtered events"
+        )
+        assert validate_event_schema(
+            step2_df, FilteredEventSchema, "step 2 filtered events"
+        )
+        assert validate_event_schema(
+            step3_df, FilteredEventSchema, "step 3 filtered events"
+        )
 
 
 # =============================================================================
@@ -816,15 +882,21 @@ class TestPerformanceAndEdgeCases:
         filtered_df = evlib.filtering.filter_by_time(df, t_start=0.1, t_end=None)
         filter_time = time.time() - start_time
 
-        events_per_second = original_count / filter_time if filter_time > 0 else float("inf")
+        events_per_second = (
+            original_count / filter_time if filter_time > 0 else float("inf")
+        )
 
         print(f"Performance: {events_per_second:,.0f} events/second")
 
         # Should process at least 100K events per second (conservative threshold)
-        assert events_per_second > 100_000, f"Performance too slow: {events_per_second:,.0f} events/s"
+        assert events_per_second > 100_000, (
+            f"Performance too slow: {events_per_second:,.0f} events/s"
+        )
 
         # Validate output
-        assert validate_event_schema(filtered_df, FilteredEventSchema, "performance test output")
+        assert validate_event_schema(
+            filtered_df, FilteredEventSchema, "performance test output"
+        )
 
     def test_empty_result_handling(self, sample_events_df):
         """Test handling of filters that result in empty datasets."""
@@ -875,33 +947,39 @@ class TestPerformanceAndEdgeCases:
 
         if len(filtered_df) > 0:
             # Check data types are preserved
-            assert filtered_df["x"].dtype == original_df["x"].dtype, "X dtype should be preserved"
-            assert filtered_df["y"].dtype == original_df["y"].dtype, "Y dtype should be preserved"
-            assert filtered_df["t"].dtype == original_df["t"].dtype, "Timestamp dtype should be preserved"
-            assert (
-                filtered_df["polarity"].dtype == original_df["polarity"].dtype
-            ), "Polarity dtype should be preserved"
+            assert filtered_df["x"].dtype == original_df["x"].dtype, (
+                "X dtype should be preserved"
+            )
+            assert filtered_df["y"].dtype == original_df["y"].dtype, (
+                "Y dtype should be preserved"
+            )
+            assert filtered_df["t"].dtype == original_df["t"].dtype, (
+                "Timestamp dtype should be preserved"
+            )
+            assert filtered_df["polarity"].dtype == original_df["polarity"].dtype, (
+                "Polarity dtype should be preserved"
+            )
 
             # Check value ranges are within original bounds
-            assert (
-                filtered_df["x"].min() >= original_df["x"].min()
-            ), "X values should be within original range"
-            assert (
-                filtered_df["x"].max() <= original_df["x"].max()
-            ), "X values should be within original range"
-            assert (
-                filtered_df["y"].min() >= original_df["y"].min()
-            ), "Y values should be within original range"
-            assert (
-                filtered_df["y"].max() <= original_df["y"].max()
-            ), "Y values should be within original range"
+            assert filtered_df["x"].min() >= original_df["x"].min(), (
+                "X values should be within original range"
+            )
+            assert filtered_df["x"].max() <= original_df["x"].max(), (
+                "X values should be within original range"
+            )
+            assert filtered_df["y"].min() >= original_df["y"].min(), (
+                "Y values should be within original range"
+            )
+            assert filtered_df["y"].max() <= original_df["y"].max(), (
+                "Y values should be within original range"
+            )
 
             # Check polarity values are valid
             original_polarities = set(original_df["polarity"].unique().to_list())
             filtered_polarities = set(filtered_df["polarity"].unique().to_list())
-            assert filtered_polarities.issubset(
-                original_polarities
-            ), "Filtered polarities should be subset of original"
+            assert filtered_polarities.issubset(original_polarities), (
+                "Filtered polarities should be subset of original"
+            )
 
         print(" Data integrity preserved through filtering")
 

@@ -37,7 +37,7 @@ def benchmark_loading(test_file, description, num_runs=3):
     print(f"Min time: {min_time:.3f}s")
     print(f"Max time: {max_time:.3f}s")
     if events_count:
-        print(f"Events/second: {events_count/avg_time:,.0f}")
+        print(f"Events/second: {events_count / avg_time:,.0f}")
     print()
 
     return avg_time, events_count
@@ -67,7 +67,9 @@ def main():
     os.environ["RUST_LOG"] = "evlib=info"
     # Since tracing is already initialized, this will have the warn level from before
     # but we can still test the performance
-    time3, count3 = benchmark_loading(test_file, "Tracing INFO level (warn level active)")
+    time3, count3 = benchmark_loading(
+        test_file, "Tracing INFO level (warn level active)"
+    )
 
     # Performance comparison
     print("=== Performance Comparison ===")
@@ -95,7 +97,9 @@ def main():
             config_func()
             print(f"✓ {name} configuration completed successfully")
         except Exception as e:
-            print(f"⚠ {name} configuration failed (expected if already initialized): {e}")
+            print(
+                f"⚠ {name} configuration failed (expected if already initialized): {e}"
+            )
 
     print("\n=== Summary ===")
     print("Performance testing completed!")

@@ -9,9 +9,8 @@ function names, signatures, and return types for seamless migration.
 """
 
 import polars as pl
-from typing import Union, Literal, Optional, Any, List
+from typing import Union, Literal, Optional, List
 from polars.lazyframe.engine_config import GPUEngine
-import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -127,7 +126,12 @@ def filter_by_time(
 
 
 def filter_by_roi(
-    events: EventsInput, x_min: int, x_max: int, y_min: int, y_max: int, engine: EngineType = "auto"
+    events: EventsInput,
+    x_min: int,
+    x_max: int,
+    y_min: int,
+    y_max: int,
+    engine: EngineType = "auto",
 ) -> pl.LazyFrame:
     """
     Filter events by region of interest (ROI)
@@ -201,7 +205,9 @@ def filter_by_polarity(
 
 
 def filter_hot_pixels(
-    events: EventsInput, threshold_percentile: Optional[float] = None, engine: EngineType = "auto"
+    events: EventsInput,
+    threshold_percentile: Optional[float] = None,
+    engine: EngineType = "auto",
 ) -> pl.LazyFrame:
     """
     Remove hot pixels using statistical filtering
@@ -246,7 +252,9 @@ def filter_hot_pixels(
     threshold_val = threshold_expr.collect().item(0, "threshold")
 
     # Filter out pixels above threshold
-    hot_pixels = pixel_counts.filter(pl.col("event_count") > threshold_val).select(["x", "y"])
+    hot_pixels = pixel_counts.filter(pl.col("event_count") > threshold_val).select(
+        ["x", "y"]
+    )
 
     # Anti-join to remove events from hot pixels
     filtered_lf = events_lf.join(hot_pixels, on=["x", "y"], how="anti")
@@ -303,18 +311,13 @@ def filter_noise(
             sorted_events.with_columns(
                 [
                     # Convert duration to microseconds for arithmetic
-                    pl.col("t")
-                    .dt.total_microseconds()
-                    .alias("t_us")
+                    pl.col("t").dt.total_microseconds().alias("t_us")
                 ]
             )
             .with_columns(
                 [
                     # Get previous timestamp for same pixel coordinate
-                    pl.col("t_us")
-                    .shift(1)
-                    .over(["x", "y"])
-                    .alias("prev_t_us")
+                    pl.col("t_us").shift(1).over(["x", "y"]).alias("prev_t_us")
                 ]
             )
             .with_columns(
@@ -341,21 +344,32 @@ def filter_noise(
         sorted_events = events_lf.sort("t")
 
         filtered_lf = (
-            sorted_events.with_columns([pl.col("t").dt.total_microseconds().alias("t_us")])
+            sorted_events.with_columns(
+                [pl.col("t").dt.total_microseconds().alias("t_us")]
+            )
             .with_columns([pl.col("t_us").shift(1).over(["x", "y"]).alias("prev_t_us")])
-            .with_columns([(pl.col("t_us") - pl.col("prev_t_us")).alias("time_diff_us")])
-            .filter(pl.col("prev_t_us").is_null() | (pl.col("time_diff_us") > correlation_period))
+            .with_columns(
+                [(pl.col("t_us") - pl.col("prev_t_us")).alias("time_diff_us")]
+            )
+            .filter(
+                pl.col("prev_t_us").is_null()
+                | (pl.col("time_diff_us") > correlation_period)
+            )
             .drop(["t_us", "prev_t_us", "time_diff_us"])
         )
 
     else:
-        raise ValueError(f"Unknown noise filtering method: {method}. Use 'refractory' or 'correlation'")
+        raise ValueError(
+            f"Unknown noise filtering method: {method}. Use 'refractory' or 'correlation'"
+        )
 
     return _apply_engine_hint(filtered_lf, engine)
 
 
 # Convenience functions for advanced filtering operations
-def filter_multiple_rois(events: EventsInput, rois: List[tuple], engine: EngineType = "auto") -> pl.LazyFrame:
+def filter_multiple_rois(
+    events: EventsInput, rois: List[tuple], engine: EngineType = "auto"
+) -> pl.LazyFrame:
     """
     Filter events by multiple regions of interest
 
@@ -375,7 +389,9 @@ def filter_multiple_rois(events: EventsInput, rois: List[tuple], engine: EngineT
     # Build OR conditions for all ROIs
     roi_conditions = []
     for x_min, x_max, y_min, y_max in rois:
-        roi_condition = pl.col("x").is_between(x_min, x_max) & pl.col("y").is_between(y_min, y_max)
+        roi_condition = pl.col("x").is_between(x_min, x_max) & pl.col("y").is_between(
+            y_min, y_max
+        )
         roi_conditions.append(roi_condition)
 
     # Combine with OR
@@ -439,7 +455,9 @@ def preprocess_events(
 
     # 1. Time filtering (reduces data early)
     if t_start is not None or t_end is not None:
-        processed = filter_by_time(processed, t_start=t_start, t_end=t_end, engine=engine)
+        processed = filter_by_time(
+            processed, t_start=t_start, t_end=t_end, engine=engine
+        )
 
     # 2. Spatial filtering (further reduces data)
     if roi is not None:
@@ -454,12 +472,17 @@ def preprocess_events(
 
     # 4. Hot pixel removal (computationally intensive, do after spatial filtering)
     if remove_hot_pixels:
-        processed = filter_hot_pixels(processed, threshold_percentile=hot_pixel_threshold, engine=engine)
+        processed = filter_hot_pixels(
+            processed, threshold_percentile=hot_pixel_threshold, engine=engine
+        )
 
     # 5. Noise filtering (most computationally intensive, do last)
     if denoise:
         processed = filter_noise(
-            processed, method="refractory", refractory_period_us=refractory_period_us, engine=engine
+            processed,
+            method="refractory",
+            refractory_period_us=refractory_period_us,
+            engine=engine,
         )
 
     return processed

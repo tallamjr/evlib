@@ -25,7 +25,9 @@ class ConvLSTMCell(nn.Module):
         self.padding = kernel_size // 2
 
         # Gates: input, forget, cell, output
-        self.gates = nn.Conv2d(input_dim + hidden_dim, 4 * hidden_dim, kernel_size, padding=self.padding)
+        self.gates = nn.Conv2d(
+            input_dim + hidden_dim, 4 * hidden_dim, kernel_size, padding=self.padding
+        )
 
     def forward(self, x, hidden_state):
         h, c = hidden_state
@@ -48,7 +50,9 @@ class ConvLSTMCell(nn.Module):
 class ConvLayer(nn.Module):
     """Convolutional layer with optional normalization."""
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=1, norm="BN"):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=1, norm="BN"
+    ):
         super().__init__()
         self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
 
@@ -115,7 +119,9 @@ class E2VIDRecurrent(nn.Module):
             in_ch = out_ch
 
         # Residual blocks
-        self.resblocks = nn.ModuleList([ResidualBlock(in_ch, norm=norm) for _ in range(num_residual_blocks)])
+        self.resblocks = nn.ModuleList(
+            [ResidualBlock(in_ch, norm=norm) for _ in range(num_residual_blocks)]
+        )
 
         # Decoders
         self.decoders = nn.ModuleList()
@@ -125,12 +131,16 @@ class E2VIDRecurrent(nn.Module):
             if use_upsample_conv:
                 decoder = nn.ModuleDict(
                     {
-                        "upsample": nn.ConvTranspose2d(in_ch, out_ch, 4, stride=2, padding=1),
+                        "upsample": nn.ConvTranspose2d(
+                            in_ch, out_ch, 4, stride=2, padding=1
+                        ),
                         "conv": ConvLayer(out_ch * 2, out_ch, 5, padding=2, norm=norm),
                     }
                 )
             else:
-                decoder = nn.ModuleDict({"conv": ConvLayer(in_ch * 2, out_ch, 5, padding=2, norm=norm)})
+                decoder = nn.ModuleDict(
+                    {"conv": ConvLayer(in_ch * 2, out_ch, 5, padding=2, norm=norm)}
+                )
             self.decoders.append(decoder)
             in_ch = out_ch
 
@@ -173,12 +183,19 @@ class E2VIDRecurrent(nn.Module):
                 x = decoder["upsample"](x)
             else:
                 # Upsample using interpolation
-                x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
+                x = F.interpolate(
+                    x, scale_factor=2, mode="bilinear", align_corners=False
+                )
 
             # Skip connection - resize x to match skip dimensions
             skip = skip_connections[-(i + 1)]
             # Always resize to ensure dimensions match (ONNX-friendly)
-            x = F.interpolate(x, size=(skip.shape[2], skip.shape[3]), mode="bilinear", align_corners=False)
+            x = F.interpolate(
+                x,
+                size=(skip.shape[2], skip.shape[3]),
+                mode="bilinear",
+                align_corners=False,
+            )
 
             x = torch.cat([x, skip], dim=1)
             x = decoder["conv"](x)
@@ -349,17 +366,29 @@ def convert_model_to_onnx(model, model_name, output_dir, input_shape=(1, 5, 256,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Enhanced PyTorch to ONNX converter for event-based models")
-    parser.add_argument(
-        "--checkpoint", type=str, required=True, help="Path to PyTorch checkpoint (.pth or .pth.tar)"
+    parser = argparse.ArgumentParser(
+        description="Enhanced PyTorch to ONNX converter for event-based models"
     )
-    parser.add_argument("--model-name", type=str, default="e2vid", help="Name for the output model")
     parser.add_argument(
-        "--output-dir", type=str, default="models/onnx", help="Output directory for ONNX models"
+        "--checkpoint",
+        type=str,
+        required=True,
+        help="Path to PyTorch checkpoint (.pth or .pth.tar)",
+    )
+    parser.add_argument(
+        "--model-name", type=str, default="e2vid", help="Name for the output model"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="models/onnx",
+        help="Output directory for ONNX models",
     )
     parser.add_argument("--height", type=int, default=256, help="Input height")
     parser.add_argument("--width", type=int, default=256, help="Input width")
-    parser.add_argument("--num-bins", type=int, default=5, help="Number of time bins in voxel grid")
+    parser.add_argument(
+        "--num-bins", type=int, default=5, help="Number of time bins in voxel grid"
+    )
 
     args = parser.parse_args()
 

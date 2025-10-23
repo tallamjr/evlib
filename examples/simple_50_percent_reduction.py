@@ -38,7 +38,7 @@ def remove_50_percent_events_simple(events, seed=42):
 
     print(f"Original events: {len(df):,}")
     print(f"After 50% reduction: {len(sampled_df):,}")
-    print(f"Reduction: {100 * (1 - len(sampled_df)/len(df)):.1f}%")
+    print(f"Reduction: {100 * (1 - len(sampled_df) / len(df)):.1f}%")
 
     return sampled_df.lazy()
 
@@ -76,7 +76,9 @@ def remove_50_percent_with_stratification(events, seed=42):
         if len(polarity_events) > 0:
             sampled_polarity = polarity_events.sample(fraction=0.5, seed=seed)
             sampled_groups.append(sampled_polarity)
-            print(f"Polarity {polarity}: {len(polarity_events):,} → {len(sampled_polarity):,}")
+            print(
+                f"Polarity {polarity}: {len(polarity_events):,} → {len(sampled_polarity):,}"
+            )
 
     # Combine and sort by timestamp
     if sampled_groups:
@@ -86,7 +88,7 @@ def remove_50_percent_with_stratification(events, seed=42):
 
     print(f"Original events: {len(df):,}")
     print(f"After stratified 50% reduction: {len(stratified_sampled):,}")
-    print(f"Reduction: {100 * (1 - len(stratified_sampled)/len(df)):.1f}%")
+    print(f"Reduction: {100 * (1 - len(stratified_sampled) / len(df)):.1f}%")
 
     return stratified_sampled.lazy()
 
@@ -114,7 +116,9 @@ def complete_preprocessing_with_50_percent_reduction(data_file, seed=42):
     events = evlib.load_events(data_file)
     filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.8)
     filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
-    preprocessed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
+    preprocessed = evf.filter_noise(
+        filtered, method="refractory", refractory_period_us=1000
+    )
 
     # Step 2: Apply 50% reduction using Polars native sampling
     print("\n2. Applying 50% reduction...")
@@ -123,7 +127,7 @@ def complete_preprocessing_with_50_percent_reduction(data_file, seed=42):
 
     print(f"After preprocessing: {len(df):,} events")
     print(f"After 50% reduction: {len(reduced_df):,} events")
-    print(f"Final reduction: {100 * (1 - len(reduced_df)/len(df)):.1f}%")
+    print(f"Final reduction: {100 * (1 - len(reduced_df) / len(df)):.1f}%")
 
     return reduced_df.lazy()
 
@@ -190,7 +194,9 @@ def main():
     print("events = evlib.load_events('data.h5')")
     print("df = events.collect()")
     print("reduced = df.sample(fraction=0.5, seed=42)")
-    print("histogram = evlib.create_stacked_histogram(reduced.lazy(), height=480, width=640)")
+    print(
+        "histogram = evlib.create_stacked_histogram(reduced.lazy(), height=480, width=640)"
+    )
     print("```")
 
 

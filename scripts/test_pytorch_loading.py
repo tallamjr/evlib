@@ -164,9 +164,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test PyTorch weight loading")
     parser.add_argument("--checkpoint", type=str, help="Path to PyTorch checkpoint")
     parser.add_argument(
-        "--output", type=str, default="weight_info.json", help="Output path for weight info JSON"
+        "--output",
+        type=str,
+        default="weight_info.json",
+        help="Output path for weight info JSON",
     )
-    parser.add_argument("--test-conversion", action="store_true", help="Test tensor conversion")
+    parser.add_argument(
+        "--test-conversion", action="store_true", help="Test tensor conversion"
+    )
 
     args = parser.parse_args()
 
@@ -180,4 +185,6 @@ if __name__ == "__main__":
         if e2vid_path.exists():
             save_weight_info(e2vid_path, "e2vid_weight_info.json")
         else:
-            print("No checkpoint found. Please provide --checkpoint or download E2VID model first.")
+            print(
+                "No checkpoint found. Please provide --checkpoint or download E2VID model first."
+            )

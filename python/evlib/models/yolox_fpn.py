@@ -11,7 +11,7 @@ Based on:
 - PANet paper: "Path Aggregation Network for Instance Segmentation"
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -64,7 +64,9 @@ class PAFPN(nn.Module):
 
         # Top-down pathway
         # Reduce channels from stage 4 (highest resolution input)
-        self.lateral_conv0 = BaseConv(in_channels[2], in_channels[1], kernel_size=1, stride=1, act=act)
+        self.lateral_conv0 = BaseConv(
+            in_channels[2], in_channels[1], kernel_size=1, stride=1, act=act
+        )
 
         # CSP layer after concatenation with stage 3
         self.C3_p4 = CSPLayer(
@@ -77,7 +79,9 @@ class PAFPN(nn.Module):
         )
 
         # Reduce channels for stage 2 connection
-        self.reduce_conv1 = BaseConv(in_channels[1], in_channels[0], kernel_size=1, stride=1, act=act)
+        self.reduce_conv1 = BaseConv(
+            in_channels[1], in_channels[0], kernel_size=1, stride=1, act=act
+        )
 
         # CSP layer after concatenation with stage 2
         self.C3_p3 = CSPLayer(
@@ -91,7 +95,9 @@ class PAFPN(nn.Module):
 
         # Bottom-up pathway
         # Downsample from P3 to N3 level
-        self.bu_conv2 = Conv(in_channels[0], in_channels[0], kernel_size=3, stride=2, act=act)
+        self.bu_conv2 = Conv(
+            in_channels[0], in_channels[0], kernel_size=3, stride=2, act=act
+        )
 
         # CSP layer for N3 (stage 3 level in bottom-up path)
         self.C3_n3 = CSPLayer(
@@ -104,7 +110,9 @@ class PAFPN(nn.Module):
         )
 
         # Downsample from N3 to N4 level
-        self.bu_conv1 = Conv(in_channels[1], in_channels[1], kernel_size=3, stride=2, act=act)
+        self.bu_conv1 = Conv(
+            in_channels[1], in_channels[1], kernel_size=3, stride=2, act=act
+        )
 
         # CSP layer for N4 (stage 4 level in bottom-up path)
         self.C3_n4 = CSPLayer(

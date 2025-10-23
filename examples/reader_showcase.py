@@ -27,8 +27,12 @@ def read_large_hdf5_file():
 
     print(f"SUCCESS: Loaded {len(timestamps):,} events")
     print(f"  Duration: {timestamps.max() - timestamps.min():.2f} seconds")
-    print(f"  Event rate: {len(timestamps)/(timestamps.max() - timestamps.min()):,.0f} events/sec")
-    print(f"  Spatial extent: {x_coords.max() - x_coords.min() + 1} x {y_coords.max() - y_coords.min() + 1}")
+    print(
+        f"  Event rate: {len(timestamps) / (timestamps.max() - timestamps.min()):,.0f} events/sec"
+    )
+    print(
+        f"  Spatial extent: {x_coords.max() - x_coords.min() + 1} x {y_coords.max() - y_coords.min() + 1}"
+    )
     print(f"  Polarity split: {np.bincount(polarities)}")
 
     return events
@@ -56,7 +60,12 @@ def read_etram_night_sequence():
     # Sample a subset for analysis
     sample_size = 100000
     indices = np.random.choice(len(timestamps), sample_size, replace=False)
-    sample_events = (timestamps[indices], x_coords[indices], y_coords[indices], polarities[indices])
+    sample_events = (
+        timestamps[indices],
+        x_coords[indices],
+        y_coords[indices],
+        polarities[indices],
+    )
 
     print(f"SUCCESS: Created random sample of {sample_size:,} events")
     return sample_events
@@ -149,7 +158,9 @@ def read_multiple_sequences():
         )
         print("-" * 75)
         for stat in stats:
-            ratio = stat["pos_events"] / stat["neg_events"] if stat["neg_events"] > 0 else 0
+            ratio = (
+                stat["pos_events"] / stat["neg_events"] if stat["neg_events"] > 0 else 0
+            )
             print(
                 f"{stat['name']:<20} {stat['events']:<12,} {stat['duration']:<10.2f} {stat['rate']:<12,.0f} {ratio:<12.2f}"
             )
@@ -228,7 +239,9 @@ def read_with_format_detection():
             timestamps, x_coords, y_coords, polarities = events
 
             print(f"  SUCCESS: Loaded {len(timestamps):,} events")
-            print(f"  Event rate: {len(timestamps)/(timestamps.max() - timestamps.min()):,.0f} events/sec")
+            print(
+                f"  Event rate: {len(timestamps) / (timestamps.max() - timestamps.min()):,.0f} events/sec"
+            )
         else:
             print(f"\nFile not found: {file_path}")
 
@@ -308,7 +321,9 @@ def main():
         print("SUCCESS: All reader examples completed successfully!")
         print("\nKey takeaways:")
         print("• evlib can read HDF5, EVT2 raw, and text formats seamlessly")
-        print("• All formats return the same tuple structure: (timestamps, x, y, polarity)")
+        print(
+            "• All formats return the same tuple structure: (timestamps, x, y, polarity)"
+        )
         print("• Format detection works automatically")
         print("• Large files can be processed efficiently")
         print("• Different datasets have different characteristics and encodings")

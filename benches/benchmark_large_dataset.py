@@ -16,7 +16,9 @@ from pathlib import Path
 
 def load_python_filtering():
     """Load the Python filtering module directly from file."""
-    spec = importlib.util.spec_from_file_location("python_filtering", "python/evlib/filtering.py")
+    spec = importlib.util.spec_from_file_location(
+        "python_filtering", "python/evlib/filtering.py"
+    )
     python_filtering = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(python_filtering)
     return python_filtering
@@ -67,26 +69,36 @@ def benchmark_large_dataset():
             estimated_total = int((sample_count / time_span_sample) * total_time_span)
             print(f"Estimated dataset size: ~{estimated_total:,} events")
 
-            dataset_size_category = "Very Large (10M+)" if estimated_total > 10_000_000 else "Large (1M+)"
+            dataset_size_category = (
+                "Very Large (10M+)" if estimated_total > 10_000_000 else "Large (1M+)"
+            )
             print(f"Dataset category: {dataset_size_category}")
 
         # Define streaming-optimized operations
         operations = [
             (
                 "Time Filter (streaming)",
-                lambda e: pf.filter_by_time(e, t_start=0.1, t_end=0.3, engine="streaming"),
+                lambda e: pf.filter_by_time(
+                    e, t_start=0.1, t_end=0.3, engine="streaming"
+                ),
             ),
             (
                 "Time Filter (in-memory)",
-                lambda e: pf.filter_by_time(e, t_start=0.1, t_end=0.3, engine="in-memory"),
+                lambda e: pf.filter_by_time(
+                    e, t_start=0.1, t_end=0.3, engine="in-memory"
+                ),
             ),
             (
                 "ROI Filter (streaming)",
-                lambda e: pf.filter_by_roi(e, x_min=200, x_max=800, y_min=200, y_max=500, engine="streaming"),
+                lambda e: pf.filter_by_roi(
+                    e, x_min=200, x_max=800, y_min=200, y_max=500, engine="streaming"
+                ),
             ),
             (
                 "ROI Filter (in-memory)",
-                lambda e: pf.filter_by_roi(e, x_min=200, x_max=800, y_min=200, y_max=500, engine="in-memory"),
+                lambda e: pf.filter_by_roi(
+                    e, x_min=200, x_max=800, y_min=200, y_max=500, engine="in-memory"
+                ),
             ),
             ("Chain (streaming)", lambda e: chain_filters_streaming(pf, e)),
             ("Chain (in-memory)", lambda e: chain_filters_memory(pf, e)),
@@ -94,20 +106,33 @@ def benchmark_large_dataset():
 
         def chain_filters_streaming(pf, events):
             """Chain multiple filters with streaming engine."""
-            result = pf.filter_by_time(events, t_start=0.1, t_end=0.4, engine="streaming")
-            result = pf.filter_by_roi(result, x_min=200, x_max=800, y_min=200, y_max=500, engine="streaming")
+            result = pf.filter_by_time(
+                events, t_start=0.1, t_end=0.4, engine="streaming"
+            )
+            result = pf.filter_by_roi(
+                result, x_min=200, x_max=800, y_min=200, y_max=500, engine="streaming"
+            )
             result = pf.filter_by_polarity(result, polarity=1, engine="streaming")
             return result
 
         def chain_filters_memory(pf, events):
             """Chain multiple filters with in-memory engine."""
-            result = pf.filter_by_time(events, t_start=0.1, t_end=0.4, engine="in-memory")
-            result = pf.filter_by_roi(result, x_min=200, x_max=800, y_min=200, y_max=500, engine="in-memory")
+            result = pf.filter_by_time(
+                events, t_start=0.1, t_end=0.4, engine="in-memory"
+            )
+            result = pf.filter_by_roi(
+                result, x_min=200, x_max=800, y_min=200, y_max=500, engine="in-memory"
+            )
             result = pf.filter_by_polarity(result, polarity=1, engine="in-memory")
             return result
 
         # Store results for comparison
-        results = {"operations": [], "durations": [], "memory_usage": [], "final_counts": []}
+        results = {
+            "operations": [],
+            "durations": [],
+            "memory_usage": [],
+            "final_counts": [],
+        }
 
         print("\n📊 Performance Results (Large Dataset):")
         print(f"{'Operation':<25} {'Time (s)':<10} {'Final Events':<15}")
@@ -165,22 +190,36 @@ def benchmark_smaller_dataset_streaming():
         ("Complex Chain (in-memory)", lambda e: complex_chain_memory(pf, e)),
         (
             "Hot Pixels (streaming)",
-            lambda e: pf.filter_hot_pixels(e, threshold_percentile=90.0, engine="streaming"),
+            lambda e: pf.filter_hot_pixels(
+                e, threshold_percentile=90.0, engine="streaming"
+            ),
         ),
         (
             "Hot Pixels (in-memory)",
-            lambda e: pf.filter_hot_pixels(e, threshold_percentile=90.0, engine="in-memory"),
+            lambda e: pf.filter_hot_pixels(
+                e, threshold_percentile=90.0, engine="in-memory"
+            ),
         ),
         (
             "Preprocessing (streaming)",
             lambda e: pf.preprocess_events(
-                e, t_start=0.1, t_end=0.8, remove_hot_pixels=True, denoise=True, engine="streaming"
+                e,
+                t_start=0.1,
+                t_end=0.8,
+                remove_hot_pixels=True,
+                denoise=True,
+                engine="streaming",
             ),
         ),
         (
             "Preprocessing (in-memory)",
             lambda e: pf.preprocess_events(
-                e, t_start=0.1, t_end=0.8, remove_hot_pixels=True, denoise=True, engine="in-memory"
+                e,
+                t_start=0.1,
+                t_end=0.8,
+                remove_hot_pixels=True,
+                denoise=True,
+                engine="in-memory",
             ),
         ),
     ]
@@ -190,14 +229,20 @@ def benchmark_smaller_dataset_streaming():
         result = events
         # Multiple time windows
         for start, end in [(0.1, 0.3), (0.4, 0.6), (0.7, 0.9)]:
-            chunk = pf.filter_by_time(result, t_start=start, t_end=end, engine="streaming")
+            chunk = pf.filter_by_time(
+                result, t_start=start, t_end=end, engine="streaming"
+            )
             if start == 0.1:
                 result = chunk
             else:
                 # Union multiple time windows - this benefits from streaming
                 result = result.concat(chunk)
-        result = pf.filter_by_roi(result, x_min=50, x_max=200, y_min=50, y_max=180, engine="streaming")
-        result = pf.filter_hot_pixels(result, threshold_percentile=95.0, engine="streaming")
+        result = pf.filter_by_roi(
+            result, x_min=50, x_max=200, y_min=50, y_max=180, engine="streaming"
+        )
+        result = pf.filter_hot_pixels(
+            result, threshold_percentile=95.0, engine="streaming"
+        )
         return result
 
     def complex_chain_memory(pf, events):
@@ -205,14 +250,20 @@ def benchmark_smaller_dataset_streaming():
         result = events
         # Multiple time windows
         for start, end in [(0.1, 0.3), (0.4, 0.6), (0.7, 0.9)]:
-            chunk = pf.filter_by_time(result, t_start=start, t_end=end, engine="in-memory")
+            chunk = pf.filter_by_time(
+                result, t_start=start, t_end=end, engine="in-memory"
+            )
             if start == 0.1:
                 result = chunk
             else:
                 # Union multiple time windows
                 result = result.concat(chunk)
-        result = pf.filter_by_roi(result, x_min=50, x_max=200, y_min=50, y_max=180, engine="in-memory")
-        result = pf.filter_hot_pixels(result, threshold_percentile=95.0, engine="in-memory")
+        result = pf.filter_by_roi(
+            result, x_min=50, x_max=200, y_min=50, y_max=180, engine="in-memory"
+        )
+        result = pf.filter_hot_pixels(
+            result, threshold_percentile=95.0, engine="in-memory"
+        )
         return result
 
     results = {"operations": [], "durations": [], "final_counts": []}
@@ -277,8 +328,22 @@ def create_streaming_comparison_plot(results):
         x_pos = np.arange(len(streaming_ops))
         width = 0.35
 
-        ax1.bar(x_pos - width / 2, memory_times, width, label="In-Memory", color="lightcoral", alpha=0.8)
-        ax1.bar(x_pos + width / 2, streaming_times, width, label="Streaming", color="lightblue", alpha=0.8)
+        ax1.bar(
+            x_pos - width / 2,
+            memory_times,
+            width,
+            label="In-Memory",
+            color="lightcoral",
+            alpha=0.8,
+        )
+        ax1.bar(
+            x_pos + width / 2,
+            streaming_times,
+            width,
+            label="Streaming",
+            color="lightblue",
+            alpha=0.8,
+        )
 
         ax1.set_xlabel("Operations")
         ax1.set_ylabel("Execution Time (seconds)")
@@ -295,7 +360,8 @@ def create_streaming_comparison_plot(results):
                 if speedup > 1:
                     ax1.text(
                         i,
-                        max(mem_time, stream_time) + max(memory_times + streaming_times) * 0.05,
+                        max(mem_time, stream_time)
+                        + max(memory_times + streaming_times) * 0.05,
                         f"{speedup:.1f}x faster",
                         ha="center",
                         va="bottom",
@@ -306,7 +372,8 @@ def create_streaming_comparison_plot(results):
                     speedup = stream_time / mem_time
                     ax1.text(
                         i,
-                        max(mem_time, stream_time) + max(memory_times + streaming_times) * 0.05,
+                        max(mem_time, stream_time)
+                        + max(memory_times + streaming_times) * 0.05,
                         f"{speedup:.1f}x slower",
                         ha="center",
                         va="bottom",
@@ -326,8 +393,22 @@ def create_streaming_comparison_plot(results):
     x_pos2 = np.arange(len(categories))
     width = 0.35
 
-    ax2.bar(x_pos2 - width / 2, memory_baseline, width, label="In-Memory", color="lightcoral", alpha=0.8)
-    ax2.bar(x_pos2 + width / 2, streaming_advantage, width, label="Streaming", color="lightblue", alpha=0.8)
+    ax2.bar(
+        x_pos2 - width / 2,
+        memory_baseline,
+        width,
+        label="In-Memory",
+        color="lightcoral",
+        alpha=0.8,
+    )
+    ax2.bar(
+        x_pos2 + width / 2,
+        streaming_advantage,
+        width,
+        label="Streaming",
+        color="lightblue",
+        alpha=0.8,
+    )
 
     ax2.set_xlabel("Dataset Size")
     ax2.set_ylabel("Relative Performance")
@@ -369,10 +450,16 @@ if __name__ == "__main__":
         plot_path = create_streaming_comparison_plot(results)
 
         print("\n🎯 Key Insights:")
-        print("   • Streaming benefits are most apparent with larger datasets (>10M events)")
+        print(
+            "   • Streaming benefits are most apparent with larger datasets (>10M events)"
+        )
         print("   • Complex filter chains show greater streaming advantages")
-        print("   • Memory efficiency improves significantly with streaming for large data")
-        print("   • Hot pixel and noise filtering operations benefit most from streaming")
+        print(
+            "   • Memory efficiency improves significantly with streaming for large data"
+        )
+        print(
+            "   • Hot pixel and noise filtering operations benefit most from streaming"
+        )
 
         print("\n📊 Visualization saved: streaming_vs_memory_benchmark.png")
         print("\n🚀 For maximum streaming benefits, test with:")

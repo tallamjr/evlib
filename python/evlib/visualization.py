@@ -31,7 +31,9 @@ try:
     if hasattr(hdf5plugin, "register"):
         hdf5plugin.register()
 except ImportError:
-    logging.warning("hdf5plugin not available - may have issues reading compressed HDF5 files")
+    logging.warning(
+        "hdf5plugin not available - may have issues reading compressed HDF5 files"
+    )
 
 
 @dataclass
@@ -45,8 +47,16 @@ class VisualizationConfig:
 
     # Color configuration
     positive_color: Tuple[int, int, int] = (0, 0, 255)  # Red (BGR format for OpenCV)
-    negative_color: Tuple[int, int, int] = (255, 128, 0)  # Bright blue (BGR format for OpenCV)
-    background_color: Tuple[int, int, int] = (200, 180, 150)  # Light blue background (BGR format for OpenCV)
+    negative_color: Tuple[int, int, int] = (
+        255,
+        128,
+        0,
+    )  # Bright blue (BGR format for OpenCV)
+    background_color: Tuple[int, int, int] = (
+        200,
+        180,
+        150,
+    )  # Light blue background (BGR format for OpenCV)
 
     # Colormap visualization mode
     use_colormap: bool = False  # Enable thermal/jet-like colormap visualization
@@ -137,7 +147,9 @@ class eTramDataLoader:
                     # Raw events format: need to convert to representation format on-demand
                     events_group = f["events"]
                     if not all(key in events_group for key in ["xs", "ys", "ts", "ps"]):
-                        raise ValueError("Events group missing required datasets (xs, ys, ts, ps)")
+                        raise ValueError(
+                            "Events group missing required datasets (xs, ys, ts, ps)"
+                        )
 
                     # Load event data to determine dimensions
                     xs = events_group["xs"][:]
@@ -162,11 +174,14 @@ class eTramDataLoader:
                     # Cache event data for on-demand conversion
                     self._cached_events = {"xs": xs, "ys": ys, "ts": ts, "ps": ps}
                 else:
-                    raise ValueError("HDF5 file must contain either 'data' dataset or 'events' group")
+                    raise ValueError(
+                        "HDF5 file must contain either 'data' dataset or 'events' group"
+                    )
 
             # Load timestamps
             timestamp_file = (
-                self.data_path / "event_representations_v2/stacked_histogram_dt=50_nbins=10/timestamps_us.npy"
+                self.data_path
+                / "event_representations_v2/stacked_histogram_dt=50_nbins=10/timestamps_us.npy"
             )
             if not timestamp_file.exists():
                 # Try alternative path
@@ -203,7 +218,9 @@ class eTramDataLoader:
             Event data array with shape (num_bins, height, width)
         """
         if frame_idx < 0 or frame_idx >= self.num_frames:
-            raise ValueError(f"Frame index {frame_idx} out of range [0, {self.num_frames})")
+            raise ValueError(
+                f"Frame index {frame_idx} out of range [0, {self.num_frames})"
+            )
 
         try:
             if self.data_format == "representation":
@@ -260,15 +277,25 @@ class eTramDataLoader:
 
         # Create representation frame with polarity separation
         # Even bins = positive events, odd bins = negative events (to match renderer expectations)
-        frame_data = np.zeros((self.num_bins, self.height, self.width), dtype=np.float32)
+        frame_data = np.zeros(
+            (self.num_bins, self.height, self.width), dtype=np.float32
+        )
 
         if len(frame_xs) > 0:
             # Separate positive and negative events
             pos_mask = frame_ps == 1
             neg_mask = frame_ps == -1
 
-            pos_xs, pos_ys, pos_ts = frame_xs[pos_mask], frame_ys[pos_mask], frame_ts[pos_mask]
-            neg_xs, neg_ys, neg_ts = frame_xs[neg_mask], frame_ys[neg_mask], frame_ts[neg_mask]
+            pos_xs, pos_ys, pos_ts = (
+                frame_xs[pos_mask],
+                frame_ys[pos_mask],
+                frame_ts[pos_mask],
+            )
+            neg_xs, neg_ys, neg_ts = (
+                frame_xs[neg_mask],
+                frame_ys[neg_mask],
+                frame_ts[neg_mask],
+            )
 
             # Create temporal bins within the frame
             temporal_bins = self.num_bins // 2  # Half for positive, half for negative
@@ -300,7 +327,9 @@ class eTramDataLoader:
                 # Accumulate negative events in odd bins
                 for x, y in zip(bin_xs, bin_ys):
                     if 0 <= x < self.width and 0 <= y < self.height:
-                        frame_data[bin_idx * 2 + 1, y, x] += 1.0  # Odd bins for negative
+                        frame_data[bin_idx * 2 + 1, y, x] += (
+                            1.0  # Odd bins for negative
+                        )
 
         return frame_data
 
@@ -336,7 +365,9 @@ class eTramDataLoader:
             Event data array with shape (num_frames, num_bins, height, width)
         """
         if start_idx < 0 or end_idx > self.num_frames or start_idx >= end_idx:
-            raise ValueError(f"Invalid frame range [{start_idx}, {end_idx}) for {self.num_frames} frames")
+            raise ValueError(
+                f"Invalid frame range [{start_idx}, {end_idx}) for {self.num_frames} frames"
+            )
 
         try:
             # Ensure HDF5 plugins are set up before each file access
@@ -346,7 +377,9 @@ class eTramDataLoader:
                 frame_data = f["data"][start_idx:end_idx]
                 return frame_data
         except Exception as e:
-            raise RuntimeError(f"Failed to load frame range [{start_idx}, {end_idx}): {e}")
+            raise RuntimeError(
+                f"Failed to load frame range [{start_idx}, {end_idx}): {e}"
+            )
 
 
 class EventFrameRenderer:
@@ -369,7 +402,10 @@ class EventFrameRenderer:
         self.previous_frame = None
 
     def render_frame(
-        self, event_data: np.ndarray, timestamp_s: float = 0.0, show_stats: Optional[Dict] = None
+        self,
+        event_data: np.ndarray,
+        timestamp_s: float = 0.0,
+        show_stats: Optional[Dict] = None,
     ) -> np.ndarray:
         """
         Render a single frame from event data.
@@ -387,8 +423,12 @@ class EventFrameRenderer:
             self.data_height, self.data_width = event_data.shape[1], event_data.shape[2]
 
         # Process event data - sum positive and negative events across bins
-        positive_events = np.sum(event_data[::2], axis=0).astype(np.float32)  # Even bins = positive
-        negative_events = np.sum(event_data[1::2], axis=0).astype(np.float32)  # Odd bins = negative
+        positive_events = np.sum(event_data[::2], axis=0).astype(
+            np.float32
+        )  # Even bins = positive
+        negative_events = np.sum(event_data[1::2], axis=0).astype(
+            np.float32
+        )  # Odd bins = negative
 
         # Normalize event intensities (0-255 range)
         if positive_events.max() > 0:
@@ -421,8 +461,13 @@ class EventFrameRenderer:
         frame_uint8 = np.clip(frame, 0, 255).astype(np.uint8)
 
         # Resize to target resolution if different from data resolution
-        if frame_uint8.shape[0] != self.config.height or frame_uint8.shape[1] != self.config.width:
-            frame_uint8 = cv2.resize(frame_uint8, (self.config.width, self.config.height))
+        if (
+            frame_uint8.shape[0] != self.config.height
+            or frame_uint8.shape[1] != self.config.width
+        ):
+            frame_uint8 = cv2.resize(
+                frame_uint8, (self.config.width, self.config.height)
+            )
 
         # Add statistics overlay if requested
         if show_stats and self.config.show_stats:
@@ -431,7 +476,9 @@ class EventFrameRenderer:
         self.frame_count += 1
         return frame_uint8
 
-    def _add_stats_overlay(self, frame: np.ndarray, stats: Dict, timestamp_s: float) -> np.ndarray:
+    def _add_stats_overlay(
+        self, frame: np.ndarray, stats: Dict, timestamp_s: float
+    ) -> np.ndarray:
         """Add compact statistics overlay to frame."""
         overlay_frame = frame.copy()
 
@@ -468,11 +515,15 @@ class EventFrameRenderer:
 
         return overlay_frame
 
-    def _render_polarity_frame(self, positive_norm: np.ndarray, negative_norm: np.ndarray) -> np.ndarray:
+    def _render_polarity_frame(
+        self, positive_norm: np.ndarray, negative_norm: np.ndarray
+    ) -> np.ndarray:
         """Simplified polarity-based rendering with red/blue colors."""
         # Start with clean background frame
         frame = np.full(
-            (self.data_height, self.data_width, 3), self.config.background_color, dtype=np.float32
+            (self.data_height, self.data_width, 3),
+            self.config.background_color,
+            dtype=np.float32,
         )
 
         # Add positive events (RED) - pure red on background
@@ -491,11 +542,15 @@ class EventFrameRenderer:
 
         return frame
 
-    def _render_colormap_frame(self, positive_events: np.ndarray, negative_events: np.ndarray) -> np.ndarray:
+    def _render_colormap_frame(
+        self, positive_events: np.ndarray, negative_events: np.ndarray
+    ) -> np.ndarray:
         """Enhanced colormap-based rendering that preserves polarity information."""
         # Start with configured background color
         frame = np.full(
-            (self.data_height, self.data_width, 3), self.config.background_color, dtype=np.float32
+            (self.data_height, self.data_width, 3),
+            self.config.background_color,
+            dtype=np.float32,
         )
 
         # Get colormap configuration
@@ -515,7 +570,9 @@ class EventFrameRenderer:
             "pink": cv2.COLORMAP_PINK,
             "bone": cv2.COLORMAP_BONE,
         }
-        colormap = colormap_dict.get(self.config.colormap_type.lower(), cv2.COLORMAP_JET)
+        colormap = colormap_dict.get(
+            self.config.colormap_type.lower(), cv2.COLORMAP_JET
+        )
 
         # Process positive events (warm colors - red/yellow side of colormap)
         if positive_events.max() > 0:
@@ -536,17 +593,25 @@ class EventFrameRenderer:
             if self.config.colormap_type.lower() in ["jet", "rainbow", "hsv"]:
                 # For jet/rainbow: use blue side for negative events
                 neg_colored[neg_mask, 2] = neg_colored[neg_mask, 2] * 0.3  # Reduce red
-                neg_colored[neg_mask, 1] = neg_colored[neg_mask, 1] * 0.6  # Reduce green
-                neg_colored[neg_mask, 0] = np.minimum(255, neg_colored[neg_mask, 0] * 1.5)  # Enhance blue
+                neg_colored[neg_mask, 1] = (
+                    neg_colored[neg_mask, 1] * 0.6
+                )  # Reduce green
+                neg_colored[neg_mask, 0] = np.minimum(
+                    255, neg_colored[neg_mask, 0] * 1.5
+                )  # Enhance blue
             elif self.config.colormap_type.lower() in ["hot", "inferno", "magma"]:
                 # For hot/inferno: use different intensity mapping
-                neg_colored[neg_mask, 0] = neg_colored[neg_mask, 0] * 1.2  # More blue/purple
+                neg_colored[neg_mask, 0] = (
+                    neg_colored[neg_mask, 0] * 1.2
+                )  # More blue/purple
                 neg_colored[neg_mask, 1] = neg_colored[neg_mask, 1] * 0.8  # Less green
                 neg_colored[neg_mask, 2] = neg_colored[neg_mask, 2] * 0.5  # Less red
 
             # Blend negative events with existing frame
             alpha = 0.8
-            frame[neg_mask] = frame[neg_mask] * (1 - alpha) + neg_colored[neg_mask] * alpha
+            frame[neg_mask] = (
+                frame[neg_mask] * (1 - alpha) + neg_colored[neg_mask] * alpha
+            )
 
         # Note: Temporal decay removed for simplicity - each frame is independent
 
@@ -598,7 +663,9 @@ class eTramVisualizer:
 
             # Calculate frame range
             if start_time_s is not None:
-                start_frame = int((start_time_s - loader.start_time_s) * self.config.fps)
+                start_frame = int(
+                    (start_time_s - loader.start_time_s) * self.config.fps
+                )
                 start_frame = max(0, min(start_frame, loader.num_frames - 1))
             else:
                 start_frame = 0
@@ -649,12 +716,18 @@ class eTramVisualizer:
                     if frame_idx < len(loader.timestamps_us):
                         timestamp_s = loader.timestamps_us[frame_idx] / 1_000_000
                     else:
-                        timestamp_s = start_time_s + (frame_idx - start_frame) / self.config.fps
+                        timestamp_s = (
+                            start_time_s + (frame_idx - start_frame) / self.config.fps
+                        )
 
                     # Calculate statistics
                     total_events = int(np.sum(event_data))
                     elapsed_time = time.time() - start_time
-                    processing_fps = (frame_idx - start_frame + 1) / elapsed_time if elapsed_time > 0 else 0
+                    processing_fps = (
+                        (frame_idx - start_frame + 1) / elapsed_time
+                        if elapsed_time > 0
+                        else 0
+                    )
 
                     stats = {
                         "fps": processing_fps,
@@ -663,18 +736,28 @@ class eTramVisualizer:
                     }
 
                     # Render frame (resizing is handled internally)
-                    rgb_frame = self.renderer.render_frame(event_data, timestamp_s, stats)
+                    rgb_frame = self.renderer.render_frame(
+                        event_data, timestamp_s, stats
+                    )
 
                     # Write frame
                     video_writer.write(rgb_frame)
 
                     # Progress update
-                    if (frame_idx - start_frame + 1) % max(1, (end_frame - start_frame) // 20) == 0:
-                        progress = (frame_idx - start_frame + 1) / (end_frame - start_frame)
-                        eta = elapsed_time / progress - elapsed_time if progress > 0 else 0
+                    if (frame_idx - start_frame + 1) % max(
+                        1, (end_frame - start_frame) // 20
+                    ) == 0:
+                        progress = (frame_idx - start_frame + 1) / (
+                            end_frame - start_frame
+                        )
+                        eta = (
+                            elapsed_time / progress - elapsed_time
+                            if progress > 0
+                            else 0
+                        )
                         self.logger.info(
                             f"Progress: {frame_idx - start_frame + 1}/{end_frame - start_frame} "
-                            f"({progress*100:.1f}%) - ETA: {eta:.1f}s"
+                            f"({progress * 100:.1f}%) - ETA: {eta:.1f}s"
                         )
 
                 except Exception as e:
@@ -688,7 +771,9 @@ class eTramVisualizer:
             if output_path.exists():
                 file_size_mb = output_path.stat().st_size / (1024 * 1024)
                 total_time = time.time() - start_time
-                self.logger.info(f"Video saved successfully: {file_size_mb:.1f} MB in {total_time:.1f}s")
+                self.logger.info(
+                    f"Video saved successfully: {file_size_mb:.1f} MB in {total_time:.1f}s"
+                )
                 return True
             else:
                 self.logger.error("Failed to save video file")
@@ -722,7 +807,9 @@ class eTramVisualizer:
         # Find all data directories
         data_paths = list(data_dir.glob(pattern))
         if not data_paths:
-            self.logger.warning(f"No data directories found matching pattern: {pattern}")
+            self.logger.warning(
+                f"No data directories found matching pattern: {pattern}"
+            )
             return []
 
         self.logger.info(f"Found {len(data_paths)} data directories to process")
@@ -734,7 +821,9 @@ class eTramVisualizer:
             output_name = data_path.parent.name + ".mp4"
             output_path = output_dir / output_name
 
-            self.logger.info(f"Processing {i+1}/{len(data_paths)}: {data_path.parent.name}")
+            self.logger.info(
+                f"Processing {i + 1}/{len(data_paths)}: {data_path.parent.name}"
+            )
 
             if self.process_file(data_path.parent, output_path):
                 successful_outputs.append(output_path)

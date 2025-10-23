@@ -198,7 +198,9 @@ def test_evt3_loading():
         try:
             events_lazy = evlib.load_events(evt3_file, t_start=0, t_end=0.001)
             events_df = events_lazy.collect()
-            print(f"✅ SUCCESS: Header parsing worked, attempted to load {len(events_df)} events")
+            print(
+                f"✅ SUCCESS: Header parsing worked, attempted to load {len(events_df)} events"
+            )
 
             # If we get events, verify basic structure
             if len(events_df) > 0:
@@ -211,7 +213,9 @@ def test_evt3_loading():
         except Exception as header_e:
             # Check if this is the expected event decoding error (not header error)
             if "Invalid event type" in str(header_e):
-                print(f"✅ SUCCESS: Header parsing worked! Event decoding needs more event types: {header_e}")
+                print(
+                    f"✅ SUCCESS: Header parsing worked! Event decoding needs more event types: {header_e}"
+                )
                 # This is actually success - header parsing is working
             else:
                 # Re-raise if it's a different error
@@ -250,7 +254,9 @@ def test_evt3_metadata_extraction():
             print(f"Extracted metadata: {metadata}")
 
             # Verify metadata contains expected information
-            assert "detection_method" in metadata, "Missing detection_method in metadata"
+            assert "detection_method" in metadata, (
+                "Missing detection_method in metadata"
+            )
 
             # Check if sensor resolution was detected
             # Note: This depends on the specific header parsing implementation
@@ -381,7 +387,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
             if os.path.exists(file_path):
                 os.unlink(file_path)
 
-    def create_evt3_test_file(self, include_events=True, header_params=None, events_data=None):
+    def create_evt3_test_file(
+        self, include_events=True, header_params=None, events_data=None
+    ):
         """Create a comprehensive EVT3 test file with known content"""
         if header_params is None:
             header_params = {"height": 720, "width": 1280}
@@ -397,8 +405,8 @@ class TestEVT3FormatSupport(unittest.TestCase):
         # Create comprehensive EVT3 header
         header = f"""% evt 3.0
 % date 2024-01-15 12:00:00
-% format EVT3;height={header_params['height']};width={header_params['width']}
-% geometry {header_params['width']}x{header_params['height']}
+% format EVT3;height={header_params["height"]};width={header_params["width"]}
+% geometry {header_params["width"]}x{header_params["height"]}
 % camera_integrator_name Prophesee
 % camera_type prophesee
 % sensor_generation 4.0
@@ -421,7 +429,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     time_high = ((timestamp_us >> 12) & 0xFFF) << 4 | 0x8
                     time_low = (timestamp_us & 0xFFF) << 4 | 0x6
                     y_addr = (y & 0x7FF) << 4 | 0x0
-                    x_addr = ((1 if polarity > 0 else 0) << 15) | ((x & 0x7FF) << 4) | 0x2
+                    x_addr = (
+                        ((1 if polarity > 0 else 0) << 15) | ((x & 0x7FF) << 4) | 0x2
+                    )
 
                     # Write as little-endian 16-bit words
                     f.write(struct.pack("<H", time_high))
@@ -445,8 +455,14 @@ class TestEVT3FormatSupport(unittest.TestCase):
                 format_name, confidence, metadata = evlib.detect_format(test_file)
 
                 self.assertEqual(format_name, "EVT3", "EVT3 format should be detected")
-                self.assertGreater(confidence, 0.9, "Detection confidence should be high")
-                self.assertIn("detection_method", metadata, "Metadata should contain detection method")
+                self.assertGreater(
+                    confidence, 0.9, "Detection confidence should be high"
+                )
+                self.assertIn(
+                    "detection_method",
+                    metadata,
+                    "Metadata should contain detection method",
+                )
             else:
                 self.skipTest("detect_format not available in current build")
 
@@ -467,9 +483,15 @@ class TestEVT3FormatSupport(unittest.TestCase):
 
             header_part = content[:header_end].decode("utf-8")
             self.assertIn("evt 3.0", header_part, "Header should contain EVT3 version")
-            self.assertIn("format EVT3", header_part, "Header should contain format declaration")
-            self.assertIn("height=480", header_part, "Header should contain height parameter")
-            self.assertIn("width=640", header_part, "Header should contain width parameter")
+            self.assertIn(
+                "format EVT3", header_part, "Header should contain format declaration"
+            )
+            self.assertIn(
+                "height=480", header_part, "Header should contain height parameter"
+            )
+            self.assertIn(
+                "width=640", header_part, "Header should contain width parameter"
+            )
 
     def test_evt3_event_loading(self):
         """Test loading events from EVT3 file"""
@@ -491,22 +513,51 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     polarities = df["polarity"].to_numpy()
 
                     # Verify data types
-                    self.assertIsInstance(x_coords, np.ndarray, "X coordinates should be numpy array")
-                    self.assertIsInstance(y_coords, np.ndarray, "Y coordinates should be numpy array")
-                    self.assertIsInstance(timestamps, np.ndarray, "Timestamps should be numpy array")
-                    self.assertIsInstance(polarities, np.ndarray, "Polarities should be numpy array")
+                    self.assertIsInstance(
+                        x_coords, np.ndarray, "X coordinates should be numpy array"
+                    )
+                    self.assertIsInstance(
+                        y_coords, np.ndarray, "Y coordinates should be numpy array"
+                    )
+                    self.assertIsInstance(
+                        timestamps, np.ndarray, "Timestamps should be numpy array"
+                    )
+                    self.assertIsInstance(
+                        polarities, np.ndarray, "Polarities should be numpy array"
+                    )
 
                     # Verify array consistency
-                    self.assertEqual(len(x_coords), len(df), "X coords should match DataFrame length")
-                    self.assertEqual(len(y_coords), len(df), "Y coords should match DataFrame length")
-                    self.assertEqual(len(timestamps), len(df), "Timestamps should match DataFrame length")
-                    self.assertEqual(len(polarities), len(df), "Polarities should match DataFrame length")
+                    self.assertEqual(
+                        len(x_coords), len(df), "X coords should match DataFrame length"
+                    )
+                    self.assertEqual(
+                        len(y_coords), len(df), "Y coords should match DataFrame length"
+                    )
+                    self.assertEqual(
+                        len(timestamps),
+                        len(df),
+                        "Timestamps should match DataFrame length",
+                    )
+                    self.assertEqual(
+                        len(polarities),
+                        len(df),
+                        "Polarities should match DataFrame length",
+                    )
 
                     # Verify data ranges
-                    self.assertTrue(np.all(x_coords >= 0), "X coordinates should be non-negative")
-                    self.assertTrue(np.all(y_coords >= 0), "Y coordinates should be non-negative")
-                    self.assertTrue(np.all(timestamps >= 0), "Timestamps should be non-negative")
-                    self.assertTrue(np.all(np.isin(polarities, [-1, 1])), "Polarities should be -1 or 1")
+                    self.assertTrue(
+                        np.all(x_coords >= 0), "X coordinates should be non-negative"
+                    )
+                    self.assertTrue(
+                        np.all(y_coords >= 0), "Y coordinates should be non-negative"
+                    )
+                    self.assertTrue(
+                        np.all(timestamps >= 0), "Timestamps should be non-negative"
+                    )
+                    self.assertTrue(
+                        np.all(np.isin(polarities, [-1, 1])),
+                        "Polarities should be -1 or 1",
+                    )
 
             else:
                 self.skipTest("load_events not available in current build")
@@ -521,7 +572,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
             (0x123456, 640, 360, 1),  # Event 1: positive polarity
             (0x234567, 100, 200, -1),  # Event 2: negative polarity
         ]
-        test_file = self.create_evt3_test_file(include_events=True, events_data=test_events)
+        test_file = self.create_evt3_test_file(
+            include_events=True, events_data=test_events
+        )
 
         try:
             import evlib
@@ -536,22 +589,34 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     polarities = df["polarity"].to_numpy()
 
                     # Expected values based on our test data
-                    expected_timestamps = [0x123456, 0x234567]  # Timestamps in microseconds
+                    expected_timestamps = [
+                        0x123456,
+                        0x234567,
+                    ]  # Timestamps in microseconds
                     expected_x = [640, 100]
                     expected_y = [360, 200]
                     expected_polarities = [1, -1]
 
                     # Verify coordinates
-                    np.testing.assert_array_equal(x_coords, expected_x, "X coordinates should match")
-                    np.testing.assert_array_equal(y_coords, expected_y, "Y coordinates should match")
+                    np.testing.assert_array_equal(
+                        x_coords, expected_x, "X coordinates should match"
+                    )
+                    np.testing.assert_array_equal(
+                        y_coords, expected_y, "Y coordinates should match"
+                    )
 
                     # Verify timestamps (with tolerance for floating point)
                     np.testing.assert_allclose(
-                        timestamps, expected_timestamps, rtol=1e-6, err_msg="Timestamps should match"
+                        timestamps,
+                        expected_timestamps,
+                        rtol=1e-6,
+                        err_msg="Timestamps should match",
                     )
 
                     # Verify polarities
-                    np.testing.assert_array_equal(polarities, expected_polarities, "Polarities should match")
+                    np.testing.assert_array_equal(
+                        polarities, expected_polarities, "Polarities should match"
+                    )
 
             else:
                 self.skipTest("load_events not available in current build")
@@ -574,7 +639,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
             # Loading should work but return empty DataFrame
             if hasattr(evlib, "load_events"):
                 df = evlib.load_events(test_file).collect()
-                self.assertEqual(len(df), 0, "Empty EVT3 file should return empty DataFrame")
+                self.assertEqual(
+                    len(df), 0, "Empty EVT3 file should return empty DataFrame"
+                )
 
         except ImportError:
             self.skipTest("Could not import evlib")
@@ -624,7 +691,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
             (0x123456, 400, 500, 1),  # Both coordinates out of bounds
         ]
         test_file = self.create_evt3_test_file(
-            include_events=True, header_params=header_params, events_data=out_of_bounds_events
+            include_events=True,
+            header_params=header_params,
+            events_data=out_of_bounds_events,
         )
 
         try:
@@ -635,7 +704,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     df = evlib.load_events(test_file).collect()
                     # Events may be loaded despite bounds issues (depends on implementation)
                     if len(df) == 0:
-                        print("PASS: No events loaded due to coordinate bounds validation")
+                        print(
+                            "PASS: No events loaded due to coordinate bounds validation"
+                        )
                     else:
                         print("WARN: Events loaded despite coordinate bounds issues")
                 except Exception as e:
@@ -653,14 +724,18 @@ class TestEVT3FormatSupport(unittest.TestCase):
             (0x345678, 800, 400, 1),  # Event at 3.427896 seconds
         ]
 
-        test_file = self.create_evt3_test_file(include_events=True, events_data=test_events)
+        test_file = self.create_evt3_test_file(
+            include_events=True, events_data=test_events
+        )
 
         # Verify file format manually
         with open(test_file, "rb") as f:
             content = f.read()
 
             # Check header
-            self.assertTrue(content.startswith(b"% evt 3.0"), "Should start with EVT3 magic")
+            self.assertTrue(
+                content.startswith(b"% evt 3.0"), "Should start with EVT3 magic"
+            )
 
             # Find binary data
             header_end = content.find(b"% end")
@@ -670,7 +745,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
             self.assertEqual(len(binary_data), 24, "Should have 24 bytes for 3 events")
 
             # Parse and verify each event
-            for i, (expected_t, expected_x, expected_y, expected_p) in enumerate(test_events):
+            for i, (expected_t, expected_x, expected_y, expected_p) in enumerate(
+                test_events
+            ):
                 offset = i * 8  # 8 bytes per event
                 event_data = binary_data[offset : offset + 8]
                 words = struct.unpack("<4H", event_data)
@@ -678,17 +755,25 @@ class TestEVT3FormatSupport(unittest.TestCase):
 
                 # Reconstruct timestamp
                 reconstructed_t = ((time_high >> 4) << 12) | (time_low >> 4)
-                self.assertEqual(reconstructed_t, expected_t, f"Event {i} timestamp mismatch")
+                self.assertEqual(
+                    reconstructed_t, expected_t, f"Event {i} timestamp mismatch"
+                )
 
                 # Reconstruct coordinates
                 reconstructed_x = (x_addr >> 4) & 0x7FF
                 reconstructed_y = (y_addr >> 4) & 0x7FF
-                self.assertEqual(reconstructed_x, expected_x, f"Event {i} X coordinate mismatch")
-                self.assertEqual(reconstructed_y, expected_y, f"Event {i} Y coordinate mismatch")
+                self.assertEqual(
+                    reconstructed_x, expected_x, f"Event {i} X coordinate mismatch"
+                )
+                self.assertEqual(
+                    reconstructed_y, expected_y, f"Event {i} Y coordinate mismatch"
+                )
 
                 # Reconstruct polarity
                 reconstructed_p = 1 if (x_addr & 0x8000) else -1
-                self.assertEqual(reconstructed_p, expected_p, f"Event {i} polarity mismatch")
+                self.assertEqual(
+                    reconstructed_p, expected_p, f"Event {i} polarity mismatch"
+                )
 
     def test_evt3_integration_with_evlib(self):
         """Test EVT3 integration with other evlib functions"""
@@ -696,13 +781,20 @@ class TestEVT3FormatSupport(unittest.TestCase):
             import evlib
 
             # Test that evlib functions that should work still work
-            self.assertTrue(hasattr(evlib, "create_voxel_grid"), "create_voxel_grid should be available")
-            self.assertTrue(hasattr(evlib, "representations"), "representations module should be available")
+            self.assertTrue(
+                hasattr(evlib, "create_voxel_grid"),
+                "create_voxel_grid should be available",
+            )
+            self.assertTrue(
+                hasattr(evlib, "representations"),
+                "representations module should be available",
+            )
 
             # Test that we can at least call the functions (even if they fail)
             try:
                 events = np.array(
-                    [(0.1, 100, 100, 1)], dtype=[("t", "f8"), ("x", "u2"), ("y", "u2"), ("polarity", "i1")]
+                    [(0.1, 100, 100, 1)],
+                    dtype=[("t", "f8"), ("x", "u2"), ("y", "u2"), ("polarity", "i1")],
                 )
                 _result = evlib.create_voxel_grid(events, (100, 100, 1), 480, 640, 5)
                 print("INFO: create_voxel_grid works with structured array")
@@ -731,7 +823,9 @@ class TestEVT3FormatSupport(unittest.TestCase):
                 try:
                     result = evlib.load_events(empty_file)
                     # If it doesn't raise an exception, the result should be empty/reasonable
-                    print(f"INFO: load_events handled empty file gracefully with result: {result}")
+                    print(
+                        f"INFO: load_events handled empty file gracefully with result: {result}"
+                    )
                 except Exception as e:
                     print(f"INFO: load_events appropriately failed with: {e}")
 
@@ -769,7 +863,9 @@ if __name__ == "__main__":
         import evlib
 
         print("evlib imported successfully")
-        print(f"evlib attributes: {[x for x in dir(evlib) if not x.startswith('_')][:10]}...")
+        print(
+            f"evlib attributes: {[x for x in dir(evlib) if not x.startswith('_')][:10]}..."
+        )
 
         if hasattr(evlib, "formats"):
             print(

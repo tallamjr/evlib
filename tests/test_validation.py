@@ -6,7 +6,6 @@ for testing event data quality.
 """
 
 import sys
-import polars as pl
 import pytest
 from pathlib import Path
 

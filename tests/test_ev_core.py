@@ -69,7 +69,9 @@ def test_merge_events_multiple():
     )
 
     # Merge events - the correct format is a tuple of tuples
-    merged_xs, merged_ys, merged_ts, merged_ps = merge_events((events1, events2, events3))
+    merged_xs, merged_ys, merged_ts, merged_ps = merge_events(
+        (events1, events2, events3)
+    )
 
     # Check lengths
     assert len(merged_xs) == 6

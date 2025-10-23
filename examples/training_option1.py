@@ -69,11 +69,15 @@ def main():
     sample_df = lazy_df.head(5).collect()
     print(f"Dataset: {len(sample_df)} samples x {len(sample_df.columns)} features")
     print(f"Classes: {sorted(sample_df['label'].unique())}")
-    print(f"Temporal bin features: {len([col for col in sample_df.columns if col.startswith('bin_')])}")
+    print(
+        f"Temporal bin features: {len([col for col in sample_df.columns if col.startswith('bin_')])}"
+    )
 
     # Create feature transform and dataset
     transform = create_feature_transform()
-    dataset = PolarsDataset(lazy_df, batch_size=128, shuffle=True, transform=transform, drop_last=True)
+    dataset = PolarsDataset(
+        lazy_df, batch_size=128, shuffle=True, transform=transform, drop_last=True
+    )
 
     # Get feature dimensions from test batch
     test_batch = next(iter(dataset))
@@ -156,16 +160,18 @@ def main():
             # Log progress
             if batch_count % 5 == 0:
                 print(
-                    f"Epoch {epoch+1}, Batch {batch_count}: "
+                    f"Epoch {epoch + 1}, Batch {batch_count}: "
                     f"Loss={loss.item():.4f}, "
-                    f"Acc={100.*correct/total:.1f}%, "
-                    f"Time={batch_time*1000:.1f}ms"
+                    f"Acc={100.0 * correct / total:.1f}%, "
+                    f"Time={batch_time * 1000:.1f}ms"
                 )
 
         # Epoch summary
         avg_loss = epoch_loss / batch_count
         accuracy = 100.0 * correct / total
-        print(f"Epoch {epoch+1} complete: Loss={avg_loss:.4f}, Accuracy={accuracy:.1f}%")
+        print(
+            f"Epoch {epoch + 1} complete: Loss={avg_loss:.4f}, Accuracy={accuracy:.1f}%"
+        )
 
     # Performance summary
     avg_batch_time = np.mean(batch_times) * 1000

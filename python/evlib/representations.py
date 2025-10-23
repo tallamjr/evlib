@@ -9,9 +9,8 @@ function names, signatures, and return types for seamless migration.
 """
 
 import polars as pl
-from typing import Union, Literal, Optional, Any
+from typing import Union, Literal
 from polars.lazyframe.engine_config import GPUEngine
-import numpy as np
 
 # Use Polars' native type definition
 EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], GPUEngine]
@@ -61,13 +60,15 @@ def create_stacked_histogram(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
-                pl.col("t")
-                .dt.total_microseconds()
-                .alias("t_us")
+                pl.col("t").dt.total_microseconds().alias("t_us")
             ]
         )
         .with_columns(
-            [((pl.col("t_us") - pl.col("t_us").min()) // time_window).cast(pl.Int32).alias("time_bin")]
+            [
+                ((pl.col("t_us") - pl.col("t_us").min()) // time_window)
+                .cast(pl.Int32)
+                .alias("time_bin")
+            ]
         )
         .filter(
             pl.col("x").is_between(0, width - 1)
@@ -90,7 +91,9 @@ def stacked_histogram(
     engine: EngineType = "auto",
 ) -> pl.DataFrame:
     """Alias for create_stacked_histogram for backwards compatibility"""
-    return create_stacked_histogram(events, height, width, bins, window_duration_ms, engine)
+    return create_stacked_histogram(
+        events, height, width, bins, window_duration_ms, engine
+    )
 
 
 def create_voxel_grid(
@@ -119,9 +122,7 @@ def create_voxel_grid(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
-                pl.col("t")
-                .dt.total_microseconds()
-                .alias("t_us")
+                pl.col("t").dt.total_microseconds().alias("t_us")
             ]
         )
         .with_columns(
@@ -140,7 +141,9 @@ def create_voxel_grid(
                 pl.col("t_norm").floor().cast(pl.Int32).alias("t_low"),
                 (pl.col("t_norm").floor() + 1).cast(pl.Int32).alias("t_high"),
                 (pl.col("t_norm") - pl.col("t_norm").floor()).alias("weight_high"),
-                (1.0 - (pl.col("t_norm") - pl.col("t_norm").floor())).alias("weight_low"),
+                (1.0 - (pl.col("t_norm") - pl.col("t_norm").floor())).alias(
+                    "weight_low"
+                ),
             ]
         )
         .filter(
@@ -195,12 +198,12 @@ def create_mixed_density_stack(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
-                pl.col("t")
-                .dt.total_microseconds()
-                .alias("t_us")
+                pl.col("t").dt.total_microseconds().alias("t_us")
             ]
         )
-        .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1))
+        .filter(
+            pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)
+        )
         .group_by(["x", "y"])
         .agg([pl.col("polarity").sum().alias("polarity_sum"), pl.len().alias("count")]),
         engine=engine,
@@ -232,7 +235,9 @@ def time_surface(
     return _collect_with_engine(
         events_lf.sort("t")
         .group_by(["x", "y", "polarity"])
-        .agg([pl.col("t").last().alias("last_timestamp"), pl.len().alias("event_count")])
+        .agg(
+            [pl.col("t").last().alias("last_timestamp"), pl.len().alias("event_count")]
+        )
         .with_columns(
             [
                 # Exponential decay from last timestamp
@@ -241,7 +246,9 @@ def time_surface(
                 .alias("surface_value")
             ]
         )
-        .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)),
+        .filter(
+            pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)
+        ),
         engine=engine,
     )
 
@@ -270,15 +277,18 @@ def event_histogram(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic if needed
-                pl.col("t")
-                .dt.total_microseconds()
-                .alias("t_us")
+                pl.col("t").dt.total_microseconds().alias("t_us")
             ]
         )
-        .filter(pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1))
+        .filter(
+            pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)
+        )
         .group_by(["x", "y", "polarity"])
         .agg(
-            [pl.len().alias("count"), pl.col("t_us").sum().alias("polarity_sum")]  # Mixed density calculation
+            [
+                pl.len().alias("count"),
+                pl.col("t_us").sum().alias("polarity_sum"),
+            ]  # Mixed density calculation
         ),
         engine=engine,
     )

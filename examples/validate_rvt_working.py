@@ -5,13 +5,9 @@ Based on the successful implementation documented in rvt_implementation_summary.
 """
 
 # Fix HDF5 plugin path issues
-import os
-import hdf5plugin
 import h5py
-import sys
 import evlib
 import torch
-import numpy as np
 from pathlib import Path
 
 from evlib.models.rvt import RVT, RVTModelConfig
@@ -45,7 +41,9 @@ def create_evlib_stacked_histogram(events_df, height=720, width=1280, temporal_b
     hist_data = hist_df.collect() if hasattr(hist_df, "collect") else hist_df
 
     for row in hist_data.iter_rows(named=True):
-        channel = row["channel_time_bin"]  # This should be the combined channel+time_bin index
+        channel = row[
+            "channel_time_bin"
+        ]  # This should be the combined channel+time_bin index
         y = row["y"]
         x = row["x"]
         count = row["count"]
@@ -75,7 +73,9 @@ def test_rvt_validation():
         return
 
     print(f"Loading RVT preprocessed validation data from: {test_file}")
-    print("This is the exact preprocessed stacked histogram data that RVT was trained on!")
+    print(
+        "This is the exact preprocessed stacked histogram data that RVT was trained on!"
+    )
 
     # Load preprocessed stacked histogram directly (no need to create it!)
     print("Loading preprocessed stacked histogram data...")

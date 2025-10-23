@@ -10,8 +10,6 @@ This module implements the core building blocks used in YOLOX architecture:
 Based on the YOLOX paper: "YOLOX: Exceeding YOLO Series in 2021"
 """
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
@@ -126,7 +124,9 @@ class DWConv(nn.Module):
         )
 
         # Pointwise convolution
-        self.pconv = BaseConv(in_channels, out_channels, kernel_size=1, stride=1, groups=1, act=act)
+        self.pconv = BaseConv(
+            in_channels, out_channels, kernel_size=1, stride=1, groups=1, act=act
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
@@ -212,7 +212,9 @@ class CSPLayer(nn.Module):
         # Bottleneck blocks for first path
         self.m = nn.Sequential(
             *[
-                Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act)
+                Bottleneck(
+                    hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act
+                )
                 for _ in range(n)
             ]
         )
@@ -240,7 +242,12 @@ class Focus(nn.Module):
     """
 
     def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int = 1, stride: int = 1, act: str = "silu"
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 1,
+        stride: int = 1,
+        act: str = "silu",
     ):
         """Initialize Focus layer.
 
@@ -253,7 +260,9 @@ class Focus(nn.Module):
         """
         super().__init__()
 
-        self.conv = BaseConv(in_channels * 4, out_channels, kernel_size, stride, act=act)
+        self.conv = BaseConv(
+            in_channels * 4, out_channels, kernel_size, stride, act=act
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -275,7 +284,9 @@ class Focus(nn.Module):
         patch_bot_left = x[..., 1::2, ::2]
         patch_bot_right = x[..., 1::2, 1::2]
 
-        x = torch.cat((patch_top_left, patch_bot_left, patch_top_right, patch_bot_right), dim=1)
+        x = torch.cat(
+            (patch_top_left, patch_bot_left, patch_top_right, patch_bot_right), dim=1
+        )
 
         return self.conv(x)
 
@@ -310,7 +321,10 @@ class SPPBottleneck(nn.Module):
 
         # Multiple pooling layers
         self.m = nn.ModuleList(
-            [nn.MaxPool2d(kernel_size=ks, stride=1, padding=ks // 2) for ks in kernel_sizes]
+            [
+                nn.MaxPool2d(kernel_size=ks, stride=1, padding=ks // 2)
+                for ks in kernel_sizes
+            ]
         )
 
         # Final convolution (original + 3 pooled features)

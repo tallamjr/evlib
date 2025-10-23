@@ -9,8 +9,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union, Tuple, Optional
-import os
-import urllib.request
 from pathlib import Path
 
 from .base import BaseModel
@@ -21,12 +19,21 @@ class ConvLayer(nn.Module):
     """Convolutional layer with optional normalization and activation."""
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        activation="relu",
+        norm=None,
     ):
         super().__init__()
 
         bias = False if norm == "BN" else True
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+        self.conv2d = nn.Conv2d(
+            in_channels, out_channels, kernel_size, stride, padding, bias=bias
+        )
 
         if activation is not None:
             self.activation = getattr(torch, activation, "relu")
@@ -55,12 +62,21 @@ class UpsampleConvLayer(nn.Module):
     """Upsampling layer using bilinear interpolation + conv (avoids checkerboard artifacts)."""
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        activation="relu",
+        norm=None,
     ):
         super().__init__()
 
         bias = False if norm == "BN" else True
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+        self.conv2d = nn.Conv2d(
+            in_channels, out_channels, kernel_size, stride, padding, bias=bias
+        )
 
         if activation is not None:
             self.activation = getattr(torch, activation, "relu")
@@ -74,7 +90,9 @@ class UpsampleConvLayer(nn.Module):
             self.norm_layer = nn.InstanceNorm2d(out_channels, track_running_stats=True)
 
     def forward(self, x):
-        x_upsampled = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
+        x_upsampled = F.interpolate(
+            x, scale_factor=2, mode="bilinear", align_corners=False
+        )
         out = self.conv2d(x_upsampled)
 
         if self.norm in ["BN", "IN"]:
@@ -90,13 +108,26 @@ class TransposedConvLayer(nn.Module):
     """Transposed convolution layer (matches pretrained model architecture)."""
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation="relu", norm=None
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        activation="relu",
+        norm=None,
     ):
         super().__init__()
 
         bias = False if norm == "BN" else True
         self.transposed_conv2d = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel_size, stride=2, padding=padding, output_padding=1, bias=bias
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=2,
+            padding=padding,
+            output_padding=1,
+            bias=bias,
         )
 
         if activation is not None:
@@ -129,7 +160,9 @@ class ResidualBlock(nn.Module):
         super().__init__()
 
         self.conv1 = ConvLayer(in_channels, out_channels, 3, padding=1, norm=norm)
-        self.conv2 = ConvLayer(out_channels, out_channels, 3, padding=1, activation=None, norm=norm)
+        self.conv2 = ConvLayer(
+            out_channels, out_channels, 3, padding=1, activation=None, norm=norm
+        )
 
     def forward(self, x):
         residual = x
@@ -201,36 +234,66 @@ class UNet(nn.Module):
             input_size = self.base_num_channels * pow(2, i)
             output_size = self.base_num_channels * pow(2, i + 1)
             self.encoders.append(
-                ConvLayer(input_size, output_size, kernel_size=5, stride=2, padding=2, norm=self.norm)
+                ConvLayer(
+                    input_size,
+                    output_size,
+                    kernel_size=5,
+                    stride=2,
+                    padding=2,
+                    norm=self.norm,
+                )
             )
 
     def _build_residual_blocks(self):
         """Build residual blocks for bottleneck."""
         self.resblocks = nn.ModuleList()
         for i in range(self.num_residual_blocks):
-            self.resblocks.append(ResidualBlock(self.max_num_channels, self.max_num_channels, norm=self.norm))
+            self.resblocks.append(
+                ResidualBlock(
+                    self.max_num_channels, self.max_num_channels, norm=self.norm
+                )
+            )
 
     def _build_decoders(self):
         """Build decoder layers."""
         decoder_input_sizes = list(
-            reversed([self.base_num_channels * pow(2, i + 1) for i in range(self.num_encoders)])
+            reversed(
+                [
+                    self.base_num_channels * pow(2, i + 1)
+                    for i in range(self.num_encoders)
+                ]
+            )
         )
 
         self.decoders = nn.ModuleList()
         for input_size in decoder_input_sizes:
             # Apply skip connection logic to input size (matching reference implementation)
-            decoder_input_size = input_size if self.skip_type == "sum" else 2 * input_size
+            decoder_input_size = (
+                input_size if self.skip_type == "sum" else 2 * input_size
+            )
             output_size = input_size // 2
 
             self.decoders.append(
-                self.UpsampleLayer(decoder_input_size, output_size, kernel_size=5, padding=2, norm=self.norm)
+                self.UpsampleLayer(
+                    decoder_input_size,
+                    output_size,
+                    kernel_size=5,
+                    padding=2,
+                    norm=self.norm,
+                )
             )
 
     def _build_prediction_layer(self):
         """Build final prediction layer."""
         # Apply skip connection logic to prediction layer input size (matching reference)
-        input_size = self.base_num_channels if self.skip_type == "sum" else 2 * self.base_num_channels
-        self.pred = ConvLayer(input_size, self.num_output_channels, 1, activation=None, norm=self.norm)
+        input_size = (
+            self.base_num_channels
+            if self.skip_type == "sum"
+            else 2 * self.base_num_channels
+        )
+        self.pred = ConvLayer(
+            input_size, self.num_output_channels, 1, activation=None, norm=self.norm
+        )
 
     def _apply_skip_connection(self, x1, x2):
         """Apply skip connection with size matching."""
@@ -238,13 +301,17 @@ class UNet(nn.Module):
             # Ensure tensors have the same spatial dimensions
             if x1.shape[-2:] != x2.shape[-2:]:
                 # Resize x1 to match x2's spatial dimensions
-                x1 = F.interpolate(x1, size=x2.shape[-2:], mode="bilinear", align_corners=False)
+                x1 = F.interpolate(
+                    x1, size=x2.shape[-2:], mode="bilinear", align_corners=False
+                )
             return x1 + x2
         else:  # concat
             # Ensure tensors have the same spatial dimensions
             if x1.shape[-2:] != x2.shape[-2:]:
                 # Resize x1 to match x2's spatial dimensions
-                x1 = F.interpolate(x1, size=x2.shape[-2:], mode="bilinear", align_corners=False)
+                x1 = F.interpolate(
+                    x1, size=x2.shape[-2:], mode="bilinear", align_corners=False
+                )
             return torch.cat([x1, x2], dim=1)
 
     def forward(self, x):
@@ -372,7 +439,11 @@ class E2VID(BaseModel):
 
             # Count number of encoders from state dict
             encoder_count = len(
-                [k for k in state_dict.keys() if "encoders." in k and "conv.conv2d.weight" in k]
+                [
+                    k
+                    for k in state_dict.keys()
+                    if "encoders." in k and "conv.conv2d.weight" in k
+                ]
             )
 
             # Detect base channels and architecture
@@ -403,9 +474,13 @@ class E2VID(BaseModel):
                 architecture_changed = True
 
             # Check if pretrained model uses transposed convolutions
-            has_transposed_conv = any("transposed_conv2d" in key for key in state_dict.keys())
+            has_transposed_conv = any(
+                "transposed_conv2d" in key for key in state_dict.keys()
+            )
             if has_transposed_conv:
-                print("Detected TransposedConv layers, adjusting architecture for pretrained compatibility")
+                print(
+                    "Detected TransposedConv layers, adjusting architecture for pretrained compatibility"
+                )
                 # Rebuild with TransposedConvLayer for exact weight compatibility
                 architecture_changed = True
 
@@ -442,19 +517,29 @@ class E2VID(BaseModel):
                 elif new_key.startswith("encoders.") and ".conv." in new_key:
                     # Map encoder conv weights: encoders.0.conv.conv2d.weight -> encoders.0.conv2d.weight
                     new_key = new_key.replace(".conv.", ".")
-                elif new_key.startswith("decoders.") and ".transposed_conv2d." in new_key:
+                elif (
+                    new_key.startswith("decoders.") and ".transposed_conv2d." in new_key
+                ):
                     # Map decoder weights - our model uses UpsampleConvLayer with .conv2d
                     new_key = new_key.replace(".transposed_conv2d.", ".conv2d.")
 
                 # Only include keys that match our model structure
                 if any(
                     pattern in new_key
-                    for pattern in ["head.", "encoders.", "decoders.", "resblocks.", "pred."]
+                    for pattern in [
+                        "head.",
+                        "encoders.",
+                        "decoders.",
+                        "resblocks.",
+                        "pred.",
+                    ]
                 ):
                     model_state_dict[new_key] = value
 
             # Try to load compatible weights
-            missing_keys, unexpected_keys = self._model.load_state_dict(model_state_dict, strict=False)
+            missing_keys, unexpected_keys = self._model.load_state_dict(
+                model_state_dict, strict=False
+            )
 
             loaded_keys = len(model_state_dict) - len(unexpected_keys)
             total_model_keys = len(self._model.state_dict())
@@ -464,7 +549,9 @@ class E2VID(BaseModel):
                     f"✓ Pretrained weights loaded successfully ({loaded_keys}/{total_model_keys} parameters)"
                 )
             else:
-                print(f"⚠ Partial weight loading ({loaded_keys}/{total_model_keys} parameters)")
+                print(
+                    f"⚠ Partial weight loading ({loaded_keys}/{total_model_keys} parameters)"
+                )
 
         except Exception as e:
             print(f"Error loading pretrained weights: {e}")
@@ -524,7 +611,9 @@ class E2VID(BaseModel):
 
     def reconstruct(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> np.ndarray:
@@ -545,7 +634,9 @@ class E2VID(BaseModel):
         voxel_grid = self.events_to_voxel_grid(xs, ys, ts, ps, height, width)
 
         # Convert to PyTorch tensor
-        input_tensor = torch.from_numpy(voxel_grid).float().unsqueeze(0).to(self._device)
+        input_tensor = (
+            torch.from_numpy(voxel_grid).float().unsqueeze(0).to(self._device)
+        )
 
         # Run inference
         self._model.eval()

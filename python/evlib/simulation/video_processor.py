@@ -6,8 +6,7 @@ to event camera data using various simulation algorithms.
 """
 
 import numpy as np
-from typing import Tuple, Optional, Iterator, Union, Generator
-import warnings
+from typing import Tuple, Optional, Union, Generator
 from pathlib import Path
 
 try:
@@ -45,11 +44,13 @@ class VideoToEvents:
     def __init__(self, esim_config: ESIMConfig, video_config: VideoConfig):
         if not _opencv_available:
             raise ImportError(
-                "OpenCV is required for video processing. " "Install with: pip install opencv-python"
+                "OpenCV is required for video processing. Install with: pip install opencv-python"
             )
 
         if not _torch_available:
-            raise ImportError("PyTorch is required for ESIM simulation. " "Install with: pip install torch")
+            raise ImportError(
+                "PyTorch is required for ESIM simulation. Install with: pip install torch"
+            )
 
         self.esim_config = esim_config
         self.video_config = video_config
@@ -200,7 +201,10 @@ class VideoToEvents:
                 break
 
             # Check if we've reached the end time
-            if self.video_config.end_time is not None and self._current_frame >= self._total_frames:
+            if (
+                self.video_config.end_time is not None
+                and self._current_frame >= self._total_frames
+            ):
                 break
 
             # Handle frame skipping
@@ -227,7 +231,9 @@ class VideoToEvents:
         """Preprocess frame according to video configuration."""
         # Resize if needed
         if self.video_config.width is not None and self.video_config.height is not None:
-            frame = cv2.resize(frame, (self.video_config.width, self.video_config.height))
+            frame = cv2.resize(
+                frame, (self.video_config.width, self.video_config.height)
+            )
 
         # Convert to grayscale if needed
         if self.video_config.grayscale and len(frame.shape) == 3:
@@ -260,7 +266,8 @@ class VideoToEvents:
                 "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
                 "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                "duration_seconds": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) / cap.get(cv2.CAP_PROP_FPS),
+                "duration_seconds": int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                / cap.get(cv2.CAP_PROP_FPS),
             }
 
             # Add processing info based on configuration
@@ -276,7 +283,8 @@ class VideoToEvents:
                         "target_fps": target_fps,
                         "frame_skip": self.video_config.frame_skip,
                         "grayscale": self.video_config.grayscale,
-                        "effective_fps": target_fps / (self.video_config.frame_skip + 1),
+                        "effective_fps": target_fps
+                        / (self.video_config.frame_skip + 1),
                     }
                 }
             )
@@ -316,7 +324,9 @@ def video_to_events_simple(
     Returns:
         Tuple of (x, y, t, polarity) arrays containing events
     """
-    esim_config = ESIMConfig(positive_threshold=positive_threshold, negative_threshold=negative_threshold)
+    esim_config = ESIMConfig(
+        positive_threshold=positive_threshold, negative_threshold=negative_threshold
+    )
     video_config = VideoConfig(width=width, height=height)
 
     processor = VideoToEvents(esim_config, video_config)
@@ -341,7 +351,9 @@ def estimate_event_count(
     Returns:
         Dictionary with estimation results
     """
-    processor = VideoToEvents(esim_config or ESIMConfig(), video_config or VideoConfig())
+    processor = VideoToEvents(
+        esim_config or ESIMConfig(), video_config or VideoConfig()
+    )
 
     video_info = processor.get_video_info(video_path)
     total_frames = video_info["frame_count"]
@@ -353,7 +365,9 @@ def estimate_event_count(
             "total_events": len(events[0]),
             "estimated": False,
             "sample_frames": total_frames,
-            "events_per_frame": len(events[0]) / total_frames if total_frames > 0 else 0,
+            "events_per_frame": len(events[0]) / total_frames
+            if total_frames > 0
+            else 0,
         }
 
     # Sample frames evenly throughout the video
@@ -371,8 +385,14 @@ def estimate_event_count(
     sample_event_count = len(events[0])
 
     # Estimate total events
-    actual_sample_frames = sample_event_count // sample_interval if sample_event_count > 0 else sample_frames
-    events_per_frame = sample_event_count / actual_sample_frames if actual_sample_frames > 0 else 0
+    actual_sample_frames = (
+        sample_event_count // sample_interval
+        if sample_event_count > 0
+        else sample_frames
+    )
+    events_per_frame = (
+        sample_event_count / actual_sample_frames if actual_sample_frames > 0 else 0
+    )
     estimated_total = events_per_frame * total_frames
 
     return {

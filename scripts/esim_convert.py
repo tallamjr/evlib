@@ -9,9 +9,7 @@ using the new evlib.simulation module.
 
 import argparse
 import sys
-import os
 from pathlib import Path
-from typing import Optional
 import time
 
 
@@ -32,7 +30,9 @@ def check_dependencies():
         print(f"Available PyTorch devices: {', '.join(available_devices)}")
 
         if len(available_devices) == 1:  # Only CPU
-            print("Warning: No GPU acceleration available. Processing will run on CPU only.")
+            print(
+                "Warning: No GPU acceleration available. Processing will run on CPU only."
+            )
     except ImportError:
         missing.append("torch")
 
@@ -63,35 +63,63 @@ def main():
     # Input/Output
     parser.add_argument("video_file", help="Path to the input video file")
     parser.add_argument(
-        "-o", "--output_file", default="events_esim.h5", help="Path to the output HDF5 event file"
+        "-o",
+        "--output_file",
+        default="events_esim.h5",
+        help="Path to the output HDF5 event file",
     )
 
     # ESIM Configuration
     parser.add_argument(
-        "--cp", "--positive_threshold", type=float, default=0.4, help="Positive contrast threshold"
+        "--cp",
+        "--positive_threshold",
+        type=float,
+        default=0.4,
+        help="Positive contrast threshold",
     )
     parser.add_argument(
-        "--cn", "--negative_threshold", type=float, default=0.4, help="Negative contrast threshold"
+        "--cn",
+        "--negative_threshold",
+        type=float,
+        default=0.4,
+        help="Negative contrast threshold",
     )
     parser.add_argument(
-        "--refractory_period", type=float, default=0.1, help="Refractory period in milliseconds"
+        "--refractory_period",
+        type=float,
+        default=0.1,
+        help="Refractory period in milliseconds",
     )
     parser.add_argument(
-        "--device", choices=["auto", "cuda", "mps", "cpu"], default="auto", help="Computing device"
+        "--device",
+        choices=["auto", "cuda", "mps", "cpu"],
+        default="auto",
+        help="Computing device",
     )
 
     # Video Configuration
-    parser.add_argument("--width", type=int, default=640, help="Width to resize video frames")
-    parser.add_argument("--height", type=int, default=480, help="Height to resize video frames")
-    parser.add_argument("--fps", type=float, help="Override video FPS (use original if not specified)")
+    parser.add_argument(
+        "--width", type=int, default=640, help="Width to resize video frames"
+    )
+    parser.add_argument(
+        "--height", type=int, default=480, help="Height to resize video frames"
+    )
+    parser.add_argument(
+        "--fps", type=float, help="Override video FPS (use original if not specified)"
+    )
     parser.add_argument("--start_time", type=float, help="Start time in seconds")
     parser.add_argument("--end_time", type=float, help="End time in seconds")
     parser.add_argument(
-        "--frame_skip", type=int, default=0, help="Number of frames to skip between processed frames"
+        "--frame_skip",
+        type=int,
+        default=0,
+        help="Number of frames to skip between processed frames",
     )
 
     # Output options
-    parser.add_argument("--output_dir", default="h5", help="Output directory for results")
+    parser.add_argument(
+        "--output_dir", default="h5", help="Output directory for results"
+    )
     parser.add_argument(
         "--estimate_only",
         action="store_true",
@@ -104,14 +132,23 @@ def main():
         help="Number of frames to sample for estimation (when --estimate_only)",
     )
     parser.add_argument(
-        "--video_info", action="store_true", help="Show video information and processing parameters"
+        "--video_info",
+        action="store_true",
+        help="Show video information and processing parameters",
     )
 
     # Performance options
     parser.add_argument(
-        "--streaming", action="store_true", help="Use streaming processing (lower memory usage)"
+        "--streaming",
+        action="store_true",
+        help="Use streaming processing (lower memory usage)",
     )
-    parser.add_argument("--progress", action="store_true", default=True, help="Show progress information")
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        default=True,
+        help="Show progress information",
+    )
 
     args = parser.parse_args()
 
@@ -122,7 +159,12 @@ def main():
     # Import evlib after dependency check
     try:
         import evlib
-        from evlib.simulation import ESIMConfig, VideoConfig, VideoToEvents, estimate_event_count
+        from evlib.simulation import (
+            ESIMConfig,
+            VideoConfig,
+            VideoToEvents,
+            estimate_event_count,
+        )
     except ImportError as e:
         print(f"Error importing evlib: {e}")
         print("Make sure evlib is properly installed with simulation support.")
@@ -194,7 +236,9 @@ def main():
         print("Estimating event count...")
         try:
             start_time = time.time()
-            estimate = estimate_event_count(video_path, esim_config, video_config, args.sample_frames)
+            estimate = estimate_event_count(
+                video_path, esim_config, video_config, args.sample_frames
+            )
             estimate_time = time.time() - start_time
 
             print("\n=== Event Count Estimation ===")
@@ -282,8 +326,12 @@ def main():
 
         positive_events = np.sum(p_np == 1)
         negative_events = np.sum(p_np == -1)
-        print(f"Positive events: {positive_events:,} ({positive_events/len(x_np)*100:.1f}%)")
-        print(f"Negative events: {negative_events:,} ({negative_events/len(x_np)*100:.1f}%)")
+        print(
+            f"Positive events: {positive_events:,} ({positive_events / len(x_np) * 100:.1f}%)"
+        )
+        print(
+            f"Negative events: {negative_events:,} ({negative_events / len(x_np) * 100:.1f}%)"
+        )
 
         print(f"\nOutput saved to: {output_path}")
 

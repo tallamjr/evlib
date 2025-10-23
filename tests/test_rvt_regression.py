@@ -35,10 +35,14 @@ def convert_evlib_to_dense_tensor(
     n_channels = 2  # positive and negative polarity
 
     # Initialize dense tensor
-    dense_tensor = np.zeros((n_windows, n_channels * nbins, height, width), dtype=np.uint8)
+    dense_tensor = np.zeros(
+        (n_windows, n_channels * nbins, height, width), dtype=np.uint8
+    )
 
     # Convert to numpy for faster indexing
-    data = evlib_hist.select(["window_id", "channel_time_bin", "y", "x", "count"]).to_numpy()
+    data = evlib_hist.select(
+        ["window_id", "channel_time_bin", "y", "x", "count"]
+    ).to_numpy()
 
     # Fill dense tensor
     for row in data:
@@ -49,7 +53,9 @@ def convert_evlib_to_dense_tensor(
             and 0 <= y < height
             and 0 <= x < width
         ):
-            dense_tensor[window_id, channel_time_bin, y, x] = min(count, 255)  # Clip to uint8
+            dense_tensor[window_id, channel_time_bin, y, x] = min(
+                count, 255
+            )  # Clip to uint8
 
     return dense_tensor
 
@@ -82,7 +88,9 @@ class TestRVTRegression:
             }
         )
 
-        dense = convert_evlib_to_dense_tensor(test_data, height=360, width=640, nbins=10)
+        dense = convert_evlib_to_dense_tensor(
+            test_data, height=360, width=640, nbins=10
+        )
 
         # Verify shape
         assert dense.shape == (2, 20, 360, 640)
@@ -113,8 +121,6 @@ class TestRVTRegression:
         print(f"Events file: {events_file}")
 
         import h5py
-        import hdf5plugin  # Required for compressed HDF5 files
-        import tempfile
 
         # Step 1: Load first 10 windows of RVT reference data
         max_windows = 10
@@ -139,7 +145,9 @@ class TestRVTRegression:
         import evlib
 
         # Load only first 0.6 seconds (600ms) of events
-        events_lazy = evlib.load_events(events_file, t_start=0.0, t_end=0.6)  # 600ms in seconds
+        events_lazy = evlib.load_events(
+            events_file, t_start=0.0, t_end=0.6
+        )  # 600ms in seconds
 
         # Collect the events to numpy arrays for processing
         events_df = events_lazy.collect()
@@ -161,7 +169,12 @@ class TestRVTRegression:
 
         # Create downsampled events LazyFrame
         downsampled_events = pl.LazyFrame(
-            {"timestamp": timestamps, "x": x_downsampled, "y": y_downsampled, "polarity": polarities}
+            {
+                "timestamp": timestamps,
+                "x": x_downsampled,
+                "y": y_downsampled,
+                "polarity": polarities,
+            }
         )
 
         # Generate evlib histogram from pre-downsampled events
@@ -174,13 +187,17 @@ class TestRVTRegression:
             count_cutoff=10,  # Apply cutoff after all processing
         )
 
-        evlib_data = evlib_lazy.filter(pl.col("window_id") < max_windows).collect()  # Match RVT subset
+        evlib_data = evlib_lazy.filter(
+            pl.col("window_id") < max_windows
+        ).collect()  # Match RVT subset
 
         print(f"evlib sparse data: {evlib_data.shape}")
 
         # Step 3: Convert evlib DataFrame to RVT's dense numpy format
         print("Converting evlib data to RVT format...")
-        evlib_dense = convert_evlib_to_dense_tensor(evlib_data, height=360, width=640, nbins=10)
+        evlib_dense = convert_evlib_to_dense_tensor(
+            evlib_data, height=360, width=640, nbins=10
+        )
         print(f"evlib dense shape: {evlib_dense.shape}")
         print(f"evlib value range: [{evlib_dense.min()}, {evlib_dense.max()}]")
         print(f"evlib non-zero entries: {np.count_nonzero(evlib_dense)}")
@@ -208,7 +225,9 @@ class TestRVTRegression:
 
         rvt_nonzero = np.count_nonzero(rvt_subset)
         evlib_nonzero = np.count_nonzero(evlib_subset)
-        count_diff_ratio = abs(rvt_nonzero - evlib_nonzero) / max(rvt_nonzero, evlib_nonzero, 1)
+        count_diff_ratio = abs(rvt_nonzero - evlib_nonzero) / max(
+            rvt_nonzero, evlib_nonzero, 1
+        )
 
         print(f"Total elements: {total_elements}")
         print(f"Exact matches: {exact_matches} ({exact_ratio:.3f})")
@@ -220,7 +239,9 @@ class TestRVTRegression:
         # Assertions for quick test (realistic thresholds based on preprocessing differences)
         assert exact_ratio > 0.85, f"Too few exact matches: {exact_ratio:.3f}"
         assert max_diff <= 15, f"Values differ too much: max_diff={max_diff}"
-        assert count_diff_ratio < 0.3, f"Non-zero counts too different: {count_diff_ratio:.3f}"
+        assert count_diff_ratio < 0.3, (
+            f"Non-zero counts too different: {count_diff_ratio:.3f}"
+        )
         assert mean_diff < 0.5, f"Mean difference too high: {mean_diff:.3f}"
 
         print("Quick RVT comparison PASSED!")

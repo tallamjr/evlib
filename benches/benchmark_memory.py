@@ -46,7 +46,9 @@ def benchmark_file(file_path, description):
     event_count = len(df)
 
     # Calculate efficiency metrics
-    bytes_per_event = (memory_used * 1024 * 1024) / event_count if event_count > 0 else 0
+    bytes_per_event = (
+        (memory_used * 1024 * 1024) / event_count if event_count > 0 else 0
+    )
     events_per_second = event_count / load_time if load_time > 0 else 0
 
     # Clean up and measure memory after cleanup
@@ -68,7 +70,9 @@ def benchmark_file(file_path, description):
 
     print(f"PASS: Events: {event_count:,}")
     print(f"TIMING: Load time: {load_time:.2f}s ({events_per_second:,.0f} events/s)")
-    print(f"MEMORY: Peak memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(
+        f"MEMORY: Peak memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)"
+    )
     print(f"Memory retained: {memory_retained:.1f} MB")
 
     return results
@@ -108,7 +112,8 @@ def benchmark_polars_efficiency():
     import polars as pl
 
     filtered = lf.filter(
-        (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) & (pl.col("polarity") == 1)
+        (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0)
+        & (pl.col("polarity") == 1)
     ).filter((pl.col("x") > 50) & (pl.col("x") < 200))
 
     result_df = filtered.collect()
@@ -167,7 +172,9 @@ def main():
         avg_speed = sum(r["events_per_second"] for r in results) / len(results)
 
         print(f"STATS: Total events tested: {total_events:,}")
-        print(f"MEMORY: Average memory efficiency: {avg_bytes_per_event:.1f} bytes/event")
+        print(
+            f"MEMORY: Average memory efficiency: {avg_bytes_per_event:.1f} bytes/event"
+        )
         print(f"FAST: Average processing speed: {avg_speed:,.0f} events/s")
 
         print("\nTARGET: MEMORY EFFICIENCY ANALYSIS:")

@@ -4,7 +4,6 @@ Tests for evlib visualization functionality.
 Tests both the Python visualization module and integration with real eTram data.
 """
 
-import os
 import pytest
 import numpy as np
 from pathlib import Path
@@ -16,7 +15,9 @@ try:
     import cv2
     import h5py
 except ImportError as e:
-    pytest.skip(f"Visualization dependencies not available: {e}", allow_module_level=True)
+    pytest.skip(
+        f"Visualization dependencies not available: {e}", allow_module_level=True
+    )
 
 # Real eTram data path
 REAL_ETRAM_DATA = Path("data/eTram_processed/test/test_day_010")
@@ -236,7 +237,9 @@ class TestEventFrameRenderer:
 
     def test_polarity_rendering(self):
         """Test polarity-based rendering preserves polarity information."""
-        config = viz.VisualizationConfig(width=100, height=100, fps=10.0, use_colormap=False)
+        config = viz.VisualizationConfig(
+            width=100, height=100, fps=10.0, use_colormap=False
+        )
         renderer = viz.EventFrameRenderer(config)
 
         # Create specific polarity patterns
@@ -289,7 +292,11 @@ class TestEventFrameRenderer:
 
         for colormap_type in colormaps:
             colormap_config = viz.VisualizationConfig(
-                width=50, height=50, fps=10.0, use_colormap=True, colormap_type=colormap_type
+                width=50,
+                height=50,
+                fps=10.0,
+                use_colormap=True,
+                colormap_type=colormap_type,
             )
             renderer = viz.EventFrameRenderer(colormap_config)
 
@@ -311,7 +318,9 @@ class TesteTramVisualizer:
     @pytest.fixture
     def config(self):
         """Create test configuration."""
-        return viz.VisualizationConfig(width=320, height=180, fps=10.0)  # Low FPS for faster tests
+        return viz.VisualizationConfig(
+            width=320, height=180, fps=10.0
+        )  # Low FPS for faster tests
 
     @pytest.fixture
     def visualizer(self, config):
@@ -330,7 +339,9 @@ class TesteTramVisualizer:
 
         try:
             result = visualizer.process_file(
-                REAL_ETRAM_DATA, output_path, duration_s=0.1  # Process only 0.1 seconds for speed
+                REAL_ETRAM_DATA,
+                output_path,
+                duration_s=0.1,  # Process only 0.1 seconds for speed
             )
 
             assert result is True
@@ -352,7 +363,9 @@ class TesteTramVisualizer:
 
         try:
             result = visualizer.process_file(
-                REAL_ETRAM_DATA, output_path, duration_s=0.1  # Process only 0.1 seconds
+                REAL_ETRAM_DATA,
+                output_path,
+                duration_s=0.1,  # Process only 0.1 seconds
             )
 
             assert result is True

@@ -31,10 +31,14 @@ def test_create_stacked_histogram():
             import polars as pl
 
             # Ensure we have the expected column format
-            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
+            assert "t" in events_df.columns, (
+                f"Expected 't' column, got: {events_df.columns}"
+            )
 
             # Test create_stacked_histogram - expects LazyFrame, returns DataFrame
-            hist_df = evr.create_stacked_histogram(events_lf, 64, 64, bins=5, window_duration_ms=100)
+            hist_df = evr.create_stacked_histogram(
+                events_lf, 64, 64, bins=5, window_duration_ms=100
+            )
 
             # Validate output is DataFrame
 
@@ -46,12 +50,18 @@ def test_create_stacked_histogram():
 
             # Check data types
             assert hist_df["time_bin"].dtype == pl.Int32
-            assert hist_df["polarity"].dtype in [pl.Int8, pl.Int16, pl.Int64]  # Polarity
+            assert hist_df["polarity"].dtype in [
+                pl.Int8,
+                pl.Int16,
+                pl.Int64,
+            ]  # Polarity
             assert hist_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
             assert hist_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
             assert hist_df["count"].dtype == pl.UInt32  # Count is unsigned
 
-            print(f"Success: create_stacked_histogram returned DataFrame with {len(hist_df)} rows")
+            print(
+                f"Success: create_stacked_histogram returned DataFrame with {len(hist_df)} rows"
+            )
 
         except Exception as e:
             # Function exists but has implementation issues - should fail
@@ -83,7 +93,9 @@ def test_create_voxel_grid():
             import polars as pl
 
             # Ensure we have the expected column format
-            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
+            assert "t" in events_df.columns, (
+                f"Expected 't' column, got: {events_df.columns}"
+            )
 
             # Test voxel_grid - expects LazyFrame, returns DataFrame
             voxel_df = evr.voxel_grid(events_lf, 64, 64, n_time_bins=5)
@@ -100,9 +112,14 @@ def test_create_voxel_grid():
             assert voxel_df["time_bin"].dtype == pl.Int32
             assert voxel_df["y"].dtype == pl.Int16  # Coordinates fit in Int16
             assert voxel_df["x"].dtype == pl.Int16  # Coordinates fit in Int16
-            assert voxel_df["contribution"].dtype in [pl.Float64, pl.Float32]  # Contribution values
+            assert voxel_df["contribution"].dtype in [
+                pl.Float64,
+                pl.Float32,
+            ]  # Contribution values
 
-            print(f"Success: create_voxel_grid returned DataFrame with {len(voxel_df)} rows")
+            print(
+                f"Success: create_voxel_grid returned DataFrame with {len(voxel_df)} rows"
+            )
 
         except Exception as e:
             # Function exists but has implementation issues - should fail
@@ -134,7 +151,9 @@ def test_create_mixed_density_stack():
             import polars as pl
 
             # Ensure we have the expected column format
-            assert "t" in events_df.columns, f"Expected 't' column, got: {events_df.columns}"
+            assert "t" in events_df.columns, (
+                f"Expected 't' column, got: {events_df.columns}"
+            )
 
             # Test create_mixed_density_stack - expects LazyFrame, returns DataFrame
             mixed_df = evr.create_mixed_density_stack(events_lf, 64, 64)
@@ -152,7 +171,9 @@ def test_create_mixed_density_stack():
             assert mixed_df["polarity_sum"].dtype == pl.Int64  # Sum of polarities
             assert mixed_df["count"].dtype == pl.UInt32  # Count is unsigned
 
-            print(f"Success: create_mixed_density_stack returned DataFrame with {len(mixed_df)} rows")
+            print(
+                f"Success: create_mixed_density_stack returned DataFrame with {len(mixed_df)} rows"
+            )
 
         except Exception as e:
             # Function exists but has implementation issues - should fail

@@ -67,7 +67,9 @@ def example_rvt_replacement():
             print(f"    SUCCESS: Shape: {stacked_hist.shape}")
             print(f"    SUCCESS: Data type: {stacked_hist.dtype}")
             print(f"    SUCCESS: Processing time: {processing_time:.2f}s")
-            print(f"    SUCCESS: Memory usage: {stacked_hist.nbytes / 1024 / 1024:.1f} MB")
+            print(
+                f"    SUCCESS: Memory usage: {stacked_hist.nbytes / 1024 / 1024:.1f} MB"
+            )
             print()
 
             # === Method 2: High-level API (easiest RVT replacement) ===
@@ -91,18 +93,28 @@ def example_rvt_replacement():
             num_windows, num_channels, height, width = stacked_hist.shape
             expected_channels = 2 * rvt_config["nbins"]  # 2 polarities × nbins
 
-            assert (
-                num_channels == expected_channels
-            ), f"Expected {expected_channels} channels, got {num_channels}"
-            assert stacked_hist.dtype == np.uint8, f"Expected uint8, got {stacked_hist.dtype}"
-            assert height == rvt_config["height"], f"Height mismatch: {height} != {rvt_config['height']}"
-            assert width == rvt_config["width"], f"Width mismatch: {width} != {rvt_config['width']}"
+            assert num_channels == expected_channels, (
+                f"Expected {expected_channels} channels, got {num_channels}"
+            )
+            assert stacked_hist.dtype == np.uint8, (
+                f"Expected uint8, got {stacked_hist.dtype}"
+            )
+            assert height == rvt_config["height"], (
+                f"Height mismatch: {height} != {rvt_config['height']}"
+            )
+            assert width == rvt_config["width"], (
+                f"Width mismatch: {width} != {rvt_config['width']}"
+            )
 
             print(
                 f"    SUCCESS: Channel layout: {num_channels} channels ({rvt_config['nbins']} bins × 2 polarities)"
             )
-            print(f"    SUCCESS: Data type: {stacked_hist.dtype} (RVT fastmode compatible)")
-            print(f"    SUCCESS: Value range: [{stacked_hist.min()}, {stacked_hist.max()}]")
+            print(
+                f"    SUCCESS: Data type: {stacked_hist.dtype} (RVT fastmode compatible)"
+            )
+            print(
+                f"    SUCCESS: Value range: [{stacked_hist.min()}, {stacked_hist.max()}]"
+            )
             print(f"    SUCCESS: Non-zero voxels: {np.count_nonzero(stacked_hist):,}")
 
             print("    SUCCESS: All RVT compatibility checks passed!")

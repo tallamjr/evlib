@@ -16,7 +16,6 @@ import os
 import psutil
 from pathlib import Path
 import matplotlib.pyplot as plt
-import numpy as np
 
 
 def get_memory_usage_mb():
@@ -65,12 +64,16 @@ def benchmark_filter_speed(file_path):
 
     # Test filtering speed
     start_time = time.time()
-    filtered = lf.filter((pl.col("polarity") == 1) & (pl.col("x") > 50) & (pl.col("x") < 250)).collect()
+    filtered = lf.filter(
+        (pl.col("polarity") == 1) & (pl.col("x") > 50) & (pl.col("x") < 250)
+    ).collect()
     filter_time = time.time() - start_time
 
     events_per_second = len(df) / filter_time
 
-    print(f"PASS: Filtered {len(df):,} events to {len(filtered):,} in {filter_time:.4f}s")
+    print(
+        f"PASS: Filtered {len(df):,} events to {len(filtered):,} in {filter_time:.4f}s"
+    )
     print(f"FAST: Filter speed: {events_per_second:,.0f} events/s")
 
     # Check against README claim of 400M+ events/s
@@ -139,7 +142,8 @@ def test_readme_examples():
 
         # Test filtering
         filtered = lf.filter(
-            (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0) & (pl.col("polarity") == 1)
+            (pl.col("timestamp").dt.total_microseconds() / 1_000_000 > 1.0)
+            & (pl.col("polarity") == 1)
         ).collect()
         print(f"PASS: Filtering: {len(filtered):,} events")
 
@@ -182,10 +186,14 @@ def create_performance_plot(results):
         if "_loading" in key:
             file_name = key.replace("_loading", "").split("/")[-1]
             file_names.append(file_name)
-            loading_speeds.append(value[0] / 1_000_000)  # Convert to millions of events/s
+            loading_speeds.append(
+                value[0] / 1_000_000
+            )  # Convert to millions of events/s
             event_counts.append(value[1] / 1_000_000)  # Convert to millions of events
         elif "_filtering" in key:
-            filter_speeds.append(value[0] / 1_000_000)  # Convert to millions of events/s
+            filter_speeds.append(
+                value[0] / 1_000_000
+            )  # Convert to millions of events/s
         elif "_memory" in key:
             memory_efficiency.append(value[0])  # bytes per event
 
@@ -235,7 +243,9 @@ def create_performance_plot(results):
 
     # 2. Filter Speed
     if filter_speeds:
-        bars2 = ax2.bar(range(len(file_names)), filter_speeds, color=colors[1], alpha=0.8)
+        bars2 = ax2.bar(
+            range(len(file_names)), filter_speeds, color=colors[1], alpha=0.8
+        )
         ax2.set_title("Filter Speed", fontweight="bold")
         ax2.set_ylabel("Million Events/Second")
         ax2.set_xticks(range(len(file_names)))
@@ -256,7 +266,9 @@ def create_performance_plot(results):
 
     # 3. Memory Efficiency
     if memory_efficiency:
-        bars3 = ax3.bar(range(len(file_names)), memory_efficiency, color=colors[2], alpha=0.8)
+        bars3 = ax3.bar(
+            range(len(file_names)), memory_efficiency, color=colors[2], alpha=0.8
+        )
         ax3.set_title("Memory Efficiency", fontweight="bold")
         ax3.set_ylabel("Bytes per Event")
         ax3.set_xticks(range(len(file_names)))
@@ -277,7 +289,14 @@ def create_performance_plot(results):
 
     # 4. Dataset Size vs Performance
     if event_counts and loading_speeds:
-        ax4.scatter(event_counts, loading_speeds, s=100, c=colors[0], alpha=0.8, edgecolors="black")
+        ax4.scatter(
+            event_counts,
+            loading_speeds,
+            s=100,
+            c=colors[0],
+            alpha=0.8,
+            edgecolors="black",
+        )
         ax4.set_title("Dataset Size vs Loading Performance", fontweight="bold")
         ax4.set_xlabel("Dataset Size (Million Events)")
         ax4.set_ylabel("Loading Speed (Million Events/Second)")
@@ -327,9 +346,9 @@ def main():
 
     for test_file in test_files:
         if Path(test_file).exists():
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"TESTING: {test_file}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             # Benchmark loading speed
             load_result = benchmark_loading_speed(test_file)

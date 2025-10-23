@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Union, Tuple, Optional, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import polars
+    pass
 
 from .config import ModelConfig
 import evlib
@@ -44,7 +44,9 @@ class BaseModel(ABC):
     @abstractmethod
     def reconstruct(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> np.ndarray:
@@ -63,7 +65,9 @@ class BaseModel(ABC):
 
     def preprocess_events(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], Any],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], Any
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int]:
@@ -105,7 +109,10 @@ class BaseModel(ABC):
             # Handle timestamp conversion from Duration to seconds
             if events_df["t"].dtype == pl.Duration:
                 # Convert from microseconds to seconds
-                ts = events_df["t"].dt.total_microseconds().to_numpy().astype(np.float64) / 1e6
+                ts = (
+                    events_df["t"].dt.total_microseconds().to_numpy().astype(np.float64)
+                    / 1e6
+                )
             else:
                 ts = events_df["t"].to_numpy().astype(np.float64)
 
@@ -158,13 +165,17 @@ class BaseModel(ABC):
             {
                 "x": xs.astype(np.int16),
                 "y": ys.astype(np.int16),
-                "t": pl.Series((ts * 1e6).astype(np.int64)).cast(pl.Duration(time_unit="us")),
+                "t": pl.Series((ts * 1e6).astype(np.int64)).cast(
+                    pl.Duration(time_unit="us")
+                ),
                 "polarity": ps.astype(np.int8),
             }
         )
 
         # Create voxel grid using evlib representations
-        voxel_df = evlib.representations.create_voxel_grid(events_lf, height, width, self.config.num_bins)
+        voxel_df = evlib.representations.create_voxel_grid(
+            events_lf, height, width, self.config.num_bins
+        )
 
         # Convert back to numpy array format (num_bins, height, width)
         voxel_array = np.zeros((self.config.num_bins, height, width), dtype=np.float32)
@@ -180,7 +191,11 @@ class BaseModel(ABC):
             y = row["y"]
             time_bin = row["time_bin"]
             contribution = row["contribution"]
-            if 0 <= x < width and 0 <= y < height and 0 <= time_bin < self.config.num_bins:
+            if (
+                0 <= x < width
+                and 0 <= y < height
+                and 0 <= time_bin < self.config.num_bins
+            ):
                 voxel_array[time_bin, y, x] = contribution
 
         return voxel_array

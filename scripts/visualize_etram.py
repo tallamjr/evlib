@@ -15,7 +15,6 @@ import argparse
 import sys
 import logging
 from pathlib import Path
-from typing import Optional
 import time
 
 try:
@@ -26,12 +25,16 @@ try:
     try:
         import hdf5plugin
     except ImportError:
-        print("Warning: hdf5plugin not available - may have issues with compressed eTram HDF5 files")
+        print(
+            "Warning: hdf5plugin not available - may have issues with compressed eTram HDF5 files"
+        )
         print("Install with: pip install hdf5plugin")
 
 except ImportError as e:
     print(f"Error: Could not import required packages: {e}")
-    print("Please ensure evlib is installed with visualization dependencies: pip install -e .[plot]")
+    print(
+        "Please ensure evlib is installed with visualization dependencies: pip install -e .[plot]"
+    )
     sys.exit(1)
 
 
@@ -39,7 +42,9 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     """Set up logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
-        level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
     )
     return logging.getLogger(__name__)
 
@@ -61,14 +66,18 @@ def parse_color(color_str: str) -> tuple[int, int, int]:
         r, g, b = map(int, color_str.split(","))
         return (b, g, r)  # Convert RGB to BGR for OpenCV
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Color must be in format 'R,G,B', got '{color_str}'")
+        raise argparse.ArgumentTypeError(
+            f"Color must be in format 'R,G,B', got '{color_str}'"
+        )
 
 
 def validate_paths(args) -> None:
     """Validate input and output paths."""
     if args.batch:
         if not Path(args.batch).is_dir():
-            raise FileNotFoundError(f"Batch input directory does not exist: {args.batch}")
+            raise FileNotFoundError(
+                f"Batch input directory does not exist: {args.batch}"
+            )
         if not args.output_dir:
             raise ValueError("--output-dir is required when using --batch")
     else:
@@ -112,20 +121,35 @@ Examples:
 
     # Input/output options
     input_group = parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--input", "-i", type=str, help="Path to eTram data directory or HDF5 file")
     input_group.add_argument(
-        "--batch", "-b", type=str, help="Process all eTram data directories in this path"
+        "--input", "-i", type=str, help="Path to eTram data directory or HDF5 file"
+    )
+    input_group.add_argument(
+        "--batch",
+        "-b",
+        type=str,
+        help="Process all eTram data directories in this path",
     )
 
     parser.add_argument(
-        "--output", "-o", type=str, help="Output video file path (required for single file processing)"
+        "--output",
+        "-o",
+        type=str,
+        help="Output video file path (required for single file processing)",
     )
     parser.add_argument(
-        "--output-dir", type=str, help="Output directory for batch processing (required for batch mode)"
+        "--output-dir",
+        type=str,
+        help="Output directory for batch processing (required for batch mode)",
     )
 
     # Video parameters
-    parser.add_argument("--fps", type=float, default=30.0, help="Output video frame rate (default: 30.0)")
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=30.0,
+        help="Output video frame rate (default: 30.0)",
+    )
     parser.add_argument(
         "--resolution",
         type=parse_resolution,
@@ -142,7 +166,10 @@ Examples:
 
     # Visualization parameters
     parser.add_argument(
-        "--decay", type=float, default=100.0, help="Event decay time in milliseconds (default: 100.0)"
+        "--decay",
+        type=float,
+        default=100.0,
+        help="Event decay time in milliseconds (default: 100.0)",
     )
     parser.add_argument(
         "--positive-color",
@@ -193,11 +220,19 @@ Examples:
     )
 
     # Time selection
-    parser.add_argument("--start-time", type=float, help="Start time in seconds (default: from beginning)")
-    parser.add_argument("--duration", type=float, help="Duration in seconds (default: entire file)")
+    parser.add_argument(
+        "--start-time",
+        type=float,
+        help="Start time in seconds (default: from beginning)",
+    )
+    parser.add_argument(
+        "--duration", type=float, help="Duration in seconds (default: entire file)"
+    )
 
     # Display options
-    parser.add_argument("--no-stats", action="store_true", help="Disable statistics overlay")
+    parser.add_argument(
+        "--no-stats", action="store_true", help="Disable statistics overlay"
+    )
     parser.add_argument(
         "--stats-color",
         type=parse_color,
@@ -212,11 +247,17 @@ Examples:
         default="*/event_representations_v2",
         help="Pattern to match data directories in batch mode (default: */event_representations_v2)",
     )
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output files")
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing output files"
+    )
 
     # Logging
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress progress output"
+    )
 
     args = parser.parse_args()
 
@@ -229,7 +270,9 @@ Examples:
         log_level = logging.INFO
 
     logging.basicConfig(
-        level=log_level, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
     )
     logger = logging.getLogger(__name__)
 
@@ -317,7 +360,10 @@ Examples:
 
             # Process single file
             success = visualizer.process_file(
-                args.input, args.output, start_time_s=args.start_time, duration_s=args.duration
+                args.input,
+                args.output,
+                start_time_s=args.start_time,
+                duration_s=args.duration,
             )
 
             # Report results

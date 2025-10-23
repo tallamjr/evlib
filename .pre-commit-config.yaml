@@ -24,7 +24,7 @@ repos:
         args:
           [
             --fix,
-            "--ignore=A001,A002,B007,B008,B017,B020,B028,B904,C411,C419,E402,E711,E721,E722,E731,E501,F811,F821,F841,N,PT,UP008,UP036",
+            "--ignore=A001,A002,B007,B008,B017,B020,B028,B904,C411,C419,E402,E711,E721,E722,E731,E501,F401,F811,F821,F841,N,PT,UP008,UP036",
           ]
       # Run the formatter
       - id: ruff-format

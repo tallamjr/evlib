@@ -65,9 +65,9 @@ def generate_test_report(output_file="docs-test-report.txt"):
     report_content = f"""# Documentation Test Report
 
 ## Summary
-- Command: {' '.join(cmd)}
+- Command: {" ".join(cmd)}
 - Exit code: {result.returncode}
-- Tests {'PASSED' if result.returncode == 0 else 'FAILED'}
+- Tests {"PASSED" if result.returncode == 0 else "FAILED"}
 
 ## Test Output
 
@@ -161,11 +161,17 @@ def list_testable_docs():
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Test documentation examples")
-    parser.add_argument("--path", help="Path to specific documentation file or directory")
+    parser.add_argument(
+        "--path", help="Path to specific documentation file or directory"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    parser.add_argument("--max-failures", type=int, help="Maximum number of failures before stopping")
+    parser.add_argument(
+        "--max-failures", type=int, help="Maximum number of failures before stopping"
+    )
     parser.add_argument("--report", action="store_true", help="Generate test report")
-    parser.add_argument("--list", action="store_true", help="List testable documentation files")
+    parser.add_argument(
+        "--list", action="store_true", help="List testable documentation files"
+    )
 
     args = parser.parse_args()
 
@@ -176,7 +182,9 @@ def main():
     if args.report:
         return generate_test_report()
 
-    return run_docs_tests(docs_path=args.path, verbose=args.verbose, max_failures=args.max_failures)
+    return run_docs_tests(
+        docs_path=args.path, verbose=args.verbose, max_failures=args.max_failures
+    )
 
 
 if __name__ == "__main__":

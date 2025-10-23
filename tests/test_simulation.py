@@ -2,7 +2,6 @@
 
 import pytest
 import numpy as np
-from pathlib import Path
 import tempfile
 import os
 
@@ -33,7 +32,11 @@ def test_esim_config():
         ESIMConfig(negative_threshold=0.0)
 
     # Test from_dict
-    config_dict = {"positive_threshold": 0.6, "negative_threshold": 0.7, "device": "cuda"}
+    config_dict = {
+        "positive_threshold": 0.6,
+        "negative_threshold": 0.7,
+        "device": "cuda",
+    }
     config = ESIMConfig.from_dict(config_dict)
     assert config.positive_threshold == 0.6
     assert config.device == "cuda"
@@ -138,7 +141,9 @@ class TestESIMSimulator:
         from evlib.simulation.config import ESIMConfig
         from evlib.simulation.esim import ESIMSimulator
 
-        config = ESIMConfig(device="cpu", positive_threshold=0.1, negative_threshold=0.1)
+        config = ESIMConfig(
+            device="cpu", positive_threshold=0.1, negative_threshold=0.1
+        )
         simulator = ESIMSimulator(config)
 
         # Create a simple test frame
@@ -226,7 +231,9 @@ class TestESIMSimulator:
 
         # Test explicit MPS device request
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            config_mps = ESIMConfig(device="mps", dtype="float64")  # This should auto-convert
+            config_mps = ESIMConfig(
+                device="mps", dtype="float64"
+            )  # This should auto-convert
             simulator_mps = ESIMSimulator(config_mps)
 
             # Should use MPS device
@@ -320,7 +327,8 @@ def test_simple_video_to_events():
     reason="Integration tests require PyTorch",
 )
 @pytest.mark.skipif(
-    not pytest.importorskip("cv2", reason="OpenCV not available"), reason="Integration tests require OpenCV"
+    not pytest.importorskip("cv2", reason="OpenCV not available"),
+    reason="Integration tests require OpenCV",
 )
 class TestSimulationIntegration:
     """Integration tests for the simulation module."""
@@ -348,7 +356,9 @@ class TestSimulationIntegration:
             out.release()
 
             # Test processing
-            esim_config = ESIMConfig(device="cpu", positive_threshold=0.1, negative_threshold=0.1)
+            esim_config = ESIMConfig(
+                device="cpu", positive_threshold=0.1, negative_threshold=0.1
+            )
             video_config = VideoConfig(width=64, height=64)
 
             processor = VideoToEvents(esim_config, video_config)

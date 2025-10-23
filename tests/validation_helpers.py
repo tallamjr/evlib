@@ -16,10 +16,8 @@ Usage:
 
 import polars as pl
 import pandera.polars as pa
-from pandera import Field
-from typing import Dict, Any, Union, Optional, Tuple
+from typing import Dict, Any, Optional
 import logging
-from pathlib import Path
 
 # Configure logging for validation module
 logger = logging.getLogger(__name__)
@@ -27,13 +25,38 @@ logger = logging.getLogger(__name__)
 # Event camera sensor constraints (based on common sensor specifications)
 SENSOR_CONSTRAINTS = {
     # Common event camera resolutions
-    "prophesee_gen4": {"max_x": 1279, "max_y": 719, "width": 1280, "height": 720},  # 1280x720
-    "prophesee_gen3": {"max_x": 639, "max_y": 479, "width": 640, "height": 480},  # 640x480
+    "prophesee_gen4": {
+        "max_x": 1279,
+        "max_y": 719,
+        "width": 1280,
+        "height": 720,
+    },  # 1280x720
+    "prophesee_gen3": {
+        "max_x": 639,
+        "max_y": 479,
+        "width": 640,
+        "height": 480,
+    },  # 640x480
     "davis346": {"max_x": 345, "max_y": 239, "width": 346, "height": 240},  # 346x240
     "davis640": {"max_x": 639, "max_y": 479, "width": 640, "height": 480},  # 640x480
-    "etram": {"max_x": 1279, "max_y": 719, "width": 1280, "height": 720},  # eTram dataset
-    "generic_hd": {"max_x": 1279, "max_y": 719, "width": 1280, "height": 720},  # HD resolution
-    "generic_large": {"max_x": 9999, "max_y": 9999, "width": 10000, "height": 10000},  # Very large sensors
+    "etram": {
+        "max_x": 1279,
+        "max_y": 719,
+        "width": 1280,
+        "height": 720,
+    },  # eTram dataset
+    "generic_hd": {
+        "max_x": 1279,
+        "max_y": 719,
+        "width": 1280,
+        "height": 720,
+    },  # HD resolution
+    "generic_large": {
+        "max_x": 9999,
+        "max_y": 9999,
+        "width": 10000,
+        "height": 10000,
+    },  # Very large sensors
 }
 
 
@@ -63,7 +86,9 @@ def create_event_schema(
         - polarity: Int8 with values [-1, 1] (not 0)
     """
     # Get sensor constraints
-    constraints = SENSOR_CONSTRAINTS.get(sensor_type, SENSOR_CONSTRAINTS["generic_large"])
+    constraints = SENSOR_CONSTRAINTS.get(
+        sensor_type, SENSOR_CONSTRAINTS["generic_large"]
+    )
     max_x, max_y = constraints["max_x"], constraints["max_y"]
 
     # Create schema based on data format
@@ -116,7 +141,9 @@ def create_event_schema(
             "polarity": pa.Column(
                 pl.Int8,
                 checks=[
-                    pa.Check.isin([-1, 1] if polarity_encoding == "minus_one_one" else [0, 1]),
+                    pa.Check.isin(
+                        [-1, 1] if polarity_encoding == "minus_one_one" else [0, 1]
+                    ),
                 ],
                 nullable=False,
                 description=f"Event polarity ({polarity_encoding} encoding)",
@@ -211,7 +238,12 @@ def validate_events(
     Returns:
         Dictionary with validation results and statistics
     """
-    validation_results = {"valid": False, "errors": [], "warnings": [], "statistics": {}}
+    validation_results = {
+        "valid": False,
+        "errors": [],
+        "warnings": [],
+        "statistics": {},
+    }
 
     try:
         # Convert LazyFrame to DataFrame for validation (Pandera issue with LazyFrames)
@@ -238,7 +270,9 @@ def validate_events(
         # Create appropriate schema
         if strict:
             schema = create_event_schema(
-                sensor_type, data_format=data_format, polarity_encoding=polarity_encoding
+                sensor_type,
+                data_format=data_format,
+                polarity_encoding=polarity_encoding,
             )
         else:
             schema = create_raw_event_schema(data_format=data_format)
@@ -250,7 +284,9 @@ def validate_events(
         validation_results["valid"] = True
 
         # Collect statistics
-        validation_results["statistics"] = _collect_event_statistics(validated_df.lazy())
+        validation_results["statistics"] = _collect_event_statistics(
+            validated_df.lazy()
+        )
 
         # Additional quality checks
         quality_warnings = _check_data_quality(validated_df.lazy())
@@ -268,7 +304,9 @@ def validate_events(
 
     except Exception as e:
         validation_results["valid"] = False
-        validation_results["errors"].append({"type": type(e).__name__, "message": str(e)})
+        validation_results["errors"].append(
+            {"type": type(e).__name__, "message": str(e)}
+        )
 
     return validation_results
 
@@ -310,16 +348,23 @@ def _collect_event_statistics(events_df: pl.LazyFrame) -> Dict[str, Any]:
                 "x": (stats_df["x_min"][0], stats_df["x_max"][0]),
                 "y": (stats_df["y_min"][0], stats_df["y_max"][0]),
             },
-            "timestamp_range": (stats_df["timestamp_min"][0], stats_df["timestamp_max"][0]),
-            "duration_seconds": stats_df["timestamp_max"][0] - stats_df["timestamp_min"][0],
+            "timestamp_range": (
+                stats_df["timestamp_min"][0],
+                stats_df["timestamp_max"][0],
+            ),
+            "duration_seconds": stats_df["timestamp_max"][0]
+            - stats_df["timestamp_min"][0],
             "unique_polarity_count": stats_df["unique_polarity_count"][0],
             "polarity_distribution": {
                 "positive": positive_events,
                 "negative": negative_events,
-                "positive_ratio": positive_events / event_count if event_count > 0 else 0,
+                "positive_ratio": positive_events / event_count
+                if event_count > 0
+                else 0,
             },
             "event_rate_hz": (
-                event_count / (stats_df["timestamp_max"][0] - stats_df["timestamp_min"][0])
+                event_count
+                / (stats_df["timestamp_max"][0] - stats_df["timestamp_min"][0])
                 if stats_df["timestamp_max"][0] > stats_df["timestamp_min"][0]
                 else 0
             ),
@@ -339,10 +384,16 @@ def _check_data_quality(events_df: pl.LazyFrame) -> list:
 
         if timestamp_dtype == pl.Duration:
             backward_jumps = (
-                events_df.select((pl.col("t").diff() < pl.duration(microseconds=0)).sum()).collect().row(0)[0]
+                events_df.select(
+                    (pl.col("t").diff() < pl.duration(microseconds=0)).sum()
+                )
+                .collect()
+                .row(0)[0]
             )
         else:
-            backward_jumps = events_df.select((pl.col("t").diff() < 0).sum()).collect().row(0)[0]
+            backward_jumps = (
+                events_df.select((pl.col("t").diff() < 0).sum()).collect().row(0)[0]
+            )
 
         if backward_jumps > 0:
             warnings.append(
@@ -360,7 +411,9 @@ def _check_data_quality(events_df: pl.LazyFrame) -> list:
 
         positive_ratio = stats["positive"][0] / stats["total"][0]
         if positive_ratio < 0.1 or positive_ratio > 0.9:
-            warnings.append(f"Extreme polarity imbalance: {positive_ratio:.1%} positive events")
+            warnings.append(
+                f"Extreme polarity imbalance: {positive_ratio:.1%} positive events"
+            )
 
         # Check for spatial clustering (potential hot pixels)
         pixel_counts = (
@@ -376,7 +429,7 @@ def _check_data_quality(events_df: pl.LazyFrame) -> list:
             total_events = stats["total"][0]
             if max_pixel_events > total_events * 0.1:  # Single pixel has >10% of events
                 warnings.append(
-                    f"Potential hot pixel detected: single pixel has {max_pixel_events} events ({max_pixel_events/total_events:.1%} of total)"
+                    f"Potential hot pixel detected: single pixel has {max_pixel_events} events ({max_pixel_events / total_events:.1%} of total)"
                 )
 
     except Exception as e:

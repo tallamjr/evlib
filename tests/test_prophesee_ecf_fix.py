@@ -5,9 +5,7 @@ Tests the bit-packed header format and multi-chunk decoding.
 """
 
 import os
-import sys
 import pytest
-import numpy as np
 from pathlib import Path
 
 # h5py is not available on Windows (HDF5 is Unix-only)
@@ -16,7 +14,10 @@ h5py = pytest.importorskip("h5py", reason="h5py not available on Windows")
 
 # Check if running in CI
 def is_running_in_ci():
-    return any(var in os.environ for var in ["CI", "GITHUB_ACTIONS", "TRAVIS", "CIRCLECI", "JENKINS_URL"])
+    return any(
+        var in os.environ
+        for var in ["CI", "GITHUB_ACTIONS", "TRAVIS", "CIRCLECI", "JENKINS_URL"]
+    )
 
 
 # Test file path
@@ -27,7 +28,9 @@ test_file = "/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/
 def test_prophesee_ecf_decoder_fix():
     """Test the Prophesee ECF decoder fix with actual file."""
     if is_running_in_ci():
-        pytest.skip("Skipping test in CI environment - Prophesee test file not available in CI")
+        pytest.skip(
+            "Skipping test in CI environment - Prophesee test file not available in CI"
+        )
 
     if not Path(test_file).exists():
         pytest.skip(f"Test file not found: {test_file}")
@@ -105,7 +108,9 @@ def test_prophesee_ecf_decoder_fix():
         print(events_df.head())
 
         print("\nEvent statistics:")
-        print(f"  Time range: {events_df['timestamp'].min()} - {events_df['timestamp'].max()}")
+        print(
+            f"  Time range: {events_df['timestamp'].min()} - {events_df['timestamp'].max()}"
+        )
         print(f"  X range: {events_df['x'].min()} - {events_df['x'].max()}")
         print(f"  Y range: {events_df['y'].min()} - {events_df['y'].max()}")
         print(f"  Polarities: {events_df['polarity'].unique()}")

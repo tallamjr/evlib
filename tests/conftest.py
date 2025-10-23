@@ -17,11 +17,17 @@ sys.path.insert(0, str(project_root / "python"))
 def pytest_configure(config):
     """Configure pytest markers."""
     config.addinivalue_line("markers", "docs: marks tests as documentation tests")
-    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+    )
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "matplotlib: marks tests that use matplotlib")
-    config.addinivalue_line("markers", "requires_data: marks tests that require test data files")
-    config.addinivalue_line("markers", "requires_hdf5: marks tests that require HDF5 (skipped on Windows)")
+    config.addinivalue_line(
+        "markers", "requires_data: marks tests that require test data files"
+    )
+    config.addinivalue_line(
+        "markers", "requires_hdf5: marks tests that require HDF5 (skipped on Windows)"
+    )
 
 
 @pytest.fixture(scope="session")
@@ -100,7 +106,9 @@ def skip_if_no_evlib(request, evlib_available):
 @pytest.fixture(autouse=True)
 def skip_slow_tests(request):
     """Skip slow tests unless explicitly requested."""
-    if request.node.get_closest_marker("slow") and not request.config.getoption("--run-slow"):
+    if request.node.get_closest_marker("slow") and not request.config.getoption(
+        "--run-slow"
+    ):
         pytest.skip("slow test skipped (use --run-slow to run)")
 
 
@@ -113,8 +121,15 @@ def skip_if_no_hdf5(request, hdf5_available):
 
 def pytest_addoption(parser):
     """Add custom command line options."""
-    parser.addoption("--run-slow", action="store_true", default=False, help="run slow tests")
-    parser.addoption("--run-integration", action="store_true", default=False, help="run integration tests")
+    parser.addoption(
+        "--run-slow", action="store_true", default=False, help="run slow tests"
+    )
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="run integration tests",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -130,7 +145,10 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
 
         # Add slow marker to potentially slow tests
-        if any(keyword in item.name.lower() for keyword in ["download", "large", "benchmark"]):
+        if any(
+            keyword in item.name.lower()
+            for keyword in ["download", "large", "benchmark"]
+        ):
             item.add_marker(pytest.mark.slow)
 
         # Add matplotlib marker to tests that use matplotlib
@@ -141,7 +159,9 @@ def pytest_collection_modifyitems(config, items):
 
     # Skip integration tests unless explicitly requested
     if not config.getoption("--run-integration"):
-        skip_integration = pytest.mark.skip(reason="integration test skipped (use --run-integration to run)")
+        skip_integration = pytest.mark.skip(
+            reason="integration test skipped (use --run-integration to run)"
+        )
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)

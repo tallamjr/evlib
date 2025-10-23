@@ -72,7 +72,9 @@ def test_prophesee_hdf5_loading():
 
     except ImportError as e:
         print(f"Import error: {e}")
-        print("Make sure evlib is properly built with: maturin develop --features arrow")
+        print(
+            "Make sure evlib is properly built with: maturin develop --features arrow"
+        )
         return False
     except Exception as e:
         print(f"Error loading data: {e}")

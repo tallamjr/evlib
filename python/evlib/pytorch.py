@@ -7,13 +7,11 @@ Showcases best practices for Polars → PyTorch integration with real event data
 
 from pathlib import Path
 from torch.utils.data import IterableDataset, DataLoader
-from typing import Optional, Callable, Union, Dict, Any
+from typing import Optional, Callable, Union, Dict
 import logging
 import numpy as np
 import polars as pl
-import time
 import torch
-import warnings
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -146,7 +144,9 @@ class PolarsDataset(IterableDataset):
 
             except Exception as e:
                 # Fallback: convert columns individually to handle mixed dtypes
-                logger.debug(f"Native .to_torch() failed ({e}), using column-wise conversion")
+                logger.debug(
+                    f"Native .to_torch() failed ({e}), using column-wise conversion"
+                )
                 batch_tensors = {}
                 for col in batch_df.columns:
                     col_data = batch_df[col]
@@ -155,16 +155,22 @@ class PolarsDataset(IterableDataset):
                     if col_data.dtype == pl.Duration:
                         # Convert duration to float (microseconds as float)
                         tensor_data = torch.from_numpy(
-                            col_data.dt.total_microseconds().to_numpy().astype(np.float32)
+                            col_data.dt.total_microseconds()
+                            .to_numpy()
+                            .astype(np.float32)
                         )
                     elif col_data.dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
-                        tensor_data = torch.from_numpy(col_data.to_numpy().astype(np.int64))
+                        tensor_data = torch.from_numpy(
+                            col_data.to_numpy().astype(np.int64)
+                        )
                     elif col_data.dtype == pl.String:
                         # Keep string columns as-is, don't convert to tensor yet
                         tensor_data = col_data.to_list()
                     else:
                         # Default to float32
-                        tensor_data = torch.from_numpy(col_data.to_numpy().astype(np.float32))
+                        tensor_data = torch.from_numpy(
+                            col_data.to_numpy().astype(np.float32)
+                        )
 
                     batch_tensors[col] = tensor_data
 
@@ -230,7 +236,8 @@ def load_rvt_data(
         except ImportError:
             # Try alternative plugin path setup
             plugin_path = (
-                Path(__file__).parent.parent.parent / ".venv/lib/python3.10/site-packages/hdf5plugin/plugins"
+                Path(__file__).parent.parent.parent
+                / ".venv/lib/python3.10/site-packages/hdf5plugin/plugins"
             )
             if plugin_path.exists():
                 os.environ["HDF5_PLUGIN_PATH"] = str(plugin_path)
@@ -252,7 +259,10 @@ def load_rvt_data(
         )
         labels_file = base_path / "labels_v2" / "labels.npz"
         timestamps_file = (
-            base_path / "event_representations_v2" / "stacked_histogram_dt50_nbins10" / "timestamps_us.npy"
+            base_path
+            / "event_representations_v2"
+            / "stacked_histogram_dt50_nbins10"
+            / "timestamps_us.npy"
         )
         mapping_file = (
             base_path
@@ -261,7 +271,12 @@ def load_rvt_data(
             / "objframe_idx_2_repr_idx.npy"
         )
 
-        if not all([f.exists() for f in [repr_file, labels_file, timestamps_file, mapping_file]]):
+        if not all(
+            [
+                f.exists()
+                for f in [repr_file, labels_file, timestamps_file, mapping_file]
+            ]
+        ):
             logger.warning(f"Missing RVT data files in {base_path}")
             return None
 
@@ -291,7 +306,9 @@ def load_rvt_data(
         # Extract class IDs and other relevant fields
         class_ids = raw_labels["class_id"]
         confidences = raw_labels["class_confidence"]
-        bboxes = np.column_stack([raw_labels["x"], raw_labels["y"], raw_labels["w"], raw_labels["h"]])
+        bboxes = np.column_stack(
+            [raw_labels["x"], raw_labels["y"], raw_labels["w"], raw_labels["h"]]
+        )
 
         logger.info(f"Class distribution: {np.bincount(class_ids)}")
         logger.info(f"Unique classes: {np.unique(class_ids)}")
@@ -310,22 +327,28 @@ def load_rvt_data(
         feature_data["bbox_y"] = bboxes[:actual_samples, 1].astype(np.float32)
         feature_data["bbox_w"] = bboxes[:actual_samples, 2].astype(np.float32)
         feature_data["bbox_h"] = bboxes[:actual_samples, 3].astype(np.float32)
-        feature_data["bbox_area"] = (bboxes[:actual_samples, 2] * bboxes[:actual_samples, 3]).astype(
-            np.float32
-        )
+        feature_data["bbox_area"] = (
+            bboxes[:actual_samples, 2] * bboxes[:actual_samples, 3]
+        ).astype(np.float32)
 
         # Store file path and indices for lazy loading
         feature_data["rvt_file_path"] = [str(repr_file)] * actual_samples
         feature_data["rvt_sample_idx"] = list(range(actual_samples))
 
-        logger.info(f"Created metadata for {actual_samples} samples (no tensor data loaded yet)")
+        logger.info(
+            f"Created metadata for {actual_samples} samples (no tensor data loaded yet)"
+        )
         logger.info(f"Label distribution: {np.bincount(class_ids[:actual_samples])}")
 
         # Create DataFrame
         df = pl.DataFrame(feature_data)
 
-        logger.info(f"Created DataFrame with {len(df)} samples and {len(df.columns)} columns")
-        logger.info(f"Stored {actual_samples} RVT tensors with shape (20, 360, 640) each")
+        logger.info(
+            f"Created DataFrame with {len(df)} samples and {len(df.columns)} columns"
+        )
+        logger.info(
+            f"Stored {actual_samples} RVT tensors with shape (20, 360, 640) each"
+        )
         logger.info(f"Label distribution: {df['label'].value_counts().sort('label')}")
 
         return df.lazy()
@@ -358,7 +381,9 @@ def create_rvt_transform():
         ```
     """
 
-    def convert_to_rvt_tensors(batch: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
+    def convert_to_rvt_tensors(
+        batch: Dict[str, "torch.Tensor"],
+    ) -> Dict[str, "torch.Tensor"]:
         """Load RVT tensors on-demand from H5 file [batch_size, 20, 360, 640]"""
 
         # Check if we have file paths for lazy loading
@@ -386,7 +411,9 @@ def create_rvt_transform():
                     tensor = f["data"][idx]  # Shape: (20, 360, 640)
                     features_list.append(torch.from_numpy(tensor.astype(np.float32)))
 
-                features = torch.stack(features_list, dim=0)  # Shape: [batch_size, 20, 360, 640]
+                features = torch.stack(
+                    features_list, dim=0
+                )  # Shape: [batch_size, 20, 360, 640]
 
             labels = batch["label"].long()  # Shape: [batch_size]
             return {"features": features, "labels": labels}
@@ -395,7 +422,9 @@ def create_rvt_transform():
         if "rvt_tensor_flat" in batch:
             tensors = []
             for flat_tensor in batch["rvt_tensor_flat"]:
-                tensor = torch.tensor(flat_tensor, dtype=torch.float32).reshape(20, 360, 640)
+                tensor = torch.tensor(flat_tensor, dtype=torch.float32).reshape(
+                    20, 360, 640
+                )
                 tensors.append(tensor)
 
             features = torch.stack(tensors, dim=0)  # Shape: [batch_size, 20, 360, 640]
@@ -438,7 +467,9 @@ def create_basic_event_transform():
         ```
     """
 
-    def extract_event_features(batch: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
+    def extract_event_features(
+        batch: Dict[str, "torch.Tensor"],
+    ) -> Dict[str, "torch.Tensor"]:
         """Transform raw event data to features"""
         # Convert timestamp from microseconds to seconds
         if batch["t"].dtype == torch.int64:
@@ -527,7 +558,12 @@ def create_dataloader(
 
     # Create dataset
     dataset = PolarsDataset(
-        lazy_df, batch_size=batch_size, shuffle=shuffle, transform=transform, drop_last=True, **kwargs
+        lazy_df,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        transform=transform,
+        drop_last=True,
+        **kwargs,
     )
 
     # Create dataloader

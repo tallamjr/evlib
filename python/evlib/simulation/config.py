@@ -103,7 +103,9 @@ ESIM_CONFIGS = {
     "low_sensitivity": ESIMConfig(positive_threshold=0.8, negative_threshold=0.8),
     "fast": ESIMConfig(refractory_period_ms=0.01, dtype="float32"),
     "accurate": ESIMConfig(dtype="float64", log_floor=0.0001),
-    "low_noise": ESIMConfig(positive_threshold=0.6, negative_threshold=0.6, refractory_period_ms=1.0),
+    "low_noise": ESIMConfig(
+        positive_threshold=0.6, negative_threshold=0.6, refractory_period_ms=1.0
+    ),
 }
 
 VIDEO_CONFIGS = {

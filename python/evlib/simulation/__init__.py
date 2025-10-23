@@ -44,7 +44,9 @@ if _opencv_available:
         Returns:
             tuple: (x, y, t, p) arrays containing event data
         """
-        processor = VideoToEvents(esim_config or ESIMConfig(), video_config or VideoConfig())
+        processor = VideoToEvents(
+            esim_config or ESIMConfig(), video_config or VideoConfig()
+        )
         return processor.process_video(video_path)
 
     __all__.append("video_to_events")
@@ -80,10 +82,16 @@ def _check_dependencies():
         missing.append("opencv-python")
 
     if missing:
-        return f"Missing optional dependencies for simulation module: {', '.join(missing)}"
+        return (
+            f"Missing optional dependencies for simulation module: {', '.join(missing)}"
+        )
     return None
 
 
 def get_dependency_info():
     """Get information about available dependencies."""
-    return {"torch": _torch_available, "opencv": _opencv_available, "missing_message": _check_dependencies()}
+    return {
+        "torch": _torch_available,
+        "opencv": _opencv_available,
+        "missing_message": _check_dependencies(),
+    }

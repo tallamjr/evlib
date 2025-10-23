@@ -115,7 +115,9 @@ class TestEvlibRegression:
 
             if file_info["path"].exists():
                 available_files[file_key] = file_info
-            elif file_info.get("required", False) and not file_info.get("skip_on_windows", False):
+            elif file_info.get("required", False) and not file_info.get(
+                "skip_on_windows", False
+            ):
                 # For required files (that aren't skipped), we want the test to fail, not skip
                 available_files[file_key] = file_info
 
@@ -141,7 +143,9 @@ class TestEvlibRegression:
 
         # Just log optional missing files
         if missing_optional:
-            print(f"Optional files missing (some tests will be skipped): {missing_optional}")
+            print(
+                f"Optional files missing (some tests will be skipped): {missing_optional}"
+            )
 
     @pytest.mark.parametrize(
         "file_key",
@@ -149,11 +153,15 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32", reason="HDF5 not available on Windows"
+                ),
             ),
             pytest.param(
                 "rvt_processed",
-                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32", reason="HDF5 not available on Windows"
+                ),
             ),
         ],
     )
@@ -171,15 +179,23 @@ class TestEvlibRegression:
         result = evlib.detect_format(str(file_info["path"]))
 
         # Verify result structure
-        assert isinstance(result, tuple), f"detect_format should return tuple, got {type(result)}"
-        assert len(result) == 3, f"detect_format should return 3-tuple, got {len(result)}"
+        assert isinstance(result, tuple), (
+            f"detect_format should return tuple, got {type(result)}"
+        )
+        assert len(result) == 3, (
+            f"detect_format should return 3-tuple, got {len(result)}"
+        )
 
         format_name, confidence, metadata = result
 
         # Verify format detection
-        assert format_name == file_info["format"], f"Expected {file_info['format']}, got {format_name}"
+        assert format_name == file_info["format"], (
+            f"Expected {file_info['format']}, got {format_name}"
+        )
         assert confidence >= 0.8, f"Low confidence for {file_key}: {confidence}"
-        assert isinstance(metadata, dict), f"Metadata should be dict, got {type(metadata)}"
+        assert isinstance(metadata, dict), (
+            f"Metadata should be dict, got {type(metadata)}"
+        )
 
         print(f"PASS: {file_key}: {format_name} (confidence: {confidence:.2f})")
 
@@ -189,7 +205,9 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32", reason="HDF5 not available on Windows"
+                ),
             ),
         ],
     )
@@ -209,18 +227,22 @@ class TestEvlibRegression:
         load_time = time.time() - start_time
 
         # Verify result structure (should be Polars LazyFrame)
-        assert hasattr(result, "collect"), f"load_events should return LazyFrame, got {type(result)}"
+        assert hasattr(result, "collect"), (
+            f"load_events should return LazyFrame, got {type(result)}"
+        )
 
         # Collect to get the actual data
         df = result.collect()
-        assert len(df.columns) == 4, f"DataFrame should have 4 columns, got {len(df.columns)}"
+        assert len(df.columns) == 4, (
+            f"DataFrame should have 4 columns, got {len(df.columns)}"
+        )
 
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-            "timestamp_seconds"
-        ].to_numpy()
+        t = df.with_columns(
+            (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
         p = df["polarity"].to_numpy()
 
         # Verify array types
@@ -230,23 +252,27 @@ class TestEvlibRegression:
         assert isinstance(p, np.ndarray), f"p should be numpy array, got {type(p)}"
 
         # Verify array shapes match
-        assert (
-            x.shape == y.shape == t.shape == p.shape
-        ), f"Array shapes don't match: {x.shape}, {y.shape}, {t.shape}, {p.shape}"
+        assert x.shape == y.shape == t.shape == p.shape, (
+            f"Array shapes don't match: {x.shape}, {y.shape}, {t.shape}, {p.shape}"
+        )
 
         # Verify event count is reasonable
         event_count = len(x)
         min_expected, max_expected = file_info["expected_event_count"]
-        assert (
-            min_expected <= event_count <= max_expected
-        ), f"Event count {event_count} outside expected range {min_expected}-{max_expected}"
+        assert min_expected <= event_count <= max_expected, (
+            f"Event count {event_count} outside expected range {min_expected}-{max_expected}"
+        )
 
         # Verify coordinate bounds
         width, height = file_info["resolution"]
         assert np.all(x >= 0), f"Negative x coordinates found: min={np.min(x)}"
         assert np.all(y >= 0), f"Negative y coordinates found: min={np.min(y)}"
-        assert np.all(x < width), f"X coordinates out of bounds: max={np.max(x)}, width={width}"
-        assert np.all(y < height), f"Y coordinates out of bounds: max={np.max(y)}, height={height}"
+        assert np.all(x < width), (
+            f"X coordinates out of bounds: max={np.max(x)}, width={width}"
+        )
+        assert np.all(y < height), (
+            f"Y coordinates out of bounds: max={np.max(y)}, height={height}"
+        )
 
         # Verify timestamps
         assert np.all(t >= 0), f"Negative timestamps found: min={np.min(t)}"
@@ -255,9 +281,9 @@ class TestEvlibRegression:
 
         # Verify time duration
         duration = np.max(t) - np.min(t)
-        assert (
-            duration >= file_info["min_duration"]
-        ), f"Duration {duration} too short, expected >= {file_info['min_duration']}"
+        assert duration >= file_info["min_duration"], (
+            f"Duration {duration} too short, expected >= {file_info['min_duration']}"
+        )
 
         # Verify polarity encoding (check against expected encoding for this format)
         unique_polarities = np.unique(p)
@@ -268,13 +294,13 @@ class TestEvlibRegression:
         # Accept subset of expected polarities if file has been filtered in previous tests
         if file_info["format"] == "Text" and len(actual_polarity_values) == 1:
             # Text files might have been filtered by previous documentation tests
-            assert actual_polarity_values.issubset(
-                expected_polarity_values
-            ), f"Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
+            assert actual_polarity_values.issubset(expected_polarity_values), (
+                f"Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
+            )
         else:
-            assert (
-                actual_polarity_values == expected_polarity_values
-            ), f"Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
+            assert actual_polarity_values == expected_polarity_values, (
+                f"Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
+            )
 
         # Verify no invalid values
         assert not np.any(np.isnan(x)), "NaN x coordinates found"
@@ -298,7 +324,9 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32", reason="HDF5 not available on Windows"
+                ),
             ),
         ],
     )
@@ -317,14 +345,18 @@ class TestEvlibRegression:
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-            "timestamp_seconds"
-        ].to_numpy()
+        t = df.with_columns(
+            (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
         p = df["polarity"].to_numpy()
 
         # Test data types (Polars optimizes data types for memory efficiency)
-        assert x.dtype in [np.int16, np.int32, np.int64], f"x dtype should be int16/32/64, got {x.dtype}"
-        assert y.dtype in [np.int16, np.int32, np.int64], f"y dtype should be int16/32/64, got {y.dtype}"
+        assert x.dtype in [np.int16, np.int32, np.int64], (
+            f"x dtype should be int16/32/64, got {x.dtype}"
+        )
+        assert y.dtype in [np.int16, np.int32, np.int64], (
+            f"y dtype should be int16/32/64, got {y.dtype}"
+        )
         assert t.dtype == np.float64, f"t dtype should be float64, got {t.dtype}"
         assert p.dtype in [
             np.int8,
@@ -345,7 +377,9 @@ class TestEvlibRegression:
         assert t.shape == shape, f"t shape {t.shape} doesn't match x shape {shape}"
         assert p.shape == shape, f"p shape {p.shape} doesn't match x shape {shape}"
 
-        print(f"PASS: {file_key}: shapes={shape}, types=({x.dtype}, {y.dtype}, {t.dtype}, {p.dtype})")
+        print(
+            f"PASS: {file_key}: shapes={shape}, types=({x.dtype}, {y.dtype}, {t.dtype}, {p.dtype})"
+        )
 
     @pytest.mark.parametrize(
         "format_name,test_files",
@@ -356,7 +390,9 @@ class TestEvlibRegression:
     )
     def test_consistency_across_format(self, data_files, format_name, test_files):
         """Test that files of the same format behave consistently."""
-        available_files = [f for f in test_files if f in data_files and data_files[f]["path"].exists()]
+        available_files = [
+            f for f in test_files if f in data_files and data_files[f]["path"].exists()
+        ]
 
         if len(available_files) < 2:
             pytest.skip(f"Need at least 2 {format_name} files for consistency test")
@@ -369,9 +405,9 @@ class TestEvlibRegression:
             x = df["x"].to_numpy()
             y = df["y"].to_numpy()
             # Convert duration to seconds
-            t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-                "timestamp_seconds"
-            ].to_numpy()
+            t = df.with_columns(
+                (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
             p = df["polarity"].to_numpy()
 
             results[file_key] = {
@@ -390,23 +426,32 @@ class TestEvlibRegression:
             current = results[file_key]
 
             # Data types should be consistent
-            assert (
-                current["data_types"] == reference["data_types"]
-            ), f"Data types differ between {first_file} and {file_key}"
+            assert current["data_types"] == reference["data_types"], (
+                f"Data types differ between {first_file} and {file_key}"
+            )
 
             # Polarity encoding should be consistent
-            assert (
-                current["polarity_values"] == reference["polarity_values"]
-            ), f"Polarity encoding differs between {first_file} and {file_key}"
+            assert current["polarity_values"] == reference["polarity_values"], (
+                f"Polarity encoding differs between {first_file} and {file_key}"
+            )
 
             # Resolution should be consistent for same dataset
-            if data_files[first_file]["resolution"] == data_files[file_key]["resolution"]:
+            if (
+                data_files[first_file]["resolution"]
+                == data_files[file_key]["resolution"]
+            ):
                 ref_bounds = reference["coordinate_bounds"]
                 cur_bounds = current["coordinate_bounds"]
-                assert ref_bounds[1] == cur_bounds[1], f"X max differs: {ref_bounds[1]} vs {cur_bounds[1]}"
-                assert ref_bounds[3] == cur_bounds[3], f"Y max differs: {ref_bounds[3]} vs {cur_bounds[3]}"
+                assert ref_bounds[1] == cur_bounds[1], (
+                    f"X max differs: {ref_bounds[1]} vs {cur_bounds[1]}"
+                )
+                assert ref_bounds[3] == cur_bounds[3], (
+                    f"Y max differs: {ref_bounds[3]} vs {cur_bounds[3]}"
+                )
 
-        print(f"PASS: {format_name} consistency: {len(available_files)} files validated")
+        print(
+            f"PASS: {format_name} consistency: {len(available_files)} files validated"
+        )
 
     def test_polarity_encoding_consistency(self, data_files):
         """Test that polarity values are consistent with expected encoding for each format."""
@@ -419,7 +464,10 @@ class TestEvlibRegression:
                 result = evlib.load_events(str(file_info["path"]))
                 df = result.collect()
             except (OSError, ValueError) as e:
-                if "Could not find event data" in str(e) or "processed" in file_info["description"].lower():
+                if (
+                    "Could not find event data" in str(e)
+                    or "processed" in file_info["description"].lower()
+                ):
                     print(f"SKIP: {file_key}: Contains processed data, not raw events")
                     continue
                 else:
@@ -427,9 +475,9 @@ class TestEvlibRegression:
             _x = df["x"].to_numpy()
             _y = df["y"].to_numpy()
             # Convert duration to seconds
-            _t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-                "timestamp_seconds"
-            ].to_numpy()
+            _t = df.with_columns(
+                (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
             p = df["polarity"].to_numpy()
 
             # Check against expected polarity encoding for this format
@@ -439,13 +487,13 @@ class TestEvlibRegression:
 
             # For single-polarity files, allow subset of expected polarities
             if file_info.get("allow_single_polarity", False):
-                assert actual_polarity_values.issubset(
-                    expected_polarity_values
-                ), f"{file_key}: Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
+                assert actual_polarity_values.issubset(expected_polarity_values), (
+                    f"{file_key}: Polarity values {actual_polarity_values} not subset of expected {expected_polarity_values}"
+                )
             else:
-                assert (
-                    actual_polarity_values == expected_polarity_values
-                ), f"{file_key}: Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
+                assert actual_polarity_values == expected_polarity_values, (
+                    f"{file_key}: Expected polarities {expected_polarity_values}, got {actual_polarity_values}"
+                )
 
             # Check distribution
             polarity_values = list(file_info["polarity_encoding"])
@@ -456,25 +504,29 @@ class TestEvlibRegression:
             total = len(p)
 
             # Basic validation
-            assert pos_count + neg_count == total, f"{file_key}: Polarity counts don't sum to total"
+            assert pos_count + neg_count == total, (
+                f"{file_key}: Polarity counts don't sum to total"
+            )
             assert pos_count > 0, f"{file_key}: No positive polarity events"
 
             # Check for negative polarity events (allow single-polarity files for specific datasets)
             if file_info.get("allow_single_polarity", False):
                 # Some files (like gen4) may only contain positive events
                 if neg_count == 0:
-                    print(f"INFO: {file_key}: Single-polarity file (only positive events)")
+                    print(
+                        f"INFO: {file_key}: Single-polarity file (only positive events)"
+                    )
                 else:
-                    assert (
-                        neg_count > 0
-                    ), f"{file_key}: Expected both polarities but found neg_count={neg_count}"
+                    assert neg_count > 0, (
+                        f"{file_key}: Expected both polarities but found neg_count={neg_count}"
+                    )
             else:
                 assert neg_count > 0, f"{file_key}: No negative polarity events"
 
             # Print distribution for debugging
             pos_ratio = pos_count / total
             print(
-                f"PASS: {file_key}: {pos_count:,} pos ({pos_ratio:.1%}), {neg_count:,} neg ({1-pos_ratio:.1%})"
+                f"PASS: {file_key}: {pos_count:,} pos ({pos_ratio:.1%}), {neg_count:,} neg ({1 - pos_ratio:.1%})"
             )
 
     def test_evt21_format_support(self):
@@ -501,14 +553,20 @@ class TestEvlibRegression:
                     y = df["y"].to_numpy()
                     # Convert duration to seconds
                     t = df.with_columns(
-                        (df["timestamp"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+                        (df["timestamp"].dt.total_microseconds() / 1_000_000).alias(
+                            "timestamp_seconds"
+                        )
                     )["timestamp_seconds"].to_numpy()
                     p = df["polarity"].to_numpy()
 
                     # Basic validation
                     assert len(x) > 0, "EVT2.1 file loaded no events"
-                    assert x.shape == y.shape == t.shape == p.shape, "EVT2.1 array shapes don't match"
-                    assert set(np.unique(p)) == {-1, 1}, "EVT2.1 polarity encoding incorrect"
+                    assert x.shape == y.shape == t.shape == p.shape, (
+                        "EVT2.1 array shapes don't match"
+                    )
+                    assert set(np.unique(p)) == {-1, 1}, (
+                        "EVT2.1 polarity encoding incorrect"
+                    )
 
                     print(f"PASS: EVT2.1 support: {file_path.name} - {len(x):,} events")
                     break
@@ -553,7 +611,9 @@ class TestEvlibRegression:
             pytest.skip("No test files available")
 
         # Use a smaller file for this test
-        file_key = next((k for k in ["hdf5_small", "evt2_small"] if k in test_files), test_files[0])
+        file_key = next(
+            (k for k in ["hdf5_small", "evt2_small"] if k in test_files), test_files[0]
+        )
         file_info = data_files[file_key]
 
         initial_objects = len(gc.get_objects())
@@ -564,9 +624,9 @@ class TestEvlibRegression:
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
         # Convert duration to seconds
-        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-            "timestamp_seconds"
-        ].to_numpy()
+        t = df.with_columns(
+            (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
         p = df["polarity"].to_numpy()
         del result, df, x, y, t, p
 
@@ -595,7 +655,9 @@ class TestEvlibRegression:
         # Test basic loading capability with time filter for manageable test duration
         start_time = time.time()
         result = evlib.load_events(
-            str(file_info["path"]), t_start=0.0, t_end=1.0  # Just first second for regression test
+            str(file_info["path"]),
+            t_start=0.0,
+            t_end=1.0,  # Just first second for regression test
         )
         df = result.collect()
         load_time = time.time() - start_time
@@ -606,31 +668,33 @@ class TestEvlibRegression:
 
         # For time-filtered data, just verify we got reasonable events
         assert event_count > 1000, f"Too few events in time slice: {event_count}"
-        assert event_count < 50000000, f"Time filter didn't work, got {event_count} events"
+        assert event_count < 50000000, (
+            f"Time filter didn't work, got {event_count} events"
+        )
 
         # Verify data structure
         expected_columns = {"x", "y", "t", "polarity"}
         actual_columns = set(df.columns)
-        assert (
-            expected_columns == actual_columns
-        ), f"Column mismatch: expected {expected_columns}, got {actual_columns}"
+        assert expected_columns == actual_columns, (
+            f"Column mismatch: expected {expected_columns}, got {actual_columns}"
+        )
 
         # Convert to numpy for validation
         x = df["x"].to_numpy()
         y = df["y"].to_numpy()
-        t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-            "timestamp_seconds"
-        ].to_numpy()
+        t = df.with_columns(
+            (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+        )["timestamp_seconds"].to_numpy()
         p = df["polarity"].to_numpy()
 
         # Verify coordinate bounds (Gen4 1mpx resolution)
         width, height = file_info["resolution"]
-        assert np.all(x >= 0) and np.all(
-            x < width
-        ), f"X coordinates out of bounds: {np.min(x)} to {np.max(x)}, expected 0 to {width-1}"
-        assert np.all(y >= 0) and np.all(
-            y < height
-        ), f"Y coordinates out of bounds: {np.min(y)} to {np.max(y)}, expected 0 to {height-1}"
+        assert np.all(x >= 0) and np.all(x < width), (
+            f"X coordinates out of bounds: {np.min(x)} to {np.max(x)}, expected 0 to {width - 1}"
+        )
+        assert np.all(y >= 0) and np.all(y < height), (
+            f"Y coordinates out of bounds: {np.min(y)} to {np.max(y)}, expected 0 to {height - 1}"
+        )
 
         # Verify timestamp properties (for filtered data)
         duration = np.max(t) - np.min(t)
@@ -642,23 +706,29 @@ class TestEvlibRegression:
         expected_polarities = set(file_info["polarity_encoding"])
 
         # Check that all observed polarities are valid (subset of expected)
-        assert unique_polarities.issubset(
-            expected_polarities
-        ), f"Invalid polarity values: expected subset of {expected_polarities}, got {unique_polarities}"
+        assert unique_polarities.issubset(expected_polarities), (
+            f"Invalid polarity values: expected subset of {expected_polarities}, got {unique_polarities}"
+        )
 
         # Check that we have at least one valid polarity value
         assert len(unique_polarities) > 0, "No polarity values found"
 
         # Check that all values are in the expected range
         for polarity in unique_polarities:
-            assert polarity in expected_polarities, f"Unexpected polarity value: {polarity}"
+            assert polarity in expected_polarities, (
+                f"Unexpected polarity value: {polarity}"
+            )
 
         # Performance validation (should be fast for filtered data)
         events_per_second = event_count / load_time if load_time > 0 else event_count
-        assert events_per_second > 100000, f"Loading too slow: {events_per_second:.0f} events/s"
+        assert events_per_second > 100000, (
+            f"Loading too slow: {events_per_second:.0f} events/s"
+        )
 
         # This tests BLOSC decompression capability without full file loading
-        print(f"PASS: BLOSC decompression working: {event_count:,} events from time slice")
+        print(
+            f"PASS: BLOSC decompression working: {event_count:,} events from time slice"
+        )
 
         print(
             f"PASS: BLOSC compression: {event_count:,} events loaded in {load_time:.1f}s ({events_per_second:.0f} events/s)"
@@ -676,7 +746,9 @@ class TestEvlibRegression:
         if gen4_key not in data_files:
             pytest.skip(f"Gen4 BLOSC test file not configured: {gen4_key}")
         if etram_key not in data_files:
-            pytest.fail(f"MISSING FILE KEY: {etram_key} not found in test data configuration")
+            pytest.fail(
+                f"MISSING FILE KEY: {etram_key} not found in test data configuration"
+            )
         if not data_files[gen4_key]["path"].exists():
             pytest.skip(f"Gen4 BLOSC file not found: {data_files[gen4_key]['path']}")
         if not data_files[etram_key]["path"].exists():
@@ -687,7 +759,9 @@ class TestEvlibRegression:
 
         # Gen4 BLOSC sample (first 100k events)
         gen4_events = evlib.load_events(
-            str(data_files[gen4_key]["path"]), t_start=0.0, t_end=0.1  # First 0.1 seconds
+            str(data_files[gen4_key]["path"]),
+            t_start=0.0,
+            t_end=0.1,  # First 0.1 seconds
         )
         gen4_df = gen4_events.collect()
 
@@ -700,17 +774,17 @@ class TestEvlibRegression:
         assert len(etram_df) > 0, "Deflate file produced no events"
 
         # Both should have same column structure
-        assert set(gen4_df.columns) == set(
-            etram_df.columns
-        ), "Column structure differs between compression types"
+        assert set(gen4_df.columns) == set(etram_df.columns), (
+            "Column structure differs between compression types"
+        )
 
         # Both should have valid data ranges
         for df, name in [(gen4_df, "BLOSC"), (etram_df, "deflate")]:
             x = df["x"].to_numpy()
             y = df["y"].to_numpy()
-            t = df.with_columns((df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds"))[
-                "timestamp_seconds"
-            ].to_numpy()
+            t = df.with_columns(
+                (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
+            )["timestamp_seconds"].to_numpy()
             p = df["polarity"].to_numpy()
 
             assert np.all(x >= 0), f"{name}: negative x coordinates"
@@ -719,7 +793,9 @@ class TestEvlibRegression:
             assert len(np.unique(p)) <= 2, f"{name}: more than 2 polarity values"
 
         print(f"PASS: BLOSC consistency: {len(gen4_df):,} events loaded and validated")
-        print(f"PASS: Deflate consistency: {len(etram_df):,} events loaded and validated")
+        print(
+            f"PASS: Deflate consistency: {len(etram_df):,} events loaded and validated"
+        )
         print("PASS: Both compression types produce consistent data structures")
 
 

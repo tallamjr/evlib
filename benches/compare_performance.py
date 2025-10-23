@@ -59,7 +59,9 @@ def demonstrate_improvements():
     improvement = (old_estimate - new_actual) / old_estimate * 100
 
     print(f"   OLD (estimated): {old_estimate / 1024 / 1024:.1f} MB (~37 bytes/event)")
-    print(f"   TREND: NEW (measured):  {new_actual / 1024 / 1024:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(
+        f"   TREND: NEW (measured):  {new_actual / 1024 / 1024:.1f} MB ({bytes_per_event:.1f} bytes/event)"
+    )
     print(f"   PASS: IMPROVEMENT:     {improvement:.1f}% memory reduction")
 
     # === IMPROVEMENT 2: Processing Speed ===
@@ -115,9 +117,13 @@ def demonstrate_improvements():
             total_bytes_per_event += 8  # Conservative estimate
 
     print(f"Core data size: {total_bytes_per_event} bytes/event (theoretical minimum)")
-    print(f"MEMORY: Actual memory: {bytes_per_event:.1f} bytes/event (includes overhead)")
+    print(
+        f"MEMORY: Actual memory: {bytes_per_event:.1f} bytes/event (includes overhead)"
+    )
     overhead = bytes_per_event - total_bytes_per_event
-    print(f"CONFIG: Memory overhead: {overhead:.1f} bytes/event ({overhead/bytes_per_event*100:.1f}%)")
+    print(
+        f"CONFIG: Memory overhead: {overhead:.1f} bytes/event ({overhead / bytes_per_event * 100:.1f}%)"
+    )
 
     # === IMPROVEMENT 4: Architecture Benefits ===
     print("\nBUILD: IMPROVEMENT 4: ARCHITECTURE BENEFITS")
@@ -153,7 +159,9 @@ def demonstrate_improvements():
             polarities = sorted(df_test["polarity"].unique().to_list())
 
             status = "PASS:" if polarities == expected_polarities else "FAIL:"
-            print(f"   {status} {format_name}: {polarities} (expected {expected_polarities})")
+            print(
+                f"   {status} {format_name}: {polarities} (expected {expected_polarities})"
+            )
 
             del lf_test, df_test
         else:

@@ -13,7 +13,9 @@ from pathlib import Path
 def run_command(cmd, timeout=300):
     """Run a command with timeout and return result"""
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout
+        )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return -1, "", f"Command timed out after {timeout} seconds"
@@ -49,7 +51,9 @@ def validate_benchmark_execution():
         print("SUCCESS: Benchmark execution successful")
         return True
     else:
-        print("WARNING: Benchmark execution failed (this may be expected due to library linking issues)")
+        print(
+            "WARNING: Benchmark execution failed (this may be expected due to library linking issues)"
+        )
         print(f"   Return code: {returncode}")
         print(f"   Stderr: {stderr}")
         return False

@@ -14,7 +14,6 @@ This benchmark showcases the implementation from Issue #36:
 import time
 import importlib.util
 import evlib
-import polars as pl
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
@@ -22,7 +21,9 @@ from pathlib import Path
 
 def load_python_filtering():
     """Load the Python filtering module directly from file."""
-    spec = importlib.util.spec_from_file_location("python_filtering", "python/evlib/filtering.py")
+    spec = importlib.util.spec_from_file_location(
+        "python_filtering", "python/evlib/filtering.py"
+    )
     python_filtering = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(python_filtering)
     return python_filtering
@@ -43,20 +44,35 @@ def quick_benchmark():
 
     # Define test operations
     operations = [
-        ("Time Filter", lambda e, eng: pf.filter_by_time(e, t_start=0.1, t_end=0.5, engine=eng)),
+        (
+            "Time Filter",
+            lambda e, eng: pf.filter_by_time(e, t_start=0.1, t_end=0.5, engine=eng),
+        ),
         (
             "ROI Filter",
-            lambda e, eng: pf.filter_by_roi(e, x_min=50, x_max=200, y_min=50, y_max=150, engine=eng),
+            lambda e, eng: pf.filter_by_roi(
+                e, x_min=50, x_max=200, y_min=50, y_max=150, engine=eng
+            ),
         ),
-        ("Polarity Filter", lambda e, eng: pf.filter_by_polarity(e, polarity=1, engine=eng)),
-        ("Hot Pixels", lambda e, eng: pf.filter_hot_pixels(e, threshold_percentile=98.0, engine=eng)),
+        (
+            "Polarity Filter",
+            lambda e, eng: pf.filter_by_polarity(e, polarity=1, engine=eng),
+        ),
+        (
+            "Hot Pixels",
+            lambda e, eng: pf.filter_hot_pixels(
+                e, threshold_percentile=98.0, engine=eng
+            ),
+        ),
         ("Chain (All)", lambda e, eng: run_filter_chain(pf, e, eng)),
     ]
 
     def run_filter_chain(pf, events, engine):
         """Run a chain of filters."""
         result = pf.filter_by_time(events, t_start=0.1, t_end=0.5, engine=engine)
-        result = pf.filter_by_roi(result, x_min=50, x_max=200, y_min=50, y_max=150, engine=engine)
+        result = pf.filter_by_roi(
+            result, x_min=50, x_max=200, y_min=50, y_max=150, engine=engine
+        )
         result = pf.filter_by_polarity(result, polarity=1, engine=engine)
         return result
 
@@ -64,10 +80,18 @@ def quick_benchmark():
     engines = ["auto", "streaming", "in-memory"]
 
     # Store results for plotting
-    results = {"operations": [], "engines": [], "durations": [], "throughput": [], "final_counts": []}
+    results = {
+        "operations": [],
+        "engines": [],
+        "durations": [],
+        "throughput": [],
+        "final_counts": [],
+    }
 
     print("\n📊 Performance Results:")
-    print(f"{'Operation':<15} {'Engine':<12} {'Time (s)':<10} {'Throughput':<15} {'Events':<10}")
+    print(
+        f"{'Operation':<15} {'Engine':<12} {'Time (s)':<10} {'Throughput':<15} {'Events':<10}"
+    )
     print("-" * 70)
 
     for op_name, op_func in operations:
@@ -140,7 +164,13 @@ def create_performance_plots(results):
             except ValueError:
                 aligned_durations.append(0)
 
-        ax1.bar(op_positions + i * width, aligned_durations, width, label=engine.capitalize(), alpha=0.8)
+        ax1.bar(
+            op_positions + i * width,
+            aligned_durations,
+            width,
+            label=engine.capitalize(),
+            alpha=0.8,
+        )
 
     ax1.set_xlabel("Filter Operations")
     ax1.set_ylabel("Execution Time (seconds)")
@@ -152,7 +182,9 @@ def create_performance_plots(results):
 
     # Plot 2: Throughput Comparison
     for i, engine in enumerate(unique_engines):
-        engine_throughput = [throughput[j] for j, e in enumerate(engines) if e == engine]
+        engine_throughput = [
+            throughput[j] for j, e in enumerate(engines) if e == engine
+        ]
         engine_ops = [operations[j] for j, e in enumerate(engines) if e == engine]
 
         # Align throughput with unique_ops
@@ -164,7 +196,13 @@ def create_performance_plots(results):
             except ValueError:
                 aligned_throughput.append(0)
 
-        ax2.bar(op_positions + i * width, aligned_throughput, width, label=engine.capitalize(), alpha=0.8)
+        ax2.bar(
+            op_positions + i * width,
+            aligned_throughput,
+            width,
+            label=engine.capitalize(),
+            alpha=0.8,
+        )
 
     ax2.set_xlabel("Filter Operations")
     ax2.set_ylabel("Throughput (events/second)")
@@ -188,7 +226,13 @@ def create_performance_plots(results):
             except ValueError:
                 aligned_counts.append(0)
 
-        ax3.bar(op_positions + i * width, aligned_counts, width, label=engine.capitalize(), alpha=0.8)
+        ax3.bar(
+            op_positions + i * width,
+            aligned_counts,
+            width,
+            label=engine.capitalize(),
+            alpha=0.8,
+        )
 
     ax3.set_xlabel("Filter Operations")
     ax3.set_ylabel("Remaining Events")
@@ -202,13 +246,20 @@ def create_performance_plots(results):
     # Calculate average performance per engine
     engine_avg_throughput = {}
     for engine in unique_engines:
-        engine_throughputs = [throughput[j] for j, e in enumerate(engines) if e == engine]
+        engine_throughputs = [
+            throughput[j] for j, e in enumerate(engines) if e == engine
+        ]
         engine_avg_throughput[engine] = np.mean(engine_throughputs)
 
     engine_names = list(engine_avg_throughput.keys())
     avg_throughputs = list(engine_avg_throughput.values())
 
-    bars = ax4.bar(engine_names, avg_throughputs, alpha=0.8, color=["skyblue", "lightcoral", "lightgreen"])
+    bars = ax4.bar(
+        engine_names,
+        avg_throughputs,
+        alpha=0.8,
+        color=["skyblue", "lightcoral", "lightgreen"],
+    )
     ax4.set_xlabel("Engine Type")
     ax4.set_ylabel("Average Throughput (events/second)")
     ax4.set_title("Average Performance by Engine")
@@ -240,7 +291,11 @@ def create_feature_comparison_plot():
     print("\n📊 Creating feature comparison visualization...")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    fig.suptitle("Python Filtering Module: Key Features (Issue #36)", fontsize=16, fontweight="bold")
+    fig.suptitle(
+        "Python Filtering Module: Key Features (Issue #36)",
+        fontsize=16,
+        fontweight="bold",
+    )
 
     # Feature comparison
     features = [
@@ -259,7 +314,12 @@ def create_feature_comparison_plot():
     width = 0.35
 
     bars1 = ax1.bar(
-        x - width / 2, rust_pyO3, width, label="Rust PyO3 (Before)", color="lightcoral", alpha=0.8
+        x - width / 2,
+        rust_pyO3,
+        width,
+        label="Rust PyO3 (Before)",
+        color="lightcoral",
+        alpha=0.8,
     )
     bars2 = ax1.bar(
         x + width / 2,
@@ -311,10 +371,20 @@ def create_feature_comparison_plot():
     x2 = np.arange(len(categories))
 
     bars3 = ax2.bar(
-        x2 - width / 2, before_scores, width, label="Before (Rust PyO3)", color="lightcoral", alpha=0.8
+        x2 - width / 2,
+        before_scores,
+        width,
+        label="Before (Rust PyO3)",
+        color="lightcoral",
+        alpha=0.8,
     )
     bars4 = ax2.bar(
-        x2 + width / 2, after_scores, width, label="After (Python)", color="lightgreen", alpha=0.8
+        x2 + width / 2,
+        after_scores,
+        width,
+        label="After (Python)",
+        color="lightgreen",
+        alpha=0.8,
     )
 
     ax2.set_xlabel("Aspects")
@@ -354,7 +424,9 @@ def print_summary():
     print("\n✅ Python Filtering Module Implementation Complete!")
     print("\n🎯 Issue #36 Objectives Achieved:")
     print("   ✓ Migrated from Rust PyO3 bindings to Python-first architecture")
-    print("   ✓ Added engine parameter support ('auto', 'streaming', 'gpu', 'in-memory')")
+    print(
+        "   ✓ Added engine parameter support ('auto', 'streaming', 'gpu', 'in-memory')"
+    )
     print("   ✓ Eliminated PyO3 conversion overhead")
     print("   ✓ Enabled native Polars optimization and streaming")
     print("   ✓ Maintained backwards compatibility")
@@ -395,7 +467,9 @@ if __name__ == "__main__":
         print("```markdown")
         print("## Performance: Streaming Filtering (Issue #36)")
         print("")
-        print("The Python filtering module provides significant performance improvements")
+        print(
+            "The Python filtering module provides significant performance improvements"
+        )
         print("through direct Polars API usage and streaming support:")
         print("")
         print("![Filtering Performance](python_filtering_benchmark.png)")

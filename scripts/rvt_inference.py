@@ -11,7 +11,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 import numpy as np
@@ -191,7 +190,9 @@ class RVTInference:
 
         return representations, metadata
 
-    def load_raw_events(self, file_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def load_raw_events(
+        self, file_path: str
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Load raw event data from various formats.
 
         Args:
@@ -220,7 +221,9 @@ class RVTInference:
 
             print(f"✓ Loaded {len(xs)} events")
             print(f"  - Time range: {ts.min():.6f} - {ts.max():.6f} seconds")
-            print(f"  - Spatial range: x=[{xs.min()}, {xs.max()}], y=[{ys.min()}, {ys.max()}]")
+            print(
+                f"  - Spatial range: x=[{xs.min()}, {xs.max()}], y=[{ys.min()}, {ys.max()}]"
+            )
             print(f"  - Polarities: {np.unique(ps)}")
 
             return xs, ys, ts, ps
@@ -249,7 +252,9 @@ class RVTInference:
         print(f"Running inference on {T} timesteps, {C} channels, {H}x{W} resolution")
 
         # Convert to torch tensors
-        representations_torch = torch.from_numpy(representations).float().to(self.device)
+        representations_torch = (
+            torch.from_numpy(representations).float().to(self.device)
+        )
 
         all_detections = []
         total_inference_time = 0
@@ -264,7 +269,7 @@ class RVTInference:
                 self.model.reset_states()
 
             print(
-                f"Processing sequence {seq_start//sequence_length + 1}/{(T + sequence_length - 1)//sequence_length}"
+                f"Processing sequence {seq_start // sequence_length + 1}/{(T + sequence_length - 1) // sequence_length}"
             )
 
             # Run inference on sequence
@@ -274,7 +279,9 @@ class RVTInference:
 
                 start_time = time.time()
                 with torch.no_grad():
-                    predictions, _, _ = self.model.forward(frame_repr, retrieve_detections=True)
+                    predictions, _, _ = self.model.forward(
+                        frame_repr, retrieve_detections=True
+                    )
 
                 inference_time = time.time() - start_time
                 total_inference_time += inference_time
@@ -295,7 +302,7 @@ class RVTInference:
         fps = 1.0 / avg_inference_time if avg_inference_time > 0 else 0
 
         print("\n✓ Inference completed!")
-        print(f"  - Average inference time: {avg_inference_time*1000:.2f} ms/frame")
+        print(f"  - Average inference time: {avg_inference_time * 1000:.2f} ms/frame")
         print(f"  - Effective FPS: {fps:.1f}")
         print(f"  - Total detections: {sum(len(dets) for dets in all_detections)}")
 
@@ -350,7 +357,9 @@ class RVTInference:
                 all_detections.append([])
                 continue
 
-            print(f"Window {i+1}/{len(time_steps)-1}: {len(window_events[0])} events")
+            print(
+                f"Window {i + 1}/{len(time_steps) - 1}: {len(window_events[0])} events"
+            )
 
             # Run detection
             start_time = time.time()
@@ -374,13 +383,15 @@ class RVTInference:
         fps = 1.0 / avg_inference_time if avg_inference_time > 0 else 0
 
         print("\n✓ Inference completed!")
-        print(f"  - Average inference time: {avg_inference_time*1000:.2f} ms/window")
+        print(f"  - Average inference time: {avg_inference_time * 1000:.2f} ms/window")
         print(f"  - Effective FPS: {fps:.1f}")
         print(f"  - Total detections: {sum(len(dets) for dets in all_detections)}")
 
         return all_detections
 
-    def save_results(self, detections: List, output_path: str, metadata: Optional[Dict] = None):
+    def save_results(
+        self, detections: List, output_path: str, metadata: Optional[Dict] = None
+    ):
         """Save detection results to file.
 
         Args:
@@ -420,12 +431,21 @@ def main():
         choices=["tiny", "small", "base"],
         help="RVT model variant",
     )
-    parser.add_argument("--pretrained", action="store_true", help="Use pretrained weights")
     parser.add_argument(
-        "--confidence_threshold", type=float, default=0.1, help="Detection confidence threshold"
+        "--pretrained", action="store_true", help="Use pretrained weights"
     )
-    parser.add_argument("--nms_threshold", type=float, default=0.45, help="NMS threshold")
-    parser.add_argument("--device", type=str, default=None, help="Device to use (cpu/cuda)")
+    parser.add_argument(
+        "--confidence_threshold",
+        type=float,
+        default=0.1,
+        help="Detection confidence threshold",
+    )
+    parser.add_argument(
+        "--nms_threshold", type=float, default=0.45, help="NMS threshold"
+    )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Device to use (cpu/cuda)"
+    )
 
     # Data configuration
     parser.add_argument(
@@ -434,23 +454,41 @@ def main():
         default="/Users/tallam/github/tallamjr/origin/evlib/data/gen4_1mpx_processed_RVT/val",
         help="Path to RVT validation data directory",
     )
-    parser.add_argument("--sequence_path", type=str, default=None, help="Path to specific sequence directory")
-    parser.add_argument("--event_file", type=str, default=None, help="Path to raw event file")
+    parser.add_argument(
+        "--sequence_path",
+        type=str,
+        default=None,
+        help="Path to specific sequence directory",
+    )
+    parser.add_argument(
+        "--event_file", type=str, default=None, help="Path to raw event file"
+    )
 
     # Inference configuration
-    parser.add_argument("--sequence_length", type=int, default=5, help="Temporal sequence length")
     parser.add_argument(
-        "--time_window", type=float, default=0.05, help="Time window for raw event processing (seconds)"
+        "--sequence_length", type=int, default=5, help="Temporal sequence length"
+    )
+    parser.add_argument(
+        "--time_window",
+        type=float,
+        default=0.05,
+        help="Time window for raw event processing (seconds)",
     )
     parser.add_argument("--height", type=int, default=480, help="Image height")
     parser.add_argument("--width", type=int, default=640, help="Image width")
 
     # Output configuration
     parser.add_argument(
-        "--output_dir", type=str, default="outputs/rvt_inference", help="Output directory for results"
+        "--output_dir",
+        type=str,
+        default="outputs/rvt_inference",
+        help="Output directory for results",
     )
     parser.add_argument(
-        "--max_sequences", type=int, default=None, help="Maximum number of sequences to process"
+        "--max_sequences",
+        type=int,
+        default=None,
+        help="Maximum number of sequences to process",
     )
 
     args = parser.parse_args()
@@ -470,9 +508,9 @@ def main():
 
     if args.event_file:
         # Process single raw event file
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("PROCESSING RAW EVENT FILE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         xs, ys, ts, ps = inference_engine.load_raw_events(args.event_file)
         detections = inference_engine.run_inference_on_events(
@@ -485,12 +523,16 @@ def main():
 
     elif args.sequence_path:
         # Process single preprocessed sequence
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("PROCESSING SINGLE SEQUENCE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
-        representations, metadata = inference_engine.load_preprocessed_sequence(args.sequence_path)
-        detections = inference_engine.run_inference_on_representations(representations, args.sequence_length)
+        representations, metadata = inference_engine.load_preprocessed_sequence(
+            args.sequence_path
+        )
+        detections = inference_engine.run_inference_on_representations(
+            representations, args.sequence_length
+        )
 
         # Save results
         sequence_name = Path(args.sequence_path).name
@@ -499,9 +541,9 @@ def main():
 
     else:
         # Process validation dataset
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("PROCESSING VALIDATION DATASET")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         data_path = Path(args.data_path)
         if not data_path.exists():
@@ -518,16 +560,23 @@ def main():
         print(f"Found {len(sequences)} sequences to process")
 
         for i, sequence_path in enumerate(sequences):
-            print(f"\n--- Processing sequence {i+1}/{len(sequences)}: {sequence_path.name} ---")
+            print(
+                f"\n--- Processing sequence {i + 1}/{len(sequences)}: {sequence_path.name} ---"
+            )
 
             try:
-                representations, metadata = inference_engine.load_preprocessed_sequence(sequence_path)
+                representations, metadata = inference_engine.load_preprocessed_sequence(
+                    sequence_path
+                )
                 detections = inference_engine.run_inference_on_representations(
                     representations, args.sequence_length
                 )
 
                 # Save results
-                output_file = output_dir / f"{sequence_path.name}_results_{args.model_variant}.npz"
+                output_file = (
+                    output_dir
+                    / f"{sequence_path.name}_results_{args.model_variant}.npz"
+                )
                 inference_engine.save_results(detections, output_file, metadata)
 
             except Exception as e:

@@ -111,7 +111,9 @@ def demo_individual_filters():
 
     # 5. Noise filtering
     print("\n5. Noise Filtering:")
-    noise_filtered = evf.filter_noise(events, method="refractory", refractory_period_us=1000)
+    noise_filtered = evf.filter_noise(
+        events, method="refractory", refractory_period_us=1000
+    )
     print(f"   Events after noise filtering: {len(noise_filtered.collect()):,}")
 
 
@@ -127,7 +129,9 @@ def demo_preprocessing_pipeline():
     filtered = evf.filter_by_roi(filtered, x_min=100, x_max=500, y_min=100, y_max=400)
     filtered = evf.filter_by_polarity(filtered, polarity=1)  # Keep only positive events
     filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.0)
-    processed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
+    processed = evf.filter_noise(
+        filtered, method="refractory", refractory_period_us=1000
+    )
 
     print(f"\nFinal processed events: {len(processed.collect()):,}")
 

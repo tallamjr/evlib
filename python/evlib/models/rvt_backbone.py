@@ -7,14 +7,14 @@ Based on the CVPR 2023 paper "Recurrent Vision Transformers for Object Detection
 by Mathias Gehrig and Davide Scaramuzza.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
-from .rvt_layers import MaxViTBlock, DWSConvLSTM2d, get_downsample_layer, nchw_to_nhwc, nhwc_to_nchw
+from .rvt_layers import MaxViTBlock, DWSConvLSTM2d, get_downsample_layer, nhwc_to_nchw
 
 
 @dataclass
@@ -142,7 +142,9 @@ class RVTStage(nn.Module):
 
         # Mask token for self-supervised learning
         if enable_masking:
-            self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, out_channels), requires_grad=True)
+            self.mask_token = nn.Parameter(
+                torch.zeros(1, 1, 1, out_channels), requires_grad=True
+            )
             nn.init.normal_(self.mask_token, std=0.02)
         else:
             self.mask_token = None
@@ -351,7 +353,9 @@ class RVTStateManager:
             self.reset_worker_states(worker_id)
         return self.states[worker_id]
 
-    def save_states(self, worker_id: int, states: List[Tuple[Tensor, Tensor]], detach: bool = True):
+    def save_states(
+        self, worker_id: int, states: List[Tuple[Tensor, Tensor]], detach: bool = True
+    ):
         """Save states for a worker."""
         if detach:
             # Detach states to prevent gradient accumulation

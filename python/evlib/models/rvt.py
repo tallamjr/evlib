@@ -10,9 +10,7 @@ by Mathias Gehrig and Davide Scaramuzza.
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from typing import Union, Tuple, Optional, Dict, List, Any
-import os
 from pathlib import Path
 
 from .base import BaseModel
@@ -117,7 +115,9 @@ class RVT(BaseModel, nn.Module):
         config.model_variant = variant
 
         # Initialize base classes
-        BaseModel.__init__(self, config, pretrained=False)  # We'll load weights manually
+        BaseModel.__init__(
+            self, config, pretrained=False
+        )  # We'll load weights manually
         nn.Module.__init__(self)
 
         self.variant = variant
@@ -204,7 +204,9 @@ class RVT(BaseModel, nn.Module):
 
         try:
             # Load PyTorch Lightning checkpoint (disable weights_only for compatibility)
-            checkpoint = torch.load(checkpoint_file, map_location=self._device, weights_only=False)
+            checkpoint = torch.load(
+                checkpoint_file, map_location=self._device, weights_only=False
+            )
 
             if "state_dict" in checkpoint:
                 state_dict = checkpoint["state_dict"]
@@ -227,12 +229,16 @@ class RVT(BaseModel, nn.Module):
             print(f"✓ Converted {converted_keys}/{len(state_dict)} checkpoint keys")
 
             # Try to load the converted state dict
-            missing_keys, unexpected_keys = self.load_state_dict(model_state_dict, strict=False)
+            missing_keys, unexpected_keys = self.load_state_dict(
+                model_state_dict, strict=False
+            )
 
             loaded_params = len(model_state_dict) - len(missing_keys)
             total_params = len(self.state_dict())
 
-            print(f"✓ Loaded {loaded_params}/{total_params} parameters from pretrained checkpoint")
+            print(
+                f"✓ Loaded {loaded_params}/{total_params} parameters from pretrained checkpoint"
+            )
 
             if missing_keys:
                 print(f"Missing keys: {len(missing_keys)}")
@@ -269,12 +275,16 @@ class RVT(BaseModel, nn.Module):
                 model_state_dict[new_key] = value
 
             # Load weights with flexible matching
-            missing_keys, unexpected_keys = self.load_state_dict(model_state_dict, strict=False)
+            missing_keys, unexpected_keys = self.load_state_dict(
+                model_state_dict, strict=False
+            )
 
             loaded_keys = len(model_state_dict) - len(unexpected_keys)
             total_keys = len(self.state_dict())
 
-            print(f"✓ Loaded {loaded_keys}/{total_keys} parameters from pretrained checkpoint")
+            print(
+                f"✓ Loaded {loaded_keys}/{total_keys} parameters from pretrained checkpoint"
+            )
 
             if missing_keys:
                 print(f"Missing keys: {len(missing_keys)}")
@@ -321,7 +331,9 @@ class RVT(BaseModel, nn.Module):
             attn_params = ["qkv.", "proj."]
             for param in attn_params:
                 if f".{param}" in converted_key:
-                    converted_key = converted_key.replace(f".att_grid.{param}", f".att_grid.attn.{param}")
+                    converted_key = converted_key.replace(
+                        f".att_grid.{param}", f".att_grid.attn.{param}"
+                    )
 
         # Step 2b: Now convert module names
         converted_key = converted_key.replace("att_grid", "grid_attn")
@@ -329,9 +341,13 @@ class RVT(BaseModel, nn.Module):
 
         # Step 2c: Fix attention module structure mismatch - checkpoint has self_attn, model expects attn
         if ".grid_attn.self_attn." in converted_key:
-            converted_key = converted_key.replace(".grid_attn.self_attn.", ".grid_attn.attn.")
+            converted_key = converted_key.replace(
+                ".grid_attn.self_attn.", ".grid_attn.attn."
+            )
         if ".window_attn.self_attn." in converted_key:
-            converted_key = converted_key.replace(".window_attn.self_attn.", ".window_attn.attn.")
+            converted_key = converted_key.replace(
+                ".window_attn.self_attn.", ".window_attn.attn."
+            )
 
         # Step 3: MLP structure conversion
         converted_key = converted_key.replace(".mlp.net.0.0.", ".mlp.fc1.")
@@ -370,14 +386,17 @@ class RVT(BaseModel, nn.Module):
                     ) and ".bn." not in converted_key:
                         # Don't add .conv. to prediction layers (cls_preds, reg_preds, obj_preds)
                         is_pred_layer = any(
-                            pred in converted_key for pred in ["cls_preds.", "reg_preds.", "obj_preds."]
+                            pred in converted_key
+                            for pred in ["cls_preds.", "reg_preds.", "obj_preds."]
                         )
                         if (
                             not is_pred_layer
                             and ".conv.weight" not in converted_key
                             and ".conv.bias" not in converted_key
                         ):
-                            converted_key = converted_key.replace(".weight", ".conv.weight")
+                            converted_key = converted_key.replace(
+                                ".weight", ".conv.weight"
+                            )
                             converted_key = converted_key.replace(".bias", ".conv.bias")
 
         # Step 6: FPN parameter mapping
@@ -388,19 +407,25 @@ class RVT(BaseModel, nn.Module):
             lateral_match = re.search(r"lateral_convs\.(\d+)\.", converted_key)
             if lateral_match:
                 idx = lateral_match.group(1)
-                converted_key = converted_key.replace(f"lateral_convs.{idx}.", f"lateral_conv{idx}.")
+                converted_key = converted_key.replace(
+                    f"lateral_convs.{idx}.", f"lateral_conv{idx}."
+                )
 
             # Handle fpn convolution naming: fpn.fpn_convs.0. -> fpn.fpn_conv0.
             fpn_match = re.search(r"fpn_convs\.(\d+)\.", converted_key)
             if fpn_match:
                 idx = fpn_match.group(1)
-                converted_key = converted_key.replace(f"fpn_convs.{idx}.", f"fpn_conv{idx}.")
+                converted_key = converted_key.replace(
+                    f"fpn_convs.{idx}.", f"fpn_conv{idx}."
+                )
 
         return converted_key
 
     def preprocess_events_to_histogram(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> Tuple[torch.Tensor, int, int]:
@@ -431,7 +456,9 @@ class RVT(BaseModel, nn.Module):
         if len(xs) == 0:
             channels = 2 * self.temporal_bins
             return (
-                torch.zeros((channels, height, width), dtype=torch.float32, device=self._device),
+                torch.zeros(
+                    (channels, height, width), dtype=torch.float32, device=self._device
+                ),
                 height,
                 width,
             )
@@ -459,10 +486,14 @@ class RVT(BaseModel, nn.Module):
 
         # Build stacked histogram using reference algorithm
         channels = 2 * self.temporal_bins  # 20 for 10 bins * 2 polarities
-        histogram = torch.zeros((channels, height, width), dtype=torch.float32, device=self._device)
+        histogram = torch.zeros(
+            (channels, height, width), dtype=torch.float32, device=self._device
+        )
 
         # Filter valid events (within image bounds)
-        valid_mask = (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height) & (ps >= 0) & (ps <= 1)
+        valid_mask = (
+            (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height) & (ps >= 0) & (ps <= 1)
+        )
 
         if valid_mask.any():
             xs_valid = xs[valid_mask]
@@ -477,22 +508,30 @@ class RVT(BaseModel, nn.Module):
 
             # Use advanced indexing for efficient histogram accumulation
             # Create linear indices for put_ operation (reference approach)
-            linear_indices = xs_valid + width * ys_valid + height * width * channel_indices
+            linear_indices = (
+                xs_valid + width * ys_valid + height * width * channel_indices
+            )
 
             # Accumulate events into histogram (matches reference implementation)
-            values = torch.ones_like(linear_indices, dtype=torch.float32, device=self._device)
+            values = torch.ones_like(
+                linear_indices, dtype=torch.float32, device=self._device
+            )
             histogram_flat = histogram.view(-1)
             histogram_flat.put_(linear_indices, values, accumulate=True)
 
             # Apply count cutoff like reference (clip high event counts)
-            histogram = torch.clamp(histogram, min=0, max=10)  # Reference uses count_cutoff=10
+            histogram = torch.clamp(
+                histogram, min=0, max=10
+            )  # Reference uses count_cutoff=10
 
         return histogram, height, width
 
     def forward_backbone(
         self,
         histogram: torch.Tensor,
-        previous_states: Optional[List[Optional[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        previous_states: Optional[
+            List[Optional[Tuple[torch.Tensor, torch.Tensor]]]
+        ] = None,
         token_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Dict[int, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]:
         """Forward pass through backbone.
@@ -522,7 +561,11 @@ class RVT(BaseModel, nn.Module):
             Tuple of (predictions, losses)
         """
         # Extract features for FPN (stages 2, 3, 4)
-        fpn_inputs = {stage: backbone_features[stage] for stage in [2, 3, 4] if stage in backbone_features}
+        fpn_inputs = {
+            stage: backbone_features[stage]
+            for stage in [2, 3, 4]
+            if stage in backbone_features
+        }
 
         # FPN forward pass
         fpn_features = self.fpn(fpn_inputs)
@@ -538,12 +581,16 @@ class RVT(BaseModel, nn.Module):
     def forward(
         self,
         histogram: torch.Tensor,
-        previous_states: Optional[List[Optional[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        previous_states: Optional[
+            List[Optional[Tuple[torch.Tensor, torch.Tensor]]]
+        ] = None,
         targets: Optional[torch.Tensor] = None,
         token_mask: Optional[torch.Tensor] = None,
         retrieve_detections: bool = True,
     ) -> Tuple[
-        Optional[torch.Tensor], Optional[Dict[str, torch.Tensor]], List[Tuple[torch.Tensor, torch.Tensor]]
+        Optional[torch.Tensor],
+        Optional[Dict[str, torch.Tensor]],
+        List[Tuple[torch.Tensor, torch.Tensor]],
     ]:
         """Complete forward pass through RVT model.
 
@@ -558,7 +605,9 @@ class RVT(BaseModel, nn.Module):
             Tuple of (predictions, losses, new_states)
         """
         # Backbone forward pass
-        backbone_features, new_states = self.forward_backbone(histogram, previous_states, token_mask)
+        backbone_features, new_states = self.forward_backbone(
+            histogram, previous_states, token_mask
+        )
 
         predictions, losses = None, None
 
@@ -570,7 +619,9 @@ class RVT(BaseModel, nn.Module):
 
     def detect(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
         confidence_threshold: Optional[float] = None,
@@ -603,7 +654,9 @@ class RVT(BaseModel, nn.Module):
             nms_threshold = self.config.nms_threshold
 
         # Preprocess events to histogram
-        histogram, height, width = self.preprocess_events_to_histogram(events, height, width)
+        histogram, height, width = self.preprocess_events_to_histogram(
+            events, height, width
+        )
         histogram = histogram.unsqueeze(0)  # Add batch dimension
 
         # Get previous states
@@ -614,13 +667,17 @@ class RVT(BaseModel, nn.Module):
 
         # Forward pass
         with torch.no_grad():
-            predictions, _, new_states = self.forward(histogram, previous_states, retrieve_detections=True)
+            predictions, _, new_states = self.forward(
+                histogram, previous_states, retrieve_detections=True
+            )
 
         # Save new states
         self.state_manager.save_states(self._current_worker_id, new_states)
 
         # Post-process predictions
-        detections = self._postprocess_predictions(predictions, confidence_threshold, nms_threshold)
+        detections = self._postprocess_predictions(
+            predictions, confidence_threshold, nms_threshold
+        )
 
         return detections
 
@@ -676,7 +733,9 @@ class RVT(BaseModel, nn.Module):
                     x1, y1, x2, y2, obj_score, class_score, class_id = det_numpy
                     score = obj_score * class_score  # Combined confidence
                 else:
-                    print(f"Warning: Unexpected detection format with {len(det_numpy)} values: {det_numpy}")
+                    print(
+                        f"Warning: Unexpected detection format with {len(det_numpy)} values: {det_numpy}"
+                    )
                     continue
 
                 detections.append(
@@ -707,7 +766,9 @@ class RVT(BaseModel, nn.Module):
 
     def reconstruct(
         self,
-        events: Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        events: Union[
+            np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> np.ndarray:
@@ -728,7 +789,9 @@ class RVT(BaseModel, nn.Module):
 
         # Create visualization image
         if height is None or width is None:
-            xs, ys, ts, ps, height, width = self.preprocess_events(events, height, width)
+            xs, ys, ts, ps, height, width = self.preprocess_events(
+                events, height, width
+            )
 
         # Create blank image
         vis_image = np.zeros((height, width), dtype=np.uint8)

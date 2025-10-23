@@ -37,7 +37,7 @@ def test_clean_loading():
         return False
 
     print(f"Testing with file: {test_file}")
-    print(f"File size: {os.path.getsize(test_file) / (1024*1024):.1f} MB")
+    print(f"File size: {os.path.getsize(test_file) / (1024 * 1024):.1f} MB")
 
     try:
         print("\n1. Testing basic loading (should show minimal output):")
@@ -63,7 +63,9 @@ def test_clean_loading():
             print("   Silent loading (no debug output)")
 
         print(f"\n   Successfully loaded {len(df):,} events")
-        print(f"   Coordinate ranges: x={df['x'].min()}-{df['x'].max()}, y={df['y'].min()}-{df['y'].max()}")
+        print(
+            f"   Coordinate ranges: x={df['x'].min()}-{df['x'].max()}, y={df['y'].min()}-{df['y'].max()}"
+        )
         print(f"   Polarity values: {sorted(df['polarity'].unique())}")
 
         # Test direct validation functions
@@ -112,7 +114,9 @@ def test_validation_integration():
 
     if hasattr(evlib, "validation"):
         print("   evlib.validation module")
-        print("   Available schemas:", [x for x in dir(evlib.validation) if "SCHEMA" in x])
+        print(
+            "   Available schemas:", [x for x in dir(evlib.validation) if "SCHEMA" in x]
+        )
 
         if hasattr(evlib.validation, "validate_events"):
             print("   evlib.validation.validate_events")
@@ -146,7 +150,9 @@ if __name__ == "__main__":
     if success:
         print("\nAll tests completed successfully!")
         print("\nWhat was fixed:")
-        print("   - Removed excessive 'WARNING: Could not find valid ECF header' messages")
+        print(
+            "   - Removed excessive 'WARNING: Could not find valid ECF header' messages"
+        )
         print("   - Silenced debug output from chunk scanning")
         print("   - Only show SUCCESS message when events are loaded")
         print("   - Integrated Pandera validation system")

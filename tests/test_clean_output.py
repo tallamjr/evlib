@@ -5,7 +5,6 @@ Test the completely clean loading output.
 
 import evlib
 import io
-import sys
 from contextlib import redirect_stderr
 
 
@@ -33,7 +32,9 @@ def test_completely_clean_loading():
         error_output = captured_stderr.getvalue()
 
         print(f"   Loaded {len(df):,} events")
-        print(f"   Coordinates: x={df['x'].min()}-{df['x'].max()}, y={df['y'].min()}-{df['y'].max()}")
+        print(
+            f"   Coordinates: x={df['x'].min()}-{df['x'].max()}, y={df['y'].min()}-{df['y'].max()}"
+        )
 
         print("\nOutput Analysis:")
         if error_output.strip():

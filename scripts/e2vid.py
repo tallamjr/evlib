@@ -33,7 +33,11 @@ except ImportError as e:
 def setup_logging(verbose: bool = False) -> logging.Logger:
     """Set up logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S")
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
     return logging.getLogger(__name__)
 
 
@@ -53,9 +57,13 @@ def find_active_periods(
     else:
         # Use regular intervals
         num_windows = int(duration / window_size)
-        sample_times = [stats["start_time"] + i * window_size for i in range(num_windows)]
+        sample_times = [
+            stats["start_time"] + i * window_size for i in range(num_windows)
+        ]
 
-    logger.info(f"Sampling {len(sample_times)} windows across {duration:.1f}s to find active periods...")
+    logger.info(
+        f"Sampling {len(sample_times)} windows across {duration:.1f}s to find active periods..."
+    )
 
     active_periods = []
     window_activities = []
@@ -68,13 +76,19 @@ def find_active_periods(
         window_activities.append((t_start, event_count))
 
         if len(window_activities) % 10 == 0:
-            logger.info(f"  Analyzed {len(window_activities)}/{len(sample_times)} windows...")
+            logger.info(
+                f"  Analyzed {len(window_activities)}/{len(sample_times)} windows..."
+            )
 
     # Find continuous active regions
     import numpy as np
 
-    active_threshold = max(min_events, np.percentile([count for _, count in window_activities], 75))
-    logger.info(f"Using activity threshold: {active_threshold:,} events per {window_size*1000:.0f}ms window")
+    active_threshold = max(
+        min_events, np.percentile([count for _, count in window_activities], 75)
+    )
+    logger.info(
+        f"Using activity threshold: {active_threshold:,} events per {window_size * 1000:.0f}ms window"
+    )
 
     current_start = None
     for t_start, count in window_activities:
@@ -104,15 +118,19 @@ def find_active_periods(
             merged_periods.append((extended_start, extended_end))
 
     total_active_duration = sum(end - start for start, end in merged_periods)
-    logger.info(f"Found {len(merged_periods)} active periods totaling {total_active_duration:.1f}s")
+    logger.info(
+        f"Found {len(merged_periods)} active periods totaling {total_active_duration:.1f}s"
+    )
 
     for i, (start, end) in enumerate(merged_periods):
-        logger.info(f"  Period {i+1}: {start:.3f} - {end:.3f}s ({end-start:.1f}s)")
+        logger.info(f"  Period {i + 1}: {start:.3f} - {end:.3f}s ({end - start:.1f}s)")
 
     return merged_periods
 
 
-def load_and_analyze_events(input_path: str, logger: logging.Logger) -> Tuple[object, dict]:
+def load_and_analyze_events(
+    input_path: str, logger: logging.Logger
+) -> Tuple[object, dict]:
     """Load events and analyze temporal/spatial properties."""
     logger.info(f"Loading events from: {input_path}")
 
@@ -264,7 +282,7 @@ def reconstruct_frames(
     logger.info(f"  Duration: {actual_duration:.3f} seconds")
     logger.info(f"  Resolution: {target_width}x{target_height}")
     logger.info(f"  FPS: {fps}")
-    logger.info(f"  Frame duration: {frame_duration*1000:.0f}ms")
+    logger.info(f"  Frame duration: {frame_duration * 1000:.0f}ms")
     logger.info(f"  Target frames: {num_frames}")
 
     # Analyze event distribution to warn about sparse periods
@@ -274,7 +292,9 @@ def reconstruct_frames(
     for i in range(sample_windows):
         t_start_sample = recon_start + (i / sample_windows) * actual_duration
         t_end_sample = t_start_sample + frame_duration
-        sample_events = evlib.load_events(input_path, t_start=t_start_sample, t_end=t_end_sample)
+        sample_events = evlib.load_events(
+            input_path, t_start=t_start_sample, t_end=t_end_sample
+        )
         if len(sample_events.collect()) == 0:
             empty_windows += 1
 
@@ -283,7 +303,9 @@ def reconstruct_frames(
             f"Detected sparse event data: {empty_windows}/{sample_windows} sample windows are empty"
         )
         logger.warning("This is normal for event cameras during static periods")
-        logger.warning("Consider using longer frame duration (lower FPS) or selecting active time segments")
+        logger.warning(
+            "Consider using longer frame duration (lower FPS) or selecting active time segments"
+        )
 
     # Reconstruct frames
     frames = []
@@ -302,12 +324,16 @@ def reconstruct_frames(
             events_count = len(frame_events.collect())
 
             if events_count == 0:
-                logger.warning(f"Frame {i+1}/{num_frames}: No events, using previous frame or black")
+                logger.warning(
+                    f"Frame {i + 1}/{num_frames}: No events, using previous frame or black"
+                )
                 # Use previous frame or create black frame
                 if frames:
                     frames.append(frames[-1].copy())
                 else:
-                    frames.append(np.zeros((target_height, target_width), dtype=np.float32))
+                    frames.append(
+                        np.zeros((target_height, target_width), dtype=np.float32)
+                    )
                 continue
 
             # Reconstruct frame
@@ -317,7 +343,11 @@ def reconstruct_frames(
             if max_resolution and max(original_width, original_height) > max_resolution:
                 import cv2
 
-                frame = cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4)
+                frame = cv2.resize(
+                    frame,
+                    (target_width, target_height),
+                    interpolation=cv2.INTER_LANCZOS4,
+                )
 
             # Enhance contrast for better visualization
             frame_enhanced = (frame - frame.min()) / (frame.max() - frame.min())
@@ -331,12 +361,12 @@ def reconstruct_frames(
                 eta = elapsed / progress - elapsed if progress > 0 else 0
 
                 logger.info(
-                    f"Progress: {i+1}/{num_frames} ({progress*100:.1f}%) - "
+                    f"Progress: {i + 1}/{num_frames} ({progress * 100:.1f}%) - "
                     f"{events_count:,} events - ETA: {eta:.1f}s"
                 )
 
         except Exception as e:
-            logger.error(f"Error reconstructing frame {i+1}: {e}")
+            logger.error(f"Error reconstructing frame {i + 1}: {e}")
             # Use previous frame or black frame as fallback
             if frames:
                 frames.append(frames[-1].copy())
@@ -347,13 +377,17 @@ def reconstruct_frames(
     logger.info(
         f"Reconstruction complete: {successful_frames}/{num_frames} frames in {total_recon_time:.1f}s"
     )
-    logger.info(f"Average: {total_recon_time/len(frames):.3f}s per frame")
+    logger.info(f"Average: {total_recon_time / len(frames):.3f}s per frame")
 
     return frames
 
 
 def save_video(
-    frames: List[np.ndarray], output_path: str, fps: float, quality: str, logger: logging.Logger
+    frames: List[np.ndarray],
+    output_path: str,
+    fps: float,
+    quality: str,
+    logger: logging.Logger,
 ) -> bool:
     """Save frames as MP4 video."""
 
@@ -382,7 +416,9 @@ def save_video(
 
     # Create video writer
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
+    video_writer = cv2.VideoWriter(
+        output_path, fourcc, fps, (width, height), isColor=False
+    )
 
     if not video_writer.isOpened():
         logger.error("Failed to open video writer")
@@ -401,7 +437,7 @@ def save_video(
         video_writer.write(frame_8bit)
 
         if (i + 1) % max(1, len(frames) // 10) == 0:
-            logger.info(f"Writing: {i+1}/{len(frames)} frames")
+            logger.info(f"Writing: {i + 1}/{len(frames)} frames")
 
     video_writer.release()
 
@@ -453,10 +489,14 @@ Examples:
         type=str,
         help="Input event data file (EVT2, H5, text formats supported)",
     )
-    parser.add_argument("--output", "-o", required=True, type=str, help="Output video file path (.mp4)")
+    parser.add_argument(
+        "--output", "-o", required=True, type=str, help="Output video file path (.mp4)"
+    )
 
     # Reconstruction parameters
-    parser.add_argument("--fps", type=float, default=20.0, help="Output video frame rate (default: 20)")
+    parser.add_argument(
+        "--fps", type=float, default=20.0, help="Output video frame rate (default: 20)"
+    )
     parser.add_argument(
         "--duration",
         type=float,
@@ -464,12 +504,17 @@ Examples:
         help="Duration to reconstruct in seconds (default: entire file)",
     )
     parser.add_argument(
-        "--start", type=float, default=None, help="Start time offset in seconds (default: beginning of file)"
+        "--start",
+        type=float,
+        default=None,
+        help="Start time offset in seconds (default: beginning of file)",
     )
 
     # Model parameters
     parser.add_argument(
-        "--no-pretrained", action="store_true", help="Use randomly initialized weights instead of pretrained"
+        "--no-pretrained",
+        action="store_true",
+        help="Use randomly initialized weights instead of pretrained",
     )
     parser.add_argument(
         "--device",
@@ -484,7 +529,9 @@ Examples:
         help="Limit maximum resolution for performance (e.g., 1024)",
     )
     parser.add_argument(
-        "--auto-active", action="store_true", help="Automatically detect and use most active time period"
+        "--auto-active",
+        action="store_true",
+        help="Automatically detect and use most active time period",
     )
 
     # Output parameters
@@ -496,7 +543,9 @@ Examples:
     )
 
     # General options
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
 
     args = parser.parse_args()
 
@@ -531,8 +580,12 @@ Examples:
             if active_periods:
                 # Use the longest active period
                 longest_period = max(active_periods, key=lambda x: x[1] - x[0])
-                args.start = longest_period[0] - stats["start_time"]  # Convert to offset
-                args.duration = min(longest_period[1] - longest_period[0], 30.0)  # Max 30s
+                args.start = (
+                    longest_period[0] - stats["start_time"]
+                )  # Convert to offset
+                args.duration = min(
+                    longest_period[1] - longest_period[0], 30.0
+                )  # Max 30s
                 logger.info(
                     f"Using most active period: {args.start:.3f}s offset, {args.duration:.1f}s duration"
                 )
@@ -545,7 +598,14 @@ Examples:
 
         # Step 3: Reconstruct frames
         frames = reconstruct_frames(
-            args.input, model, stats, args.fps, args.duration, args.start, args.max_resolution, logger
+            args.input,
+            model,
+            stats,
+            args.fps,
+            args.duration,
+            args.start,
+            args.max_resolution,
+            logger,
         )
 
         if not frames:

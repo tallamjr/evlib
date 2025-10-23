@@ -126,15 +126,22 @@ def test_ecf_decoding():
             print(f"  Unique Y values: {len(set(y_values))}")
 
             if len(set(x_values)) == 1 and len(set(y_values)) == 1:
-                print("  ⚠️  All coordinates are the same - this suggests placeholder data")
+                print(
+                    "  ⚠️  All coordinates are the same - this suggests placeholder data"
+                )
             elif len(set(x_values)) <= 2 and len(set(y_values)) <= 2:
-                print("  ✓ Limited coordinate values - this matches X-bits=1, Y-bits=0 encoding")
+                print(
+                    "  ✓ Limited coordinate values - this matches X-bits=1, Y-bits=0 encoding"
+                )
             else:
                 print("  ✓ Variable coordinates - successfully decoded real data")
 
         else:
             print("\n⚠️  test_prophesee_ecf_decode function not found")
-            print("Available functions:", [attr for attr in dir(formats) if not attr.startswith("_")])
+            print(
+                "Available functions:",
+                [attr for attr in dir(formats) if not attr.startswith("_")],
+            )
 
     except ImportError as e:
         print(f"\n❌ Failed to import evlib.formats: {e}")

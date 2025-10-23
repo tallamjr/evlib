@@ -94,10 +94,16 @@ try:
             # Also check for evlib subdirectory
             evlib_dir = os.path.join(path, "evlib")
             if os.path.isdir(evlib_dir):
-                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so")))
-                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd")))
+                module_files.extend(
+                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so"))
+                )
+                module_files.extend(
+                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd"))
+                )
                 module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.so")))
-                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd")))
+                module_files.extend(
+                    glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd"))
+                )
 
     # Remove duplicates and use first found
     module_files = list(dict.fromkeys(module_files))
@@ -140,7 +146,9 @@ try:
     def _configure_polars_engine():
         """Configure Polars engine with GPU support and graceful fallback to streaming."""
         # Check if GPU is explicitly requested
-        gpu_engine_requested = os.environ.get("POLARS_ENGINE_AFFINITY", "").lower() == "gpu"
+        gpu_engine_requested = (
+            os.environ.get("POLARS_ENGINE_AFFINITY", "").lower() == "gpu"
+        )
 
         if gpu_engine_requested:
             try:
@@ -231,7 +239,9 @@ if representations:
     sys.modules[__name__ + ".representations"] = representations
 
     if os.environ.get("DEBUG_EVLIB"):
-        print(f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}")
+        print(
+            f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}"
+        )
 
 # Choose filtering module: Python implementation preferred over Rust
 if python_filtering:
@@ -283,10 +293,14 @@ except ImportError:
                 # Manual parsing fallback
                 import re
 
-                _cargo_toml_path = pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
+                _cargo_toml_path = (
+                    pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
+                )
                 with open(_cargo_toml_path, "r") as f:
                     content = f.read()
-                version_match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+                version_match = re.search(
+                    r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE
+                )
                 if version_match:
                     __version__ = version_match.group(1)
                 else:

@@ -7,7 +7,7 @@ when changes exceed specified thresholds.
 """
 
 import numpy as np
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional
 import warnings
 
 try:
@@ -34,7 +34,9 @@ class ESIMSimulator:
 
     def __init__(self, config: ESIMConfig):
         if not _torch_available:
-            raise ImportError("PyTorch is required for ESIMSimulator. " "Install with: pip install torch")
+            raise ImportError(
+                "PyTorch is required for ESIMSimulator. Install with: pip install torch"
+            )
 
         self.config = config
         self._device = self._setup_device()
@@ -68,7 +70,9 @@ class ESIMSimulator:
             warnings.warn("CUDA requested but not available, falling back to CPU")
             device = torch.device("cpu")
         elif device.type == "mps":
-            if not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
+            if not (
+                hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+            ):
                 warnings.warn("MPS requested but not available, falling back to CPU")
                 device = torch.device("cpu")
 
@@ -76,7 +80,9 @@ class ESIMSimulator:
 
     def _get_compatible_dtype(self) -> torch.dtype:
         """Get dtype compatible with the selected device."""
-        requested_dtype = torch.float64 if self.config.dtype == "float64" else torch.float32
+        requested_dtype = (
+            torch.float64 if self.config.dtype == "float64" else torch.float32
+        )
 
         # MPS doesn't support float64
         if self._device.type == "mps" and requested_dtype == torch.float64:
@@ -118,11 +124,16 @@ class ESIMSimulator:
             return np.array([]), np.array([]), np.array([]), np.array([])
 
         # Convert frame to tensor and normalize to [0, 1]
-        intensity_tensor = torch.from_numpy(frame).to(dtype=self._dtype, device=self._device) / 255.0
+        intensity_tensor = (
+            torch.from_numpy(frame).to(dtype=self._dtype, device=self._device) / 255.0
+        )
 
         # Calculate log intensity change
         log_intensity = torch.log(
-            torch.maximum(intensity_tensor, torch.tensor(self.config.log_floor, device=self._device))
+            torch.maximum(
+                intensity_tensor,
+                torch.tensor(self.config.log_floor, device=self._device),
+            )
         )
         log_change = log_intensity - self._log_last_intensity
         self._intensity_buffer += log_change
@@ -136,7 +147,9 @@ class ESIMSimulator:
         events = []
 
         # Positive events
-        pos_mask = (self._intensity_buffer >= self.config.positive_threshold) & active_mask
+        pos_mask = (
+            self._intensity_buffer >= self.config.positive_threshold
+        ) & active_mask
         if torch.any(pos_mask):
             pos_events = self._generate_events(
                 pos_mask, self.config.positive_threshold, timestamp, polarity=1
@@ -144,12 +157,18 @@ class ESIMSimulator:
             events.append(pos_events)
 
             # Update buffer and event times for positive events
-            num_events = (self._intensity_buffer[pos_mask] / self.config.positive_threshold).to(torch.int32)
-            self._intensity_buffer[pos_mask] -= num_events * self.config.positive_threshold
+            num_events = (
+                self._intensity_buffer[pos_mask] / self.config.positive_threshold
+            ).to(torch.int32)
+            self._intensity_buffer[pos_mask] -= (
+                num_events * self.config.positive_threshold
+            )
             self._last_event_time[pos_mask] = timestamp
 
         # Negative events
-        neg_mask = (self._intensity_buffer <= -self.config.negative_threshold) & active_mask
+        neg_mask = (
+            self._intensity_buffer <= -self.config.negative_threshold
+        ) & active_mask
         if torch.any(neg_mask):
             neg_events = self._generate_events(
                 neg_mask, self.config.negative_threshold, timestamp, polarity=-1
@@ -157,8 +176,12 @@ class ESIMSimulator:
             events.append(neg_events)
 
             # Update buffer and event times for negative events
-            num_events = (self._intensity_buffer[neg_mask] / -self.config.negative_threshold).to(torch.int32)
-            self._intensity_buffer[neg_mask] += num_events * self.config.negative_threshold
+            num_events = (
+                self._intensity_buffer[neg_mask] / -self.config.negative_threshold
+            ).to(torch.int32)
+            self._intensity_buffer[neg_mask] += (
+                num_events * self.config.negative_threshold
+            )
             self._last_event_time[neg_mask] = timestamp
 
         # Update last intensity
@@ -182,17 +205,28 @@ class ESIMSimulator:
         else:
             return np.array([]), np.array([]), np.array([]), np.array([])
 
-    def _initialize_state(self, height: int, width: int, frame: np.ndarray, timestamp: float) -> None:
+    def _initialize_state(
+        self, height: int, width: int, frame: np.ndarray, timestamp: float
+    ) -> None:
         """Initialize internal state tensors."""
         # Convert frame to tensor and normalize
-        intensity_tensor = torch.from_numpy(frame).to(dtype=self._dtype, device=self._device) / 255.0
+        intensity_tensor = (
+            torch.from_numpy(frame).to(dtype=self._dtype, device=self._device) / 255.0
+        )
 
         # Initialize state tensors
         self._log_last_intensity = torch.log(
-            torch.maximum(intensity_tensor, torch.tensor(self.config.log_floor, device=self._device))
+            torch.maximum(
+                intensity_tensor,
+                torch.tensor(self.config.log_floor, device=self._device),
+            )
         )
-        self._intensity_buffer = torch.zeros((height, width), dtype=self._dtype, device=self._device)
-        self._last_event_time = torch.zeros((height, width), dtype=self._dtype, device=self._device)
+        self._intensity_buffer = torch.zeros(
+            (height, width), dtype=self._dtype, device=self._device
+        )
+        self._last_event_time = torch.zeros(
+            (height, width), dtype=self._dtype, device=self._device
+        )
 
         self._initialized = True
 
@@ -230,8 +264,12 @@ class ESIMSimulator:
             # Return empty tensor with correct shape
             return torch.zeros((4, 0), dtype=self._dtype, device=self._device)
 
-        t_rep = torch.full((total_events,), timestamp, dtype=self._dtype, device=self._device)
-        p_rep = torch.full((total_events,), polarity, dtype=self._dtype, device=self._device)
+        t_rep = torch.full(
+            (total_events,), timestamp, dtype=self._dtype, device=self._device
+        )
+        p_rep = torch.full(
+            (total_events,), polarity, dtype=self._dtype, device=self._device
+        )
 
         return torch.stack([x_rep.to(self._dtype), y_rep.to(self._dtype), t_rep, p_rep])
 

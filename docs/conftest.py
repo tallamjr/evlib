@@ -8,8 +8,6 @@ found in the documentation.
 import pytest
 import sys
 import os
-import tempfile
-import shutil
 from pathlib import Path
 
 # Add the project root to the Python path
@@ -213,9 +211,13 @@ def pytest_configure(config):
     # Add custom markers
     config.addinivalue_line("markers", "docs: marks tests as documentation tests")
     config.addinivalue_line("markers", "slow: marks tests as slow")
-    config.addinivalue_line("markers", "requires_data: marks tests requiring data files")
+    config.addinivalue_line(
+        "markers", "requires_data: marks tests requiring data files"
+    )
     config.addinivalue_line("markers", "requires_evlib: marks tests requiring evlib")
-    config.addinivalue_line("markers", "requires_matplotlib: marks tests requiring matplotlib")
+    config.addinivalue_line(
+        "markers", "requires_matplotlib: marks tests requiring matplotlib"
+    )
 
 
 def pytest_runtest_setup(item):

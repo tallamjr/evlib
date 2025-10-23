@@ -73,7 +73,6 @@ def test_polars_dataset_with_mock_data():
 def test_create_dataloader():
     """Test create_dataloader convenience function"""
     import polars as pl
-    import torch
     from evlib.pytorch import create_dataloader
 
     # Create mock event data as LazyFrame

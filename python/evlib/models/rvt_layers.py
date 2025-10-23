@@ -10,7 +10,6 @@ Based on the CVPR 2023 paper "Recurrent Vision Transformers for Object Detection
 by Mathias Gehrig and Davide Scaramuzza.
 """
 
-import math
 from typing import Optional, Tuple, Union
 from enum import Enum
 
@@ -71,7 +70,12 @@ def window_partition(x: Tensor, window_size: int) -> Tuple[Tensor, int, int]:
 
 
 def window_reverse(
-    x: Tensor, window_size: int, num_windows_h: int, num_windows_w: int, original_h: int, original_w: int
+    x: Tensor,
+    window_size: int,
+    num_windows_h: int,
+    num_windows_w: int,
+    original_h: int,
+    original_w: int,
 ) -> Tensor:
     """Reverse window partitioning.
 
@@ -124,13 +128,19 @@ def grid_partition(x: Tensor, grid_size: int) -> Tensor:
 
     # Partition into grid
     x = x.view(B, grid_size, H // grid_size, grid_size, W // grid_size, C)
-    x = x.permute(0, 2, 4, 1, 3, 5).contiguous()  # (B, H//grid_size, W//grid_size, grid_size, grid_size, C)
-    x = x.view(-1, grid_size * grid_size, C)  # (B * (H//grid_size) * (W//grid_size), grid_size^2, C)
+    x = x.permute(
+        0, 2, 4, 1, 3, 5
+    ).contiguous()  # (B, H//grid_size, W//grid_size, grid_size, grid_size, C)
+    x = x.view(
+        -1, grid_size * grid_size, C
+    )  # (B * (H//grid_size) * (W//grid_size), grid_size^2, C)
 
     return x
 
 
-def grid_reverse(x: Tensor, grid_size: int, H: int, W: int, original_h: int, original_w: int) -> Tensor:
+def grid_reverse(
+    x: Tensor, grid_size: int, H: int, W: int, original_h: int, original_w: int
+) -> Tensor:
     """Reverse grid partitioning.
 
     Args:
@@ -162,7 +172,9 @@ def grid_reverse(x: Tensor, grid_size: int, H: int, W: int, original_h: int, ori
 
     # Reshape back from grid
     x = x.view(B, num_grids_h, num_grids_w, grid_size, grid_size, C)
-    x = x.permute(0, 1, 3, 2, 4, 5).contiguous()  # (B, num_grids_h, grid_size, num_grids_w, grid_size, C)
+    x = x.permute(
+        0, 1, 3, 2, 4, 5
+    ).contiguous()  # (B, num_grids_h, grid_size, num_grids_w, grid_size, C)
     x = x.view(B, H, W, C)
 
     # Remove padding if any
@@ -195,7 +207,11 @@ class Attention(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         q, k, v = qkv[0], qkv[1], qkv[2]  # (B, num_heads, N, head_dim)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -263,7 +279,11 @@ class PartitionAttention(nn.Module):
         if not skip_first_norm:
             self.norm1 = norm_layer(dim)
         self.attn = Attention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
         )
 
         # LayerScale parameters (ls1 for attention, ls2 for MLP)
@@ -300,11 +320,15 @@ class PartitionAttention(nn.Module):
 
         # Partition
         if self.partition_type == PartitionType.WINDOW:
-            x_partitioned, num_windows_h, num_windows_w = window_partition(x, self.partition_size)
+            x_partitioned, num_windows_h, num_windows_w = window_partition(
+                x, self.partition_size
+            )
             # Apply attention
             x_partitioned = self.attn(x_partitioned)
             # Reverse partition
-            x = window_reverse(x_partitioned, self.partition_size, num_windows_h, num_windows_w, H, W)
+            x = window_reverse(
+                x_partitioned, self.partition_size, num_windows_h, num_windows_w, H, W
+            )
         else:  # GRID
             # For grid attention, we use a fixed grid size
             grid_size = min(self.partition_size, min(H, W))
@@ -420,7 +444,12 @@ class PatchEmbed(nn.Module):
             padding = padding
 
         self.conv = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=kernel_size, stride=self.stride, padding=padding, bias=False
+            in_channels,
+            embed_dim,
+            kernel_size=kernel_size,
+            stride=self.stride,
+            padding=padding,
+            bias=False,
         )
         self.norm = norm_layer(embed_dim) if norm_layer else None
 
@@ -451,7 +480,12 @@ class ConvDownsample(nn.Module):
     ):
         super().__init__()
         self.conv = nn.Conv2d(
-            in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=norm_layer is None
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=norm_layer is None,
         )
         self.norm = norm_layer(out_channels) if norm_layer else None
 
@@ -481,9 +515,16 @@ def get_downsample_layer(
     norm_layer = nn.LayerNorm if use_norm else None
 
     if downsample_type == "patch":
-        return PatchEmbed(in_channels, out_channels, patch_size=downsample_factor, norm_layer=norm_layer)
+        return PatchEmbed(
+            in_channels,
+            out_channels,
+            patch_size=downsample_factor,
+            norm_layer=norm_layer,
+        )
     elif downsample_type == "conv":
-        return ConvDownsample(in_channels, out_channels, stride=downsample_factor, norm_layer=norm_layer)
+        return ConvDownsample(
+            in_channels, out_channels, stride=downsample_factor, norm_layer=norm_layer
+        )
     else:
         raise ValueError(f"Unknown downsample type: {downsample_type}")
 
@@ -522,13 +563,17 @@ class DWSConvLSTM2d(nn.Module):
         )
 
         # 1x1 conv for gate computation (matches reference checkpoint structure)
-        self.conv1x1 = nn.Conv2d(in_channels=xh_dim, out_channels=gates_dim, kernel_size=1)
+        self.conv1x1 = nn.Conv2d(
+            in_channels=xh_dim, out_channels=gates_dim, kernel_size=1
+        )
 
         self.conv_only_hidden = dws_conv_only_hidden
         self.cell_update_dropout = nn.Dropout(p=cell_update_dropout)
 
     def forward(
-        self, x: torch.Tensor, h_and_c_previous: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+        self,
+        x: torch.Tensor,
+        h_and_c_previous: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass matching reference RVT implementation.
 

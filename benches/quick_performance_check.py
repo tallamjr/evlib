@@ -38,7 +38,9 @@ def test_file(file_path, description):
     # Calculate metrics
     event_count = len(df)
     events_per_second = event_count / load_time
-    bytes_per_event = (memory_used * 1024 * 1024) / event_count if event_count > 0 else 0
+    bytes_per_event = (
+        (memory_used * 1024 * 1024) / event_count if event_count > 0 else 0
+    )
 
     # Check polarity values
     polarity_values = sorted(df["polarity"].unique().to_list())
@@ -47,7 +49,9 @@ def test_file(file_path, description):
     print(f"   STATS: Events: {event_count:,}")
     print(f"   TIMING: Load time: {load_time:.2f}s")
     print(f"   FAST: Speed: {events_per_second:,.0f} events/s")
-    print(f"   MEMORY: Memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)")
+    print(
+        f"   MEMORY: Memory: {memory_used:.1f} MB ({bytes_per_event:.1f} bytes/event)"
+    )
     print(f"   ANALYSIS: Polarity: {polarity_values}")
 
     # Performance assessment
@@ -111,12 +115,16 @@ def main():
             else:  # HDF5 or Text
                 expected = [0, 1]
                 status = "PASS:" if polarities == expected else "FAIL:"
-                print(f"   {file_name}: {polarities} {status} (HDF5/Text expects [0, 1])")
+                print(
+                    f"   {file_name}: {polarities} {status} (HDF5/Text expects [0, 1])"
+                )
 
         # Performance assessment
         print("\nTARGET: OPTIMIZATION SUCCESS:")
         if avg_speed >= 5_000_000:
-            print(f"   PERFORMANCE: OUTSTANDING: {avg_speed:,.0f} events/s (>5M target)")
+            print(
+                f"   PERFORMANCE: OUTSTANDING: {avg_speed:,.0f} events/s (>5M target)"
+            )
         elif avg_speed >= 1_000_000:
             print(f"   PASS: EXCELLENT: {avg_speed:,.0f} events/s (>1M target)")
         else:

@@ -78,11 +78,15 @@ class ModelInfo:
 # Pre-defined configurations for common use cases
 CONFIGS = {
     "default": ModelConfig(),  # Now matches original E2VID: base_channels=32, num_layers=4
-    "lite": ModelConfig(base_channels=32, num_layers=3),  # Matches pretrained e2vid-lite.pth
+    "lite": ModelConfig(
+        base_channels=32, num_layers=3
+    ),  # Matches pretrained e2vid-lite.pth
     "high_res": ModelConfig(base_channels=64, num_layers=5),  # Higher capacity variant
     "fast": ModelConfig(base_channels=16, num_layers=3),  # Ultra-fast variant
     "temporal": ModelConfig(num_bins=10, extra_params={"use_lstm": True}),
-    "spade": ModelConfig(extra_params={"use_skip_connections": True, "spade_layers": [2, 3]}),
+    "spade": ModelConfig(
+        extra_params={"use_skip_connections": True, "spade_layers": [2, 3]}
+    ),
     "ssl": ModelConfig(extra_params={"use_momentum": True, "temperature": 0.07}),
 }
 
@@ -100,5 +104,7 @@ def get_config(name: str) -> ModelConfig:
         ValueError: If configuration name is not found
     """
     if name not in CONFIGS:
-        raise ValueError(f"Configuration '{name}' not found. Available: {list(CONFIGS.keys())}")
+        raise ValueError(
+            f"Configuration '{name}' not found. Available: {list(CONFIGS.keys())}"
+        )
     return CONFIGS[name]

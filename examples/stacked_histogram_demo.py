@@ -61,11 +61,18 @@ def demonstrate_stacked_histogram():
     width = 346
 
     stacked_hist = evlib.create_stacked_histogram(
-        filename, height=height, width=width, nbins=bins, window_duration_ms=50.0, count_cutoff=255
+        filename,
+        height=height,
+        width=width,
+        nbins=bins,
+        window_duration_ms=50.0,
+        count_cutoff=255,
     )
 
     print(f"\nStacked histogram shape: {stacked_hist.shape}")
-    print(f"Expected shape: [2*{bins}, {height}, {width}] = [{2*bins}, {height}, {width}]")
+    print(
+        f"Expected shape: [2*{bins}, {height}, {width}] = [{2 * bins}, {height}, {width}]"
+    )
     print(f"Value range: [{stacked_hist.min()}, {stacked_hist.max()}]")
 
     # Visualize results - show first 4 bins for clarity
@@ -100,7 +107,9 @@ def demonstrate_stacked_histogram():
     print("\nComparing with other representations:")
 
     # Voxel grid
-    voxel_grid = evlib.create_voxel_grid(filename, height=height, width=width, nbins=bins)
+    voxel_grid = evlib.create_voxel_grid(
+        filename, height=height, width=width, nbins=bins
+    )
     print(f"Voxel grid shape: {voxel_grid.shape}")
     print(f"Voxel grid value range: [{voxel_grid.min():.3f}, {voxel_grid.max():.3f}]")
 
@@ -128,7 +137,9 @@ def demonstrate_stacked_histogram():
     axes[0, 1].axis("off")
 
     # Stacked histogram negative events - First window, middle time bin + bins offset
-    axes[1, 0].imshow(stacked_hist[middle_window, bins + middle_time_bin, :, :], cmap="Blues")
+    axes[1, 0].imshow(
+        stacked_hist[middle_window, bins + middle_time_bin, :, :], cmap="Blues"
+    )
     axes[1, 0].set_title("Stacked Histogram\n(Middle Time Bin, Negative)")
     axes[1, 0].axis("off")
 

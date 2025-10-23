@@ -45,7 +45,7 @@ def uniform_time_subsampling(events, reduction_factor=0.5, seed=42):
 
     final_count = len(sampled_df)
     print(f"After subsampling: {final_count:,}")
-    print(f"Reduction: {100 * (1 - final_count/original_count):.1f}%")
+    print(f"Reduction: {100 * (1 - final_count / original_count):.1f}%")
 
     return filtered_lf
 
@@ -83,17 +83,23 @@ def periodic_time_subsampling(events, keep_ratio=0.5, window_size_ms=10.0):
     _ = timestamps_us.max()  # t_max unused but kept for potential future use
 
     # Create window assignments
-    df_with_windows = df.with_columns([((timestamps_us - t_min) // window_size_us).alias("window_id")])
+    df_with_windows = df.with_columns(
+        [((timestamps_us - t_min) // window_size_us).alias("window_id")]
+    )
 
     # Determine which windows to keep (every nth window)
     keep_every_n = int(1 / keep_ratio)
 
     # Filter to keep only events in selected windows
-    filtered_lf = df_with_windows.filter((pl.col("window_id") % keep_every_n) == 0).drop("window_id").lazy()
+    filtered_lf = (
+        df_with_windows.filter((pl.col("window_id") % keep_every_n) == 0)
+        .drop("window_id")
+        .lazy()
+    )
 
     final_count = len(filtered_lf.collect())
     print(f"After periodic subsampling: {final_count:,}")
-    print(f"Reduction: {100 * (1 - final_count/original_count):.1f}%")
+    print(f"Reduction: {100 * (1 - final_count / original_count):.1f}%")
     print(f"Window size: {window_size_ms}ms, keeping every {keep_every_n} windows")
 
     return filtered_lf
@@ -132,10 +138,14 @@ def adaptive_time_subsampling(events, target_reduction=0.5, window_size_ms=5.0):
     _ = timestamps_us.max()  # t_max unused but kept for potential future use
 
     # Create window assignments and calculate activity per window
-    df_with_windows = df.with_columns([((timestamps_us - t_min) // window_size_us).alias("window_id")])
+    df_with_windows = df.with_columns(
+        [((timestamps_us - t_min) // window_size_us).alias("window_id")]
+    )
 
     # Calculate events per window
-    window_counts = df_with_windows.group_by("window_id").agg(pl.len().alias("events_in_window"))
+    window_counts = df_with_windows.group_by("window_id").agg(
+        pl.len().alias("events_in_window")
+    )
 
     # Calculate adaptive sampling rates
     max_events = window_counts["events_in_window"].max()
@@ -148,12 +158,18 @@ def adaptive_time_subsampling(events, target_reduction=0.5, window_size_ms=5.0):
             (
                 target_reduction
                 + (1 - target_reduction)
-                * (1 - (pl.col("events_in_window") - min_events) / (max_events - min_events))
+                * (
+                    1
+                    - (pl.col("events_in_window") - min_events)
+                    / (max_events - min_events)
+                )
             ).alias("sampling_rate")
         ]
     )
 
-    print(f"Activity range: {min_events} to {max_events} events per {window_size_ms}ms window")
+    print(
+        f"Activity range: {min_events} to {max_events} events per {window_size_ms}ms window"
+    )
     print(
         f"Sampling rates: {window_sampling_rates['sampling_rate'].min():.3f} to {window_sampling_rates['sampling_rate'].max():.3f}"
     )
@@ -166,7 +182,9 @@ def adaptive_time_subsampling(events, target_reduction=0.5, window_size_ms=5.0):
         [
             pl.col("sampling_rate").alias("keep_prob"),
             pl.int_range(pl.len())
-            .map_elements(lambda x: hash(x + 42) % 10000 / 10000.0, return_dtype=pl.Float64)
+            .map_elements(
+                lambda x: hash(x + 42) % 10000 / 10000.0, return_dtype=pl.Float64
+            )
             .alias("rand_val"),
         ]
     )
@@ -180,7 +198,7 @@ def adaptive_time_subsampling(events, target_reduction=0.5, window_size_ms=5.0):
 
     final_count = len(filtered_lf.collect())
     print(f"After adaptive subsampling: {final_count:,}")
-    print(f"Reduction: {100 * (1 - final_count/original_count):.1f}%")
+    print(f"Reduction: {100 * (1 - final_count / original_count):.1f}%")
 
     return filtered_lf
 
@@ -211,11 +229,16 @@ def spatial_activity_subsampling(events, target_reduction=0.5, spatial_window=20
 
     # Create spatial bins
     df_with_bins = df.with_columns(
-        [(pl.col("x") // spatial_window).alias("x_bin"), (pl.col("y") // spatial_window).alias("y_bin")]
+        [
+            (pl.col("x") // spatial_window).alias("x_bin"),
+            (pl.col("y") // spatial_window).alias("y_bin"),
+        ]
     )
 
     # Calculate activity per spatial bin
-    spatial_counts = df_with_bins.group_by(["x_bin", "y_bin"]).agg(pl.len().alias("events_in_bin"))
+    spatial_counts = df_with_bins.group_by(["x_bin", "y_bin"]).agg(
+        pl.len().alias("events_in_bin")
+    )
 
     # Calculate adaptive sampling rates
     max_events = spatial_counts["events_in_bin"].max()
@@ -227,7 +250,10 @@ def spatial_activity_subsampling(events, target_reduction=0.5, spatial_window=20
             (
                 target_reduction
                 + (1 - target_reduction)
-                * (1 - (pl.col("events_in_bin") - min_events) / (max_events - min_events))
+                * (
+                    1
+                    - (pl.col("events_in_bin") - min_events) / (max_events - min_events)
+                )
             ).alias("sampling_rate")
         ]
     )
@@ -247,7 +273,9 @@ def spatial_activity_subsampling(events, target_reduction=0.5, spatial_window=20
         [
             pl.col("sampling_rate").alias("keep_prob"),
             pl.int_range(pl.len())
-            .map_elements(lambda x: hash(x + 42) % 10000 / 10000.0, return_dtype=pl.Float64)
+            .map_elements(
+                lambda x: hash(x + 42) % 10000 / 10000.0, return_dtype=pl.Float64
+            )
             .alias("rand_val"),
         ]
     )
@@ -261,7 +289,7 @@ def spatial_activity_subsampling(events, target_reduction=0.5, spatial_window=20
 
     final_count = len(filtered_lf.collect())
     print(f"After spatial subsampling: {final_count:,}")
-    print(f"Reduction: {100 * (1 - final_count/original_count):.1f}%")
+    print(f"Reduction: {100 * (1 - final_count / original_count):.1f}%")
 
     return filtered_lf
 
@@ -296,14 +324,18 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
     print("\n1. Fraction sampling (df.sample(fraction=0.5)):")
     sampled_fraction = df.sample(fraction=reduction_factor, seed=seed)
     results["fraction"] = sampled_fraction.lazy()
-    print(f"   Result: {len(sampled_fraction):,} events ({100 * len(sampled_fraction)/original_count:.1f}%)")
+    print(
+        f"   Result: {len(sampled_fraction):,} events ({100 * len(sampled_fraction) / original_count:.1f}%)"
+    )
 
     # Method 2: Fixed count sampling
     target_n = int(original_count * reduction_factor)
     print(f"\n2. Fixed count sampling (df.sample(n={target_n})):")
     sampled_n = df.sample(n=target_n, seed=seed)
     results["fixed_n"] = sampled_n.lazy()
-    print(f"   Result: {len(sampled_n):,} events ({100 * len(sampled_n)/original_count:.1f}%)")
+    print(
+        f"   Result: {len(sampled_n):,} events ({100 * len(sampled_n) / original_count:.1f}%)"
+    )
 
     # Method 3: Lazy sampling with filter
     print("\n3. Lazy sampling with filter (using pl.col().map_elements()):")
@@ -313,7 +345,9 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
         .with_columns(
             [
                 pl.int_range(pl.len())
-                .map_elements(lambda x: hash(x + seed) % 10000 / 10000.0, return_dtype=pl.Float64)
+                .map_elements(
+                    lambda x: hash(x + seed) % 10000 / 10000.0, return_dtype=pl.Float64
+                )
                 .alias("rand_val")
             ]
         )
@@ -322,7 +356,9 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
     )
     sampled_lazy_df = sampled_lazy.collect()
     results["lazy_filter"] = sampled_lazy
-    print(f"   Result: {len(sampled_lazy_df):,} events ({100 * len(sampled_lazy_df)/original_count:.1f}%)")
+    print(
+        f"   Result: {len(sampled_lazy_df):,} events ({100 * len(sampled_lazy_df) / original_count:.1f}%)"
+    )
 
     # Method 4: Stratified sampling by polarity
     print("\n4. Stratified sampling by polarity:")
@@ -338,7 +374,7 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
     print(f"   Positive events: {len(pos_events):,} → {len(pos_sampled):,}")
     print(f"   Negative events: {len(neg_events):,} → {len(neg_sampled):,}")
     print(
-        f"   Total result: {len(stratified_sampled):,} events ({100 * len(stratified_sampled)/original_count:.1f}%)"
+        f"   Total result: {len(stratified_sampled):,} events ({100 * len(stratified_sampled) / original_count:.1f}%)"
     )
 
     return results
@@ -363,11 +399,15 @@ def combined_filtering_example():
     events = evlib.load_events(data_file)
     filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.8)
     filtered = evf.filter_hot_pixels(filtered, threshold_percentile=99.9)
-    preprocessed = evf.filter_noise(filtered, method="refractory", refractory_period_us=1000)
+    preprocessed = evf.filter_noise(
+        filtered, method="refractory", refractory_period_us=1000
+    )
 
     # Step 2: Apply Polars native subsampling
     print("\n2. Apply Polars native sampling:")
-    sampling_results = polars_native_sampling_methods(preprocessed, reduction_factor=0.5)
+    sampling_results = polars_native_sampling_methods(
+        preprocessed, reduction_factor=0.5
+    )
 
     # Use fraction sampling result for further processing
     subsampled = sampling_results["fraction"]
@@ -424,13 +464,17 @@ def main():
     # Method 4: Adaptive time-based subsampling
     print("METHOD 4: Adaptive Time-based Subsampling")
     print("-" * 40)
-    _ = adaptive_time_subsampling(original_events, target_reduction=0.5, window_size_ms=5.0)
+    _ = adaptive_time_subsampling(
+        original_events, target_reduction=0.5, window_size_ms=5.0
+    )
     print()
 
     # Method 5: Spatial activity-based subsampling
     print("METHOD 5: Spatial Activity-based Subsampling")
     print("-" * 40)
-    _ = spatial_activity_subsampling(original_events, target_reduction=0.5, spatial_window=20)
+    _ = spatial_activity_subsampling(
+        original_events, target_reduction=0.5, spatial_window=20
+    )
     print()
 
     # Method 6: Combined filtering + subsampling

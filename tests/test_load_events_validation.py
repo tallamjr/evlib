@@ -25,7 +25,7 @@ Note: This test uses validation helpers from tests/validation_helpers.py
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Dict, Any
 
 import polars as pl
 import pytest
@@ -49,7 +49,9 @@ except ImportError:
     PANDERA_AVAILABLE = False
 
 # Test markers and skip conditions
-requires_pandera = pytest.mark.skipif(not PANDERA_AVAILABLE, reason="pandera not available")
+requires_pandera = pytest.mark.skipif(
+    not PANDERA_AVAILABLE, reason="pandera not available"
+)
 requires_evlib = pytest.mark.skipif(True, reason="Check evlib availability in fixture")
 requires_data = pytest.mark.requires_data
 
@@ -173,11 +175,16 @@ def test_data_files():
     scope="session",
     params=[
         pytest.param(
-            "etram", marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
+            "etram",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="HDF5 not available on Windows"
+            ),
         ),
         pytest.param(
             "prophesee_hdf5",
-            marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="HDF5 not available on Windows"
+            ),
         ),
         "prophesee_evt2",
         "prophesee_evt3",
@@ -217,7 +224,9 @@ def loaded_events(evlib_module, dataset_info):
 
     # Get count for display purposes
     count = events.select(pl.len()).collect()[0, 0]
-    print(f"Loaded {count:,} events in {load_time:.3f}s ({count/load_time:,.0f} events/s)")
+    print(
+        f"Loaded {count:,} events in {load_time:.3f}s ({count / load_time:,.0f} events/s)"
+    )
 
     return events
 
@@ -265,7 +274,9 @@ def validate_event_data_structure(
         for col, expected_type in expected_types.items():
             actual_type = sample_df[col].dtype
             if actual_type != expected_type:
-                results["errors"].append(f"Column '{col}' has type {actual_type}, expected {expected_type}")
+                results["errors"].append(
+                    f"Column '{col}' has type {actual_type}, expected {expected_type}"
+                )
 
         if results["errors"]:
             return results
@@ -273,7 +284,11 @@ def validate_event_data_structure(
         # Use pandera validation
         if PANDERA_AVAILABLE:
             # Determine polarity encoding for pandera schema
-            polarity_encoding = "zero_one" if spec["expected_polarity_format"] == "0_1" else "minus_one_one"
+            polarity_encoding = (
+                "zero_one"
+                if spec["expected_polarity_format"] == "0_1"
+                else "minus_one_one"
+            )
 
             validation_result = validate_events(
                 events_df,
@@ -288,7 +303,9 @@ def validate_event_data_structure(
             results["warnings"].extend(validation_result["warnings"])
             results["statistics"] = validation_result["statistics"]
         else:
-            results["warnings"].append("Pandera not available, skipping schema validation")
+            results["warnings"].append(
+                "Pandera not available, skipping schema validation"
+            )
             results["valid"] = True
 
     except Exception as e:
@@ -297,7 +314,9 @@ def validate_event_data_structure(
     return results
 
 
-def validate_sensor_bounds(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dict[str, Any]:
+def validate_sensor_bounds(
+    events_df: pl.LazyFrame, spec: Dict[str, Any]
+) -> Dict[str, Any]:
     """Validate that coordinates are within sensor bounds."""
     results = {"valid": True, "errors": [], "warnings": []}
 
@@ -324,11 +343,15 @@ def validate_sensor_bounds(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dic
 
         # Validate bounds
         if x_min < 0 or x_max > max_x:
-            results["errors"].append(f"X coordinates [{x_min}, {x_max}] exceed sensor bounds [0, {max_x}]")
+            results["errors"].append(
+                f"X coordinates [{x_min}, {x_max}] exceed sensor bounds [0, {max_x}]"
+            )
             results["valid"] = False
 
         if y_min < 0 or y_max > max_y:
-            results["errors"].append(f"Y coordinates [{y_min}, {y_max}] exceed sensor bounds [0, {max_y}]")
+            results["errors"].append(
+                f"Y coordinates [{y_min}, {y_max}] exceed sensor bounds [0, {max_y}]"
+            )
             results["valid"] = False
 
         # Check for reasonable coverage (not all events in tiny region)
@@ -336,7 +359,9 @@ def validate_sensor_bounds(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dic
         y_coverage = (y_max - y_min) / max_y
 
         if x_coverage < 0.1 or y_coverage < 0.1:
-            results["warnings"].append(f"Low spatial coverage: X={x_coverage:.1%}, Y={y_coverage:.1%}")
+            results["warnings"].append(
+                f"Low spatial coverage: X={x_coverage:.1%}, Y={y_coverage:.1%}"
+            )
 
     except Exception as e:
         results["errors"].append(f"Bounds validation failed: {e}")
@@ -345,7 +370,9 @@ def validate_sensor_bounds(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dic
     return results
 
 
-def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dict[str, Any]:
+def validate_temporal_properties(
+    events_df: pl.LazyFrame, spec: Dict[str, Any]
+) -> Dict[str, Any]:
     """Validate temporal properties of event data."""
     results = {"valid": True, "errors": [], "warnings": []}
 
@@ -377,16 +404,22 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
         if duration > 0:
             # Check uniqueness of timestamps to detect processed data
             unique_timestamps = events_df.select(pl.col("t").n_unique()).collect()[0, 0]
-            events_per_timestamp = event_count / unique_timestamps if unique_timestamps > 0 else 0
+            events_per_timestamp = (
+                event_count / unique_timestamps if unique_timestamps > 0 else 0
+            )
 
             # If many events share few timestamps, this is likely processed data
-            is_processed_data = unique_timestamps < 10000 and events_per_timestamp > 1000
+            is_processed_data = (
+                unique_timestamps < 10000 and events_per_timestamp > 1000
+            )
 
             if is_processed_data:
                 # Relaxed thresholds for processed/accumulated data
                 if event_rate < 100:  # Very low rate for processed data
                     results["warnings"].append(f"Low event rate: {event_rate:.0f} Hz")
-                elif event_rate > 100_000_000_000:  # 100 GHz - extreme threshold for processed data
+                elif (
+                    event_rate > 100_000_000_000
+                ):  # 100 GHz - extreme threshold for processed data
                     results["warnings"].append(
                         f"Extremely high event rate (processed data): {event_rate:.0f} Hz"
                     )
@@ -394,13 +427,17 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
                 # Normal thresholds for raw event data
                 if event_rate < 1000:  # Less than 1kHz seems low for event cameras
                     results["warnings"].append(f"Low event rate: {event_rate:.0f} Hz")
-                elif event_rate > 10_000_000:  # More than 10MHz seems suspiciously high for raw data
-                    results["warnings"].append(f"Very high event rate: {event_rate:.0f} Hz")
+                elif (
+                    event_rate > 10_000_000
+                ):  # More than 10MHz seems suspiciously high for raw data
+                    results["warnings"].append(
+                        f"Very high event rate: {event_rate:.0f} Hz"
+                    )
 
         # Check monotonicity (informational only)
-        backward_jumps = events_df.select((pl.col("t").diff() < pl.duration(microseconds=0)).sum()).collect()[
-            0, 0
-        ]
+        backward_jumps = events_df.select(
+            (pl.col("t").diff() < pl.duration(microseconds=0)).sum()
+        ).collect()[0, 0]
 
         if backward_jumps > 0:
             results["warnings"].append(
@@ -411,7 +448,9 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
         if t_min < -1.0:  # Negative timestamps beyond reasonable clock offset
             results["warnings"].append(f"Negative timestamp start: {t_min:.3f}s")
         elif t_min > 1e9:  # Very large start timestamp (Unix time?)
-            results["warnings"].append(f"Large timestamp start: {t_min:.0f}s (Unix time?)")
+            results["warnings"].append(
+                f"Large timestamp start: {t_min:.0f}s (Unix time?)"
+            )
 
     except Exception as e:
         results["errors"].append(f"Temporal validation failed: {e}")
@@ -420,7 +459,9 @@ def validate_temporal_properties(events_df: pl.LazyFrame, spec: Dict[str, Any]) 
     return results
 
 
-def validate_polarity_encoding(events_df: pl.LazyFrame, spec: Dict[str, Any]) -> Dict[str, Any]:
+def validate_polarity_encoding(
+    events_df: pl.LazyFrame, spec: Dict[str, Any]
+) -> Dict[str, Any]:
     """Validate polarity encoding and distribution."""
     results = {"valid": True, "errors": [], "warnings": []}
 
@@ -458,14 +499,18 @@ def validate_polarity_encoding(events_df: pl.LazyFrame, spec: Dict[str, Any]) ->
             # Allow single-polarity files (some event camera files may only have positive or negative events)
             valid_polarities = {-1, 1}
             if not actual_polarities.issubset(valid_polarities):
-                results["errors"].append(f"Expected -1/1 polarity encoding, got {actual_polarities}")
+                results["errors"].append(
+                    f"Expected -1/1 polarity encoding, got {actual_polarities}"
+                )
                 results["valid"] = False
         elif expected_format == "0_1":
             # Expect 0/1 encoding (text formats kept as-is)
             # Allow single-polarity files
             valid_polarities = {0, 1}
             if not actual_polarities.issubset(valid_polarities):
-                results["errors"].append(f"Expected 0/1 polarity encoding, got {actual_polarities}")
+                results["errors"].append(
+                    f"Expected 0/1 polarity encoding, got {actual_polarities}"
+                )
                 results["valid"] = False
         else:
             # Unknown format, just check for reasonable values
@@ -478,7 +523,9 @@ def validate_polarity_encoding(events_df: pl.LazyFrame, spec: Dict[str, Any]) ->
 
         # Additional check for unexpected zero values in -1/1 formats
         if expected_format == "-1_1" and zero_count > 0:
-            results["errors"].append(f"Found {zero_count} events with polarity=0 in -1/1 format")
+            results["errors"].append(
+                f"Found {zero_count} events with polarity=0 in -1/1 format"
+            )
             results["valid"] = False
 
         # Check polarity balance
@@ -511,9 +558,9 @@ class TestLoadEventsValidation:
         dataset_name = dataset_info["name"]
         spec = dataset_info["spec"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING DATA STRUCTURE: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Validate basic structure
         results = validate_event_data_structure(loaded_events, dataset_name, spec)
@@ -529,7 +576,9 @@ class TestLoadEventsValidation:
             if "coordinate_ranges" in stats:
                 x_range = stats["coordinate_ranges"]["x"]
                 y_range = stats["coordinate_ranges"]["y"]
-                print(f"Coordinate ranges: X=[{x_range[0]}, {x_range[1]}], Y=[{y_range[0]}, {y_range[1]}]")
+                print(
+                    f"Coordinate ranges: X=[{x_range[0]}, {x_range[1]}], Y=[{y_range[0]}, {y_range[1]}]"
+                )
             if "duration_seconds" in stats:
                 print(f"Duration: {stats['duration_seconds']:.3f}s")
         elif results["statistics"].get("error"):
@@ -544,11 +593,15 @@ class TestLoadEventsValidation:
             for error in results["errors"]:
                 print(f"❌ {error}")
 
-        assert results["valid"], f"Data structure validation failed: {results['errors']}"
+        assert results["valid"], (
+            f"Data structure validation failed: {results['errors']}"
+        )
 
         # Additional basic checks
         event_count = loaded_events.select(pl.len()).collect()[0, 0]
-        assert event_count >= spec["min_events"], f"Too few events: {event_count} < {spec['min_events']}"
+        assert event_count >= spec["min_events"], (
+            f"Too few events: {event_count} < {spec['min_events']}"
+        )
 
         print(f"✅ Data structure validation passed for {dataset_name}")
 
@@ -557,9 +610,9 @@ class TestLoadEventsValidation:
         dataset_name = dataset_info["name"]
         spec = dataset_info["spec"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING COORDINATE BOUNDS: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         results = validate_sensor_bounds(loaded_events, spec)
 
@@ -572,7 +625,9 @@ class TestLoadEventsValidation:
             for error in results["errors"]:
                 print(f"❌ {error}")
 
-        assert results["valid"], f"Coordinate bounds validation failed: {results['errors']}"
+        assert results["valid"], (
+            f"Coordinate bounds validation failed: {results['errors']}"
+        )
         print(f"✅ Coordinate bounds validation passed for {dataset_name}")
 
     def test_temporal_properties(self, loaded_events, dataset_info):
@@ -580,9 +635,9 @@ class TestLoadEventsValidation:
         dataset_name = dataset_info["name"]
         spec = dataset_info["spec"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING TEMPORAL PROPERTIES: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         results = validate_temporal_properties(loaded_events, spec)
 
@@ -603,9 +658,9 @@ class TestLoadEventsValidation:
         dataset_name = dataset_info["name"]
         spec = dataset_info["spec"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING POLARITY ENCODING: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         results = validate_polarity_encoding(loaded_events, spec)
 
@@ -629,9 +684,9 @@ class TestCrossDatasetConsistency:
 
     def test_format_consistency(self, test_data_files, evlib_module):
         """Test that different file formats produce consistent data structures."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("TESTING FORMAT CONSISTENCY")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         loaded_datasets = {}
 
@@ -676,11 +731,12 @@ class TestCrossDatasetConsistency:
 
                 # Check type consistency
                 assert types == reference_types, (
-                    f"Type mismatch between {reference_name} and {dataset_name}: "
-                    f"{reference_types} vs {types}"
+                    f"Type mismatch between {reference_name} and {dataset_name}: {reference_types} vs {types}"
                 )
 
-        print(f"✅ Format consistency validation passed across {len(loaded_datasets)} datasets")
+        print(
+            f"✅ Format consistency validation passed across {len(loaded_datasets)} datasets"
+        )
 
 
 @requires_pandera
@@ -693,9 +749,9 @@ class TestPerformanceAndScalability:
         file_path = dataset_info["file_path"]
         dataset_name = dataset_info["name"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING LOADING PERFORMANCE: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Measure loading time
         start_time = time.time()
@@ -727,7 +783,9 @@ class TestPerformanceAndScalability:
         )
 
         # Memory efficiency check (should be LazyFrame)
-        assert hasattr(events, "collect"), "Events should be returned as LazyFrame for memory efficiency"
+        assert hasattr(events, "collect"), (
+            "Events should be returned as LazyFrame for memory efficiency"
+        )
 
         print(f"✅ Performance validation passed for {dataset_name}")
 
@@ -735,12 +793,14 @@ class TestPerformanceAndScalability:
         """Test memory efficiency of loaded data structures."""
         dataset_name = dataset_info["name"]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TESTING MEMORY EFFICIENCY: {dataset_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Verify LazyFrame usage (memory efficient)
-        assert isinstance(loaded_events, pl.LazyFrame), "Events should be LazyFrame for memory efficiency"
+        assert isinstance(loaded_events, pl.LazyFrame), (
+            "Events should be LazyFrame for memory efficiency"
+        )
 
         # Test that we can work with data without loading everything into memory
         sample_count = loaded_events.limit(1000).select(pl.len()).collect()[0, 0]

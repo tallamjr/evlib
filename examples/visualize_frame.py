@@ -4,7 +4,6 @@ Simple frame visualization script for E2VID reconstructed frames.
 """
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 
 def visualize_frame(frame, title="Reconstructed Frame"):

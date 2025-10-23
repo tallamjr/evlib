@@ -14,7 +14,7 @@ Based on the YOLOX paper: "YOLOX: Exceeding YOLO Series in 2021"
 """
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -62,8 +62,12 @@ class IOULoss(nn.Module):
         target = target.view(-1, 4)
 
         # Convert to (x1, y1, x2, y2) format
-        tl = torch.max((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
-        br = torch.min((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2))
+        tl = torch.max(
+            (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+        )
+        br = torch.min(
+            (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+        )
 
         area_p = torch.prod(pred[:, 2:], 1)
         area_g = torch.prod(target[:, 2:], 1)
@@ -76,8 +80,12 @@ class IOULoss(nn.Module):
         if self.loss_type == "iou":
             loss = 1 - iou**2
         elif self.loss_type == "giou":
-            c_tl = torch.min((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
-            c_br = torch.max((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2))
+            c_tl = torch.min(
+                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+            )
+            c_br = torch.max(
+                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+            )
             area_c = torch.prod(c_br - c_tl, 1)
             giou = iou - (area_c - area_u) / area_c.clamp(1e-16)
             loss = 1 - giou.clamp(min=-1.0, max=1.0)
@@ -92,7 +100,9 @@ class IOULoss(nn.Module):
         return loss
 
 
-def bboxes_iou(bboxes_a: torch.Tensor, bboxes_b: torch.Tensor, xyxy: bool = True) -> torch.Tensor:
+def bboxes_iou(
+    bboxes_a: torch.Tensor, bboxes_b: torch.Tensor, xyxy: bool = True
+) -> torch.Tensor:
     """Compute IoU between two sets of bounding boxes.
 
     Args:
@@ -334,11 +344,15 @@ class YOLOXHead(nn.Module):
             # Prepare training outputs
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
-                output, grid = self.get_output_and_grid(output, k, stride_this_level, fpn_features[0].type())
+                output, grid = self.get_output_and_grid(
+                    output, k, stride_this_level, fpn_features[0].type()
+                )
                 x_shifts.append(grid[:, :, 0])
                 y_shifts.append(grid[:, :, 1])
                 expanded_strides.append(
-                    torch.zeros(1, grid.shape[1]).fill_(stride_this_level).type_as(fpn_features[0])
+                    torch.zeros(1, grid.shape[1])
+                    .fill_(stride_this_level)
+                    .type_as(fpn_features[0])
                 )
 
                 # Store original predictions for L1 loss if needed
@@ -346,13 +360,17 @@ class YOLOXHead(nn.Module):
                     batch_size = reg_output.shape[0]
                     hsize, wsize = reg_output.shape[-2:]
                     reg_output = reg_output.view(batch_size, 1, 4, hsize, wsize)
-                    reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(batch_size, -1, 4)
+                    reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
+                        batch_size, -1, 4
+                    )
                     origin_preds.append(reg_output.clone())
 
                 train_outputs.append(output)
 
             # Prepare inference outputs
-            inference_output = torch.cat([reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1)
+            inference_output = torch.cat(
+                [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+            )
             inference_outputs.append(inference_output)
 
         # Compute losses during training
@@ -378,7 +396,9 @@ class YOLOXHead(nn.Module):
 
         # Prepare final outputs
         self.hw = [x.shape[-2:] for x in inference_outputs]
-        outputs = torch.cat([x.flatten(start_dim=2) for x in inference_outputs], dim=2).permute(0, 2, 1)
+        outputs = torch.cat(
+            [x.flatten(start_dim=2) for x in inference_outputs], dim=2
+        ).permute(0, 2, 1)
 
         # Decode outputs during inference
         if self.decode_in_inference:
@@ -397,7 +417,9 @@ class YOLOXHead(nn.Module):
         hsize, wsize = output.shape[-2:]
 
         if grid.shape[2:4] != output.shape[2:4]:
-            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing="ij")
+            yv, xv = torch.meshgrid(
+                [torch.arange(hsize), torch.arange(wsize)], indexing="ij"
+            )
             grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype)
             self.grids[k] = grid
 
@@ -429,7 +451,9 @@ class YOLOXHead(nn.Module):
                 grid = torch.stack((xv, yv), 2).view(1, -1, 2)
                 grids.append(grid)
                 shape = grid.shape[:2]
-                strides.append(torch.full((*shape, 1), stride, device=device, dtype=dtype))
+                strides.append(
+                    torch.full((*shape, 1), stride, device=device, dtype=dtype)
+                )
 
             self.output_grids = torch.cat(grids, dim=1)
             self.output_strides = torch.cat(strides, dim=1)
@@ -572,14 +596,22 @@ class YOLOXHead(nn.Module):
             l1_targets = torch.cat(l1_targets, 0)
 
         num_fg = max(num_fg, 1)
-        loss_iou = (self.iou_loss(bbox_preds.view(-1, 4)[fg_masks], reg_targets)).sum() / num_fg
-        loss_obj = (self.bcewithlog_loss(obj_preds.view(-1, 1), obj_targets)).sum() / num_fg
+        loss_iou = (
+            self.iou_loss(bbox_preds.view(-1, 4)[fg_masks], reg_targets)
+        ).sum() / num_fg
+        loss_obj = (
+            self.bcewithlog_loss(obj_preds.view(-1, 1), obj_targets)
+        ).sum() / num_fg
         loss_cls = (
-            self.bcewithlog_loss(cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets)
+            self.bcewithlog_loss(
+                cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets
+            )
         ).sum() / num_fg
 
         if self.use_l1:
-            loss_l1 = (self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)).sum() / num_fg
+            loss_l1 = (
+                self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)
+            ).sum() / num_fg
         else:
             loss_l1 = 0.0
 
@@ -638,14 +670,18 @@ class YOLOXHead(nn.Module):
 
         pair_wise_ious = bboxes_iou(gt_bboxes_per_image, bboxes_preds_per_image, False)
 
-        gt_cls_per_image = F.one_hot(gt_classes.to(torch.int64), self.num_classes).float()
+        gt_cls_per_image = F.one_hot(
+            gt_classes.to(torch.int64), self.num_classes
+        ).float()
         pair_wise_ious_loss = -torch.log(pair_wise_ious + 1e-8)
 
         if mode == "cpu":
             cls_preds_, obj_preds_ = cls_preds_.cpu(), obj_preds_.cpu()
 
         with torch.amp.autocast("cuda", enabled=False):
-            cls_preds_ = (cls_preds_.float().sigmoid_() * obj_preds_.float().sigmoid_()).sqrt()
+            cls_preds_ = (
+                cls_preds_.float().sigmoid_() * obj_preds_.float().sigmoid_()
+            ).sqrt()
             pair_wise_cls_loss = F.binary_cross_entropy(
                 cls_preds_.unsqueeze(0).repeat(num_gt, 1, 1),
                 gt_cls_per_image.unsqueeze(1).repeat(1, num_in_boxes_anchor, 1),
@@ -653,7 +689,11 @@ class YOLOXHead(nn.Module):
             ).sum(-1)
         del cls_preds_
 
-        cost = pair_wise_cls_loss + 3.0 * pair_wise_ious_loss + float(1e6) * (~geometry_relation)
+        cost = (
+            pair_wise_cls_loss
+            + 3.0 * pair_wise_ious_loss
+            + float(1e6) * (~geometry_relation)
+        )
 
         (
             num_fg,
@@ -686,8 +726,12 @@ class YOLOXHead(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply geometry constraint for anchor assignment."""
         expanded_strides_per_image = expanded_strides[0]
-        x_centers_per_image = ((x_shifts[0] + 0.5) * expanded_strides_per_image).unsqueeze(0)
-        y_centers_per_image = ((y_shifts[0] + 0.5) * expanded_strides_per_image).unsqueeze(0)
+        x_centers_per_image = (
+            (x_shifts[0] + 0.5) * expanded_strides_per_image
+        ).unsqueeze(0)
+        y_centers_per_image = (
+            (y_shifts[0] + 0.5) * expanded_strides_per_image
+        ).unsqueeze(0)
 
         # Fixed center radius
         center_radius = 1.5
@@ -744,7 +788,9 @@ class YOLOXHead(nn.Module):
         matched_gt_inds = matching_matrix[:, fg_mask_inboxes].argmax(0)
         gt_matched_classes = gt_classes[matched_gt_inds]
 
-        pred_ious_this_matching = (matching_matrix * pair_wise_ious).sum(0)[fg_mask_inboxes]
+        pred_ious_this_matching = (matching_matrix * pair_wise_ious).sum(0)[
+            fg_mask_inboxes
+        ]
 
         return num_fg, gt_matched_classes, pred_ious_this_matching, matched_gt_inds
 
@@ -799,7 +845,9 @@ def postprocess(
             continue
 
         # Get score and class with highest confidence
-        class_conf, class_pred = torch.max(image_pred[:, 5 : 5 + num_classes], 1, keepdim=True)
+        class_conf, class_pred = torch.max(
+            image_pred[:, 5 : 5 + num_classes], 1, keepdim=True
+        )
 
         conf_mask = (image_pred[:, 4] * class_conf.squeeze() >= conf_thre).squeeze()
 
@@ -826,7 +874,9 @@ def postprocess(
                 )
         else:
             # Fallback: simple confidence-based filtering (no proper NMS)
-            print("Warning: torchvision not available, using simple confidence filtering instead of NMS")
+            print(
+                "Warning: torchvision not available, using simple confidence filtering instead of NMS"
+            )
             scores = detections[:, 4] * detections[:, 5]
             sorted_indices = torch.argsort(scores, descending=True)
             # Keep top 100 detections as a simple fallback
