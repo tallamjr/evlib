@@ -40,55 +40,50 @@
 use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable};
 
 // Polars column names for event data consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 use rand::SeedableRng;
 use rand_distr::Distribution;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, info, instrument};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Uniform noise augmentation configuration
@@ -182,7 +177,6 @@ impl UniformNoiseAugmentation {
     /// # Returns
     ///
     /// Combined LazyFrame with original events plus uniform noise
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_uniform_noise(df, self)
     }
@@ -198,7 +192,6 @@ impl UniformNoiseAugmentation {
     /// # Returns
     ///
     /// Combined DataFrame with original events plus uniform noise
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
         apply_uniform_noise(df.lazy(), self)?.collect()
     }
@@ -241,8 +234,7 @@ impl Validatable for UniformNoiseAugmentation {
 /// let config = UniformNoiseAugmentation::new(1000, 640, 480);
 /// let noisy = apply_uniform_noise(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_uniform_noise(
     df: LazyFrame,
     config: &UniformNoiseAugmentation,
@@ -340,7 +332,6 @@ pub fn apply_uniform_noise(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_uniform_noise_polars(
     df: LazyFrame,
     config: &UniformNoiseAugmentation,
@@ -363,7 +354,6 @@ pub fn apply_uniform_noise_polars(
 /// # Returns
 ///
 /// Combined LazyFrame with original events plus noise
-#[cfg(feature = "polars")]
 pub fn add_uniform_noise_df(
     df: LazyFrame,
     n_events: usize,

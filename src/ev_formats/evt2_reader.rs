@@ -23,7 +23,6 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// EVT2 event types encoded in 4-bit field
@@ -400,7 +399,6 @@ impl Evt2Reader {
     ) -> Result<DataFrame, Evt2Error> {
         let (df, _) = self.read_file(path)?;
 
-        #[cfg(feature = "polars")]
         {
             use polars::prelude::*;
             let mut df = df;
@@ -451,14 +449,6 @@ impl Evt2Reader {
             }
 
             Ok(df)
-        }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            Err(Evt2Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            })
         }
     }
 
@@ -629,7 +619,6 @@ impl Evt2Reader {
         metadata: &Evt2Metadata,
     ) -> Result<DataFrame, Evt2Error> {
         // For DataFrame mode, use the optimized path
-        #[cfg(feature = "polars")]
         {
             let estimated_events = (metadata.data_size / 4) as usize; // 4 bytes per event
             self.read_binary_data_to_dataframe(file, header_size, estimated_events)
@@ -638,19 +627,10 @@ impl Evt2Reader {
                     message: format!("DataFrame conversion failed: {}", e),
                 })
         }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            return Err(Evt2Error::InvalidBinaryData {
-                offset: 0,
-                message: "Polars feature not enabled for DataFrame support".to_string(),
-            });
-        }
     }
 
     /// Read EVT2 file directly into a Polars DataFrame (optimized path)
     /// This eliminates the intermediate Event struct and builds the DataFrame directly
-    #[cfg(feature = "polars")]
     pub fn read_file_to_dataframe<P: AsRef<Path>>(
         &self,
         path: P,
@@ -694,7 +674,6 @@ impl Evt2Reader {
     }
 
     /// Read binary data directly into DataFrame (small files)
-    #[cfg(feature = "polars")]
     fn read_binary_data_to_dataframe(
         &self,
         file: &mut File,
@@ -806,7 +785,6 @@ impl Evt2Reader {
     }
 
     /// Read binary data using streaming for large files
-    #[cfg(feature = "polars")]
     fn read_binary_data_streaming(
         &self,
         file: &mut File,
@@ -926,7 +904,6 @@ impl Evt2Reader {
     }
 
     /// Concatenate multiple DataFrames efficiently
-    #[cfg(feature = "polars")]
     fn concatenate_dataframes(
         dataframes: Vec<DataFrame>,
     ) -> Result<DataFrame, Box<dyn std::error::Error + Send + Sync>> {

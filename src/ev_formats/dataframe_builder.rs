@@ -2,18 +2,17 @@
 // This module provides optimized DataFrame builders that eliminate the need for intermediate Event structs
 
 use crate::ev_formats::EventFormat;
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::debug;
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
@@ -34,7 +33,6 @@ pub fn convert_timestamp(timestamp: f64) -> i64 {
 
 /// Direct DataFrame builder for event data
 /// This eliminates the intermediate Event struct and builds DataFrames directly from raw event data
-#[cfg(feature = "polars")]
 pub struct EventDataFrameBuilder {
     x_builder: PrimitiveChunkedBuilder<Int16Type>,
     y_builder: PrimitiveChunkedBuilder<Int16Type>,
@@ -44,7 +42,6 @@ pub struct EventDataFrameBuilder {
     event_count: usize,
 }
 
-#[cfg(feature = "polars")]
 impl EventDataFrameBuilder {
     /// Create a new builder with estimated capacity
     pub fn new(format: EventFormat, estimated_capacity: usize) -> Self {
@@ -178,7 +175,6 @@ impl EventDataFrameBuilder {
 }
 
 /// Create an empty DataFrame with the correct schema
-#[cfg(feature = "polars")]
 pub fn create_empty_events_dataframe() -> PolarsResult<DataFrame> {
     let empty_x = Series::new("x".into(), Vec::<i16>::new());
     let empty_y = Series::new("y".into(), Vec::<i16>::new());
@@ -196,14 +192,12 @@ pub fn create_empty_events_dataframe() -> PolarsResult<DataFrame> {
 
 /// Streaming builder for very large datasets
 /// Processes events in chunks and yields DataFrames incrementally
-#[cfg(feature = "polars")]
 pub struct EventDataFrameStreamer {
     builder: EventDataFrameBuilder,
     chunk_size: usize,
     total_events: usize,
 }
 
-#[cfg(feature = "polars")]
 impl EventDataFrameStreamer {
     /// Create a new streaming builder
     pub fn new(format: EventFormat, chunk_size: usize) -> Self {
@@ -284,7 +278,6 @@ pub fn calculate_optimal_chunk_size(file_size: u64, available_memory_bytes: usiz
 mod tests {
     use super::*;
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_dataframe_builder() {
         let mut builder = EventDataFrameBuilder::new(EventFormat::Text, 10);

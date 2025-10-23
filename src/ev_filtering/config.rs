@@ -6,10 +6,10 @@
 use std::error::Error;
 use std::fmt;
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::warn;
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
@@ -42,7 +42,6 @@ pub enum FilterError {
     /// Mathematical computation error (e.g., division by zero, overflow)
     MathError(String),
     /// Polars DataFrame operation error
-    #[cfg(feature = "polars")]
     PolarsError(String),
     /// Parallel processing error
     ParallelError(String),
@@ -58,7 +57,6 @@ impl fmt::Display for FilterError {
             FilterError::ProcessingError(msg) => write!(f, "Processing error: {}", msg),
             FilterError::IoError(msg) => write!(f, "I/O error: {}", msg),
             FilterError::MathError(msg) => write!(f, "Mathematical error: {}", msg),
-            #[cfg(feature = "polars")]
             FilterError::PolarsError(msg) => write!(f, "Polars error: {}", msg),
             FilterError::ParallelError(msg) => write!(f, "Parallel processing error: {}", msg),
         }
@@ -75,7 +73,6 @@ impl From<std::io::Error> for FilterError {
 }
 
 /// Convert from Polars errors if feature is enabled
-#[cfg(feature = "polars")]
 impl From<polars::error::PolarsError> for FilterError {
     fn from(error: polars::error::PolarsError) -> Self {
         FilterError::PolarsError(error.to_string())

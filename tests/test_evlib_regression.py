@@ -59,6 +59,7 @@ class TestEvlibRegression:
                 "min_duration": 5.0,
                 "description": "Small HDF5 file (~14MB)",
                 "required": True,  # Core functionality
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
             "evt2_large": {
                 "path": data_dir / "eTram/raw/large_file.raw",  # Placeholder path
@@ -78,6 +79,7 @@ class TestEvlibRegression:
                 "polarity_encoding": (-1, 1),
                 "min_duration": 30.0,
                 "description": "Large HDF5 file",
+                "skip_on_windows": True,  # HDF5 not available on Windows
                 "required": False,  # Optional - may not exist
             },
             "hdf5_xlarge": {
@@ -89,6 +91,7 @@ class TestEvlibRegression:
                 "min_duration": 120.0,
                 "description": "Extra large HDF5 file",
                 "required": False,  # Optional - may not exist
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
             "rvt_processed": {
                 "path": data_dir
@@ -100,15 +103,20 @@ class TestEvlibRegression:
                 "min_duration": 60.0,
                 "description": "RVT processed data",
                 "required": False,  # Optional
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
         }
 
-        # Only include files that actually exist
+        # Only include files that actually exist and are platform-compatible
         for file_key, file_info in potential_files.items():
+            # Skip HDF5 files on Windows
+            if sys.platform == "win32" and file_info.get("skip_on_windows", False):
+                continue
+
             if file_info["path"].exists():
                 available_files[file_key] = file_info
-            elif file_info.get("required", False):
-                # For required files, we want the test to fail, not skip
+            elif file_info.get("required", False) and not file_info.get("skip_on_windows", False):
+                # For required files (that aren't skipped), we want the test to fail, not skip
                 available_files[file_key] = file_info
 
         return available_files
@@ -139,8 +147,14 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
-            "rvt_processed",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
+            pytest.param(
+                "rvt_processed",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_format_detection(self, data_files, file_key):
@@ -173,7 +187,10 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_load_events_basic(self, data_files, file_key):
@@ -279,7 +296,10 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_data_types_and_shapes(self, data_files, file_key):
@@ -509,15 +529,18 @@ class TestEvlibRegression:
         with pytest.raises(Exception):
             evlib.detect_format("definitely_does_not_exist.raw")
 
-        # Test empty file
-        empty_file = Path("/tmp/empty_test.txt")
-        empty_file.write_text("")
+        # Test empty file (use platform-independent temp directory)
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
         try:
             # Empty file should raise an exception during format detection
             with pytest.raises(Exception):
-                evlib.load_events(str(empty_file))
+                evlib.load_events(str(tmp_path))
         finally:
-            empty_file.unlink()
+            tmp_path.unlink(missing_ok=True)
 
         print("PASS: Error handling tests passed")
 

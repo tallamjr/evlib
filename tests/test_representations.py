@@ -8,6 +8,7 @@ import tempfile
 import os
 
 
+@pytest.mark.skipif(os.name == "nt", reason="HDF5 save not available on Windows")
 def test_create_stacked_histogram():
     """Test create_stacked_histogram function with real data."""
     # Create sample event data using evlib's expected format
@@ -59,6 +60,7 @@ def test_create_stacked_histogram():
             os.unlink(tmp.name)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="HDF5 save not available on Windows")
 def test_create_voxel_grid():
     """Test create_voxel_grid function with real data."""
     # Create sample event data with proper temporal spacing
@@ -109,6 +111,7 @@ def test_create_voxel_grid():
             os.unlink(tmp.name)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="HDF5 save not available on Windows")
 def test_create_mixed_density_stack():
     """Test create_mixed_density_stack function with real data."""
     # Create sample event data using evlib's expected format

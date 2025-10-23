@@ -3,39 +3,39 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, info, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
@@ -49,7 +49,6 @@ use crate::ev_formats::streaming::Event;
 // Define Events type alias for compatibility
 type Events = Vec<Event>;
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,7 +111,6 @@ impl EventBroadcaster {
     }
 
     /// Broadcast events from DataFrame to all connected clients
-    #[cfg(feature = "polars")]
     pub async fn broadcast_events_from_dataframe(
         &mut self,
         df: LazyFrame,
@@ -311,7 +309,6 @@ async fn handle_websocket(ws: WebSocket, broadcaster: Arc<Mutex<EventBroadcaster
 }
 
 /// Helper function to convert DataFrame back to Events for visualization
-#[cfg(feature = "polars")]
 fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
     let df = df.collect()?;
 
@@ -345,7 +342,6 @@ fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, Polars
 }
 
 /// Python bindings for the web server
-#[cfg(feature = "python")]
 pub mod python {
     use super::*;
     use crate::from_numpy_arrays;

@@ -5,9 +5,6 @@
 use crate::ev_formats::streaming::Event;
 use image::{Rgb, RgbImage};
 
-#[cfg(feature = "candle")]
-use candle_core::{Result as CandleResult, Tensor};
-
 // Define Events type alias for compatibility
 type Events = Vec<Event>;
 
@@ -161,106 +158,6 @@ pub fn overlay_events_on_frame(
     output
 }
 
-/// Convert a tensor to an RGB image
-///
-/// # Arguments
-/// * `tensor` - 2D or 3D tensor to convert to image
-/// * `colormap` - Optional colormap to use: "gray", "jet", "viridis", "plasma"
-#[cfg(feature = "candle")]
-pub fn tensor_to_image(tensor: &Tensor, colormap: Option<&str>) -> CandleResult<RgbImage> {
-    let shape = tensor.shape();
-
-    // Get tensor data as flattened vector
-    let data = tensor.to_vec1()?;
-
-    // If tensor is already normalized to [0,1], use as is
-    // Otherwise, normalize it
-    let min_val = data.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-    let max_val = data.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-
-    let normalized = if min_val >= 0.0 && max_val <= 1.0 && min_val != max_val {
-        data
-    } else if min_val != max_val {
-        // Normalize to [0,1]
-        data.iter()
-            .map(|&x| (x - min_val) / (max_val - min_val))
-            .collect()
-    } else {
-        // Constant tensor
-        vec![0.0; data.len()]
-    };
-
-    let dims = shape.dims();
-    if dims.len() == 2 || (dims.len() == 3 && dims[0] == 1) {
-        // 2D tensor or 3D with single channel
-        let height = dims[dims.len() - 2] as u32;
-        let width = dims[dims.len() - 1] as u32;
-
-        // Apply colormap
-        let colormap_fn = match colormap.unwrap_or("gray") {
-            "gray" => |v: f32| {
-                let intensity = (v * 255.0) as u8;
-                Rgb([intensity, intensity, intensity])
-            },
-            "jet" => |v: f32| {
-                // Simplified jet colormap
-                let r = (1.5 - f32::abs(2.0 * v - 1.0)).clamp(0.0, 1.0) * 255.0;
-                let g = (1.5 - f32::abs(2.0 * v - 0.5)).clamp(0.0, 1.0) * 255.0;
-                let b = (1.5 - f32::abs(2.0 * v - 0.0)).clamp(0.0, 1.0) * 255.0;
-                Rgb([r as u8, g as u8, b as u8])
-            },
-            // Add other colormaps here
-            _ => |v: f32| {
-                let intensity = (v * 255.0) as u8;
-                Rgb([intensity, intensity, intensity])
-            },
-        };
-
-        // Create image
-        let mut img = RgbImage::new(width, height);
-
-        for y in 0..height {
-            for x in 0..width {
-                let idx = (y * width + x) as usize;
-                if idx < normalized.len() {
-                    img.put_pixel(x, y, colormap_fn(normalized[idx]));
-                }
-            }
-        }
-
-        Ok(img)
-    } else if dims.len() == 3 && dims[0] == 3 {
-        // RGB tensor
-        let height = dims[1] as u32;
-        let width = dims[2] as u32;
-        let mut img = RgbImage::new(width, height);
-
-        for y in 0..height {
-            for x in 0..width {
-                let r_idx = (y * width + x) as usize;
-                let g_idx = (height * width + y * width + x) as usize;
-                let b_idx = (2 * height * width + y * width + x) as usize;
-
-                if r_idx < normalized.len() && g_idx < normalized.len() && b_idx < normalized.len()
-                {
-                    let r = (normalized[r_idx] * 255.0) as u8;
-                    let g = (normalized[g_idx] * 255.0) as u8;
-                    let b = (normalized[b_idx] * 255.0) as u8;
-                    img.put_pixel(x, y, Rgb([r, g, b]));
-                }
-            }
-        }
-
-        Ok(img)
-    } else {
-        // Handle other tensor shapes
-        Err(candle_core::Error::Msg(format!(
-            "Unsupported tensor shape for visualization: {:?}",
-            shape
-        )))
-    }
-}
-
 /// Generate a visualization of the temporal distribution of events
 ///
 /// Creates a histogram showing the number of events per time bin
@@ -361,7 +258,6 @@ pub fn visualize_temporal_histogram(
 
 /// Helper function to convert DataFrame back to Events for visualization
 /// This is necessary because visualization typically needs materialized data
-#[cfg(feature = "polars")]
 fn dataframe_to_events_for_visualization(
     df: polars::prelude::LazyFrame,
 ) -> Result<Events, polars::prelude::PolarsError> {
@@ -540,21 +436,24 @@ fn draw_arrowhead(img: &mut RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, color:
 }
 
 pub mod realtime;
-
 #[cfg(feature = "terminal")]
 pub mod terminal;
+
+#[cfg(feature = "terminal")]
+pub mod terminal_python;
 
 pub mod video_writer;
 pub mod web_server;
 
 /// Python bindings for the visualization module
-#[cfg(feature = "python")]
 pub mod python {
     use super::realtime::{EventVisualizationPipeline, RealtimeVisualizationConfig};
     use super::*;
 
     #[cfg(feature = "terminal")]
-    use super::terminal::{TerminalEventVisualizer, TerminalVisualizationConfig};
+    pub use super::terminal_python::{
+        create_terminal_event_viewer, PyTerminalEventVisualizer, PyTerminalVisualizationConfig,
+    };
     use crate::from_numpy_arrays;
     use numpy::{IntoPyArray, PyReadonlyArray1};
     use pyo3::prelude::*;
@@ -725,151 +624,5 @@ pub mod python {
         pub fn reset(&mut self) {
             self.pipeline.reset();
         }
-    }
-
-    /// Terminal visualization bindings (optional)
-    #[cfg(feature = "terminal")]
-    #[pyclass]
-    #[derive(Clone)]
-    pub struct PyTerminalVisualizationConfig {
-        pub inner: TerminalVisualizationConfig,
-    }
-
-    #[cfg(feature = "terminal")]
-    #[pymethods]
-    impl PyTerminalVisualizationConfig {
-        #[new]
-        #[pyo3(signature = (
-            event_decay_ms = None,
-            max_events = None,
-            target_fps = None,
-            show_stats = None,
-            canvas_scale = None
-        ))]
-        pub fn new(
-            event_decay_ms: Option<f32>,
-            max_events: Option<usize>,
-            target_fps: Option<f32>,
-            show_stats: Option<bool>,
-            canvas_scale: Option<f32>,
-        ) -> Self {
-            let mut config = TerminalVisualizationConfig::default();
-
-            if let Some(decay) = event_decay_ms {
-                config.event_decay_ms = decay;
-            }
-            if let Some(max) = max_events {
-                config.max_events = max;
-            }
-            if let Some(fps) = target_fps {
-                config.target_fps = fps;
-            }
-            if let Some(stats) = show_stats {
-                config.show_stats = stats;
-            }
-            if let Some(scale) = canvas_scale {
-                config.canvas_scale = scale;
-            }
-
-            Self { inner: config }
-        }
-    }
-
-    #[cfg(feature = "terminal")]
-    #[pyclass]
-    pub struct PyTerminalEventVisualizer {
-        visualizer: Option<TerminalEventVisualizer>,
-    }
-
-    #[cfg(feature = "terminal")]
-    #[pymethods]
-    impl PyTerminalEventVisualizer {
-        #[new]
-        pub fn new(config: &PyTerminalVisualizationConfig) -> PyResult<Self> {
-            let visualizer = TerminalEventVisualizer::new(config.inner.clone()).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Failed to create terminal visualizer: {}",
-                    e
-                ))
-            })?;
-
-            Ok(Self {
-                visualizer: Some(visualizer),
-            })
-        }
-
-        /// Add events to the visualizer
-        pub fn add_events(
-            &mut self,
-            xs: PyReadonlyArray1<i64>,
-            ys: PyReadonlyArray1<i64>,
-            ts: PyReadonlyArray1<f64>,
-            ps: PyReadonlyArray1<i64>,
-        ) -> PyResult<()> {
-            if let Some(ref mut viz) = self.visualizer {
-                let events = from_numpy_arrays(xs, ys, ts, ps);
-                viz.add_events(events);
-            }
-            Ok(())
-        }
-
-        /// Handle input and return whether to continue
-        pub fn handle_input(&mut self) -> PyResult<bool> {
-            if let Some(ref mut viz) = self.visualizer {
-                viz.handle_input().map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Input error: {}", e))
-                })?;
-                Ok(!viz.should_quit())
-            } else {
-                Ok(false)
-            }
-        }
-
-        /// Render a frame
-        pub fn render_frame(&mut self) -> PyResult<()> {
-            if let Some(ref mut viz) = self.visualizer {
-                viz.render_frame().map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Render error: {}",
-                        e
-                    ))
-                })?;
-            }
-            Ok(())
-        }
-
-        /// Check if should quit
-        pub fn should_quit(&self) -> bool {
-            self.visualizer.as_ref().map_or(true, |v| v.should_quit())
-        }
-
-        /// Check if paused
-        pub fn is_paused(&self) -> bool {
-            self.visualizer.as_ref().map_or(false, |v| v.is_paused())
-        }
-
-        /// Get statistics as tuple (frames_rendered, events_processed, fps)
-        pub fn get_stats(&self) -> (u64, u64, f32) {
-            if let Some(ref viz) = self.visualizer {
-                let stats = viz.get_stats();
-                (
-                    stats.frames_rendered,
-                    stats.events_processed,
-                    stats.current_fps,
-                )
-            } else {
-                (0, 0, 0.0)
-            }
-        }
-    }
-
-    /// Create a terminal event stream viewer
-    #[cfg(feature = "terminal")]
-    #[pyfunction]
-    pub fn create_terminal_event_viewer(
-        config: Option<&PyTerminalVisualizationConfig>,
-    ) -> PyResult<PyTerminalEventVisualizer> {
-        let config = config.map(|c| c.inner.clone()).unwrap_or_default();
-        PyTerminalEventVisualizer::new(&PyTerminalVisualizationConfig { inner: config })
     }
 }

@@ -22,6 +22,7 @@ Camera Specifications Tested:
 Note: This test uses validation helpers from tests/validation_helpers.py
 """
 
+import sys
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
@@ -169,7 +170,19 @@ def test_data_files():
 
 
 @pytest.fixture(
-    scope="session", params=["etram", "prophesee_hdf5", "prophesee_evt2", "prophesee_evt3", "slider_depth"]
+    scope="session",
+    params=[
+        pytest.param(
+            "etram", marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
+        ),
+        pytest.param(
+            "prophesee_hdf5",
+            marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+        ),
+        "prophesee_evt2",
+        "prophesee_evt3",
+        "slider_depth",
+    ],
 )
 def dataset_info(request, test_data_files):
     """Parametrized fixture providing dataset information and file path."""

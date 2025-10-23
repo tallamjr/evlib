@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
@@ -55,32 +55,44 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Install maturin
-        run: |
-          source .venv/bin/activate
-          uv pip install maturin>=1.7.4
+        run: uv pip install maturin>=1.7.4
 
-      - name: Build evlib with HDF5 support
+      - name: Build Rust extension
         run: |
-          source .venv/bin/activate
-          # Build with default features (includes python, polars, tracing, hdf5)
-          maturin develop
+          # Build with platform-appropriate features
+          # Cargo.toml has platform-specific dependencies for Unix (HDF5, tracing)
+          uv run maturin develop --release
+        shell: bash
 
       - name: Install Python dependencies
         run: |
-          source .venv/bin/activate
           # On macOS, build h5py from source to ensure compatibility with system HDF5
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             export HDF5_DIR="${HDF5_DIR}"
             uv pip install --no-binary h5py "h5py>=3.8.0"
           fi
-          # Install remaining Python dependencies (skip build since we already built)
-          uv pip install --no-build-isolation -e .[all]
+          # Install extra dependencies (evlib already installed by maturin develop above)
+          # This will only install the dependencies from [all], not rebuild evlib
+          uv pip install .[all]
+        shell: bash
+
+      - name: Debug - Find .pyd file location (Windows only)
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo "=== Searching entire workspace for evlib .pyd files ==="
+          find . -name "evlib*.pyd" 2>/dev/null || echo "No evlib .pyd files found with find"
+          echo ""
+          echo "=== Checking sys.prefix/Lib/site-packages ==="
+          python -c "import sys, os; sp = os.path.join(sys.prefix, 'Lib', 'site-packages'); print('Path:', sp); print('Exists:', os.path.isdir(sp))"
+          python -c "import sys, os, glob; sp = os.path.join(sys.prefix, 'Lib', 'site-packages'); print('PYD files there:', glob.glob(os.path.join(sp, '*.pyd')))"
+        shell: bash
 
       - name: Run tests
         run: |
-          source .venv/bin/activate
-          uv run pytest -v tests/ -m "not slow and not integration"
-          uv run pytest --nbmake examples/*.ipynb -v --no-cov
+          # Run pytest directly from venv instead of 'uv run' which creates isolated env
+          pytest -v tests/ -m "not slow and not integration"
+          pytest --nbmake examples/*.ipynb -v --no-cov
+        shell: bash
 
       # Temporarily disabled - documentation tests need fixing
       # - name: Test documentation examples
@@ -90,9 +102,8 @@ jobs:
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-        run: |
-          source .venv/bin/activate
-          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        run: pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        shell: bash
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'

@@ -5,10 +5,13 @@ Tests the bit-packed header format and multi-chunk decoding.
 """
 
 import os
+import sys
 import pytest
-import h5py
 import numpy as np
 from pathlib import Path
+
+# h5py is not available on Windows (HDF5 is Unix-only)
+h5py = pytest.importorskip("h5py", reason="h5py not available on Windows")
 
 
 # Check if running in CI

@@ -1,16 +1,12 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-#[cfg(feature = "hdf5")]
+// HDF5 is only available on Unix platforms (Linux/macOS)
+#[cfg(unix)]
 use hdf5_metno::File as H5File;
-#[cfg(feature = "polars")]
 use polars::prelude::*;
-#[cfg(feature = "python")]
 use pyo3::prelude::*;
-#[cfg(all(feature = "python", feature = "arrow"))]
 use pyo3_arrow::PyRecordBatch;
-#[cfg(all(feature = "hdf5", feature = "tracing"))]
-use tracing::{error, info, warn};
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -55,9 +51,7 @@ pub use streaming::{
 };
 
 // Apache Arrow integration for zero-copy data transfer
-#[cfg(feature = "arrow")]
 pub mod arrow_builder;
-#[cfg(feature = "arrow")]
 pub use arrow_builder::{
     arrow_to_events, create_event_arrow_schema, ArrowBuilderError, ArrowEventBuilder,
     ArrowEventStreamer,
@@ -71,9 +65,12 @@ pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 pub mod prophesee_ecf_codec;
 pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, PropheseeEvent};
 
-// Native HDF5 reader with ECF support (optional feature)
-#[cfg(feature = "hdf5")]
+// Native HDF5 reader with ECF support (Unix only)
+// HDF5 is only available on Unix platforms (Linux/macOS)
+#[cfg(unix)]
 pub mod hdf5_reader;
+#[cfg(unix)]
+pub use hdf5_reader::load_events_from_hdf5;
 
 // DataFrame construction utilities for direct event processing
 pub mod dataframe_builder;
@@ -235,346 +232,6 @@ impl LoadConfig {
     }
 }
 
-/// Load events from an HDF5 file
-///
-/// Handles various HDF5 layouts including compound datasets and separate field datasets.
-/// Supports both root-level datasets and datasets within groups.
-///
-/// # Arguments
-/// * `path` - Path to the HDF5 file
-/// * `dataset_name` - Name of the dataset containing events (default: "events")
-#[cfg(feature = "hdf5")]
-pub fn load_events_from_hdf5(
-    path: &str,
-    dataset_name: Option<&str>,
-) -> hdf5_metno::Result<DataFrame> {
-    // Using hdf5-metno with built-in BLOSC support - no external plugins needed!
-
-    let file = H5File::open(path)?;
-    let dataset_name = dataset_name.unwrap_or("events");
-
-    // First, check for datasets inside an "events" group (most common for modern files)
-    if let Ok(events_group) = file.group("events") {
-        // Try common field name combinations for separate datasets
-        let field_combinations = [
-            ("t", "x", "y", "p"),
-            ("ts", "xs", "ys", "ps"),
-            ("timestamps", "x_pos", "y_pos", "polarity"),
-            ("time", "x_coord", "y_coord", "pol"),
-        ];
-
-        for (t_name, x_name, y_name, p_name) in field_combinations {
-            if let (Ok(t_dataset), Ok(x_dataset), Ok(y_dataset), Ok(p_dataset)) = (
-                events_group.dataset(t_name),
-                events_group.dataset(x_name),
-                events_group.dataset(y_name),
-                events_group.dataset(p_name),
-            ) {
-                // Get dataset dimensions
-                let shape = t_dataset.shape();
-                let total_events = shape[0];
-
-                // Handle empty datasets
-                if total_events == 0 {
-                    return Ok(DataFrame::empty());
-                }
-
-                // For very large files, read in chunks to avoid memory issues
-                let chunk_size = if total_events > 100_000_000 {
-                    10_000_000
-                } else {
-                    total_events
-                };
-
-                let mut events = Vec::with_capacity(total_events);
-
-                for start_idx in (0..total_events).step_by(chunk_size) {
-                    let end_idx = std::cmp::min(start_idx + chunk_size, total_events);
-                    let chunk_len = end_idx - start_idx;
-
-                    // Read chunk of data with proper type handling
-                    let t_chunk: Vec<i64> = t_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let x_chunk: Vec<u16> = x_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let y_chunk: Vec<u16> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-                    let p_chunk: Vec<i8> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
-
-                    // Convert chunk to events
-                    for i in 0..chunk_len {
-                        events.push(Event {
-                            t: t_chunk[i] as f64 / 1_000_000.0, // Convert i64 microseconds to seconds
-                            x: x_chunk[i],                      // Already u16
-                            y: y_chunk[i],                      // Already u16
-                            polarity: p_chunk[i],               // Keep as i8: 1 or -1
-                        });
-                    }
-
-                    // Print progress for large files
-                    if total_events > 10_000_000 {
-                        let progress = (end_idx as f64 / total_events as f64) * 100.0;
-                        if end_idx % 50_000_000 == 0 || end_idx == total_events {
-                            info!(progress = %format!("{:.1}%", progress), current = end_idx, total = total_events, "Loading HDF5");
-                        }
-                    }
-                }
-
-                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-                });
-            }
-        }
-    }
-
-    // Check for Prophesee HDF5 format with CD/events compound dataset
-    if let Ok(cd_group) = file.group("CD") {
-        if let Ok(events_dataset) = cd_group.dataset("events") {
-            let shape = events_dataset.shape();
-            let total_events = shape[0];
-
-            if total_events == 0 {
-                return Ok(DataFrame::empty());
-            }
-
-            // This is a Prophesee HDF5 format - try multiple approaches
-
-            #[cfg(not(windows))]
-            {
-                // Use our native Rust ECF decoder first - it now properly handles Prophesee format
-                info!("Attempting native Rust ECF decoder for {}", path);
-                match hdf5_reader::read_prophesee_hdf5_native(path) {
-                    Ok(events) => {
-                        // Success message already printed by read_prophesee_hdf5_native()
-                        info!("Native ECF decoder succeeded with {} events", events.len());
-                        return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(
-                            |e| {
-                                hdf5_metno::Error::Internal(format!(
-                                    "DataFrame conversion failed: {}",
-                                    e
-                                ))
-                            },
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Native ECF decoder failed: {}", e);
-                        // Native ECF decoder failed, will try Python fallback
-                    }
-                }
-            }
-
-            #[cfg(feature = "python")]
-            {
-                info!("Trying Python fallback for ECF decoding");
-                match call_python_prophesee_fallback(path) {
-                    Ok(events) => {
-                        info!(events = events.height(), "Python fallback loaded events");
-                        return Ok(events);
-                    }
-                    Err(e) => {
-                        error!("Python fallback failed: {}", e);
-                        #[cfg(not(windows))]
-                        {
-                            // Try Rust ECF decoder as fallback
-                            match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
-                                Ok(events) => {
-                                    info!("Rust ECF decoder succeeded");
-                                    return python::build_polars_dataframe(
-                                        &events,
-                                        EventFormat::HDF5,
-                                    )
-                                    .map_err(|e| {
-                                        hdf5_metno::Error::Internal(format!(
-                                            "DataFrame conversion failed: {}",
-                                            e
-                                        ))
-                                    });
-                                }
-                                Err(ecf_error) => {
-                                    error!("Rust ECF decoder failed: {}", ecf_error);
-                                    // Return the original Python error
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        #[cfg(windows)]
-                        {
-                            // HDF5 disabled on Windows, return the Python error
-                            error!("HDF5 disabled on Windows, cannot use Rust ECF decoder");
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-
-            #[cfg(not(feature = "python"))]
-            {
-                info!("Python fallback not available - using native Rust ECF decoder only");
-
-                #[cfg(not(windows))]
-                {
-                    // Our native ECF decoder was already tried above, so if we get here it failed
-                    // Try the old experimental approach as final fallback
-                    match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
-                        Ok(events) => {
-                            info!("Rust ECF decoder succeeded");
-                            return Ok(python::build_polars_dataframe(&events, EventFormat::HDF5)
-                                .map_err(|e| {
-                                    hdf5_metno::Error::Internal(format!(
-                                        "DataFrame conversion failed: {}",
-                                        e
-                                    ))
-                                })?);
-                        }
-                        Err(ecf_error) => {
-                            error!("Rust ECF decoder failed: {}", ecf_error);
-                            warn!("evlib includes native ECF support and should handle this automatically. Please report as a bug if this error persists");
-
-                            return Err(hdf5_metno::Error::Internal(format!(
-                                "Prophesee ECF decoding failed: {}. evlib includes native ECF support - this should work automatically. Please report as a bug if this error persists.",
-                                ecf_error
-                            )));
-                        }
-                    }
-                }
-                #[cfg(windows)]
-                {
-                    error!("HDF5 disabled on Windows, cannot use Rust ECF decoder");
-                    return Err(hdf5_metno::Error::Internal(
-                        "HDF5 disabled on Windows - no decoding methods available".to_string(),
-                    ));
-                }
-            }
-        }
-    }
-
-    // Check if we have a compound dataset at root level (less common)
-    if let Ok(_dataset) = file.dataset(dataset_name) {
-        // For compound datasets, we'll skip this for now since the separate field approach
-        // works better with different HDF5 layouts and hdf5-metno
-        warn!("Found compound dataset at root level - this layout is not yet supported with hdf5-metno");
-    }
-
-    // Fallback: check for separate datasets
-    let field_names = [
-        ("t", "x", "y", "p"),
-        ("timestamps", "x_pos", "y_pos", "polarity"),
-        ("ts", "xs", "ys", "ps"),
-    ];
-
-    for (t_name, x_name, y_name, p_name) in field_names {
-        if let (Ok(t_dataset), Ok(x_dataset), Ok(y_dataset), Ok(p_dataset)) = (
-            file.dataset(t_name),
-            file.dataset(x_name),
-            file.dataset(y_name),
-            file.dataset(p_name),
-        ) {
-            let t_arr: Vec<f64> = t_dataset.read_raw()?.to_vec();
-            let x_arr: Vec<u16> = x_dataset.read_raw()?.to_vec();
-            let y_arr: Vec<u16> = y_dataset.read_raw()?.to_vec();
-            let p_arr: Vec<i8> = p_dataset.read_raw()?.to_vec();
-
-            let n = t_arr.len();
-            let mut events = Vec::with_capacity(n);
-
-            // Detect timestamp units for f64 arrays
-            let conversion_factor = detect_timestamp_units_f64(&t_arr);
-
-            for i in 0..n {
-                let x = x_arr[i];
-                let y = y_arr[i];
-
-                // Validate coordinates to filter out invalid events
-                if !validate_coordinates(x, y) {
-                    continue; // Skip invalid events
-                }
-
-                events.push(Event {
-                    t: t_arr[i] / conversion_factor, // Use detected units
-                    x,
-                    y,
-                    polarity: if p_arr[i] != 0 { 1 } else { -1 }, // Convert to standard i8 format
-                });
-            }
-
-            return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-            });
-        }
-    }
-
-    // Check for datasets inside an "events" group (for files saved by our save function)
-    if let Ok(events_group) = file.group("events") {
-        for (t_name, x_name, y_name, p_name) in field_names {
-            if let (Ok(t_dataset), Ok(x_dataset), Ok(y_dataset), Ok(p_dataset)) = (
-                events_group.dataset(t_name),
-                events_group.dataset(x_name),
-                events_group.dataset(y_name),
-                events_group.dataset(p_name),
-            ) {
-                let x_arr: Vec<u16> = x_dataset.read_raw()?.to_vec();
-                let y_arr: Vec<u16> = y_dataset.read_raw()?.to_vec();
-                let p_arr: Vec<i8> = p_dataset.read_raw()?.to_vec();
-
-                let n = x_arr.len();
-                let mut events = Vec::with_capacity(n);
-
-                // Try to read timestamps as i64 first (new format), then fall back to f64 (old format)
-                if let Ok(t_arr) = t_dataset.read_raw::<i64>() {
-                    let t_arr: Vec<i64> = t_arr.to_vec();
-                    let conversion_factor = detect_timestamp_units(&t_arr);
-
-                    for i in 0..n {
-                        let x = x_arr[i];
-                        let y = y_arr[i];
-
-                        // Validate coordinates to filter out invalid events
-                        if !validate_coordinates(x, y) {
-                            continue; // Skip invalid events
-                        }
-
-                        events.push(Event {
-                            t: t_arr[i] as f64 / conversion_factor, // Use detected units
-                            x,
-                            y,
-                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
-                        });
-                    }
-                } else if let Ok(t_arr) = t_dataset.read_raw::<f64>() {
-                    let t_arr: Vec<f64> = t_arr.to_vec();
-                    for i in 0..n {
-                        let x = x_arr[i];
-                        let y = y_arr[i];
-
-                        // Validate coordinates to filter out invalid events
-                        if !validate_coordinates(x, y) {
-                            continue; // Skip invalid events
-                        }
-
-                        events.push(Event {
-                            t: t_arr[i], // Already in seconds for f64 format
-                            x,
-                            y,
-                            polarity: if p_arr[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
-                        });
-                    }
-                } else {
-                    return Err(hdf5_metno::Error::Internal(format!(
-                        "Could not read timestamp data from dataset '{t_name}' in HDF5 file {path}"
-                    )));
-                }
-
-                return python::build_polars_dataframe(&events, EventFormat::HDF5).map_err(|e| {
-                    hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e))
-                });
-            }
-        }
-    }
-
-    // If we get here, we couldn't find the data in any expected format
-    Err(hdf5_metno::Error::Internal(format!(
-        "Could not find event data in HDF5 file {path}"
-    )))
-}
-
-/// Detect timestamp units based on magnitude of timestamps
 /// Returns the conversion factor to convert to seconds
 #[allow(dead_code)]
 fn detect_timestamp_units(timestamps: &[i64]) -> f64 {
@@ -640,164 +297,6 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
     // Allow some margin for unusual sensors, but reject clearly invalid values
     x <= 2048 && y <= 2048
 }
-
-/// Call Python fallback for Prophesee HDF5 format
-#[cfg(all(feature = "python", feature = "hdf5"))]
-fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
-    Python::with_gil(|py| {
-        // Import the Python fallback module
-        let hdf5_prophesee = match py.import("evlib.hdf5_prophesee") {
-            Ok(module) => module,
-            Err(e) => {
-                return Err(hdf5_metno::Error::Internal(format!(
-                    "Failed to import Python fallback module: {}. Please install h5py: pip install h5py", e
-                )));
-            }
-        };
-
-        // Call the fallback function
-        let load_function = match hdf5_prophesee.getattr("load_prophesee_hdf5_fallback") {
-            Ok(func) => func,
-            Err(e) => {
-                return Err(hdf5_metno::Error::Internal(format!(
-                    "Failed to get Python fallback function: {}",
-                    e
-                )));
-            }
-        };
-
-        let result = match load_function.call1((path,)) {
-            Ok(result) => result,
-            Err(e) => {
-                return Err(hdf5_metno::Error::Internal(format!(
-                    "Python fallback failed: {}",
-                    e
-                )));
-            }
-        };
-
-        // Check if result is None (not a Prophesee format)
-        if result.is_none() {
-            return Err(hdf5_metno::Error::Internal(
-                "File is not in Prophesee HDF5 format".to_string(),
-            ));
-        }
-
-        // Extract numpy arrays from the result dictionary
-        #[cfg(feature = "python")]
-        use pyo3::types::PyDict;
-        let data_dict = result.downcast::<PyDict>().map_err(|e| {
-            hdf5_metno::Error::Internal(format!("Result is not a dictionary: {}", e))
-        })?;
-
-        // Extract numpy arrays
-        let x_array = data_dict
-            .get_item("x")
-            .map_err(|e| hdf5_metno::Error::Internal(format!("Failed to get x item: {}", e)))?
-            .ok_or_else(|| hdf5_metno::Error::Internal("Missing x array".to_string()))?
-            .extract::<Vec<u16>>()
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to extract x array: {}", e))
-            })?;
-
-        let y_array = data_dict
-            .get_item("y")
-            .map_err(|e| hdf5_metno::Error::Internal(format!("Failed to get y item: {}", e)))?
-            .ok_or_else(|| hdf5_metno::Error::Internal("Missing y array".to_string()))?
-            .extract::<Vec<u16>>()
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to extract y array: {}", e))
-            })?;
-
-        let t_array = data_dict
-            .get_item("timestamp")
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to get timestamp item: {}", e))
-            })?
-            .ok_or_else(|| hdf5_metno::Error::Internal("Missing timestamp array".to_string()))?
-            .extract::<Vec<i64>>()
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to extract timestamp array: {}", e))
-            })?;
-
-        let p_array = data_dict
-            .get_item("polarity")
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to get polarity item: {}", e))
-            })?
-            .ok_or_else(|| hdf5_metno::Error::Internal("Missing polarity array".to_string()))?
-            .extract::<Vec<i8>>()
-            .map_err(|e| {
-                hdf5_metno::Error::Internal(format!("Failed to extract polarity array: {}", e))
-            })?;
-
-        let num_events = x_array.len();
-        let mut events = Vec::with_capacity(num_events);
-
-        // Detect timestamp units based on data magnitude
-        let conversion_factor = detect_timestamp_units(&t_array);
-
-        for i in 0..num_events {
-            let x = x_array[i];
-            let y = y_array[i];
-
-            // Validate coordinates to filter out invalid events
-            if !validate_coordinates(x, y) {
-                continue; // Skip invalid events
-            }
-
-            events.push(Event {
-                t: t_array[i] as f64 / conversion_factor, // Use detected units
-                x,
-                y,
-                polarity: if p_array[i] > 0 { 1 } else { -1 }, // Keep as i8: 1 or -1
-            });
-        }
-
-        python::build_polars_dataframe(&events, EventFormat::HDF5)
-            .map_err(|e| hdf5_metno::Error::Internal(format!("DataFrame conversion failed: {}", e)))
-    })
-}
-
-/// Try to decode Prophesee HDF5 data using our Rust ECF decoder
-#[cfg(feature = "hdf5")]
-fn try_rust_ecf_decoder(
-    _cd_group: &hdf5_metno::Group,
-    _events_dataset: &hdf5_metno::Dataset,
-    total_events: usize,
-) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
-    use crate::ev_formats::hdf5_reader;
-
-    info!(events = total_events, "Attempting native Rust ECF decode");
-
-    // Use our integrated HDF5 + ECF reader that we've already implemented and tested
-    // This calls the hdf5_reader::read_prophesee_hdf5_native function which:
-    // 1. Reads HDF5 chunks using low-level APIs
-    // 2. Decodes ECF data with our Rust ECF codec
-    // 3. Converts to evlib Event format
-
-    // Get the file path from the dataset (a bit hacky but works)
-    let file = _events_dataset.file()?;
-    let filename = file.filename();
-
-    match hdf5_reader::read_prophesee_hdf5_native(&filename) {
-        Ok(events) => {
-            info!(
-                events = events.len(),
-                "Native Rust ECF decoder successfully loaded events"
-            );
-            Ok(events)
-        }
-        Err(e) => Err(format!("Native ECF decoding failed: {}", e).into()),
-    }
-}
-
-/// Load events from a plain text file (one event per line)
-///
-/// Format is expected as: "t x y p" (floating timestamp, int x, int y, int polarity)
-/// Each line contains space-separated values for one event.
-/// Supports filtering by time, spatial bounds, and polarity.
-///
 /// # Arguments
 /// * `path` - Path to the text file
 /// * `config` - Configuration with filtering options
@@ -957,7 +456,7 @@ pub fn load_events_with_config(
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
-        #[cfg(feature = "hdf5")]
+        #[cfg(unix)]
         EventFormat::HDF5 => {
             let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
@@ -968,10 +467,10 @@ pub fn load_events_with_config(
             }
             Ok(events)
         }
-        #[cfg(not(feature = "hdf5"))]
+        #[cfg(not(unix))]
         EventFormat::HDF5 => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "HDF5 support is not enabled. Build with --features hdf5 to enable.",
+            "HDF5 support is only available on Unix platforms (Linux/macOS), not on Windows.",
         ))),
         EventFormat::Text => Ok(load_events_from_text(path, config)?),
         EventFormat::AEDAT1 | EventFormat::AEDAT2 | EventFormat::AEDAT3 | EventFormat::AEDAT4 => {
@@ -1075,7 +574,6 @@ pub fn load_events_with_config(
 ///
 /// # Returns
 /// Result containing an Arrow RecordBatch with event data
-#[cfg(feature = "arrow")]
 pub fn load_events_to_arrow(
     path: &str,
     config: &LoadConfig,
@@ -1120,7 +618,6 @@ pub fn load_events_to_arrow(
 
 /// Convert DataFrame to Event iterator for Arrow integration
 /// This is a helper function for compatibility with Arrow builder
-#[cfg(feature = "arrow")]
 fn dataframe_to_event_iterator(
     df: &DataFrame,
 ) -> Result<impl Iterator<Item = Event>, Box<dyn std::error::Error>> {
@@ -1156,9 +653,9 @@ fn dataframe_to_event_iterator(
     // Create iterator of Event structs
     let events: Vec<Event> = timestamps
         .into_iter()
-        .zip(x_coords.into_iter())
-        .zip(y_coords.into_iter())
-        .zip(polarities.into_iter())
+        .zip(x_coords)
+        .zip(y_coords)
+        .zip(polarities)
         .map(|(((t, x), y), polarity)| Event { t, x, y, polarity })
         .collect();
 
@@ -1172,7 +669,6 @@ fn dataframe_to_event_iterator(
 ///
 /// # Returns
 /// Result containing an Arrow RecordBatch with event data
-#[cfg(feature = "arrow")]
 pub fn load_events_to_arrow_simple(
     path: &str,
 ) -> Result<arrow::record_batch::RecordBatch, Box<dyn std::error::Error>> {
@@ -1320,7 +816,6 @@ impl Iterator for TimeWindowIter<'_> {
 }
 
 /// Python bindings for the formats module
-#[cfg(feature = "python")]
 pub mod python {
     use super::*;
     use numpy::PyReadonlyArray1;
@@ -1345,7 +840,6 @@ pub mod python {
     }
 
     /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency
-    #[cfg(feature = "polars")]
     pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
@@ -1453,7 +947,6 @@ pub mod python {
     }
 
     /// Convert Polars DataFrame to Python dictionary for LazyFrame creation
-    #[cfg(feature = "polars")]
     fn return_polars_lazyframe_to_python(
         py: Python<'_>,
         lf: polars::prelude::LazyFrame,
@@ -1586,7 +1079,6 @@ pub mod python {
     ///
     /// Load events directly into a Polars DataFrame (optimized path)
     /// This bypasses the intermediate Event struct and builds DataFrames directly from format readers
-    #[cfg(all(feature = "polars", feature = "python"))]
     pub fn load_events_to_dataframe_py(
         py: Python<'_>,
         path: &str,
@@ -1642,7 +1134,6 @@ pub mod python {
     }
 
     /// Apply LoadConfig filters to a DataFrame using Polars operations
-    #[cfg(feature = "polars")]
     fn apply_config_filters_to_dataframe(
         df: DataFrame,
         config: &LoadConfig,
@@ -1761,26 +1252,17 @@ pub mod python {
 
         // Return Polars DataFrame/LazyFrame directly to Python
         // load_events_with_config already returns a DataFrame, so use it directly
-        #[cfg(feature = "polars")]
         {
             // Return Polars LazyFrame directly to Python
             // This is much more efficient than converting to dict and back
             return_polars_lazyframe_to_python(py, events.lazy())
-        }
-
-        #[cfg(not(feature = "polars"))]
-        {
-            // Fallback: should not happen since polars is default feature
-            Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Polars feature not enabled - this should not happen with default build",
-            ))
         }
     }
 
     /// Save events to an HDF5 file
     #[pyfunction]
     #[pyo3(name = "save_events_to_hdf5")]
-    #[cfg(feature = "hdf5")]
+    #[cfg(unix)]
     pub fn save_events_to_hdf5_py(
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
@@ -2007,7 +1489,6 @@ pub mod python {
     ///
     /// Returns:
     ///     PyArrow Table with event data
-    #[cfg(all(feature = "python", feature = "arrow"))]
     #[pyfunction]
     #[pyo3(
         signature = (
@@ -2084,7 +1565,6 @@ pub mod python {
     ///
     /// Returns:
     ///     Dictionary with event arrays for Polars LazyFrame creation
-    #[cfg(all(feature = "python", feature = "arrow"))]
     #[pyfunction]
     #[pyo3(name = "pyarrow_to_events")]
     pub fn pyarrow_to_events_py(py: Python<'_>, record_batch: PyRecordBatch) -> PyResult<PyObject> {

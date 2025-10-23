@@ -16,44 +16,42 @@ use rand::Rng;
 use rand_distr::{Distribution, Uniform};
 // Tracing imports removed due to unused warnings
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use crate::ev_augmentation::{COL_X, COL_Y};
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Center crop augmentation
@@ -275,7 +273,7 @@ impl SingleAugmentation for RandomCropAugmentation {
 
 /* Commented out - legacy Events type no longer exists
 /// Apply center crop to events
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -328,7 +326,7 @@ pub fn center_crop(events: &Events, config: &CenterCropAugmentation) -> Augmenta
 
 /* Commented out - legacy Events type no longer exists
 /// Apply random crop to events
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -390,7 +388,6 @@ pub fn random_crop(events: &Events, config: &RandomCropAugmentation) -> Augmenta
 */
 
 /// Apply center crop using Polars operations
-#[cfg(feature = "polars")]
 pub fn apply_center_crop_polars(
     df: LazyFrame,
     config: &CenterCropAugmentation,
@@ -417,7 +414,6 @@ pub fn apply_center_crop_polars(
 
 /* Commented out - depends on legacy random_crop function
 /// Apply random crop using Polars operations
-#[cfg(feature = "polars")]
 pub fn apply_random_crop_polars(
     df: LazyFrame,
     config: &RandomCropAugmentation,
@@ -642,7 +638,6 @@ mod tests {
         assert_eq!(y_end, 60); // 20 + 40
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_center_crop_polars() {
         use crate::events_to_dataframe;
@@ -670,7 +665,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_random_crop_polars() {
         use crate::events_to_dataframe;

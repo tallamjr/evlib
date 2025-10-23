@@ -35,30 +35,25 @@ use crate::ev_augmentation::{AugmentationError, AugmentationResult, Validatable}
 
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
 
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, instrument};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 // Polars column names for event data consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 
 /// Spatial jitter augmentation configuration
@@ -161,7 +156,6 @@ impl SpatialJitterAugmentation {
     /// # Returns
     ///
     /// Filtered LazyFrame with spatial jitter applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_spatial_jitter(df, self)
     }
@@ -177,7 +171,6 @@ impl SpatialJitterAugmentation {
     /// # Returns
     ///
     /// Jittered DataFrame with spatial noise applied
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe_eager(&self, df: DataFrame) -> PolarsResult<DataFrame> {
         apply_spatial_jitter(df.lazy(), self)?.collect()
     }
@@ -247,8 +240,7 @@ impl Validatable for SpatialJitterAugmentation {
 /// let config = SpatialJitterAugmentation::new(1.0, 1.0);
 /// let jittered = apply_spatial_jitter(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_spatial_jitter(
     df: LazyFrame,
     config: &SpatialJitterAugmentation,
@@ -266,7 +258,6 @@ pub fn apply_spatial_jitter(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_spatial_jitter_polars(
     df: LazyFrame,
     config: &SpatialJitterAugmentation,
@@ -288,7 +279,6 @@ pub fn apply_spatial_jitter_polars(
 /// # Returns
 ///
 /// Jittered LazyFrame
-#[cfg(feature = "polars")]
 pub fn apply_spatial_jitter_df(df: LazyFrame, std_x: f64, std_y: f64) -> PolarsResult<LazyFrame> {
     let config = SpatialJitterAugmentation::new(std_x * std_x, std_y * std_y);
     apply_spatial_jitter(df, &config)

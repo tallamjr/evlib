@@ -12,7 +12,6 @@ use image::{ImageBuffer, Rgb};
 use std::collections::VecDeque;
 use std::time::Instant;
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 /// Configuration for real-time visualization
@@ -88,7 +87,6 @@ impl RealtimeEventVisualizer {
     }
 
     /// Add events from DataFrame to the visualization buffer
-    #[cfg(feature = "polars")]
     pub fn add_events_from_dataframe(&mut self, df: LazyFrame) -> Result<(), PolarsError> {
         let events = dataframe_to_events_for_visualization(df)?;
         self.add_events_impl(events);
@@ -210,7 +208,6 @@ impl EventVisualizationPipeline {
     }
 
     /// Process and visualize events from DataFrame, returning raw RGB frame data
-    #[cfg(feature = "polars")]
     pub fn process_events_from_dataframe(
         &mut self,
         df: LazyFrame,
@@ -250,7 +247,6 @@ impl EventVisualizationPipeline {
 }
 
 /// Helper function to convert DataFrame back to Events for visualization
-#[cfg(feature = "polars")]
 fn dataframe_to_events_for_visualization(df: LazyFrame) -> Result<Events, PolarsError> {
     let df = df.collect()?;
 

@@ -36,39 +36,39 @@
 use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, instrument, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
@@ -504,7 +504,7 @@ impl Validatable for DenoiseFilter {
 /// # Returns
 ///
 /// Filtered LazyFrame with refractory period constraints applied
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
+#[cfg_attr(unix, instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_refractory_filter_polars(
     df: LazyFrame,
     filter: &RefractoryFilter,
@@ -558,7 +558,7 @@ pub fn apply_refractory_filter_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame with temporal correlation constraints applied
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
+#[cfg_attr(unix, instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_temporal_correlation_filter_polars(
     df: LazyFrame,
     filter: &TemporalCorrelationFilter,
@@ -650,7 +650,7 @@ pub fn apply_temporal_correlation_filter_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame with spatial-temporal correlation constraints applied
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
+#[cfg_attr(unix, instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_spatial_temporal_filter_polars(
     df: LazyFrame,
     filter: &SpatialTemporalFilter,
@@ -779,7 +779,7 @@ pub fn apply_spatial_temporal_filter_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame with low-activity pixels removed
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(threshold = threshold_events_per_sec)))]
+#[cfg_attr(unix, instrument(skip(df), fields(threshold = threshold_events_per_sec)))]
 pub fn apply_background_activity_filter_polars(
     df: LazyFrame,
     threshold_events_per_sec: f64,
@@ -862,7 +862,7 @@ pub fn apply_background_activity_filter_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame with multi-scale denoising applied
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(filter = ?filter)))]
+#[cfg_attr(unix, instrument(skip(df), fields(filter = ?filter)))]
 pub fn apply_multi_scale_filter_polars(
     df: LazyFrame,
     filter: &DenoiseFilter,
@@ -925,7 +925,7 @@ pub fn apply_multi_scale_filter_polars(
 ///     .filter(col("t").gt(lit(start_time)))
 ///     .select([col("*")]);
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(method = ?filter.method)))]
+#[cfg_attr(unix, instrument(skip(df), fields(method = ?filter.method)))]
 pub fn apply_denoise_filter_polars(
     df: LazyFrame,
     filter: &DenoiseFilter,

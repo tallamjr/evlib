@@ -57,21 +57,60 @@ try:
     import importlib.util
     import glob
 
-    # Find the compiled module file
-    current_dir = os.path.dirname(__file__)
-    so_files = glob.glob(os.path.join(current_dir, "evlib.cpython-*.so"))
+    # Find the compiled module file (.so on Unix, .pyd on Windows)
+    # Check both source directory and site-packages (maturin develop installs to site-packages)
+    import sys
+    import site
 
-    if so_files:
-        spec = importlib.util.spec_from_file_location("evlib", so_files[0])
+    search_paths = [
+        os.path.dirname(__file__),  # Source directory (editable install)
+    ]
+
+    # Add site-packages directories (where maturin develop installs)
+    if hasattr(site, "getsitepackages"):
+        search_paths.extend(site.getsitepackages())
+    if hasattr(site, "getusersitepackages"):
+        search_paths.append(site.getusersitepackages())
+
+    # Critical for Windows venv: sys.prefix/Lib/site-packages might not be in getsitepackages()
+    if hasattr(sys, "prefix"):
+        venv_site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
+        if os.path.isdir(venv_site_packages):
+            search_paths.append(venv_site_packages)
+
+    # Also check sys.path for virtual environments
+    search_paths.extend(sys.path)
+
+    module_files = []
+    for path in search_paths:
+        if path and os.path.isdir(path):
+            # Match both naming conventions:
+            # - evlib.cpython-*.so/pyd (Linux/older naming)
+            # - evlib.cp3*.so/pyd (Windows/newer naming like evlib.cp311-win_amd64.pyd)
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.so")))
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.pyd")))
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.so")))
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.pyd")))
+            # Also check for evlib subdirectory
+            evlib_dir = os.path.join(path, "evlib")
+            if os.path.isdir(evlib_dir):
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so")))
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd")))
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.so")))
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd")))
+
+    # Remove duplicates and use first found
+    module_files = list(dict.fromkeys(module_files))
+
+    if module_files:
+        spec = importlib.util.spec_from_file_location("evlib", module_files[0])
         rust_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rust_module)
 
         # CRITICAL FIX: Make this module appear as a package so Python allows submodule imports
-        import sys
-
         current_module = sys.modules[__name__]
         if not hasattr(current_module, "__path__"):
-            current_module.__path__ = [current_dir]
+            current_module.__path__ = [os.path.dirname(__file__)]
 
         # Access submodules from the compiled module
         core = rust_module.core

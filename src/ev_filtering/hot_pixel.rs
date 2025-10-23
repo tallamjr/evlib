@@ -37,39 +37,39 @@ use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::time::Instant;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, info, instrument, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
@@ -289,7 +289,7 @@ impl HotPixelFilter {
     ///
     /// This creates a Polars expression that identifies hot pixels based on
     /// the configured detection method and parameters.
-    #[cfg_attr(feature = "tracing", instrument(skip(pixel_stats_df)))]
+    #[cfg_attr(unix, instrument(skip(pixel_stats_df)))]
     pub fn to_hot_pixel_expr(&self, pixel_stats_df: &LazyFrame) -> PolarsResult<Option<Expr>> {
         match self.method {
             HotPixelDetectionMethod::Percentile => {
@@ -586,7 +586,7 @@ impl HotPixelDetector {
     ///
     /// This function uses Polars group_by and aggregation operations to efficiently
     /// identify hot pixels without manual iteration through events.
-    #[cfg_attr(feature = "tracing", instrument(skip(df), fields(method = ?filter.method)))]
+    #[cfg_attr(unix, instrument(skip(df), fields(method = ?filter.method)))]
     pub fn detect_polars(df: LazyFrame, filter: &HotPixelFilter) -> PolarsResult<Self> {
         let start_time = Instant::now();
 
@@ -803,7 +803,7 @@ fn extract_hot_pixel_coordinates_polars(hot_pixel_df: &DataFrame) -> PolarsResul
 /// let filter = HotPixelFilter::percentile(99.5);
 /// let filtered = apply_hot_pixel_filter(events_df, &filter)?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(method = ?filter.method)))]
+#[cfg_attr(unix, instrument(skip(df), fields(method = ?filter.method)))]
 pub fn apply_hot_pixel_filter(df: LazyFrame, filter: &HotPixelFilter) -> PolarsResult<LazyFrame> {
     let start_time = Instant::now();
 
@@ -906,7 +906,7 @@ pub fn apply_hot_pixel_filter(df: LazyFrame, filter: &HotPixelFilter) -> PolarsR
 ///
 /// This function efficiently computes pixel-level statistics using Polars'
 /// optimized group operations instead of manual HashMap operations.
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 fn calculate_pixel_statistics_polars(
     df: LazyFrame,
     filter: &HotPixelFilter,

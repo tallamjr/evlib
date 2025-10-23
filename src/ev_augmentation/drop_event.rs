@@ -43,51 +43,46 @@ use crate::ev_filtering::downsampling::DownsamplingFilter;
 
 // Tracing imports removed due to unused warnings
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
 
-#[cfg(feature = "polars")]
 use polars::prelude::*;
 
 // Polars column names for event data consistency
-#[cfg(feature = "polars")]
 pub const COL_X: &str = "x";
-#[cfg(feature = "polars")]
 pub const COL_Y: &str = "y";
-#[cfg(feature = "polars")]
 pub const COL_T: &str = "t";
-#[cfg(feature = "polars")]
 pub const COL_POLARITY: &str = "polarity";
 
 /// Drop event by probability augmentation
@@ -138,14 +133,12 @@ impl DropEventAugmentation {
     /// # Returns
     ///
     /// Filtered LazyFrame with events dropped
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_drop_event(df, self)
     }
 }
 
 /// Apply drop event using DataFrame - this is the main implementation function
-#[cfg(feature = "polars")]
 pub fn apply_drop_event(df: LazyFrame, config: &DropEventAugmentation) -> PolarsResult<LazyFrame> {
     if config.drop_probability <= 0.0 {
         return Ok(df);
@@ -178,12 +171,11 @@ impl SingleAugmentation for DropEventAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
-        #[cfg(feature = "polars")]
         {
             let df = crate::events_to_dataframe(events)
                 .map_err(|e| {
@@ -207,14 +199,7 @@ impl SingleAugmentation for DropEventAugmentation {
             dataframe_to_events(&result_df)
         }
 
-        #[cfg(not(feature = "polars"))]
-        {
-            // Use existing downsampling functionality
-            let keep_rate = 1.0 - self.drop_probability;
-            let mut filter = DownsamplingFilter::uniform(keep_rate);
-            if let Some(seed) = self.seed {
-                filter.random_seed = Some(seed);
-            }
+
 
             crate::ev_filtering::downsampling::apply_downsampling_filter(events, &filter)
                 .map_err(|e| AugmentationError::ProcessingError(e.to_string()))
@@ -290,14 +275,12 @@ impl DropTimeAugmentation {
     /// # Returns
     ///
     /// Filtered LazyFrame with events in time interval dropped
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_drop_time(df, self)
     }
 }
 
 /// Apply drop time using DataFrame - this is the main implementation function
-#[cfg(feature = "polars")]
 pub fn apply_drop_time(df: LazyFrame, config: &DropTimeAugmentation) -> PolarsResult<LazyFrame> {
     if config.duration_ratio <= 0.0 {
         return Ok(df);
@@ -356,12 +339,11 @@ impl SingleAugmentation for DropTimeAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
-        #[cfg(feature = "polars")]
         {
             let df = crate::events_to_dataframe(events)
                 .map_err(|e| {
@@ -385,10 +367,7 @@ impl SingleAugmentation for DropTimeAugmentation {
             dataframe_to_events(&result_df)
         }
 
-        #[cfg(not(feature = "polars"))]
-        {
-            drop_by_time(events, self)
-        }
+
     }
 
     fn description(&self) -> String {
@@ -476,14 +455,12 @@ impl DropAreaAugmentation {
     /// # Returns
     ///
     /// Filtered LazyFrame with events in spatial area dropped
-    #[cfg(feature = "polars")]
     pub fn apply_to_dataframe(&self, df: LazyFrame) -> PolarsResult<LazyFrame> {
         apply_drop_area(df, self)
     }
 }
 
 /// Apply drop area using DataFrame - this is the main implementation function
-#[cfg(feature = "polars")]
 pub fn apply_drop_area(df: LazyFrame, config: &DropAreaAugmentation) -> PolarsResult<LazyFrame> {
     if config.area_ratio <= 0.0 {
         return Ok(df);
@@ -538,12 +515,11 @@ impl SingleAugmentation for DropAreaAugmentation {
     fn apply(&self, events: &Events) -> AugmentationResult<Events> {
         // Legacy Vec<Event> interface - convert to DataFrame and back
         // This is for backward compatibility only
-        #[cfg(feature = "tracing")]
+        #[cfg(unix)]
         tracing::warn!("Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(unix))]
         eprintln!("[WARN] Using legacy Vec<Event> interface - consider using LazyFrame directly for better performance");
 
-        #[cfg(feature = "polars")]
         {
             let df = crate::events_to_dataframe(events)
                 .map_err(|e| {
@@ -567,10 +543,7 @@ impl SingleAugmentation for DropAreaAugmentation {
             dataframe_to_events(&result_df)
         }
 
-        #[cfg(not(feature = "polars"))]
-        {
-            drop_by_area(events, self)
-        }
+
     }
 
     fn description(&self) -> String {
@@ -587,7 +560,6 @@ pub fn drop_by_probability(events: &Events, probability: f64) -> AugmentationRes
 }
 
 /// Helper function to convert DataFrame back to Events (for legacy compatibility)
-#[cfg(feature = "polars")]
 fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
     let height = df.height();
     let mut events = Vec::with_capacity(height);
@@ -647,7 +619,7 @@ fn dataframe_to_events(df: &DataFrame) -> AugmentationResult<Events> {
 }
 
 /// Drop events within a time interval
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -728,7 +700,7 @@ pub fn drop_by_time(events: &Events, config: &DropTimeAugmentation) -> Augmentat
 }
 
 /// Drop events within a spatial area
-#[cfg_attr(feature = "tracing", instrument(skip(events), fields(n_events = events.len())))]
+#[cfg_attr(unix, instrument(skip(events), fields(n_events = events.len())))]
 pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> AugmentationResult<Events> {
     let start_time = std::time::Instant::now();
 
@@ -830,8 +802,7 @@ pub fn drop_by_area(events: &Events, config: &DropAreaAugmentation) -> Augmentat
 /// let config = DropTimeAugmentation::new(0.2);
 /// let filtered = apply_drop_time(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_time(
     df: LazyFrame,
     config: &DropTimeAugmentation,
@@ -904,7 +875,6 @@ pub fn apply_drop_time(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_drop_time_polars(
     df: LazyFrame,
     config: &DropTimeAugmentation,
@@ -936,8 +906,7 @@ pub fn apply_drop_time_polars(
 /// let config = DropAreaAugmentation::new(0.25, 640, 480);
 /// let filtered = apply_drop_area(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_area(
     df: LazyFrame,
     config: &DropAreaAugmentation,
@@ -1009,7 +978,6 @@ pub fn apply_drop_area(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_drop_area_polars(
     df: LazyFrame,
     config: &DropAreaAugmentation,
@@ -1042,8 +1010,7 @@ pub fn apply_drop_area_polars(
 /// let config = DropEventAugmentation::new(0.3);
 /// let filtered = apply_drop_event(events_df, &config)?;
 /// ```
-#[cfg(feature = "polars")]
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(config = ?config)))]
+#[cfg_attr(unix, instrument(skip(df), fields(config = ?config)))]
 pub fn apply_drop_event(
     df: LazyFrame,
     config: &DropEventAugmentation,
@@ -1071,7 +1038,6 @@ pub fn apply_drop_event(
 }
 
 /// Legacy Polars function for backward compatibility
-#[cfg(feature = "polars")]
 pub fn apply_drop_event_polars(
     df: LazyFrame,
     config: &DropEventAugmentation,
@@ -1092,7 +1058,6 @@ pub fn apply_drop_event_polars(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[cfg(feature = "polars")]
 pub fn drop_by_probability_df(
     df: LazyFrame,
     drop_probability: f64
@@ -1114,7 +1079,6 @@ pub fn drop_by_probability_df(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[cfg(feature = "polars")]
 pub fn drop_by_time_df(
     df: LazyFrame,
     duration_ratio: f64
@@ -1138,7 +1102,6 @@ pub fn drop_by_time_df(
 /// # Returns
 ///
 /// Filtered LazyFrame
-#[cfg(feature = "polars")]
 pub fn drop_by_area_df(
     df: LazyFrame,
     area_ratio: f64,
@@ -1262,7 +1225,6 @@ mod tests {
         assert!(filtered.is_empty());
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_drop_event_dataframe_native() -> PolarsResult<()> {
         use crate::{events_to_dataframe, Event};
@@ -1280,7 +1242,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_drop_by_time_dataframe_native() -> PolarsResult<()> {
         use crate::events_to_dataframe;
@@ -1298,7 +1259,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_drop_by_area_dataframe_native() -> PolarsResult<()> {
         use crate::events_to_dataframe;
@@ -1316,7 +1276,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_drop_convenience_functions() -> PolarsResult<()> {
         use crate::events_to_dataframe;
@@ -1342,7 +1301,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "polars")]
     #[test]
     fn test_drop_legacy_compatibility() {
         let events = create_test_events();

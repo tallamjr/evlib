@@ -24,39 +24,39 @@ use crate::ev_filtering::config::Validatable;
 use crate::ev_filtering::{FilterError, FilterResult};
 use polars::prelude::*;
 use std::time::Instant;
-#[cfg(feature = "tracing")]
+#[cfg(unix)]
 use tracing::{debug, info, instrument, warn};
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! warn {
     ($($args:tt)*) => {
         eprintln!("[WARN] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! trace {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! error {
     ($($args:tt)*) => {
         eprintln!("[ERROR] {}", format!($($args)*))
     };
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(unix))]
 macro_rules! instrument {
     ($($args:tt)*) => {};
 }
@@ -377,7 +377,7 @@ impl Validatable for DownsamplingFilter {
 /// // Apply downsampling with Polars expressions
 /// let downsampled = apply_downsampling_filter_polars(events_df, &DownsamplingFilter::uniform(0.5))?;
 /// ```
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(strategy = ?filter.strategy)))]
+#[cfg_attr(unix, instrument(skip(df), fields(strategy = ?filter.strategy)))]
 pub fn apply_downsampling_filter_polars(
     df: LazyFrame,
     filter: &DownsamplingFilter,
@@ -441,7 +441,7 @@ pub fn apply_downsampling_filter_polars(
 ///
 /// This function uses Polars' optimized random sampling which is much more efficient
 /// than manual iteration over events.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(sampling_rate = sampling_rate)))]
+#[cfg_attr(unix, instrument(skip(df), fields(sampling_rate = sampling_rate)))]
 pub fn apply_uniform_sampling_polars(
     df: LazyFrame,
     sampling_rate: f64,
@@ -470,7 +470,7 @@ pub fn apply_uniform_sampling_polars(
 /// Apply temporal decimation using Polars slice operations
 ///
 /// This uses Polars' optimized slice operations instead of manual step_by iteration.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(factor = factor)))]
+#[cfg_attr(unix, instrument(skip(df), fields(factor = factor)))]
 pub fn apply_temporal_decimation_polars(df: LazyFrame, factor: usize) -> PolarsResult<LazyFrame> {
     debug!(
         "Applying Polars temporal decimation with factor: {}",
@@ -487,7 +487,7 @@ pub fn apply_temporal_decimation_polars(df: LazyFrame, factor: usize) -> PolarsR
 /// Apply spatial decimation using Polars filter expressions
 ///
 /// This replaces the manual pixel coordinate checking loop with efficient Polars expressions.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(factor = factor)))]
+#[cfg_attr(unix, instrument(skip(df), fields(factor = factor)))]
 pub fn apply_spatial_decimation_polars(df: LazyFrame, factor: usize) -> PolarsResult<LazyFrame> {
     debug!("Applying Polars spatial decimation with factor: {}", factor);
 
@@ -502,7 +502,7 @@ pub fn apply_spatial_decimation_polars(df: LazyFrame, factor: usize) -> PolarsRe
 /// Apply fixed count sampling using Polars sample() function
 ///
 /// This replaces the reservoir sampling algorithm with Polars' optimized sample function.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(target_count = target_count)))]
+#[cfg_attr(unix, instrument(skip(df), fields(target_count = target_count)))]
 pub fn apply_fixed_count_sampling_polars(
     df: LazyFrame,
     target_count: usize,
@@ -530,7 +530,7 @@ pub fn apply_fixed_count_sampling_polars(
 /// Balance polarity distribution using Polars group_by operations
 ///
 /// This replaces the manual polarity separation and balancing with efficient Polars operations.
-#[cfg_attr(feature = "tracing", instrument(skip(df)))]
+#[cfg_attr(unix, instrument(skip(df)))]
 pub fn balance_polarity_sampling_polars(df: LazyFrame) -> PolarsResult<LazyFrame> {
     debug!("Applying Polars polarity balancing");
 
@@ -584,7 +584,7 @@ pub fn balance_polarity_sampling_polars(df: LazyFrame) -> PolarsResult<LazyFrame
 ///
 /// This replaces the nested loops with efficient Polars window operations for
 /// calculating local event density.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(base_rate = base_rate, window_us = window_us, spatial_window = spatial_window)))]
+#[cfg_attr(unix, instrument(skip(df), fields(base_rate = base_rate, window_us = window_us, spatial_window = spatial_window)))]
 pub fn apply_adaptive_sampling_polars(
     df: LazyFrame,
     base_rate: f64,
@@ -646,7 +646,7 @@ pub fn apply_adaptive_sampling_polars(
 /// Apply importance-based sampling using Polars expressions for scoring
 ///
 /// This replaces the manual importance calculation with Polars expressions.
-#[cfg_attr(feature = "tracing", instrument(skip(df), fields(base_rate = base_rate)))]
+#[cfg_attr(unix, instrument(skip(df), fields(base_rate = base_rate)))]
 pub fn apply_importance_based_sampling_polars(
     df: LazyFrame,
     base_rate: f64,

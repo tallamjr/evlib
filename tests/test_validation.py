@@ -5,6 +5,7 @@ This test shows how to use the validation helpers from validation_helpers.py
 for testing event data quality.
 """
 
+import sys
 import polars as pl
 import pytest
 from pathlib import Path
@@ -29,6 +30,7 @@ def find_test_data() -> Path:
     pytest.skip("No suitable test data found")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
 def test_validation_helpers_basic():
     """Test basic validation helper functionality."""
     try:
