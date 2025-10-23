@@ -19,12 +19,16 @@ Camera Specifications:
 Note: This test uses validation helpers from tests/validation_helpers.py
 """
 
+import sys
 import time
 from pathlib import Path
 from typing import Optional, Union
 
 import polars as pl
 import pytest
+
+# Skip entire module on Windows - uses HDF5 files
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
 
 # Import validation helpers from tests directory
 try:

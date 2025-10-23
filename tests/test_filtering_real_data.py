@@ -14,11 +14,15 @@ Camera geometry: 1280x720 pixels
 """
 
 import gc
+import sys
 import time
 from pathlib import Path
 
 import polars as pl
 import pytest
+
+# Skip entire module on Windows - uses HDF5 files
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
 
 
 # Test data configuration

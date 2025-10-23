@@ -529,15 +529,18 @@ class TestEvlibRegression:
         with pytest.raises(Exception):
             evlib.detect_format("definitely_does_not_exist.raw")
 
-        # Test empty file
-        empty_file = Path("/tmp/empty_test.txt")
-        empty_file.write_text("")
+        # Test empty file (use platform-independent temp directory)
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
         try:
             # Empty file should raise an exception during format detection
             with pytest.raises(Exception):
-                evlib.load_events(str(empty_file))
+                evlib.load_events(str(tmp_path))
         finally:
-            empty_file.unlink()
+            tmp_path.unlink(missing_ok=True)
 
         print("PASS: Error handling tests passed")
 
