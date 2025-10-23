@@ -147,8 +147,14 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
-            "rvt_processed",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
+            pytest.param(
+                "rvt_processed",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_format_detection(self, data_files, file_key):
@@ -181,7 +187,10 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_load_events_basic(self, data_files, file_key):
@@ -287,7 +296,10 @@ class TestEvlibRegression:
         "file_key",
         [
             "evt2_small",
-            "hdf5_small",
+            pytest.param(
+                "hdf5_small",
+                marks=pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+            ),
         ],
     )
     def test_data_types_and_shapes(self, data_files, file_key):
