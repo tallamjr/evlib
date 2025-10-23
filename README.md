@@ -18,6 +18,7 @@
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://tallamjr.github.io/evlib/)
 [![Python](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/pytest.yml)
 [![Rust](https://github.com/tallamjr/evlib/actions/workflows/rust.yml/badge.svg)](https://github.com/tallamjr/evlib/actions/workflows/rust.yml)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://github.com/tallamjr/evlib)
 [![License](https://img.shields.io/github/license/tallamjr/evlib)](https://github.com/tallamjr/evlib/blob/master/LICENSE.md)
 
 </div>
@@ -27,6 +28,7 @@ designed for scalable data processing with real-world event camera datasets.
 
 ## Core Features
 
+- **Cross-Platform Support**: Full support for Linux, macOS, and Windows
 - **Universal Format Support**: Load data from H5, AEDAT, EVT2/3, AER, and text formats
 - **Automatic Format Detection**: No need to specify format types manually
 - **Polars DataFrame Integration**: High-performance DataFrame operations with up to 360M events/s filtering
@@ -357,6 +359,10 @@ sudo apt install libhdf5-dev pkg-config
 
 # macOS
 brew install hdf5 pkg-config
+
+# Windows
+# No additional system dependencies required
+# HDF5 file operations use pure Python h5py library
 ```
 
 ### Performance-Optimized Installation
@@ -389,6 +395,28 @@ uv pip install psutil
 # For parallel processing (already included in dev)
 uv pip install multiprocessing-logging
 ```
+
+### Platform-Specific Notes
+
+**Windows:**
+- All core functionality is fully supported (EVT2/3, text formats, Polars, filtering, representations)
+- HDF5 file reading works via pure Python h5py library
+- HDF5 file writing (`save_events_to_hdf5`) is not available due to Rust HDF5 library limitations
+- For HDF5 write operations on Windows, use h5py directly:
+  ```python
+  import h5py
+  import numpy as np
+
+  with h5py.File("output.h5", "w") as f:
+      f.create_dataset("events/x", data=x_coords)
+      f.create_dataset("events/y", data=y_coords)
+      f.create_dataset("events/t", data=timestamps)
+      f.create_dataset("events/p", data=polarities)
+  ```
+
+**Linux/macOS:**
+- Full HDF5 support including ECF codec compression
+- All features available without limitations
 
 ## Polars DataFrame Integration
 
