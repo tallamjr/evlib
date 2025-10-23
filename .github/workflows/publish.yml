@@ -65,20 +65,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS builds
-          - os: macos-15-intel  # Intel macOS (x86_64)
-            platform: macos
-            arch: x86_64
-            python-version: "3.10"
-          - os: macos-15-intel
-            platform: macos
-            arch: x86_64
-            python-version: "3.11"
-          - os: macos-15-intel
-            platform: macos
-            arch: x86_64
-            python-version: "3.12"
-
+          # macOS builds (Apple Silicon only - Intel users can use Rosetta 2)
           - os: macos-latest  # ARM64 macOS (Apple Silicon)
             platform: macos
             arch: arm64
