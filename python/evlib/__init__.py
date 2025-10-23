@@ -84,13 +84,20 @@ try:
     module_files = []
     for path in search_paths:
         if path and os.path.isdir(path):
+            # Match both naming conventions:
+            # - evlib.cpython-*.so/pyd (Linux/older naming)
+            # - evlib.cp3*.so/pyd (Windows/newer naming like evlib.cp311-win_amd64.pyd)
             module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.so")))
             module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.pyd")))
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.so")))
+            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.pyd")))
             # Also check for evlib subdirectory
             evlib_dir = os.path.join(path, "evlib")
             if os.path.isdir(evlib_dir):
                 module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so")))
                 module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd")))
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.so")))
+                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd")))
 
     # Remove duplicates and use first found
     module_files = list(dict.fromkeys(module_files))
