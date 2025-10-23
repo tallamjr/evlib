@@ -21,6 +21,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "matplotlib: marks tests that use matplotlib")
     config.addinivalue_line("markers", "requires_data: marks tests that require test data files")
+    config.addinivalue_line("markers", "requires_hdf5: marks tests that require HDF5 (skipped on Windows)")
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +32,21 @@ def evlib_available():
 
         return True
     except ImportError:
+        return False
+
+
+@pytest.fixture(scope="session")
+def hdf5_available():
+    """Check if HDF5 functionality is available (Unix only)."""
+    # HDF5 is only available on Unix platforms (Linux/macOS)
+    if sys.platform == "win32":
+        return False
+    try:
+        import evlib
+
+        # Check if save_events_to_hdf5 exists (Unix-only function)
+        return hasattr(evlib, "save_events_to_hdf5")
+    except (ImportError, AttributeError):
         return False
 
 
@@ -86,6 +102,13 @@ def skip_slow_tests(request):
     """Skip slow tests unless explicitly requested."""
     if request.node.get_closest_marker("slow") and not request.config.getoption("--run-slow"):
         pytest.skip("slow test skipped (use --run-slow to run)")
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_hdf5(request, hdf5_available):
+    """Skip tests that require HDF5 if it's not available (Windows)."""
+    if request.node.get_closest_marker("requires_hdf5") and not hdf5_available:
+        pytest.skip("HDF5 not available on Windows")
 
 
 def pytest_addoption(parser):

@@ -59,6 +59,7 @@ class TestEvlibRegression:
                 "min_duration": 5.0,
                 "description": "Small HDF5 file (~14MB)",
                 "required": True,  # Core functionality
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
             "evt2_large": {
                 "path": data_dir / "eTram/raw/large_file.raw",  # Placeholder path
@@ -78,6 +79,7 @@ class TestEvlibRegression:
                 "polarity_encoding": (-1, 1),
                 "min_duration": 30.0,
                 "description": "Large HDF5 file",
+                "skip_on_windows": True,  # HDF5 not available on Windows
                 "required": False,  # Optional - may not exist
             },
             "hdf5_xlarge": {
@@ -89,6 +91,7 @@ class TestEvlibRegression:
                 "min_duration": 120.0,
                 "description": "Extra large HDF5 file",
                 "required": False,  # Optional - may not exist
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
             "rvt_processed": {
                 "path": data_dir
@@ -100,15 +103,20 @@ class TestEvlibRegression:
                 "min_duration": 60.0,
                 "description": "RVT processed data",
                 "required": False,  # Optional
+                "skip_on_windows": True,  # HDF5 not available on Windows
             },
         }
 
-        # Only include files that actually exist
+        # Only include files that actually exist and are platform-compatible
         for file_key, file_info in potential_files.items():
+            # Skip HDF5 files on Windows
+            if sys.platform == "win32" and file_info.get("skip_on_windows", False):
+                continue
+
             if file_info["path"].exists():
                 available_files[file_key] = file_info
-            elif file_info.get("required", False):
-                # For required files, we want the test to fail, not skip
+            elif file_info.get("required", False) and not file_info.get("skip_on_windows", False):
+                # For required files (that aren't skipped), we want the test to fail, not skip
                 available_files[file_key] = file_info
 
         return available_files
