@@ -61,6 +61,7 @@ representations.
   * [Development Installation](#development-installation)
   * [System Dependencies](#system-dependencies)
   * [Performance-Optimized Installation](#performance-optimized-installation)
+  * [Platform-Specific Notes](#platform-specific-notes)
 * [Polars DataFrame Integration](#polars-dataframe-integration)
   * [Key Benefits](#key-benefits)
   * [API Overview](#api-overview)
@@ -102,6 +103,8 @@ representations.
 <!-- mtoc-end -->
 
 ## Quick Start
+
+![xkcd](https://imgs.xkcd.com/comics/the_best_camera.png)
 
 ### What are Event Cameras?
 

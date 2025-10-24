@@ -24,6 +24,25 @@ repos:
         args:
           [
             --fix,
+            # Ignored rules:
+            # A001,A002: Variable names shadowing Python builtins
+            # B007: Loop variable not used within loop body
+            # B008: Function calls in argument defaults
+            # B017: assertRaises(Exception) without specific exception
+            # B020: Loop control variable overwritten
+            # B028: No explicit stacklevel in warnings
+            # B904: Use raise from to specify exception cause
+            # C411,C419: Unnecessary list comprehension conversions
+            # E402: Module level import not at top of file
+            # E501: Line too long
+            # E711,E721,E722,E731: Comparison and exception handling style
+            # F401: Module imported but unused
+            # F811: Redefinition of unused name
+            # F821: Undefined name
+            # F841: Local variable assigned but never used
+            # N: All naming convention rules
+            # PT: All pytest-style rules
+            # UP008,UP036: Outdated syntax for current Python version
             "--ignore=A001,A002,B007,B008,B017,B020,B028,B904,C411,C419,E402,E711,E721,E722,E731,E501,F401,F811,F821,F841,N,PT,UP008,UP036",
           ]
       # Run the formatter
