@@ -28,13 +28,18 @@ on:
 
 jobs:
   python-tests:
-    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
+    name: Python ${{ matrix.python-version }} (${{ matrix.os }}${{ matrix.features && format(' +{0}', matrix.features) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12"]
+        features: [""]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+            features: "hdf5"
 
     steps:
       - uses: actions/checkout@v4
@@ -59,9 +64,14 @@ jobs:
 
       - name: Build Rust extension
         run: |
-          # Build with platform-appropriate features
-          # Cargo.toml has platform-specific dependencies for Unix (HDF5, tracing)
-          uv run maturin develop --release
+          # Default builds use the minimal feature set.
+          # The matrix include adds --features hdf5 on one Unix job so
+          # the HDF5 code path is exercised in CI.
+          if [ -n "${{ matrix.features }}" ]; then
+            uv run maturin develop --release --features "${{ matrix.features }}"
+          else
+            uv run maturin develop --release
+          fi
         shell: bash
 
       - name: Install Python dependencies
