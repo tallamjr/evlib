@@ -836,6 +836,7 @@ dependencies = [
  "arrow",
  "arrow-array",
  "byteorder",
+ "crc32fast",
  "criterion",
  "fastrand",
  "hdf5-metno",
@@ -857,6 +858,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

@@ -38,6 +38,10 @@ pub use evt21_reader::{Evt21Config, Evt21Error, Evt21Metadata, Evt21Reader};
 pub mod evt3_reader;
 pub use evt3_reader::{Evt3Config, Evt3Error, Evt3Metadata, Evt3Reader};
 
+// EVNT TCP live-stream reader
+pub mod evnt_tcp_reader;
+pub use evnt_tcp_reader::{EvntEvent, EvntTcpReader, EvntTcpReaderError};
+
 // Polarity encoding handler module
 pub mod polarity_handler;
 pub use polarity_handler::{
