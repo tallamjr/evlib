@@ -453,6 +453,20 @@ pub fn load_events_with_config(
     path: &str,
     config: &LoadConfig,
 ) -> Result<DataFrame, Box<dyn std::error::Error>> {
+    // When the HDF5 feature is disabled, fail fast with a feature-specific
+    // error for .h5/.hdf5 paths before attempting any file I/O so the user
+    // sees the rebuild hint rather than a generic "file not found".
+    #[cfg(not(all(unix, feature = "hdf5")))]
+    {
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".h5") || lower.ends_with(".hdf5") {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "HDF5 support not compiled in; rebuild with --features hdf5 on Linux or macOS.",
+            )));
+        }
+    }
+
     // Use format detector to determine the file format
     let detection_result = format_detector::detect_event_format(path)?;
 
@@ -1240,6 +1254,19 @@ pub mod python {
             .with_sorting(sort)
             .with_custom_columns(t_col, x_col, y_col, p_col)
             .with_header_lines(header_lines);
+
+        // When the HDF5 feature is disabled, fail fast with a feature-specific
+        // error for .h5/.hdf5 paths so the user sees the rebuild hint rather
+        // than a generic format-detection failure.
+        #[cfg(not(all(unix, feature = "hdf5")))]
+        {
+            let lower = path.to_ascii_lowercase();
+            if lower.ends_with(".h5") || lower.ends_with(".hdf5") {
+                return Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(
+                    "HDF5 support not compiled in; rebuild with --features hdf5 on Linux or macOS.",
+                ));
+            }
+        }
 
         // Detect format for proper polarity encoding
         let _format_result = detect_event_format(path).map_err(|e| {
