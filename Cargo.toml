@@ -111,9 +111,10 @@ clap           = { version = "4.0", features = ["derive"], optional = true }
 
 # Platform-specific dependencies
 # HDF5 and tracing only on Unix (Linux/macOS) - not available on Windows
+# HDF5 crates are optional and enabled via the `hdf5` feature flag.
 [target.'cfg(unix)'.dependencies]
-hdf5-metno     = { version = "0.10.1", features = ["blosc-all"] }
-hdf5-metno-sys = { version = "0.10.1" }
+hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true }
+hdf5-metno-sys = { version = "0.10.1", optional = true }
 tracing        = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
 
@@ -138,3 +139,7 @@ polars         = ["dep:polars"]
 arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
 zero-copy      = ["arrow"]  # Alias for clarity
 terminal       = ["dep:ratatui", "dep:crossterm", "dep:clap"]
+# HDF5 support (Unix-only). Opt-in because the hdf5-metno-sys build script
+# requires a compatible system HDF5 install. On Windows the underlying deps
+# aren't available, so this feature compiles to no-op stubs there.
+hdf5           = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]

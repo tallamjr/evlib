@@ -1,8 +1,8 @@
 // Data formats module
 // Handles reading and writing events from various file formats
 
-// HDF5 is only available on Unix platforms (Linux/macOS)
-#[cfg(unix)]
+// HDF5 is only available on Unix platforms (Linux/macOS) with the `hdf5` feature
+#[cfg(all(unix, feature = "hdf5"))]
 use hdf5_metno::File as H5File;
 use polars::prelude::*;
 use pyo3::prelude::*;
@@ -65,11 +65,12 @@ pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 pub mod prophesee_ecf_codec;
 pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, PropheseeEvent};
 
-// Native HDF5 reader with ECF support (Unix only)
-// HDF5 is only available on Unix platforms (Linux/macOS)
-#[cfg(unix)]
+// Native HDF5 reader with ECF support (Unix only, opt-in via `hdf5` feature)
+// HDF5 is only available on Unix platforms (Linux/macOS) when the `hdf5`
+// feature flag is enabled.
+#[cfg(all(unix, feature = "hdf5"))]
 pub mod hdf5_reader;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "hdf5"))]
 pub use hdf5_reader::load_events_from_hdf5;
 
 // DataFrame construction utilities for direct event processing
@@ -456,7 +457,7 @@ pub fn load_events_with_config(
     let detection_result = format_detector::detect_event_format(path)?;
 
     match detection_result.format {
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "hdf5"))]
         EventFormat::HDF5 => {
             let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
@@ -467,10 +468,10 @@ pub fn load_events_with_config(
             }
             Ok(events)
         }
-        #[cfg(not(unix))]
+        #[cfg(not(all(unix, feature = "hdf5")))]
         EventFormat::HDF5 => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "HDF5 support is only available on Unix platforms (Linux/macOS), not on Windows.",
+            "HDF5 support not compiled in; rebuild with --features hdf5 on Linux or macOS.",
         ))),
         EventFormat::Text => Ok(load_events_from_text(path, config)?),
         EventFormat::AEDAT1 | EventFormat::AEDAT2 | EventFormat::AEDAT3 | EventFormat::AEDAT4 => {
@@ -1262,7 +1263,7 @@ pub mod python {
     /// Save events to an HDF5 file
     #[pyfunction]
     #[pyo3(name = "save_events_to_hdf5")]
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "hdf5"))]
     pub fn save_events_to_hdf5_py(
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
