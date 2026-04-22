@@ -30,6 +30,8 @@ from typing import Dict, Any
 import polars as pl
 import pytest
 
+from conftest import requires_hdf5
+
 # Import validation helpers from tests directory
 try:
     from validation_helpers import (
@@ -176,15 +178,23 @@ def test_data_files():
     params=[
         pytest.param(
             "etram",
-            marks=pytest.mark.skipif(
-                sys.platform == "win32", reason="HDF5 not available on Windows"
-            ),
+            marks=[
+                pytest.mark.skipif(
+                    sys.platform == "win32",
+                    reason="HDF5 not available on Windows",
+                ),
+                requires_hdf5,
+            ],
         ),
         pytest.param(
             "prophesee_hdf5",
-            marks=pytest.mark.skipif(
-                sys.platform == "win32", reason="HDF5 not available on Windows"
-            ),
+            marks=[
+                pytest.mark.skipif(
+                    sys.platform == "win32",
+                    reason="HDF5 not available on Windows",
+                ),
+                requires_hdf5,
+            ],
         ),
         "prophesee_evt2",
         "prophesee_evt3",

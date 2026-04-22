@@ -11,6 +11,8 @@ import numpy as np
 import polars as pl
 import pytest
 
+from conftest import requires_hdf5
+
 import evlib.representations as evr
 
 
@@ -105,6 +107,7 @@ class TestRVTRegression:
         total_nonzero = np.count_nonzero(dense)
         assert total_nonzero == 4
 
+    @requires_hdf5
     @pytest.mark.slow
     @pytest.mark.integration
     def test_parquet_based_regression_quick(self, rvt_test_file, events_file):

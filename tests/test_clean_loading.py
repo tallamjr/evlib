@@ -9,6 +9,10 @@ import evlib
 import os
 import sys
 
+from conftest import requires_hdf5
+
+pytestmark = requires_hdf5
+
 
 def test_clean_loading():
     """Test that HDF5 loading no longer produces excessive warnings."""

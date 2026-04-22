@@ -7,6 +7,10 @@ import evlib.representations as evr
 import tempfile
 import os
 
+from conftest import requires_hdf5
+
+pytestmark = requires_hdf5
+
 
 @pytest.mark.skipif(os.name == "nt", reason="HDF5 save not available on Windows")
 def test_create_stacked_histogram():

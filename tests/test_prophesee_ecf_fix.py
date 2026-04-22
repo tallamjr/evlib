@@ -8,6 +8,8 @@ import os
 import pytest
 from pathlib import Path
 
+from conftest import requires_hdf5
+
 # h5py is not available on Windows (HDF5 is Unix-only)
 h5py = pytest.importorskip("h5py", reason="h5py not available on Windows")
 
@@ -24,6 +26,7 @@ def is_running_in_ci():
 test_file = "/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/hdf5/pedestrians.hdf5"
 
 
+@requires_hdf5
 @pytest.mark.integration
 def test_prophesee_ecf_decoder_fix():
     """Test the Prophesee ECF decoder fix with actual file."""

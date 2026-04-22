@@ -9,6 +9,10 @@ import numpy as np
 from pathlib import Path
 import logging
 
+from conftest import requires_hdf5
+
+pytestmark = requires_hdf5
+
 # Test imports
 try:
     import evlib.visualization as viz

@@ -27,10 +27,14 @@ from typing import Optional, Union
 import polars as pl
 import pytest
 
-# Skip entire module on Windows - uses HDF5 files
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="HDF5 not available on Windows"
-)
+from conftest import requires_hdf5
+
+# Skip entire module on Windows - uses HDF5 files, and skip when HDF5
+# feature is not compiled into the current build.
+pytestmark = [
+    pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows"),
+    requires_hdf5,
+]
 
 # Import validation helpers from tests directory
 try:

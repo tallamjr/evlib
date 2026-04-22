@@ -23,6 +23,8 @@ import pytest
 # Add the project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from conftest import requires_hdf5
+
 import evlib
 
 
@@ -153,15 +155,23 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(
-                    sys.platform == "win32", reason="HDF5 not available on Windows"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        sys.platform == "win32",
+                        reason="HDF5 not available on Windows",
+                    ),
+                    requires_hdf5,
+                ],
             ),
             pytest.param(
                 "rvt_processed",
-                marks=pytest.mark.skipif(
-                    sys.platform == "win32", reason="HDF5 not available on Windows"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        sys.platform == "win32",
+                        reason="HDF5 not available on Windows",
+                    ),
+                    requires_hdf5,
+                ],
             ),
         ],
     )
@@ -205,9 +215,13 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(
-                    sys.platform == "win32", reason="HDF5 not available on Windows"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        sys.platform == "win32",
+                        reason="HDF5 not available on Windows",
+                    ),
+                    requires_hdf5,
+                ],
             ),
         ],
     )
@@ -324,9 +338,13 @@ class TestEvlibRegression:
             "evt2_small",
             pytest.param(
                 "hdf5_small",
-                marks=pytest.mark.skipif(
-                    sys.platform == "win32", reason="HDF5 not available on Windows"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        sys.platform == "win32",
+                        reason="HDF5 not available on Windows",
+                    ),
+                    requires_hdf5,
+                ],
             ),
         ],
     )
@@ -453,6 +471,7 @@ class TestEvlibRegression:
             f"PASS: {format_name} consistency: {len(available_files)} files validated"
         )
 
+    @requires_hdf5
     def test_polarity_encoding_consistency(self, data_files):
         """Test that polarity values are consistent with expected encoding for each format."""
         for file_key, file_info in data_files.items():
@@ -602,6 +621,7 @@ class TestEvlibRegression:
 
         print("PASS: Error handling tests passed")
 
+    @requires_hdf5
     def test_memory_cleanup(self, data_files):
         """Test that memory is properly cleaned up after loading large files."""
         # Only test with available files

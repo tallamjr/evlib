@@ -7,6 +7,10 @@ import evlib
 import io
 from contextlib import redirect_stderr
 
+from conftest import requires_hdf5
+
+pytestmark = requires_hdf5
+
 
 def test_completely_clean_loading():
     """Test that HDF5 loading now produces minimal output."""

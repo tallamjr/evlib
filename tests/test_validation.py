@@ -9,6 +9,8 @@ import sys
 import pytest
 from pathlib import Path
 
+from conftest import requires_hdf5
+
 
 def find_test_data() -> Path:
     """Find suitable test data file."""
@@ -30,6 +32,7 @@ def find_test_data() -> Path:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="HDF5 not available on Windows")
+@requires_hdf5
 def test_validation_helpers_basic():
     """Test basic validation helper functionality."""
     try:

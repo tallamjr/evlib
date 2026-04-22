@@ -11,6 +11,10 @@ import os
 import numpy as np
 import pytest
 
+from conftest import requires_hdf5
+
+pytestmark = requires_hdf5
+
 
 def test_hdf5_save_python_fallback():
     """Test HDF5 save functionality (uses h5py fallback when Rust unavailable)."""

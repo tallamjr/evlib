@@ -21,6 +21,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from conftest import requires_hdf5
+
 # Skip entire module on Windows - uses HDF5 files
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="HDF5 not available on Windows"
@@ -235,6 +237,7 @@ def large_h5_events(evlib_module):
 
 
 # Test functions
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_temporal_filtering_real_data(
@@ -291,6 +294,7 @@ def test_temporal_filtering_real_data(
     print("PASS: Temporal filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_spatial_filtering_real_data(
@@ -362,6 +366,7 @@ def test_spatial_filtering_real_data(
     print("PASS: Spatial filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_polarity_filtering_real_data(
@@ -439,6 +444,7 @@ def test_polarity_filtering_real_data(
     print("PASS: Polarity filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_hot_pixel_filtering_real_data(
@@ -519,6 +525,7 @@ def test_hot_pixel_filtering_real_data(
     print("PASS: Hot pixel filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_noise_filtering_real_data(filtering_module, small_raw_events, small_h5_events):
@@ -589,6 +596,7 @@ def test_noise_filtering_real_data(filtering_module, small_raw_events, small_h5_
     print("PASS: Noise filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_chained_filtering_real_data(
@@ -646,6 +654,7 @@ def test_chained_filtering_real_data(
     print("PASS: Chained filtering with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_preprocessing_pipeline_real_data(
@@ -779,6 +788,7 @@ def test_preprocessing_pipeline_real_data(
     print("PASS: Preprocessing pipeline with real data passed")
 
 
+@requires_hdf5
 @skip_if_no_evlib()
 @skip_if_no_filtering()
 def test_performance_benchmarks_real_data(
@@ -936,6 +946,7 @@ def test_edge_cases_real_data():
     print("PASS: Edge cases with real data passed")
 
 
+@requires_hdf5
 def test_data_integrity_real_data():
     """Test that filtering preserves data integrity."""
 

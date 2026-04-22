@@ -7,7 +7,10 @@ import sys
 import traceback
 from pathlib import Path
 
+from conftest import requires_hdf5
 
+
+@requires_hdf5
 def test_prophesee_hdf5_loading():
     """Test loading real Prophesee HDF5 data."""
     try:
