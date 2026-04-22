@@ -8,6 +8,24 @@ from pathlib import Path
 import tempfile
 import shutil
 
+# Detect whether the evlib build includes HDF5 support.
+# Mirrors the hdf5_available fixture but available at import time so
+# test modules can apply `pytestmark = requires_hdf5`.
+try:
+    import evlib as _evlib_for_hdf5_probe
+
+    HAS_HDF5 = sys.platform != "win32" and hasattr(
+        _evlib_for_hdf5_probe, "save_events_to_hdf5"
+    )
+    del _evlib_for_hdf5_probe
+except ImportError:
+    HAS_HDF5 = False
+
+requires_hdf5 = pytest.mark.skipif(
+    not HAS_HDF5,
+    reason="HDF5 feature not compiled in (build with --features hdf5)",
+)
+
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "python"))
