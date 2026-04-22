@@ -80,34 +80,13 @@ pyo3-arrow     = { version = "0.10.1", optional = true }
 
 # I/O & utilities
 memmap2        = "0.5"
-image          = "0.24"
-async-channel  = "1.6"
 lazy_static    = "1.4"
 byteorder      = "1.5"
 
-# GStreamer for video processing
-gstreamer      = { version = "0.22", optional = true }
-gstreamer-app  = { version = "0.22", optional = true }
-gstreamer-video = { version = "0.22", optional = true }
-
-# HTTP client and async runtime for model downloading
-reqwest        = { version = "0.11", features = ["blocking"] }
-tokio          = { version = "1.35", features = ["full"] }
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
 num_cpus       = "1.16"
 thiserror      = "1.0"
-
-# WebSocket server
-warp           = "0.3"
-uuid           = { version = "1.6", features = ["v4", "serde"] }
-dashmap        = "5.5"
-futures        = "0.3"
-
-# Terminal UI (optional)
-ratatui        = { version = "0.28", optional = true }
-crossterm      = { version = "0.28", optional = true }
-clap           = { version = "4.0", features = ["derive"], optional = true }
 
 # Platform-specific dependencies
 # HDF5 and tracing only on Unix (Linux/macOS) - not available on Windows
@@ -132,13 +111,11 @@ default        = ["polars", "python", "arrow"]
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 # cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies
-gstreamer      = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 pytorch        = ["dep:tch"]
 onnx           = ["dep:ort"]
 polars         = ["dep:polars"]
 arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
 zero-copy      = ["arrow"]  # Alias for clarity
-terminal       = ["dep:ratatui", "dep:crossterm", "dep:clap"]
 # HDF5 support (Unix-only). Opt-in because the hdf5-metno-sys build script
 # requires a compatible system HDF5 install. On Windows the underlying deps
 # aren't available, so this feature compiles to no-op stubs there.
