@@ -631,12 +631,11 @@ mypy python/evlib/
 - **Maturin**: For building Python extensions
 
 ```bash
-# Development build
-maturin develop --features python # python required to register python modules
+# Default minimal build (polars + python + arrow)
+maturin develop
 
-# Build with features
-maturin develop --features polars
-maturin develop --features pytorch
+# Enable HDF5 support (Unix only)
+maturin develop --features hdf5
 
 # Release build
 maturin build --release

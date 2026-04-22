@@ -1034,16 +1034,25 @@ mypy python/evlib/
 - **Maturin**: For building Python extensions
 
 ```bash
-# Development build
-maturin develop --features python # python required to register python modules
-
-# Build with features
-maturin develop --features polars
-maturin develop --features pytorch
+# Default minimal build (polars + python + arrow)
+maturin develop
 
 # Release build
 maturin build --release
 ```
+
+### Optional: HDF5 support
+
+By default, `evlib` builds without HDF5 support for a leaner dependency
+footprint on edge devices (Raspberry Pi, AMD Kria). To enable reading
+or writing HDF5 event files — for example the Prophesee Gen4 or eTram
+datasets — build with the `hdf5` feature on Linux or macOS:
+
+```bash
+maturin develop --features hdf5
+```
+
+HDF5 is not supported on Windows.
 
 ## Community & Support
 

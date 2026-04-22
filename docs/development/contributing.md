@@ -169,7 +169,6 @@ evlib/
 │   ├── ev_representations/ # Voxel grids, smooth voxel
 │   ├── ev_processing/     # Neural networks, E2VID
 │   ├── ev_transforms/     # Spatial transformations
-│   ├── ev_visualization/  # Plotting utilities
 │   └── lib.rs            # Python bindings
 ├── tests/                 # Python tests
 ├── examples/              # Jupyter notebooks
@@ -186,7 +185,7 @@ src/ev_formats/         → evlib.formats
 src/ev_representations/ → evlib.representations
 src/ev_processing/      → evlib.processing
 src/ev_transforms/      → evlib.augmentation
-src/ev_visualization/   → evlib.visualization
+python/evlib/visualization.py → evlib.visualization  # Python-only
 ```
 
 ## Adding New Features

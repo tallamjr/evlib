@@ -40,15 +40,14 @@ All core functionality works identically on Windows as on Linux/macOS:
 - **Event Processing**: Filtering, augmentation, transformations
 - **Polars DataFrames**: High-performance DataFrame operations (360M+ events/s)
 - **Event Representations**: Voxel grids, frames, histograms
-- **Visualisation**: Plotting, terminal rendering
-- **PyTorch Integration**: Model loading and inference
-- **ONNX Runtime**: Cross-platform model deployment
+- **Visualisation**: Plotting via the Python `evlib.visualization` module
+- **PyTorch Integration**: Model loading and inference via the Python `evlib.models` module
 
 ### Platform-Specific Limitations ⚠️
 
-#### HDF5 Save Functionality
+#### HDF5 Support
 
-**What's affected**: The native Rust `save_events_to_hdf5()` function is not available on Windows.
+**What's affected**: Native Rust HDF5 read and write functions (including `save_events_to_hdf5()`) are not available on Windows. HDF5 is opt-in via `--features hdf5` on Linux and macOS; it is not supported on Windows.
 
 **Why**: HDF5 system libraries are complex to build on Windows with the MSVC toolchain.
 
@@ -134,8 +133,8 @@ python -m venv .venv
 # Install maturin
 pip install maturin
 
-# Build without HDF5 (recommended for Windows)
-maturin develop --release --features python,polars
+# Build with default features (HDF5 is not available on Windows)
+maturin develop --release
 
 # Install in development mode
 pip install -e .

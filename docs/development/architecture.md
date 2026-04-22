@@ -72,10 +72,6 @@ evlib/
 │   │   ├── mod.rs               # Public API
 │   │   ├── flip.rs              # Flip operations
 │   │   └── noise.rs             # Noise addition
-│   ├── ev_visualization/         # Visualization
-│   │   ├── mod.rs               # Public API
-│   │   ├── terminal.rs          # Terminal visualization
-│   │   └── web_server.rs        # Web visualization
 │   ├── ev_tracking/              # Event tracking
 │   │   ├── mod.rs               # Public API
 │   │   └── etap.rs              # ETAP integration
