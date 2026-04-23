@@ -23,7 +23,7 @@ def is_running_in_ci():
 
 
 # Test file path
-test_file = "/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/hdf5/pedestrians.hdf5"
+test_file = "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5"
 
 
 @requires_hdf5

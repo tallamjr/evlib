@@ -79,7 +79,7 @@ DATASET_SPECS = {
         "expected_duration_range": (0.001, 10.0),  # Small sample file
         "min_events": 10_000,
         "file_patterns": ["*.hdf5"],
-        "data_paths": ["prophersee/samples/hdf5"],
+        "data_paths": ["prophesee/samples/hdf5"],
     },
     "prophesee_evt2": {
         "sensor_type": "generic_large",  # High resolution sensor
@@ -88,7 +88,7 @@ DATASET_SPECS = {
         "expected_duration_range": (1.0, 3600.0),  # Could be long recordings
         "min_events": 100_000,
         "file_patterns": ["*.raw"],
-        "data_paths": ["prophersee/samples/evt2"],
+        "data_paths": ["prophesee/samples/evt2"],
     },
     "prophesee_evt3": {
         "sensor_type": "generic_large",  # High resolution sensor
@@ -97,7 +97,7 @@ DATASET_SPECS = {
         "expected_duration_range": (1.0, 3600.0),
         "min_events": 1_000_000,  # Large file
         "file_patterns": ["*.raw"],
-        "data_paths": ["prophersee/samples/evt3"],
+        "data_paths": ["prophesee/samples/evt3"],
     },
     "slider_depth": {
         "sensor_type": "davis346",  # Similar to DAVIS camera

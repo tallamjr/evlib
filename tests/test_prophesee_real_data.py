@@ -18,7 +18,7 @@ def test_prophesee_hdf5_loading():
 
         # Test with the actual pedestrians.hdf5 file
         data_path = Path(
-            "/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/hdf5/pedestrians.hdf5"
+            "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5"
         )
 
         if not data_path.exists():

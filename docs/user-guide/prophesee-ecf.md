@@ -66,7 +66,7 @@ events_df = events.collect()  # Convert LazyFrame to DataFrame first
 print(f"Loaded {len(events_df)} events for testing")
 
 # Note: For actual Prophesee HDF5 files, use:
-# events = evlib.load_events("data/prophersee/samples/hdf5/pedestrians.hdf5")
+# events = evlib.load_events("data/prophesee/samples/hdf5/pedestrians.hdf5")
 
 # Works with all evlib functions
 import evlib.filtering as evf
@@ -115,7 +115,7 @@ try:
     events = evlib.load_events('data/slider_depth/events.txt')
     df = events.collect()
     print(f"ECF decoder development: Loaded {len(df)} test events")
-    # For Prophesee files: 'data/prophersee/samples/hdf5/pedestrians.hdf5'
+    # For Prophesee files: 'data/prophesee/samples/hdf5/pedestrians.hdf5'
 except Exception as e:
     print(f"ECF decoder test: {e}")
 print("ECF decoder function available for development use")
@@ -140,7 +140,7 @@ os.environ['HDF5_PLUGIN_PATH'] = '/usr/lib/x86_64-linux-gnu/hdf5/plugins'
 import evlib
 # For testing with available data:
 events = evlib.load_events('data/slider_depth/events.txt')
-# For actual Prophesee files: evlib.load_events('data/prophersee/samples/hdf5/pedestrians.hdf5')
+# For actual Prophesee files: evlib.load_events('data/prophesee/samples/hdf5/pedestrians.hdf5')
 ```
 
 ### For Scripts/Terminal
@@ -184,7 +184,7 @@ os.environ['HDF5_PLUGIN_PATH'] = '/path/to/your/plugins'
 events = evlib.load_events('data/slider_depth/events.txt')
 df = events.collect()
 print(f"File loading test: {len(df)} events loaded successfully")
-# For Prophesee ECF testing: h5py.File('data/prophersee/samples/hdf5/pedestrians.hdf5', 'r')
+# For Prophesee ECF testing: h5py.File('data/prophesee/samples/hdf5/pedestrians.hdf5', 'r')
 print("ECF codec test - update path when Prophesee files are available")
 ```
 
@@ -200,12 +200,12 @@ df = events.collect()
 print("HDF5 file structure test:")
 print(f"  Event data: {len(df)} events loaded")
 print(f"  Columns: {list(df.columns)}")
-# For Prophesee HDF5 diagnostics: h5py.File('data/prophersee/samples/hdf5/pedestrians.hdf5', 'r')
+# For Prophesee HDF5 diagnostics: h5py.File('data/prophesee/samples/hdf5/pedestrians.hdf5', 'r')
 if True:  # Replace condition for actual file testing
     print("Diagnostic info for event data structure:")
     print(f"  Data types: {df.dtypes}")
     print("For actual HDF5 file diagnostics, use h5py to inspect file structure")
-# evlib.diagnose_hdf5('data/prophersee/samples/hdf5/pedestrians.hdf5')  # Future implementation
+# evlib.diagnose_hdf5('data/prophesee/samples/hdf5/pedestrians.hdf5')  # Future implementation
 
 # HDF5 plugin setup and verification
 import os
@@ -214,7 +214,7 @@ plugin_path = os.environ.get('HDF5_PLUGIN_PATH', '/usr/lib/x86_64-linux-gnu/hdf5
 print(f"HDF5 plugin path: {plugin_path}")
 
 # Test loading a Prophesee file to verify ECF support
-prophesee_file = 'data/prophersee/samples/hdf5/pedestrians.hdf5'
+prophesee_file = 'data/prophesee/samples/hdf5/pedestrians.hdf5'
 if os.path.exists(prophesee_file):
     try:
         events = evlib.load_events(prophesee_file)
@@ -228,7 +228,7 @@ if os.path.exists(prophesee_file):
         print("Consider installing ECF plugin or using alternative file formats")
 else:
     print("ECF plugin test: DEMO MODE - Prophesee file not in test environment")
-    print("In real usage, this would test with: data/prophersee/samples/hdf5/pedestrians.hdf5")
+    print("In real usage, this would test with: data/prophesee/samples/hdf5/pedestrians.hdf5")
     print("Consider installing ECF plugin for full Prophesee HDF5 support")
 ```
 
@@ -261,7 +261,7 @@ import os
 # accessible during documentation testing due to working directory differences
 
 # Try to test with Prophesee HDF5 file, fall back gracefully
-prophesee_file = "data/prophersee/samples/hdf5/pedestrians.hdf5"
+prophesee_file = "data/prophesee/samples/hdf5/pedestrians.hdf5"
 test_file = "data/slider_depth/events.txt"  # Known to work in test environment
 
 # Use the file that's available in the current context

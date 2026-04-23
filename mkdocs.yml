@@ -106,16 +106,28 @@ nav:
       - Performance Guide: getting-started/performance.md
   - User Guide:
       - Loading Data: user-guide/loading-data.md
+      - Formats: user-guide/formats.md
       - Event Representations: user-guide/representations.md
+      - Polars Preprocessing: user-guide/polars-preprocessing.md
+      - Prophesee ECF Codec: user-guide/prophesee-ecf.md
   - API Reference:
       - Core: api/core.md
       - Formats: api/formats.md
+      - Filtering: api/filtering.md
       - Representations: api/representations.md
+      - Processing: api/processing.md
   - Examples:
       - Benchmarks: examples/benchmarks.md
+      - Polars Preprocessing: examples/polars-preprocessing.md
+  - Platform Support:
+      - Windows: platform-support/windows.md
+  - Logging: logging.md
   - Development:
       - Contributing: development/contributing.md
       - Architecture: development/architecture.md
+      - Zero-Copy Architecture: development/zero-copy-architecture.md
+      - Arrow Integration: development/arrow-integration.md
+      - DuckDB Integration: development/duckdb-integration.md
       - Testing: development/testing.md
       - Release Notes: development/releases.md
 

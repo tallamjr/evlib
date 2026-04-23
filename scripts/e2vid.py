@@ -6,7 +6,7 @@ Command-line tool for reconstructing videos from event camera data using the E2V
 Supports multiple event formats (EVT2, H5, text) and provides configurable reconstruction parameters.
 
 Example usage:
-    python scripts/e2vid.py --input data/prophersee/samples/evt2/80_balls.raw --output 80_balls_reconstructed.mp4
+    python scripts/e2vid.py --input data/prophesee/samples/evt2/80_balls.raw --output 80_balls_reconstructed.mp4
     python scripts/e2vid.py --input data/slider_depth/events.txt --output slider_depth.mp4 --fps 30 --duration 2.0
 """
 
