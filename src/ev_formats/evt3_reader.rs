@@ -93,9 +93,24 @@ pub struct RawEvt3Event {
     pub data: u16,
 }
 impl RawEvt3Event {
+    // EVT3 wire-format bit layout per OpenEB's C bitfield structs
+    // (`hal/cpp/include/metavision/hal/decoders/evt3/evt3_event_types.h`)
+    // with first-field-is-LSB packing (GCC/Clang default on ARM64/x86-64):
+    //
+    //   bit:   15 14 13 12 | 11 | 10 9 8 7 6 5 4 3 2 1 0
+    //          <-- type -->  pol <----------- x (or y) ----------->
+    //
+    // So: type = (data >> 12) & 0xF, pol = (data >> 11) & 1, x = data & 0x7FF,
+    // and the generic 12-bit `content` field used for ADDR_Y / time / mask /
+    // etc. is `data & 0x0FFF` (bits 0-11). This matches OpenEB end-to-end.
+    //
+    // The previous layout in this file (type in the low nibble, payload in
+    // bits 4-15) was self-consistent in unit tests but produced garbage when
+    // fed real Prophesee `.raw` files or V4L2 buffers from a GenX320 — those
+    // use the OpenEB layout.
     /// Extract event type from raw data
     pub fn event_type(&self) -> Result<Evt3EventType, Evt3Error> {
-        let type_bits = (self.data & 0x000F) as u8;
+        let type_bits = ((self.data >> 12) & 0x000F) as u8;
         Evt3EventType::try_from(type_bits)
     }
     /// Parse as Y address event
@@ -107,8 +122,8 @@ impl RawEvt3Event {
             });
         }
         Ok(YAddrEvent {
-            y: (self.data >> 4) & 0x7FF,
-            orig: ((self.data >> 15) & 0x1) != 0,
+            y: self.data & 0x7FF,
+            orig: ((self.data >> 11) & 0x1) != 0,
         })
     }
     /// Parse as X address event
@@ -120,8 +135,8 @@ impl RawEvt3Event {
             });
         }
         Ok(XAddrEvent {
-            x: (self.data >> 4) & 0x7FF,
-            polarity: ((self.data >> 15) & 0x1) != 0,
+            x: self.data & 0x7FF,
+            polarity: ((self.data >> 11) & 0x1) != 0,
         })
     }
     /// Parse as vector base X event
@@ -133,8 +148,8 @@ impl RawEvt3Event {
             });
         }
         Ok(VectBaseXEvent {
-            x: (self.data >> 4) & 0x7FF,
-            polarity: ((self.data >> 15) & 0x1) != 0,
+            x: self.data & 0x7FF,
+            polarity: ((self.data >> 11) & 0x1) != 0,
         })
     }
     /// Parse as vector 12 event
@@ -146,7 +161,7 @@ impl RawEvt3Event {
             });
         }
         Ok(Vect12Event {
-            valid: (self.data >> 4) & 0xFFF,
+            valid: self.data & 0xFFF,
         })
     }
     /// Parse as vector 8 event
@@ -158,7 +173,7 @@ impl RawEvt3Event {
             });
         }
         Ok(Vect8Event {
-            valid: ((self.data >> 4) & 0xFF) as u8,
+            valid: (self.data & 0xFF) as u8,
         })
     }
     /// Parse as time event (low or high)
@@ -171,7 +186,7 @@ impl RawEvt3Event {
             });
         }
         Ok(TimeEvent {
-            time: (self.data >> 4) & 0xFFF,
+            time: self.data & 0xFFF,
             is_high: event_type == Evt3EventType::TimeHigh,
         })
     }
@@ -183,9 +198,10 @@ impl RawEvt3Event {
                 offset: 0,
             });
         }
+        // Ext trigger layout: bits 0 = value, bits 1-5 = id (5 bits)
         Ok(ExtTriggerEvent {
-            value: ((self.data >> 4) & 0x1) != 0,
-            id: ((self.data >> 5) & 0x1F) as u8,
+            value: (self.data & 0x1) != 0,
+            id: ((self.data >> 1) & 0x1F) as u8,
         })
     }
 }
@@ -869,46 +885,43 @@ impl Default for Evt3Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Build a 16-bit EVT3 word from type (bits 12-15) + 12-bit content.
+    fn evt3_word(ty: u16, content: u16) -> u16 {
+        ((ty & 0xF) << 12) | (content & 0xFFF)
+    }
+
     #[test]
     fn test_evt3_event_type_parsing() {
-        // Test Y address event
-        let raw_event = RawEvt3Event { data: 0x0000 };
+        // Type lives in bits 12-15 of the 16-bit word.
+        let raw_event = RawEvt3Event { data: evt3_word(0x0, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrY);
-        // Test X address event
-        let raw_event = RawEvt3Event { data: 0x0002 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x2, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrX);
-        // Test Vector Base X event
-        let raw_event = RawEvt3Event { data: 0x0003 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x3, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::VectBaseX);
-        // Test Vector 12 event
-        let raw_event = RawEvt3Event { data: 0x0004 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x4, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect12);
-        // Test Vector 8 event
-        let raw_event = RawEvt3Event { data: 0x0005 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x5, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect8);
-        // Test Time Low event
-        let raw_event = RawEvt3Event { data: 0x0006 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x6, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeLow);
-        // Test Time High event
-        let raw_event = RawEvt3Event { data: 0x0008 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x8, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeHigh);
-        // Test External Trigger event
-        let raw_event = RawEvt3Event { data: 0x000A };
+        let raw_event = RawEvt3Event { data: evt3_word(0xA, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::ExtTrigger);
-        // Test Reserved event types
-        let raw_event = RawEvt3Event { data: 0x0001 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x1, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Reserved1);
-        let raw_event = RawEvt3Event { data: 0x0007 };
+        let raw_event = RawEvt3Event { data: evt3_word(0x7, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued4);
-        let raw_event = RawEvt3Event { data: 0x000E };
+        let raw_event = RawEvt3Event { data: evt3_word(0xE, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Others);
-        let raw_event = RawEvt3Event { data: 0x000F };
+        let raw_event = RawEvt3Event { data: evt3_word(0xF, 0) };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued12);
     }
     #[test]
     fn test_y_addr_event_parsing() {
-        // Test Y address event at y=300, orig=true
-        let raw_data = (1u16 << 15) | (300u16 << 4);
+        // Y=300 (bits 0-10), orig=true (bit 11), type=AddrY (bits 12-15)
+        let raw_data = evt3_word(0x0, (1 << 11) | 300);
         let raw_event = RawEvt3Event { data: raw_data };
         let y_event = raw_event.as_y_addr_event().unwrap();
         assert_eq!(y_event.y, 300);
@@ -916,8 +929,8 @@ mod tests {
     }
     #[test]
     fn test_x_addr_event_parsing() {
-        // Test X address event at x=500, polarity=true
-        let raw_data = (1u16 << 15) | (500u16 << 4) | 0x2;
+        // X=500 (bits 0-10), polarity=true (bit 11), type=AddrX (bits 12-15)
+        let raw_data = evt3_word(0x2, (1 << 11) | 500);
         let raw_event = RawEvt3Event { data: raw_data };
         let x_event = raw_event.as_x_addr_event().unwrap();
         assert_eq!(x_event.x, 500);
@@ -925,22 +938,20 @@ mod tests {
     }
     #[test]
     fn test_vect12_event_parsing() {
-        // Test Vector 12 event with validity mask 0xABC
-        let raw_data = (0xABCu16 << 4) | 0x4;
+        // Vector 12 event with validity mask 0xABC in bits 0-11, type in bits 12-15
+        let raw_data = evt3_word(0x4, 0xABC);
         let raw_event = RawEvt3Event { data: raw_data };
         let vect12_event = raw_event.as_vect12_event().unwrap();
         assert_eq!(vect12_event.valid, 0xABC);
     }
     #[test]
     fn test_time_event_parsing() {
-        // Test Time Low event with time=0x123
-        let raw_data = (0x123u16 << 4) | 0x6;
+        let raw_data = evt3_word(0x6, 0x123);
         let raw_event = RawEvt3Event { data: raw_data };
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x123);
         assert!(!time_event.is_high);
-        // Test Time High event with time=0x456
-        let raw_data = (0x456u16 << 4) | 0x8;
+        let raw_data = evt3_word(0x8, 0x456);
         let raw_event = RawEvt3Event { data: raw_data };
         let time_event = raw_event.as_time_event().unwrap();
         assert_eq!(time_event.time, 0x456);
