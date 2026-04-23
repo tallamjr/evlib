@@ -31,9 +31,24 @@ async fn tcp_reader_receives_single_frame() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let sent = vec![
-        EvntEvent { t: 100, x: 10, y: 20, p: 1 },
-        EvntEvent { t: 200, x: 30, y: 40, p: -1 },
-        EvntEvent { t: 300, x: 50, y: 60, p: 1 },
+        EvntEvent {
+            t: 100,
+            x: 10,
+            y: 20,
+            p: 1,
+        },
+        EvntEvent {
+            t: 200,
+            x: 30,
+            y: 40,
+            p: -1,
+        },
+        EvntEvent {
+            t: 300,
+            x: 50,
+            y: 60,
+            p: 1,
+        },
     ];
     let frame = pack_frame(&sent);
 
@@ -52,10 +67,20 @@ async fn tcp_reader_receives_multiple_frames() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let batch_a: Vec<EvntEvent> = (0..5)
-        .map(|i| EvntEvent { t: i * 1000, x: i as u16, y: (i + 1) as u16, p: 1 })
+        .map(|i| EvntEvent {
+            t: i * 1000,
+            x: i as u16,
+            y: (i + 1) as u16,
+            p: 1,
+        })
         .collect();
     let batch_b: Vec<EvntEvent> = (5..10)
-        .map(|i| EvntEvent { t: i * 1000, x: i as u16, y: (i + 1) as u16, p: -1 })
+        .map(|i| EvntEvent {
+            t: i * 1000,
+            x: i as u16,
+            y: (i + 1) as u16,
+            p: -1,
+        })
         .collect();
     let mut frame_bytes = pack_frame(&batch_a);
     frame_bytes.extend_from_slice(&pack_frame(&batch_b));
@@ -76,7 +101,12 @@ async fn tcp_reader_receives_multiple_frames() {
 async fn tcp_reader_errors_on_bad_crc() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
-    let sent = vec![EvntEvent { t: 1, x: 2, y: 3, p: 1 }];
+    let sent = vec![EvntEvent {
+        t: 1,
+        x: 2,
+        y: 3,
+        p: 1,
+    }];
     let mut frame = pack_frame(&sent);
     // Flip CRC byte
     let len = frame.len();
@@ -89,5 +119,8 @@ async fn tcp_reader_errors_on_bad_crc() {
 
     let mut reader = EvntTcpReader::connect(&addr.to_string()).await.unwrap();
     let result = reader.next_batch().await;
-    assert!(matches!(result, Err(evlib::ev_formats::EvntTcpReaderError::CrcMismatch { .. })));
+    assert!(matches!(
+        result,
+        Err(evlib::ev_formats::EvntTcpReaderError::CrcMismatch { .. })
+    ));
 }

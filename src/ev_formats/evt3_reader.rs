@@ -893,29 +893,53 @@ mod tests {
     #[test]
     fn test_evt3_event_type_parsing() {
         // Type lives in bits 12-15 of the 16-bit word.
-        let raw_event = RawEvt3Event { data: evt3_word(0x0, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x0, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrY);
-        let raw_event = RawEvt3Event { data: evt3_word(0x2, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x2, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::AddrX);
-        let raw_event = RawEvt3Event { data: evt3_word(0x3, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x3, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::VectBaseX);
-        let raw_event = RawEvt3Event { data: evt3_word(0x4, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x4, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect12);
-        let raw_event = RawEvt3Event { data: evt3_word(0x5, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x5, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Vect8);
-        let raw_event = RawEvt3Event { data: evt3_word(0x6, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x6, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeLow);
-        let raw_event = RawEvt3Event { data: evt3_word(0x8, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x8, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::TimeHigh);
-        let raw_event = RawEvt3Event { data: evt3_word(0xA, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0xA, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::ExtTrigger);
-        let raw_event = RawEvt3Event { data: evt3_word(0x1, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x1, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Reserved1);
-        let raw_event = RawEvt3Event { data: evt3_word(0x7, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0x7, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued4);
-        let raw_event = RawEvt3Event { data: evt3_word(0xE, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0xE, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Others);
-        let raw_event = RawEvt3Event { data: evt3_word(0xF, 0) };
+        let raw_event = RawEvt3Event {
+            data: evt3_word(0xF, 0),
+        };
         assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Continued12);
     }
     #[test]

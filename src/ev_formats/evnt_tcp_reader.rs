@@ -44,7 +44,9 @@ pub struct EvntTcpReader {
 impl EvntTcpReader {
     pub async fn connect(addr: &str) -> Result<Self, EvntTcpReaderError> {
         let stream = TcpStream::connect(addr).await?;
-        Ok(Self { reader: BufReader::new(stream) })
+        Ok(Self {
+            reader: BufReader::new(stream),
+        })
     }
 
     /// Read the next complete frame and return its decoded events.
@@ -58,7 +60,7 @@ impl EvntTcpReader {
         let payload_len = BigEndian::read_u32(&header[4..8]);
         let num_events = BigEndian::read_u32(&header[8..12]);
 
-        if payload_len as usize % EVENT_LEN != 0 {
+        if !(payload_len as usize).is_multiple_of(EVENT_LEN) {
             return Err(EvntTcpReaderError::BadPayloadLength {
                 len: payload_len,
                 event_len: EVENT_LEN,
