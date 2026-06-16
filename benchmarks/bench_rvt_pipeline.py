@@ -125,11 +125,14 @@ def run_pipeline_subprocess(
     """Run one pipeline invocation as a child process and read its peak RSS.
 
     ``child_args`` are appended to ``python -m benchmarks.bench_rvt_pipeline``. The child
-    is expected to print a single JSON line ``{"wall_s": <float>}`` on stdout reporting
-    its own internal wall-clock for the pipeline body (excluding interpreter start-up).
-    Peak RSS for the child is read via ``RUSAGE_CHILDREN`` deltas around the call.
+    prints a single JSON line ``{"wall_s": <float>, "peak_rss_bytes": <int>, ...}`` on
+    stdout. The child reports its own peak via ``RUSAGE_SELF`` just before exiting, which
+    is an unambiguous per-process measurement (unlike ``RUSAGE_CHILDREN`` which is a
+    cumulative high-water mark over all terminated children). The parent's measured
+    elapsed wall is used as the run time so interpreter start-up is included; the child's
+    internal ``wall_s`` (pipeline body only) is returned alongside in the JSON for
+    transparency but not used for the headline bar.
     """
-    before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     start = time.perf_counter()
     proc = subprocess.run(
         [sys.executable, "-m", "benchmarks.bench_rvt_pipeline", *child_args],
@@ -140,29 +143,28 @@ def run_pipeline_subprocess(
         timeout=timeout,
     )
     elapsed = time.perf_counter() - start
-    after = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     if proc.returncode != 0:
         raise RuntimeError(
             f"child {' '.join(child_args)} failed (rc={proc.returncode})\n"
             f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
         )
-    # ru_maxrss under RUSAGE_CHILDREN is the max over all terminated children, so the
-    # delta is dominated by this child when runs are sequential. Use the absolute peak
-    # of this child as reported after it exits.
-    wall_s = elapsed
-    for line in proc.stdout.splitlines():
+    payload = _parse_child_json(proc.stdout)
+    # Prefer the child's own internal pipeline wall-clock for the bar (excludes the
+    # ~1-2s interpreter + import start-up that is identical across pipelines).
+    wall_s = float(payload.get("wall_s", elapsed))
+    peak = int(payload["peak_rss_bytes"])
+    return RunResult(wall_s=wall_s, peak_rss_bytes=peak)
+
+
+def _parse_child_json(stdout: str) -> Dict[str, object]:
+    for line in stdout.splitlines():
         line = line.strip()
-        if line.startswith("{") and "wall_s" in line:
+        if line.startswith("{") and "peak_rss_bytes" in line:
             try:
-                payload = json.loads(line)
-                wall_s = float(payload["wall_s"])
-            except (json.JSONDecodeError, KeyError, ValueError):
-                pass
-    peak = ru_maxrss_bytes(after) - ru_maxrss_bytes(before)
-    if peak <= 0:
-        # First child or non-increasing high-water mark: fall back to the absolute peak.
-        peak = ru_maxrss_bytes(after)
-    return RunResult(wall_s=wall_s, peak_rss_bytes=int(peak))
+                return json.loads(line)
+            except json.JSONDecodeError:
+                continue
+    raise RuntimeError(f"child did not emit a JSON result line:\n{stdout}")
 
 
 # --------------------------------------------------------------------------------------
@@ -283,6 +285,7 @@ def run_rvt_reference(out_h5: Path) -> float:
     Returns internal wall-clock seconds for the pipeline body.
     """
     _add_rvt_paths()
+    import hdf5plugin  # noqa: F401  registers blosc/zstd filters used by RVT's H5Writer
     import torch  # noqa: F401  (imported by RVT modules)
     from data.utils.representations import StackedHistogram
     from preprocess_dataset import H5Reader, H5Writer, downsample_ev_repr
@@ -338,6 +341,7 @@ def run_rvt_reference(out_h5: Path) -> float:
 def verify_against_reference(out_h5: Path) -> None:
     """Assert ``out_h5`` is bit-identical to the committed reference output."""
     import h5py
+    import hdf5plugin  # noqa: F401  registers blosc/zstd filters used by the reference h5
 
     from tests.rvt_fixtures import ref_repr_h5
 
@@ -429,14 +433,8 @@ def _verify_one(key: str, work: Path, timeout: float) -> Path:
         raise RuntimeError(
             f"verification child {key} failed:\n{res.stdout}\n{res.stderr}"
         )
-    out_h5 = None
-    for line in res.stdout.splitlines():
-        line = line.strip()
-        if line.startswith("{") and "out_h5" in line:
-            out_h5 = Path(json.loads(line)["out_h5"])
-    if out_h5 is None:
-        raise RuntimeError(f"child {key} did not report out_h5:\n{res.stdout}")
-    return out_h5
+    payload = _parse_child_json(res.stdout)
+    return Path(str(payload["out_h5"]))
 
 
 def _child_main(key: str, work: Path) -> None:
@@ -470,7 +468,8 @@ def _child_main(key: str, work: Path) -> None:
         wall = run_rvt_reference(out_h5)
     else:
         raise ValueError(f"unknown child key: {key}")
-    print(json.dumps({"wall_s": wall, "out_h5": str(out_h5)}))
+    peak = ru_maxrss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    print(json.dumps({"wall_s": wall, "peak_rss_bytes": peak, "out_h5": str(out_h5)}))
 
 
 # --------------------------------------------------------------------------------------
@@ -572,12 +571,66 @@ def write_summary_md(results: Dict[str, PipelineResult], path: Path) -> None:
         rv = results["rvt"].time_summary()["median"]
         ev_mem = results["evlib_full"].peak_gb
         rv_mem = results["rvt"].peak_gb
+        lines.append(_time_phrase("evlib full pipeline", ev, "RVT torch reference", rv))
+        if "evlib_build" in results:
+            evb = results["evlib_build"].time_summary()["median"]
+            lines.append(
+                _time_phrase(
+                    "evlib build-only (cached parquet)", evb, "RVT torch reference", rv
+                )
+            )
         lines.append(
-            f"Headline: evlib full pipeline is {rv / ev:.1f}x faster "
-            f"({ev:.1f}s vs {rv:.1f}s median) and uses {rv_mem / ev_mem:.1f}x less peak "
-            f"memory ({ev_mem:.2f} GB vs {rv_mem:.2f} GB) than RVT's torch reference."
+            _mem_phrase("evlib full pipeline", ev_mem, "RVT torch reference", rv_mem)
         )
     path.write_text("\n".join(lines) + "\n")
+
+
+def _save_results(results: Dict[str, PipelineResult], path: Path) -> None:
+    payload = {
+        k: {
+            "label": r.label,
+            "note": r.note,
+            "runs": [
+                {"wall_s": run.wall_s, "peak_rss_bytes": run.peak_rss_bytes}
+                for run in r.runs
+            ],
+        }
+        for k, r in results.items()
+    }
+    path.write_text(json.dumps(payload, indent=2))
+
+
+def _load_results(path: Path) -> Dict[str, PipelineResult]:
+    payload = json.loads(path.read_text())
+    results: Dict[str, PipelineResult] = {}
+    for k, v in payload.items():
+        pr = PipelineResult(label=v["label"], note=v["note"])
+        pr.runs = [
+            RunResult(wall_s=r["wall_s"], peak_rss_bytes=r["peak_rss_bytes"])
+            for r in v["runs"]
+        ]
+        results[k] = pr
+    return results
+
+
+def _time_phrase(name_a: str, a: float, name_b: str, b: float) -> str:
+    if a <= b:
+        return f"{name_a} is {b / a:.2f}x faster than {name_b} ({a:.1f}s vs {b:.1f}s median)."
+    return (
+        f"{name_a} is {a / b:.2f}x slower than {name_b} ({a:.1f}s vs {b:.1f}s median)."
+    )
+
+
+def _mem_phrase(name_a: str, a: float, name_b: str, b: float) -> str:
+    if a <= b:
+        return (
+            f"{name_a} uses {b / a:.2f}x less peak memory than {name_b} "
+            f"({a:.2f} GB vs {b:.2f} GB)."
+        )
+    return (
+        f"{name_a} uses {a / b:.2f}x more peak memory than {name_b} "
+        f"({a:.2f} GB vs {b:.2f} GB)."
+    )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -597,6 +650,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # Hidden child dispatch:
     parser.add_argument("--child", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--work", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--replot",
+        action="store_true",
+        help="re-render plots/table from saved results JSON without re-running pipelines",
+    )
     args = parser.parse_args(argv)
 
     if args.child is not None:
@@ -604,9 +662,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    results = run_benchmark(
-        repeats=args.repeats, rvt_repeats=args.rvt_repeats, timeout=args.timeout
-    )
+    results_json = OUT_DIR / "rvt_pipeline_results.json"
+    if args.replot:
+        results = _load_results(results_json)
+    else:
+        results = run_benchmark(
+            repeats=args.repeats, rvt_repeats=args.rvt_repeats, timeout=args.timeout
+        )
+        _save_results(results, results_json)
 
     out_time = OUT_DIR / "rvt_pipeline_time.png"
     out_mem = OUT_DIR / "rvt_pipeline_memory.png"

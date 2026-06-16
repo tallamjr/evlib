@@ -1,0 +1,56 @@
+{
+  "evlib_full": {
+    "label": "evlib streaming\n(h5 to parquet + build)",
+    "note": "evlib streaming\n(h5 to parquet + build)",
+    "runs": [
+      {
+        "wall_s": 57.907330041052774,
+        "peak_rss_bytes": 4601921536
+      },
+      {
+        "wall_s": 58.54628762498032,
+        "peak_rss_bytes": 4565581824
+      },
+      {
+        "wall_s": 58.55324695806485,
+        "peak_rss_bytes": 4572954624
+      }
+    ]
+  },
+  "evlib_build": {
+    "label": "evlib build only\n(from cached parquet)",
+    "note": "evlib build only\n(from cached parquet)",
+    "runs": [
+      {
+        "wall_s": 28.672217834042385,
+        "peak_rss_bytes": 3613851648
+      },
+      {
+        "wall_s": 28.77111116598826,
+        "peak_rss_bytes": 3484909568
+      },
+      {
+        "wall_s": 28.690869832993485,
+        "peak_rss_bytes": 3565977600
+      }
+    ]
+  },
+  "rvt": {
+    "label": "RVT torch\n(reference)",
+    "note": "RVT torch\n(reference)",
+    "runs": [
+      {
+        "wall_s": 22.154809250030667,
+        "peak_rss_bytes": 6866993152
+      },
+      {
+        "wall_s": 22.161672207992524,
+        "peak_rss_bytes": 6867910656
+      },
+      {
+        "wall_s": 22.0622685829876,
+        "peak_rss_bytes": 6868025344
+      }
+    ]
+  }
+}
