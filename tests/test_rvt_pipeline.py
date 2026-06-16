@@ -4,6 +4,15 @@ import hdf5plugin  # noqa: F401
 from evlib.rvt.pipeline import process_sequence
 
 
+def test_evlib_rvt_is_reachable():
+    """evlib.rvt is the advertised RVT preprocessing path and must be reachable."""
+    import evlib
+
+    assert hasattr(evlib, "rvt")
+    assert hasattr(evlib.rvt, "process_sequence")
+    assert hasattr(evlib.rvt, "build_sparse_histogram")
+
+
 def test_process_sequence_writes_full_layout(tmp_path):
     raw = tmp_path / "seq_td.h5"
     n = 100
