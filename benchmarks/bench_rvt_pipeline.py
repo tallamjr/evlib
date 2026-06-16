@@ -202,6 +202,30 @@ def run_evlib_full(out_dir: Path) -> float:
     return time.perf_counter() - start
 
 
+def run_evlib_rust(out_dir: Path) -> float:
+    """Run the evlib Rust dense scatter-add backend end-to-end (raw h5 -> representation h5).
+
+    This reads the raw h5 directly (no parquet conversion) and scatter-adds counts into
+    a dense buffer per window in Rust. Returns internal wall-clock seconds for the body.
+    """
+    import evlib.rvt as rvt
+
+    raw, _ref, grid = _ref_paths()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    start = time.perf_counter()
+    rvt.process_sequence(
+        raw,
+        out_dir,
+        dataset="gen4",
+        height=720,
+        width=1280,
+        ev_repr_timestamps_us=grid,
+        downsample_by_2=True,
+        backend="rust",
+    )
+    return time.perf_counter() - start
+
+
 def run_evlib_build_only(out_dir: Path, parquet: Path) -> float:
     """Run only the evlib representation build from a pre-built parquet (no conversion).
 
@@ -383,6 +407,7 @@ def run_benchmark(
     work.mkdir(parents=True, exist_ok=True)
 
     specs = [
+        ("evlib_rust", "evlib rust\n(dense scatter-add, raw h5)", repeats),
         ("evlib_full", "evlib streaming\n(h5 to parquet + build)", repeats),
         ("evlib_build", "evlib build only\n(from cached parquet)", repeats),
         ("rvt", "RVT torch\n(reference)", rvt_repeats),
@@ -439,7 +464,18 @@ def _verify_one(key: str, work: Path, timeout: float) -> Path:
 
 def _child_main(key: str, work: Path) -> None:
     """Execute a single pipeline body and report wall_s + out_h5 as JSON on stdout."""
-    if key == "evlib_full":
+    if key == "evlib_rust":
+        out_dir = work / "evlib_rust"
+        wall = run_evlib_rust(out_dir)
+        from evlib.rvt import REPR_NAME
+
+        out_h5 = (
+            out_dir
+            / "event_representations_v2"
+            / REPR_NAME
+            / "event_representations_ds2_nearest.h5"
+        )
+    elif key == "evlib_full":
         out_dir = work / "evlib_full"
         wall = run_evlib_full(out_dir)
         from evlib.rvt import REPR_NAME
@@ -492,10 +528,16 @@ def plot(results: Dict[str, PipelineResult], out_time: Path, out_mem: Path) -> N
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    order = ["evlib_full", "evlib_build", "rvt"]
+    order = ["evlib_rust", "evlib_full", "evlib_build", "rvt"]
     order = [k for k in order if k in results]
+    colour_map = {
+        "evlib_rust": "#2a9d5c",
+        "evlib_full": "#3b7dd8",
+        "evlib_build": "#7eb6f0",
+        "rvt": "#d86b3b",
+    }
     labels = [results[k].note for k in order]
-    colours = ["#3b7dd8", "#7eb6f0", "#d86b3b"][: len(order)]
+    colours = [colour_map[k] for k in order]
 
     # Time chart
     medians = [results[k].time_summary()["median"] for k in order]
@@ -547,7 +589,9 @@ def plot(results: Dict[str, PipelineResult], out_time: Path, out_mem: Path) -> N
 
 
 def write_summary_md(results: Dict[str, PipelineResult], path: Path) -> None:
-    order = [k for k in ["evlib_full", "evlib_build", "rvt"] if k in results]
+    order = [
+        k for k in ["evlib_rust", "evlib_full", "evlib_build", "rvt"] if k in results
+    ]
     lines = [
         "# evlib vs RVT preprocessing benchmark",
         "",
@@ -566,6 +610,15 @@ def write_summary_md(results: Dict[str, PipelineResult], path: Path) -> None:
             f"| {label} | {s['min']:.2f} | {s['median']:.2f} | {s['max']:.2f} | {r.peak_gb:.2f} |"
         )
     lines.append("")
+    if "evlib_rust" in results and "rvt" in results:
+        er = results["evlib_rust"].time_summary()["median"]
+        rv = results["rvt"].time_summary()["median"]
+        er_mem = results["evlib_rust"].peak_gb
+        rv_mem = results["rvt"].peak_gb
+        lines.append(_time_phrase("evlib rust backend", er, "RVT torch reference", rv))
+        lines.append(
+            _mem_phrase("evlib rust backend", er_mem, "RVT torch reference", rv_mem)
+        )
     if "evlib_full" in results and "rvt" in results:
         ev = results["evlib_full"].time_summary()["median"]
         rv = results["rvt"].time_summary()["median"]

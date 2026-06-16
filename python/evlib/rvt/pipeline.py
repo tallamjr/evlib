@@ -13,7 +13,7 @@ except ImportError:
     pass
 
 from evlib.rvt.downsample import selected_source_indices
-from evlib.rvt.events import convert_h5_to_parquet, correct_time_nondecreasing
+from evlib.rvt.events import convert_h5_to_parquet
 from evlib.rvt.representation import build_sparse_histogram
 from evlib.rvt.writer import H5RepresentationWriter, scatter_window_dense
 
@@ -62,7 +62,20 @@ def _process_sequence_rust(
 
     with h5py.File(str(in_h5), "r") as f:
         grp = f[dataset_group]
-        t_full = correct_time_nondecreasing(np.asarray(grp["t"], dtype=np.int64))
+        # Read the raw time column into a single preallocated int64 buffer in chunks and
+        # correct it to non-decreasing in place. Holding one int64 copy (~4.3 GB for 540M
+        # events) is unavoidable for the global searchsorted, but chunked reads keep the
+        # transient (native-dtype) read buffer small instead of doubling peak memory by
+        # materialising the whole raw column before the dtype cast.
+        t_ds = grp["t"]
+        n_total = t_ds.shape[0]
+        t_full = np.empty(n_total, dtype=np.int64)
+        chunk = 16_000_000
+        for c0 in range(0, n_total, chunk):
+            c1 = min(c0 + chunk, n_total)
+            t_full[c0:c1] = t_ds[c0:c1]
+        assert t_full[0] >= 0
+        np.maximum.accumulate(t_full, out=t_full)
         # RVT window slices over the global, corrected, non-decreasing time array.
         starts = np.searchsorted(t_full, grid - delta_t_us, side="left")
         ends = np.searchsorted(t_full, grid, side="right")

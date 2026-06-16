@@ -6,10 +6,13 @@ shape (1198, 20, 360, 640) uint8).
 
 | pipeline | min (s) | median (s) | max (s) | peak RSS (GB) |
 | --- | --- | --- | --- | --- |
-| evlib streaming (h5 to parquet + build) | 57.91 | 58.55 | 58.55 | 4.29 |
-| evlib build only (from cached parquet) | 28.67 | 28.69 | 28.77 | 3.37 |
-| RVT torch (reference) | 22.06 | 22.15 | 22.16 | 6.40 |
+| evlib rust (dense scatter-add, raw h5) | 15.52 | 15.60 | 15.82 | 7.38 |
+| evlib streaming (h5 to parquet + build) | 58.33 | 58.45 | 60.28 | 4.29 |
+| evlib build only (from cached parquet) | 27.99 | 28.21 | 28.24 | 3.28 |
+| RVT torch (reference) | 22.24 | 23.36 | 23.71 | 6.40 |
 
-evlib full pipeline is 2.64x slower than RVT torch reference (58.5s vs 22.2s median).
-evlib build-only (cached parquet) is 1.30x slower than RVT torch reference (28.7s vs 22.2s median).
+evlib rust backend is 1.50x faster than RVT torch reference (15.6s vs 23.4s median).
+evlib rust backend uses 1.15x more peak memory than RVT torch reference (7.38 GB vs 6.40 GB).
+evlib full pipeline is 2.50x slower than RVT torch reference (58.5s vs 23.4s median).
+evlib build-only (cached parquet) is 1.21x slower than RVT torch reference (28.2s vs 23.4s median).
 evlib full pipeline uses 1.49x less peak memory than RVT torch reference (4.29 GB vs 6.40 GB).
