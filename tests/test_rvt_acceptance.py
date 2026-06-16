@@ -54,6 +54,34 @@ def test_full_sequence_matches_rvt_reference(tmp_path):
 
 
 @pytest.mark.slow
+def test_full_sequence_rust_backend_matches_reference(tmp_path):
+    """The Rust dense scatter-add backend must be bit-identical to the RVT reference.
+
+    Runs ``process_sequence(..., backend="rust")`` over the full Gen4 validation
+    sequence (raw h5 read directly, no parquet) and asserts every one of the 1198
+    windows equals the committed reference output element-for-element.
+    """
+    grid = np.load(ref_timestamps())
+    out_h5 = process_sequence(
+        raw_input_path(),
+        tmp_path / "out_rust",
+        dataset="gen4",
+        height=720,
+        width=1280,
+        ev_repr_timestamps_us=grid,
+        downsample_by_2=True,
+        backend="rust",
+    )
+    with h5py.File(out_h5, "r") as f_ours, h5py.File(ref_repr_h5(), "r") as f_ref:
+        ours = f_ours["data"]
+        ref = f_ref["data"]
+        assert ours.shape == ref.shape == (1198, 20, 360, 640)
+        assert ours.dtype == ref.dtype == np.uint8
+        for i in range(ref.shape[0]):
+            assert np.array_equal(ours[i], ref[i]), f"window {i} differs"
+
+
+@pytest.mark.slow
 def test_streaming_peak_memory_bounded(tmp_path):
     """Full streaming run of process_sequence must stay within a bounded RSS.
 

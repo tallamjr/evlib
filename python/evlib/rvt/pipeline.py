@@ -3,14 +3,98 @@
 from pathlib import Path
 from typing import Optional
 
+import h5py
 import numpy as np
 import polars as pl
 
-from evlib.rvt.events import convert_h5_to_parquet
+try:
+    import hdf5plugin  # noqa: F401  (registers the blosc filter for the raw h5)
+except ImportError:
+    pass
+
+from evlib.rvt.downsample import selected_source_indices
+from evlib.rvt.events import convert_h5_to_parquet, correct_time_nondecreasing
 from evlib.rvt.representation import build_sparse_histogram
 from evlib.rvt.writer import H5RepresentationWriter, scatter_window_dense
 
 REPR_NAME = "stacked_histogram_dt50_nbins10"
+
+
+def _build_index_maps(full_size: int, out_size: int) -> np.ndarray:
+    """Source -> output index map of length ``full_size``; ``-1`` where dropped."""
+    sel = selected_source_indices(full_size, out_size)
+    index_map = np.full(full_size, -1, dtype=np.int64)
+    index_map[np.asarray(sel, dtype=np.int64)] = np.arange(out_size, dtype=np.int64)
+    return index_map
+
+
+def _process_sequence_rust(
+    in_h5: Path,
+    grid: np.ndarray,
+    height: int,
+    width: int,
+    out_h: int,
+    out_w: int,
+    nbins: int,
+    count_cutoff: int,
+    delta_t_us: int,
+    downsample_by_2: bool,
+    writer: H5RepresentationWriter,
+    window_batch_size: int,
+    dataset_group: str = "events",
+) -> None:
+    """Rust dense scatter-add backend.
+
+    Reads the raw h5 ``/{group}/{t,x,y,p}`` directly (no parquet conversion), applies the
+    RVT non-decreasing time correction, computes per-window slices via ``np.searchsorted``
+    on the global corrected time, and processes windows in bounded batches. Each batch
+    slices the needed event range from h5py and hands it to the Rust ``stacked_histogram_dense``
+    function, which returns the dense uint8 windows that are written straight to the h5.
+    """
+    if downsample_by_2:
+        row_map = _build_index_maps(height, out_h)
+        col_map = _build_index_maps(width, out_w)
+    else:
+        row_map = np.arange(height, dtype=np.int64)
+        col_map = np.arange(width, dtype=np.int64)
+
+    import evlib
+
+    with h5py.File(str(in_h5), "r") as f:
+        grp = f[dataset_group]
+        t_full = correct_time_nondecreasing(np.asarray(grp["t"], dtype=np.int64))
+        # RVT window slices over the global, corrected, non-decreasing time array.
+        starts = np.searchsorted(t_full, grid - delta_t_us, side="left")
+        ends = np.searchsorted(t_full, grid, side="right")
+
+        num_windows = len(grid)
+        for a in range(0, num_windows, window_batch_size):
+            b = min(a + window_batch_size - 1, num_windows - 1)
+            ev_lo = int(starts[a])
+            ev_hi = int(ends[b])
+            if ev_hi <= ev_lo:
+                continue
+            t_batch = t_full[ev_lo:ev_hi]
+            x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=np.int64)
+            y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=np.int64)
+            p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=np.int64)
+
+            dense = evlib.representations_rs.stacked_histogram_dense(
+                t_batch,
+                x_batch,
+                y_batch,
+                p_batch,
+                np.asarray(grid[a : b + 1], dtype=np.int64),
+                delta_t_us,
+                nbins,
+                count_cutoff,
+                row_map,
+                col_map,
+                out_h,
+                out_w,
+            )
+            for local in range(b - a + 1):
+                writer.write_window(a + local, dense[local])
 
 
 def process_sequence(
@@ -25,17 +109,17 @@ def process_sequence(
     count_cutoff: int = 10,
     delta_t_us: int = 50_000,
     engine: str = "auto",
+    backend: str = "polars",
     labels_npy: Optional[Path] = None,
     split: str = "val",
     tmp_parquet: Optional[Path] = None,
     window_batch_size: int = 10,
 ) -> Path:
+    if backend not in ("polars", "rust"):
+        raise ValueError(f"backend must be 'polars' or 'rust', got {backend!r}")
     out_dir = Path(out_dir)
     repr_dir = out_dir / "event_representations_v2" / REPR_NAME
     repr_dir.mkdir(parents=True, exist_ok=True)
-
-    pq = Path(tmp_parquet) if tmp_parquet else repr_dir / "_events.parquet"
-    convert_h5_to_parquet(in_h5, pq)
 
     grid = np.asarray(ev_repr_timestamps_us, dtype=np.int64)
     num_windows = len(grid)
@@ -43,6 +127,40 @@ def process_sequence(
     channels = 2 * nbins
     suffix = "_ds2_nearest" if downsample_by_2 else ""
     out_h5 = repr_dir / f"event_representations{suffix}.h5"
+
+    if backend == "rust":
+        with H5RepresentationWriter(
+            out_h5,
+            num_windows=num_windows,
+            channels=channels,
+            height=out_h,
+            width=out_w,
+        ) as writer:
+            _process_sequence_rust(
+                in_h5,
+                grid,
+                height=height,
+                width=width,
+                out_h=out_h,
+                out_w=out_w,
+                nbins=nbins,
+                count_cutoff=count_cutoff,
+                delta_t_us=delta_t_us,
+                downsample_by_2=downsample_by_2,
+                writer=writer,
+                window_batch_size=window_batch_size,
+            )
+        np.save(
+            str(repr_dir / "timestamps_us.npy"),
+            np.asarray(ev_repr_timestamps_us, dtype=np.int64),
+        )
+        _write_labels(
+            labels_npy, split, dataset, repr_dir, out_dir, ev_repr_timestamps_us
+        )
+        return out_h5
+
+    pq = Path(tmp_parquet) if tmp_parquet else repr_dir / "_events.parquet"
+    convert_h5_to_parquet(in_h5, pq)
 
     # Window-batched processing for bounded memory. Each batch covers global window
     # indices [a, b]. RVT assigns every event with T_i - delta_t <= t <= T_i to window i,
@@ -88,28 +206,39 @@ def process_sequence(
         np.asarray(ev_repr_timestamps_us, dtype=np.int64),
     )
 
-    if labels_npy is not None:
-        try:
-            from evlib.rvt.labels import build_timeline  # deferred module; optional
-        except ImportError:
-            build_timeline = None
-        if build_timeline is not None:
-            tl = build_timeline(labels_npy, split=split, dataset=dataset)
-            np.save(
-                str(repr_dir / "objframe_idx_2_repr_idx.npy"),
-                tl.objframe_idx_2_repr_idx,
-            )
-            labels_dir = out_dir / "labels_v2"
-            labels_dir.mkdir(parents=True, exist_ok=True)
-            np.savez(
-                str(labels_dir / "labels.npz"),
-                labels=tl.labels_v2,
-                objframe_idx_2_label_idx=tl.objframe_idx_2_label_idx,
-            )
-            np.save(str(labels_dir / "timestamps_us.npy"), tl.frame_timestamps_us)
+    _write_labels(labels_npy, split, dataset, repr_dir, out_dir, ev_repr_timestamps_us)
 
     pq.unlink(missing_ok=True)
     return out_h5
+
+
+def _write_labels(
+    labels_npy: Optional[Path],
+    split: str,
+    dataset: str,
+    repr_dir: Path,
+    out_dir: Path,
+    ev_repr_timestamps_us: np.ndarray,
+) -> None:
+    if labels_npy is None:
+        return
+    try:
+        from evlib.rvt.labels import build_timeline  # deferred module; optional
+    except ImportError:
+        return
+    tl = build_timeline(labels_npy, split=split, dataset=dataset)
+    np.save(
+        str(repr_dir / "objframe_idx_2_repr_idx.npy"),
+        tl.objframe_idx_2_repr_idx,
+    )
+    labels_dir = out_dir / "labels_v2"
+    labels_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        str(labels_dir / "labels.npz"),
+        labels=tl.labels_v2,
+        objframe_idx_2_label_idx=tl.objframe_idx_2_label_idx,
+    )
+    np.save(str(labels_dir / "timestamps_us.npy"), tl.frame_timestamps_us)
 
 
 def main(argv: Optional[list] = None) -> int:
