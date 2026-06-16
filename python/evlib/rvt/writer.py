@@ -39,6 +39,53 @@ def scatter_window_dense(
     return dense
 
 
+class H5RepresentationWriter:
+    """Incremental writer for the RVT-layout event representation HDF5.
+
+    Creates the ``data`` dataset once with the same shape, chunking and blosc-zstd
+    compression as :func:`write_event_representation_h5`, then fills individual
+    window slices via :meth:`write_window`. Use as a context manager (or call
+    :meth:`close`) to ensure the file is flushed.
+    """
+
+    def __init__(
+        self,
+        out_path: Path,
+        num_windows: int,
+        channels: int,
+        height: int,
+        width: int,
+    ) -> None:
+        self.channels = channels
+        self.height = height
+        self.width = width
+        self.num_windows = num_windows
+        shape = (channels, height, width)
+        self._h5f = h5py.File(str(out_path), "w")
+        self._dset = self._h5f.create_dataset(
+            "data",
+            dtype="uint8",
+            shape=(num_windows,) + shape,
+            chunks=(1,) + shape,
+            maxshape=(None,) + shape,
+            **_blosc_opts(),
+        )
+
+    def write_window(self, global_window_index: int, dense_array: np.ndarray) -> None:
+        self._dset[global_window_index] = dense_array
+
+    def close(self) -> None:
+        if self._h5f is not None:
+            self._h5f.close()
+            self._h5f = None
+
+    def __enter__(self) -> "H5RepresentationWriter":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+
 def write_event_representation_h5(
     out_path: Path,
     sparse: pl.DataFrame,
