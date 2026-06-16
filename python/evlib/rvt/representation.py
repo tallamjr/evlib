@@ -24,20 +24,59 @@ def build_sparse_histogram(
 ) -> pl.DataFrame:
     lf = events.lazy() if isinstance(events, pl.DataFrame) else events
 
-    # --- window assignment: window_id = first grid index with T_end >= t; keep if t >= T_end - dt ---
+    # --- window assignment ---
+    # RVT slices each window i from the globally sorted event array as
+    #   [searchsorted(t, T_i - delta_t, "left"), searchsorted(t, T_i, "right"))
+    # which keeps every event with  T_i - delta_t <= t <= T_i  (both ends inclusive).
+    # When two consecutive grid timestamps are exactly delta_t apart, an event sitting on
+    # that shared boundary therefore belongs to BOTH windows. We must replicate this
+    # duplication, so an event is assigned to the contiguous range of windows
+    #   lo = first i with T_i >= t      (forward as-of on t)
+    #   hi = last  i with T_i <= t + dt (backward as-of on t + dt)
+    # and the range [lo, hi] is exploded out. For almost all events lo == hi (single
+    # window); the duplicate only appears at a shared boundary.
     grid = np.asarray(ev_repr_timestamps_us, dtype=np.int64)
-    grid_lf = pl.DataFrame(
-        {"window_id": np.arange(len(grid), dtype=np.int64), "T_end": grid}
-    ).lazy()
-    # forward as-of join: attach the first T_end >= t
-    lf = lf.sort("t").join_asof(
-        grid_lf.sort("T_end"), left_on="t", right_on="T_end", strategy="forward"
-    )
+    grid_ids = np.arange(len(grid), dtype=np.int64)
+    lo_lf = pl.DataFrame({"lo": grid_ids, "T_lo": grid}).lazy().sort("T_lo")
+    hi_lf = pl.DataFrame({"hi": grid_ids, "T_hi": grid}).lazy().sort("T_hi")
+    lf = lf.sort("t")
+    lf = lf.join_asof(lo_lf, left_on="t", right_on="T_lo", strategy="forward")
+    lf = lf.with_columns((pl.col("t") + delta_t_us).alias("_t_hi"))
+    lf = lf.join_asof(hi_lf, left_on="_t_hi", right_on="T_hi", strategy="backward")
     lf = lf.filter(
-        pl.col("T_end").is_not_null() & (pl.col("t") >= (pl.col("T_end") - delta_t_us))
+        pl.col("lo").is_not_null()
+        & pl.col("hi").is_not_null()
+        & (pl.col("lo") <= pl.col("hi"))
+    )
+    lf = lf.with_columns(
+        pl.int_ranges(pl.col("lo"), pl.col("hi") + 1).alias("window_id")
+    ).explode("window_id")
+
+    # --- per-window time binning (MUST happen before the downsample fold) ---
+    # RVT computes t0 = time[0], t1 = time[-1] over ALL events in the window slice, builds the
+    # full-resolution histogram, and only THEN downsamples. So the normalization range t0/t1 must
+    # be taken over the complete event set. If we applied the downsample coordinate filter first,
+    # the window's first/last event would be dropped whenever it lands on a non-selected pixel,
+    # changing t0/t1 and shifting every event's bin (observed as off-by-one-bin, same total count).
+    #
+    # Binning is done in Float64, not Float32: torch's int64 true-divide yields a correctly-rounded
+    # float32, but Polars float32 division uses an approximate/SIMD reciprocal that rounds the wrong
+    # way at exact bin boundaries (e.g. 5000/50000*10, true value 1.0, floors to 0 instead of 1).
+    # Float64 is accurate and reproduces torch's result bit-for-bit on this data.
+    t0 = pl.col("t").min().over("window_id")
+    t1 = pl.col("t").max().over("window_id")
+    denom = (t1 - t0).clip(lower_bound=1).cast(pl.Float64)
+    t_norm = ((pl.col("t") - t0).cast(pl.Float64) / denom) * pl.lit(
+        nbins, dtype=pl.Float64
+    )
+    t_idx = t_norm.floor().cast(pl.Int32).clip(upper_bound=nbins - 1)
+    lf = lf.with_columns(t_idx.alias("t_idx")).with_columns(
+        (
+            pl.col("p").cast(pl.Int32).clip(lower_bound=0) * nbins + pl.col("t_idx")
+        ).alias("channel")
     )
 
-    # --- downsample fold (gen4) ---
+    # --- downsample fold (gen4): nearest-exact gather applied as a coordinate filter ---
     if downsample_by_2:
         rows = selected_source_indices(height, height // 2)
         cols = selected_source_indices(width, width // 2)
@@ -64,28 +103,11 @@ def build_sparse_histogram(
     else:
         out_h, out_w = height, width
 
-    # --- per-window float32 time binning ---
-    # torch computes: t_norm = (t - t0).float() / max(t1 - t0, 1); * nbins; floor; clamp to nbins-1.
-    # The true-divide of an int64 tensor by an int produces float32 in torch, so we cast the
-    # numerator to Float32 BEFORE the division and keep the denominator Float32 too.
-    t0 = pl.col("t").min().over("window_id")
-    t1 = pl.col("t").max().over("window_id")
-    denom = (t1 - t0).clip(lower_bound=1).cast(pl.Float32)
-    t_norm = ((pl.col("t") - t0).cast(pl.Float32) / denom) * pl.lit(
-        nbins, dtype=pl.Float32
-    )
-    t_idx = t_norm.floor().cast(pl.Int32).clip(upper_bound=nbins - 1)
-
+    # --- aggregate counts per (window, channel, output pixel) and clip to count_cutoff ---
     lf = (
         lf.filter(
             pl.col("x").cast(pl.Int64).is_between(0, out_w - 1)
             & pl.col("y").cast(pl.Int64).is_between(0, out_h - 1)
-        )
-        .with_columns(t_idx.alias("t_idx"))
-        .with_columns(
-            (
-                pl.col("p").cast(pl.Int32).clip(lower_bound=0) * nbins + pl.col("t_idx")
-            ).alias("channel")
         )
         .group_by(["window_id", "channel", "y", "x"])
         .agg(pl.len().alias("count"))
