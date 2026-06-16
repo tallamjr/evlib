@@ -1,5 +1,14 @@
 """Polars stacked-histogram builder. Produces a sparse count table identical to RVT's dense
-StackedHistogram, with the 2x nearest-exact downsample folded into a coordinate filter."""
+StackedHistogram, with the 2x nearest-exact downsample folded into a coordinate filter.
+
+Engine selection
+----------------
+The ``engine`` argument is forwarded to ``LazyFrame.collect(engine=...)``. Accepted values:
+``"auto"``, ``"in-memory"``, ``"streaming"``, ``"gpu"`` (string) or a ``pl.GPUEngine(...)``
+instance. GPU and streaming are mutually exclusive in Polars: the GPU (cudf-polars) backend
+does not stream. Requesting the GPU engine on a host without CUDA / cudf-polars is safe; Polars
+transparently falls back to the default CPU engine and produces identical output, so no explicit
+fallback handling is needed here."""
 
 from typing import Union
 

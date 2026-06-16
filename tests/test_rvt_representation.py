@@ -49,3 +49,36 @@ def test_count_cutoff_clips():
         engine="in-memory",
     )
     assert sparse["count"].max() == 10
+
+
+def test_gpu_engine_falls_back_on_cpu_only_host():
+    import numpy as np
+    import polars as pl
+    from evlib.rvt.representation import build_sparse_histogram
+
+    events = pl.DataFrame(
+        {
+            "t": np.array([0, 50], dtype=np.int64),
+            "x": np.array([0, 1], dtype=np.int16),
+            "y": np.array([0, 0], dtype=np.int16),
+            "p": np.array([0, 1], dtype=np.int8),
+        }
+    )
+    ref = build_sparse_histogram(
+        events,
+        np.array([50], dtype=np.int64),
+        1000,
+        10,
+        10,
+        4,
+        4,
+        False,
+        engine="in-memory",
+    )
+    out = build_sparse_histogram(
+        events, np.array([50], dtype=np.int64), 1000, 10, 10, 4, 4, False, engine="gpu"
+    )
+    # GPU must transparently fall back on a CPU-only host and produce identical output
+    assert out.sort(["window_id", "channel", "y", "x"]).equals(
+        ref.sort(["window_id", "channel", "y", "x"])
+    )
