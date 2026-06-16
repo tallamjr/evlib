@@ -528,6 +528,9 @@ def plot(results: Dict[str, PipelineResult], out_time: Path, out_mem: Path) -> N
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    # User's standard plotting font; falls back gracefully if Tahoma is absent.
+    plt.rcParams["font.family"] = "Tahoma"
+
     order = ["evlib_rust", "evlib_full", "evlib_build", "rvt"]
     order = [k for k in order if k in results]
     colour_map = {
@@ -565,7 +568,7 @@ def plot(results: Dict[str, PipelineResult], out_time: Path, out_mem: Path) -> N
     ax.set_xlim(0, max(maxs) * 1.18)
     _style_axes(ax)
     fig.tight_layout()
-    fig.savefig(out_time, dpi=150)
+    fig.savefig(out_time, dpi=300)
     plt.close(fig)
 
     # Memory chart
@@ -584,7 +587,7 @@ def plot(results: Dict[str, PipelineResult], out_time: Path, out_mem: Path) -> N
     ax.set_xlim(0, max(gbs) * 1.18)
     _style_axes(ax)
     fig.tight_layout()
-    fig.savefig(out_mem, dpi=150)
+    fig.savefig(out_mem, dpi=300)
     plt.close(fig)
 
 
