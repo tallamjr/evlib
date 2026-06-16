@@ -237,71 +237,6 @@ impl LoadConfig {
     }
 }
 
-/// Returns the conversion factor to convert to seconds
-#[allow(dead_code)]
-fn detect_timestamp_units(timestamps: &[i64]) -> f64 {
-    if timestamps.is_empty() {
-        return 1_000_000.0; // Default to microseconds
-    }
-
-    // Sample multiple timestamps to be more robust
-    let sample_size = std::cmp::min(10, timestamps.len());
-    let mut max_timestamp = 0i64;
-
-    for &ts in timestamps.iter().take(sample_size) {
-        max_timestamp = std::cmp::max(max_timestamp, ts.abs());
-    }
-
-    // Determine units based on timestamp magnitude
-    // Nanoseconds: typically > 10^15 for recent data (e.g., 1.6e18 for year 2021+)
-    // Microseconds: typically 10^9 to 10^15
-    // Seconds: typically < 10^9
-    if max_timestamp > 1_000_000_000_000_000 {
-        // > 10^15
-        1_000_000_000.0 // nanoseconds to seconds
-    } else if max_timestamp > 1_000_000_000 {
-        // > 10^9
-        1_000_000.0 // microseconds to seconds
-    } else {
-        1.0 // already in seconds
-    }
-}
-
-/// Detect timestamp units for f64 arrays
-/// Returns the conversion factor to convert to seconds
-#[allow(dead_code)]
-fn detect_timestamp_units_f64(timestamps: &[f64]) -> f64 {
-    if timestamps.is_empty() {
-        return 1_000_000.0; // Default to microseconds
-    }
-
-    // Sample multiple timestamps to be more robust
-    let sample_size = std::cmp::min(10, timestamps.len());
-    let mut max_timestamp = 0.0f64;
-
-    for &ts in timestamps.iter().take(sample_size) {
-        max_timestamp = max_timestamp.max(ts.abs());
-    }
-
-    // Determine units based on timestamp magnitude
-    if max_timestamp > 1_000_000_000_000_000.0 {
-        // > 10^15
-        1_000_000_000.0 // nanoseconds to seconds
-    } else if max_timestamp > 1_000_000_000.0 {
-        // > 10^9
-        1_000_000.0 // microseconds to seconds
-    } else {
-        1.0 // already in seconds
-    }
-}
-
-/// Validate that coordinates are within reasonable bounds for event cameras
-#[allow(dead_code)]
-fn validate_coordinates(x: u16, y: u16) -> bool {
-    // Most event cameras have resolutions <= 1280x720 (Gen4) or 640x480 (DAVIS)
-    // Allow some margin for unusual sensors, but reject clearly invalid values
-    x <= 2048 && y <= 2048
-}
 /// # Arguments
 /// * `path` - Path to the text file
 /// * `config` - Configuration with filtering options
@@ -444,13 +379,6 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFr
 // 4. No error handling for malformed binary data
 //
 // All file types now use the safe, reliable text parser
-
-// Backward compatibility functions (maintain old API)
-
-/// Load events from a text file (backward compatibility)
-pub fn load_events_from_text_simple(path: &str) -> IoResult<DataFrame> {
-    load_events_from_text(path, &LoadConfig::new())
-}
 
 /// Generic load function with automatic format detection and filtering
 pub fn load_events_with_config(
