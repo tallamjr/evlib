@@ -10,13 +10,12 @@ function names, signatures, and return types for seamless migration.
 
 import polars as pl
 from typing import Union, Literal, Optional, List
-from polars.lazyframe.engine_config import GPUEngine
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Use Polars' native type definition
-EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], GPUEngine]
+EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], pl.GPUEngine]
 
 # Helper type for flexible input handling
 EventsInput = Union[pl.LazyFrame, pl.DataFrame]
