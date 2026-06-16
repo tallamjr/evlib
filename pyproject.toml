@@ -39,6 +39,9 @@ dependencies = [
 
 dynamic = ["version"]
 
+[project.scripts]
+evlib-rvt-preprocess = "evlib.rvt.pipeline:main"
+
 [project.optional-dependencies]
 dev = [
     "codecov",

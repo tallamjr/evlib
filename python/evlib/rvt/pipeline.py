@@ -110,3 +110,77 @@ def process_sequence(
 
     pq.unlink(missing_ok=True)
     return out_h5
+
+
+def main(argv: Optional[list] = None) -> int:
+    """CLI entry point: preprocess one raw event sequence into the RVT layout.
+
+    Requires one of --grid-npy (a precomputed ev_repr_timestamps_us .npy) or
+    --labels-npy. If only --labels-npy is given and evlib.rvt.labels is importable,
+    the grid is derived from it; the labels file is also passed through to
+    process_sequence, which guards its own (deferred) label handling.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="evlib-rvt-preprocess",
+        description="Preprocess a raw event sequence into the RVT stacked-histogram layout.",
+    )
+    parser.add_argument("--in-h5", required=True, type=Path)
+    parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--dataset", default="gen4", choices=["gen1", "gen4"])
+    parser.add_argument("--height", required=True, type=int)
+    parser.add_argument("--width", required=True, type=int)
+    parser.add_argument(
+        "--grid-npy",
+        type=Path,
+        default=None,
+        help="Path to a precomputed ev_repr_timestamps_us .npy file.",
+    )
+    parser.add_argument(
+        "--labels-npy",
+        type=Path,
+        default=None,
+        help="Optional labels .npy; used to derive the grid when evlib.rvt.labels "
+        "is available, and passed through to process_sequence.",
+    )
+    parser.add_argument("--split", default="val")
+    parser.add_argument("--no-downsample", action="store_true")
+    parser.add_argument("--engine", default="auto")
+    args = parser.parse_args(argv)
+
+    if args.grid_npy is None and args.labels_npy is None:
+        raise SystemExit("one of --grid-npy or --labels-npy is required")
+
+    grid = None
+    if args.grid_npy is not None:
+        grid = np.load(args.grid_npy)
+    elif args.labels_npy is not None:
+        try:
+            from evlib.rvt.labels import build_timeline  # deferred module; optional
+        except ImportError:
+            build_timeline = None
+        if build_timeline is not None:
+            tl = build_timeline(args.labels_npy, split=args.split, dataset=args.dataset)
+            grid = np.asarray(tl.frame_timestamps_us, dtype=np.int64)
+
+    if grid is None:
+        raise SystemExit("one of --grid-npy or --labels-npy is required")
+
+    process_sequence(
+        args.in_h5,
+        args.out_dir,
+        dataset=args.dataset,
+        height=args.height,
+        width=args.width,
+        ev_repr_timestamps_us=grid,
+        downsample_by_2=not args.no_downsample,
+        engine=args.engine,
+        labels_npy=args.labels_npy,
+        split=args.split,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -37,3 +37,47 @@ def test_process_sequence_writes_full_layout(tmp_path):
         out
         / "event_representations_v2/stacked_histogram_dt50_nbins10/timestamps_us.npy"
     ).exists()
+
+
+def test_cli_runs_on_synthetic(tmp_path):
+    import h5py
+    import numpy as np
+    from evlib.rvt import pipeline
+
+    raw = tmp_path / "seq_td.h5"
+    n = 50
+    with h5py.File(raw, "w") as f:
+        g = f.create_group("events")
+        g.create_dataset("t", data=np.linspace(0, 100000, n).astype(np.uint32))
+        g.create_dataset("x", data=(np.arange(n) % 8).astype(np.int32))
+        g.create_dataset("y", data=(np.arange(n) % 6).astype(np.int32))
+        g.create_dataset("p", data=(np.arange(n) % 2).astype(np.int32))
+    grid = tmp_path / "grid.npy"
+    np.save(grid, np.array([50000, 100000], dtype=np.int64))
+    rc = pipeline.main(
+        [
+            "--in-h5",
+            str(raw),
+            "--out-dir",
+            str(tmp_path / "o"),
+            "--dataset",
+            "gen4",
+            "--height",
+            "8",
+            "--width",
+            "6",
+            "--grid-npy",
+            str(grid),
+            "--no-downsample",
+            "--engine",
+            "in-memory",
+        ]
+    )
+    assert rc == 0
+    assert (
+        tmp_path
+        / "o"
+        / "event_representations_v2"
+        / "stacked_histogram_dt50_nbins10"
+        / "event_representations.h5"
+    ).exists()
