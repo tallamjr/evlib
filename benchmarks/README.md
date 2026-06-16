@@ -59,25 +59,25 @@ Measured on this machine (macOS, CPU), medians over 3 repeats:
 
 | pipeline | median time | peak memory |
 | --- | --- | --- |
-| evlib rust (dense scatter-add, raw h5) | 15.6 s | 7.38 GB |
+| evlib rust (dense scatter-add, raw h5) | 15.7 s | 6.34 GB |
 | evlib streaming (full) | 58.5 s | 4.29 GB |
 | evlib build only | 28.2 s | 3.28 GB |
 | RVT torch (reference) | 23.4 s | 6.40 GB |
 
 - **Time**: the **Rust dense scatter-add backend is about 1.5x faster than RVT's torch
-  reference** (15.6 s vs 23.4 s median) on CPU, and roughly 3.7x faster than the full
+  reference** (15.7 s vs 23.4 s median) on CPU, and roughly 3.7x faster than the full
   Polars streaming pipeline. It wins by skipping the h5 to Parquet conversion entirely
   (it reads the raw h5 directly) and by replacing the Polars hash group-by with a flat
   scatter-add into a preallocated dense buffer, which is the same algorithm torch uses but
   without torch's per-window tensor allocation overhead.
-- **Memory**: the Rust backend uses **1.15x more** peak memory than RVT (7.38 GB vs
-  6.40 GB). It holds one int64 copy of the global corrected time array (~4.3 GB for
-  540 M events) for the global `searchsorted`, which is the dominant fixed cost; the
-  per-batch event slices and dense output buffers are small and do not grow with sequence
-  length, so memory is bounded. This is an honest trade: the Rust path buys a 1.5x speedup
-  at a modest memory premium over torch. The Polars backends still use about 1.5x less
-  peak memory than both (4.29 GB full, 3.28 GB build-only) by streaming windowed Parquet
-  batches, at the cost of being slower.
+- **Memory**: the Rust backend also edges out RVT, using **slightly less** peak memory
+  (6.34 GB vs 6.40 GB). It holds one uint32 copy of the global corrected time array
+  (~2.16 GB for 540 M events, the raw h5 dtype) for the global `searchsorted`, which is the
+  dominant fixed cost and matches RVT's own time-array footprint; the per-batch event slices
+  and dense output buffers are small and do not grow with sequence length, so memory is
+  bounded. So the Rust backend wins on both time and memory. The Polars backends use about
+  1.5x less peak memory still (4.29 GB full, 3.28 GB build-only) by streaming windowed
+  Parquet batches, at the cost of being slower.
 - The default backend remains the Polars streaming path; the Rust scatter-add backend is
   opt-in via `backend="rust"`.
 

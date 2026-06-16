@@ -4,16 +4,16 @@
     "note": "evlib rust\n(dense scatter-add, raw h5)",
     "runs": [
       {
-        "wall_s": 15.601115041063167,
-        "peak_rss_bytes": 7923384320
+        "wall_s": 15.715923292096704,
+        "peak_rss_bytes": 6808371200
       },
       {
-        "wall_s": 15.816567041911185,
-        "peak_rss_bytes": 7907065856
+        "wall_s": 15.688792790984735,
+        "peak_rss_bytes": 6808797184
       },
       {
-        "wall_s": 15.522175707970746,
-        "peak_rss_bytes": 7919419392
+        "wall_s": 15.86563583300449,
+        "peak_rss_bytes": 6807633920
       }
     ]
   },

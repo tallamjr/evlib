@@ -62,19 +62,19 @@ def _process_sequence_rust(
 
     with h5py.File(str(in_h5), "r") as f:
         grp = f[dataset_group]
-        # Read the raw time column into a single preallocated int64 buffer in chunks and
-        # correct it to non-decreasing in place. Holding one int64 copy (~4.3 GB for 540M
-        # events) is unavoidable for the global searchsorted, but chunked reads keep the
-        # transient (native-dtype) read buffer small instead of doubling peak memory by
-        # materialising the whole raw column before the dtype cast.
+        # Read the raw time column into a single preallocated uint32 buffer in chunks and
+        # correct it to non-decreasing in place. The global searchsorted needs the whole time
+        # column resident, but uint32 (the raw h5 dtype, ~2.16 GB for 540M events) holds the
+        # microsecond timestamps exactly (up to ~71 minutes) and halves the footprint versus an
+        # int64 copy, matching RVT's own memory profile. The small per-batch slice is cast to
+        # int64 only where the Rust function needs it.
         t_ds = grp["t"]
         n_total = t_ds.shape[0]
-        t_full = np.empty(n_total, dtype=np.int64)
+        t_full = np.empty(n_total, dtype=np.uint32)
         chunk = 16_000_000
         for c0 in range(0, n_total, chunk):
             c1 = min(c0 + chunk, n_total)
             t_full[c0:c1] = t_ds[c0:c1]
-        assert t_full[0] >= 0
         np.maximum.accumulate(t_full, out=t_full)
         # RVT window slices over the global, corrected, non-decreasing time array.
         starts = np.searchsorted(t_full, grid - delta_t_us, side="left")
@@ -87,7 +87,7 @@ def _process_sequence_rust(
             ev_hi = int(ends[b])
             if ev_hi <= ev_lo:
                 continue
-            t_batch = t_full[ev_lo:ev_hi]
+            t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
             x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=np.int64)
             y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=np.int64)
             p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=np.int64)
