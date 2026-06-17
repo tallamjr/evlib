@@ -64,11 +64,9 @@ except ImportError as e:
 # Access Rust submodules from the compiled module
 core = _rust.core
 formats = _rust.formats
-rust_filtering = _rust.filtering
 
 # Register Rust submodules in sys.modules so `import evlib.core` / `import evlib.formats`
-# work with dot notation. (Rust filtering is registered below only if the Python
-# implementation is unavailable.)
+# work with dot notation. Filtering is a pure-Python module, registered below.
 sys.modules[__name__ + ".core"] = core
 sys.modules[__name__ + ".formats"] = formats
 
@@ -199,25 +197,14 @@ if representations:
 if rvt is not None:
     sys.modules[__name__ + ".rvt"] = rvt
 
-# Choose filtering module: Python implementation preferred over Rust
-if python_filtering:
-    # Use Python filtering module
-    filtering = python_filtering
+# Filtering is the pure-Python Polars implementation (the single implementation).
+if python_filtering is None:
+    raise ImportError("Failed to import evlib.filtering Python module")
+filtering = python_filtering
+sys.modules[__name__ + ".filtering"] = python_filtering
 
-    # Register Python filtering module in sys.modules
-    sys.modules[__name__ + ".filtering"] = python_filtering
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print("DEBUG: Using Python filtering module")
-else:
-    # Fallback to Rust filtering module
-    filtering = rust_filtering
-
-    # Register Rust filtering module in sys.modules
-    sys.modules[__name__ + ".filtering"] = rust_filtering
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print("DEBUG: Using Rust filtering module (Python not available)")
+if os.environ.get("DEBUG_EVLIB"):
+    print("DEBUG: Using Python filtering module")
 
 
 try:
