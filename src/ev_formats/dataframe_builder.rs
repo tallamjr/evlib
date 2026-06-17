@@ -73,6 +73,21 @@ impl EventDataFrameBuilder {
         self.event_count += 1;
     }
 
+    /// Add a single event with an already-converted microsecond timestamp.
+    ///
+    /// This bypasses the magnitude-based `convert_timestamp` heuristic and stores
+    /// the supplied microsecond value verbatim. It exists for readers (such as AER)
+    /// that compute exact integer-microsecond timestamps themselves and must not be
+    /// re-interpreted as seconds/nanoseconds by the heuristic.
+    pub fn add_event_microseconds(&mut self, x: u16, y: u16, timestamp_us: i64, polarity: bool) {
+        self.x_builder.append_value(x as i16);
+        self.y_builder.append_value(y as i16);
+        self.timestamp_builder.append_value(timestamp_us);
+        self.polarity_builder
+            .append_value(if polarity { 1i8 } else { 0i8 });
+        self.event_count += 1;
+    }
+
     /// Add multiple events in batch
     pub fn add_events_batch(&mut self, events: &[(u16, u16, f64, bool)]) {
         for &(x, y, timestamp, polarity) in events {
@@ -299,6 +314,21 @@ mod tests {
         assert!(column_names.contains(&"y".to_string()));
         assert!(column_names.contains(&"t".to_string()));
         assert!(column_names.contains(&"polarity".to_string()));
+    }
+
+    #[test]
+    fn test_add_event_microseconds_stores_value_verbatim() {
+        let mut builder = EventDataFrameBuilder::new(EventFormat::AER, 4);
+
+        // Values that the magnitude heuristic would misclassify if routed through
+        // convert_timestamp: 1 us (< 1000 => seconds) and 1_001_000 us (>= 1000).
+        builder.add_event_microseconds(10, 20, 1, true);
+        builder.add_event_microseconds(30, 40, 1_001_000, false);
+
+        let df = builder.build().unwrap();
+        let t = df.column("t").unwrap().duration().unwrap();
+        assert_eq!(t.get(0).unwrap(), 1);
+        assert_eq!(t.get(1).unwrap(), 1_001_000);
     }
 
     #[test]
