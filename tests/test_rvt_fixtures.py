@@ -5,9 +5,11 @@ from tests.rvt_fixtures import (
     ref_repr_h5,
     ref_timestamps,
     ref_labels_npz,
+    requires_reference_data,
 )
 
 
+@requires_reference_data
 def test_reference_paths_exist():
     assert raw_input_path().exists()
     assert ref_repr_h5().exists()

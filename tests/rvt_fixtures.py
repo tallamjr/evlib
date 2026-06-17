@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 REF = (
     ROOT
@@ -38,3 +40,12 @@ def ref_labels_npz() -> Path:
 
 def ref_labels_timestamps() -> Path:
     return REF / "labels_v2/timestamps_us.npy"
+
+
+# The large RVT reference datasets are gitignored, so they are absent in CI. Tests that read
+# them are skipped when the raw input is not present; the synthetic-data tests still run.
+reference_data_available = RAW.exists()
+requires_reference_data = pytest.mark.skipif(
+    not reference_data_available,
+    reason="RVT reference data not present (gitignored; absent in CI)",
+)

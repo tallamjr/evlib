@@ -2,7 +2,7 @@ import h5py
 import numpy as np
 import polars as pl
 import hdf5plugin  # noqa: F401
-from tests.rvt_fixtures import raw_input_path
+from tests.rvt_fixtures import raw_input_path, requires_reference_data
 from evlib.rvt.events import convert_h5_to_parquet, correct_time_nondecreasing
 
 
@@ -12,6 +12,7 @@ def test_correct_time_is_running_max():
     assert out.tolist() == [5, 5, 7, 7, 10]
 
 
+@requires_reference_data
 def test_convert_roundtrip_first_rows_match_raw(tmp_path):
     pq = tmp_path / "events.parquet"
     convert_h5_to_parquet(

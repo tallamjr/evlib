@@ -1,8 +1,13 @@
 """Unit tests for the benchmark measurement harness (no heavy pipeline runs)."""
 
 import sys
+from pathlib import Path
 
-from benchmarks.bench_rvt_pipeline import (
+# `benchmarks` is a repo-root package, not an installed one. Under pytest's prepend import mode
+# the repo root is not always on sys.path (e.g. CI's `pytest tests/`), so add it explicitly.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from benchmarks.bench_rvt_pipeline import (  # noqa: E402
     ru_maxrss_bytes,
     summarize,
     time_and_memory,
