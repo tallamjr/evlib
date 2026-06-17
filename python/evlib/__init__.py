@@ -77,6 +77,7 @@ if hasattr(_rust, "representations_rs"):
 
 # Make key functions directly accessible.
 # save_events_to_hdf5 handled below with fallback logic.
+version = _rust.version  # Rust-provided build version function (evlib.version())
 save_events_to_text = formats.save_events_to_text
 detect_format = formats.detect_format
 get_format_description = formats.get_format_description
