@@ -382,9 +382,6 @@ fn test_aedat_4_0_address_decoding() {
 }
 
 /// Test coordinate bounds checking
-#[ignore = "pre-existing AEDAT reader defect: max_resolution bounds are not enforced so \
-            read_file does not return an error for out-of-bounds coordinates; unrelated to the \
-            API port, tracked separately"]
 #[test]
 fn test_coordinate_bounds_checking() {
     let temp_dir = TempDir::new().unwrap();

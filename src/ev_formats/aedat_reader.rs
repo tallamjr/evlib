@@ -406,21 +406,26 @@ impl AedatReader {
                                                // Note: For DVS128, coordinates are max 128x128, so 7 bits each is sufficient
                                                // The coordinate system has (0,0) at lower left, but we convert to upper left
                                                // by inverting y coordinate if sensor resolution is known
-                                               // Validate coordinates and timestamp before adding to builder
-                if self.config.validate_timestamps {
-                    if x > 127 || y > 127 {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            return Err(AedatError::CoordinateOutOfBounds {
-                                event_index,
-                                x,
-                                y,
-                                max_x: 127,
-                                max_y: 127,
-                            });
+                                               // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x || y >= max_y {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x,
+                                    y,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
                         }
                     }
+                }
+                // Validate timestamp monotonicity before adding to builder
+                if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
                         if self.config.skip_invalid_events {
@@ -560,7 +565,25 @@ impl AedatReader {
                 let x = (address >> 1) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
                                                  // Extract y coordinate from bits 16-30 (up to 15 bits)
                 let y = (address >> 16) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-                                                  // Validate coordinates and timestamp before adding to builder
+                                                  // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x as u32 || y >= max_y as u32 {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x: x as u16,
+                                    y: y as u16,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
+                        }
+                    }
+                }
+                // Validate timestamp monotonicity before adding to builder
                 if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
@@ -714,7 +737,25 @@ impl AedatReader {
                 let y = (address >> 2) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
                                                  // Extract x coordinate from bits 17-31 (up to 15 bits)
                 let x = (address >> 17) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-                                                  // Validate coordinates and timestamp before adding to builder
+                                                  // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x as u32 || y >= max_y as u32 {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x: x as u16,
+                                    y: y as u16,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
+                        }
+                    }
+                }
+                // Validate timestamp monotonicity before adding to builder
                 if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
@@ -919,7 +960,7 @@ impl AedatReader {
             });
         }
         // Parse polarity events (8 bytes each in DV format)
-        for chunk in buffer.chunks_exact(8) {
+        for (event_index, chunk) in buffer.chunks_exact(8).enumerate() {
             let timestamp = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             let x = u16::from_le_bytes([chunk[4], chunk[5]]);
             let y = u16::from_le_bytes([chunk[6], chunk[7]]);
@@ -933,10 +974,23 @@ impl AedatReader {
             let polarity = (y & 0x8000) != 0;
             // Extract y coordinate by masking out polarity bit
             let y_clean = y & 0x7FFF; // Remove polarity bit (bit 15)
-                                      // Validate coordinates are within reasonable bounds
-            if x >= 8192 || y_clean >= 8192 {
-                // Skip events with unreasonable coordinates (likely corrupted)
-                continue;
+                                      // Validate coordinates against the configured resolution
+            if self.config.validate_coordinates {
+                if let Some((max_x, max_y)) = self.config.max_resolution {
+                    if x >= max_x || y_clean >= max_y {
+                        if self.config.skip_invalid_events {
+                            continue;
+                        } else {
+                            return Err(AedatError::CoordinateOutOfBounds {
+                                event_index,
+                                x,
+                                y: y_clean,
+                                max_x,
+                                max_y,
+                            });
+                        }
+                    }
+                }
             }
             events.push((x, y_clean, timestamp as f64, polarity));
         }
@@ -1238,8 +1292,6 @@ mod tests {
         assert_eq!(events.height(), 2); // Both events should be read
     }
     /// Test coordinate bounds validation
-    #[ignore = "pre-existing AEDAT reader defect: max_resolution bounds are not enforced so \
-                CoordinateOutOfBounds is never returned; unrelated to the API port, tracked separately"]
     #[test]
     fn test_coordinate_bounds_validation() {
         let temp_dir = TempDir::new().unwrap();
