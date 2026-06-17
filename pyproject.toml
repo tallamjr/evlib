@@ -81,7 +81,10 @@ strip = true
 include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", format = ["sdist", "wheel"]} ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "docs", "examples"]
+# Bare `pytest` runs the test suite only. docs (markdown-docs) and examples
+# (nbmake notebooks) need extra deps and data, and CI invokes them explicitly
+# (`pytest --nbmake examples/`, `pytest --markdown-docs docs/`).
+testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",

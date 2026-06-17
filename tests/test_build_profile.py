@@ -10,7 +10,7 @@ import sys
 import pytest
 
 import evlib
-from conftest import HAS_HDF5
+from tests.hdf5_support import HAS_HDF5
 
 
 def test_has_hdf5_is_bool():

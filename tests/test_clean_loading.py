@@ -9,7 +9,7 @@ import evlib
 import os
 import sys
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 pytestmark = requires_hdf5
 

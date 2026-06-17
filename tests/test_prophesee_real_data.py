@@ -7,7 +7,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 
 @requires_hdf5

@@ -27,7 +27,7 @@ from typing import Optional, Union
 import polars as pl
 import pytest
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 # Skip entire module on Windows - uses HDF5 files, and skip when HDF5
 # feature is not compiled into the current build.
