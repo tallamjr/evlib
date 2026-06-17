@@ -436,17 +436,39 @@ def diagnose_hdf5(file_path=None):
     print("  3. Use evlib.setup_hdf5_plugins() before loading")
 
 
-def load_events(path, **kwargs):
+def load_events(
+    path,
+    t_start=None,
+    t_end=None,
+    min_x=None,
+    max_x=None,
+    min_y=None,
+    max_y=None,
+    polarity=None,
+    sort=True,
+):
     """
-    Load events as Polars LazyFrame.
+    Load events as a Polars LazyFrame.
+
+    The Rust loader performs the full decode and returns the complete frame;
+    all load-time filters are applied here as Polars expressions so that the
+    whole load+filter is a single GPU-collectable LazyFrame.
 
     Args:
-        path: Path to event file
-        **kwargs: Additional arguments (t_start, t_end, min_x, max_x, min_y, max_y, polarity, sort, etc.)
+        path: Path to event file.
+        t_start: Inclusive lower time bound in seconds (optional).
+        t_end: Inclusive upper time bound in seconds (optional).
+        min_x: Inclusive lower x bound (optional).
+        max_x: Inclusive upper x bound (optional).
+        min_y: Inclusive lower y bound (optional).
+        max_y: Inclusive upper y bound (optional).
+        polarity: Keep only events with this polarity value (optional).
+        sort: Sort by timestamp after filtering (default True).
 
     Returns:
         Polars LazyFrame with columns [x, y, t, polarity]
-        - t is always converted to Duration type in microseconds
+        - t is a Duration type in microseconds
+        - polarity is already converted to -1/1
 
     Example:
         # Basic loading
@@ -456,12 +478,36 @@ def load_events(path, **kwargs):
         # from evlib.validation import quick_validate_events
         # is_valid = quick_validate_events(events)
     """
-    # Load data using Rust formats module - this returns a LazyFrame directly
-    lazy_frame = formats.load_events(path, **kwargs)
+    import polars as pl
 
-    # The Rust module already returns the LazyFrame with correct schema and column names
-    # Just return it directly - no need for Python-side conversion
-    return lazy_frame
+    # Full decode in Rust; no row filters passed to the readers.
+    lf = formats.load_events(path)
+
+    preds = []
+    if t_start is not None:
+        preds.append(pl.col("t").dt.total_microseconds() >= int(t_start * 1_000_000))
+    if t_end is not None:
+        preds.append(pl.col("t").dt.total_microseconds() <= int(t_end * 1_000_000))
+    if min_x is not None:
+        preds.append(pl.col("x") >= min_x)
+    if max_x is not None:
+        preds.append(pl.col("x") <= max_x)
+    if min_y is not None:
+        preds.append(pl.col("y") >= min_y)
+    if max_y is not None:
+        preds.append(pl.col("y") <= max_y)
+    if polarity is not None:
+        preds.append(pl.col("polarity") == polarity)
+
+    if preds:
+        from functools import reduce
+
+        lf = lf.filter(reduce(lambda a, b: a & b, preds))
+
+    if sort:
+        lf = lf.sort("t")
+
+    return lf
 
 
 # Define exports
