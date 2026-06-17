@@ -3,14 +3,11 @@
 from pathlib import Path
 from typing import Optional
 
-import h5py
 import numpy as np
 import polars as pl
 
-try:
-    import hdf5plugin  # noqa: F401  (registers the blosc filter for the raw h5)
-except ImportError:
-    pass
+# h5py and the hdf5plugin blosc filter are imported lazily inside the function that reads the
+# raw h5 (below), so that ``import evlib.rvt`` works on platforms without h5py (e.g. Windows CI).
 
 from evlib.rvt.downsample import selected_source_indices
 from evlib.rvt.events import convert_h5_to_parquet
@@ -59,6 +56,12 @@ def _process_sequence_rust(
         col_map = np.arange(width, dtype=np.int64)
 
     import evlib
+
+    try:
+        import hdf5plugin  # noqa: F401  (registers the blosc filter for the raw h5)
+    except ImportError:
+        pass
+    import h5py
 
     with h5py.File(str(in_h5), "r") as f:
         grp = f[dataset_group]

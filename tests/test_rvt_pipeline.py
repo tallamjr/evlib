@@ -1,3 +1,8 @@
+import pytest
+
+pytest.importorskip("h5py")
+pytest.importorskip("hdf5plugin")
+
 import h5py
 import numpy as np
 import hdf5plugin  # noqa: F401

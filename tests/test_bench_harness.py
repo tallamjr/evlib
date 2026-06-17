@@ -3,6 +3,12 @@
 import sys
 from pathlib import Path
 
+import pytest
+
+# The benchmark harness measures peak RSS via the Unix-only `resource` module, so this test
+# only runs on platforms that provide it (skipped on Windows).
+pytest.importorskip("resource")
+
 # `benchmarks` is a repo-root package, not an installed one. Under pytest's prepend import mode
 # the repo root is not always on sys.path (e.g. CI's `pytest tests/`), so add it explicitly.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

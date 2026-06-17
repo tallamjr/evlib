@@ -1,12 +1,16 @@
-import resource
 import subprocess
 import sys
 import textwrap
-import h5py
+from pathlib import Path
+
 import numpy as np
 import pytest
+
+pytest.importorskip("h5py")
+pytest.importorskip("hdf5plugin")
+
+import h5py
 import hdf5plugin  # noqa: F401
-from pathlib import Path
 from tests.rvt_fixtures import raw_input_path, ref_repr_h5, ref_timestamps
 from evlib.rvt.pipeline import process_sequence
 
@@ -120,6 +124,8 @@ def test_streaming_peak_memory_bounded(tmp_path):
         text=True,
     )
     assert proc.returncode == 0, f"subprocess failed:\n{proc.stderr}"
+
+    import resource  # Unix-only; this test is slow-marked and only runs where data exists
 
     ru_maxrss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     peak_bytes = ru_maxrss if sys.platform == "darwin" else ru_maxrss * 1024

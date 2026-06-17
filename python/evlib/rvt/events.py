@@ -2,15 +2,12 @@
 
 from pathlib import Path
 from typing import Optional
-import h5py
 import numpy as np
 import polars as pl
 import pyarrow.parquet as pq
 
-try:
-    import hdf5plugin  # noqa: F401  (registers the blosc filter needed to read the raw h5)
-except ImportError:
-    pass
+# h5py is imported lazily inside convert_h5_to_parquet so that ``import evlib.rvt`` works on
+# platforms without h5py (e.g. Windows CI, where HDF5 support is optional).
 
 
 def correct_time_nondecreasing(t: np.ndarray, prev_max: int = 0) -> np.ndarray:
@@ -37,6 +34,12 @@ def convert_h5_to_parquet(
 
     Returns the number of rows written.
     """
+    try:
+        import hdf5plugin  # noqa: F401  (registers the blosc filter needed to read the raw h5)
+    except ImportError:
+        pass
+    import h5py
+
     with h5py.File(str(in_h5), "r") as f:
         grp = f[dataset_group]
         n_total = grp["t"].shape[0]

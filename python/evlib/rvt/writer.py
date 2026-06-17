@@ -5,11 +5,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-try:
-    import hdf5plugin  # noqa: F401
-except ImportError:
-    pass
-import h5py
+# h5py (and the hdf5plugin blosc filter) are imported lazily inside the functions that do
+# HDF5 I/O, so that ``import evlib.rvt`` works on platforms without h5py (e.g. Windows CI).
 
 
 def _blosc_opts(complevel: int = 1, shuffle: str = "byte", complib: str = "blosc:zstd"):
@@ -61,6 +58,12 @@ class H5RepresentationWriter:
         self.width = width
         self.num_windows = num_windows
         shape = (channels, height, width)
+        try:
+            import hdf5plugin  # noqa: F401  (registers the blosc filter)
+        except ImportError:
+            pass
+        import h5py
+
         self._h5f = h5py.File(str(out_path), "w")
         self._dset = self._h5f.create_dataset(
             "data",
@@ -94,6 +97,12 @@ def write_event_representation_h5(
     height: int,
     width: int,
 ) -> None:
+    try:
+        import hdf5plugin  # noqa: F401  (registers the blosc filter)
+    except ImportError:
+        pass
+    import h5py
+
     shape = (channels, height, width)
     with h5py.File(str(out_path), "w") as h5f:
         dset = h5f.create_dataset(
