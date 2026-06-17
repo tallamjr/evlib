@@ -157,6 +157,11 @@ maturin develop                    # default minimal build
 maturin develop --features hdf5    # opt-in HDF5 support (Linux/macOS)
 ```
 
+Distributable wheels are built with the opt-in `extension-module` feature, e.g.
+`maturin build --release --features python,polars,arrow,extension-module`. That
+feature is deliberately off by default so `cargo test` and `maturin develop`
+build and run without linking errors.
+
 HDF5 is opt-in on Linux/macOS and unavailable on Windows — use `h5py` directly
 for HDF5 I/O on Windows. Full details and platform-specific notes live in
 the [installation guide](https://tallamjr.github.io/evlib/getting-started/installation/).
@@ -191,10 +196,11 @@ Benchmarks and performance scripts live in [`benches/`](./benches).
 ## Development
 
 ```bash
-# Tests
-pytest                        # Python
+# Tests (both run directly, no special flags needed)
+pytest                        # Python (test suite only)
 cargo test                    # Rust
-pytest --markdown-docs docs/  # doc examples
+pytest --markdown-docs docs/  # doc examples (explicit)
+pytest --nbmake examples/     # example notebooks (explicit)
 
 # Formatting / linting
 black python/ tests/ examples/
