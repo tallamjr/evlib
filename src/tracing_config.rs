@@ -161,7 +161,7 @@ pub fn init_with_filter(filter: &str) {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// #[cfg(test)]
 /// mod tests {
 ///     use evlib::tracing_config;

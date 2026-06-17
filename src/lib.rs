@@ -70,7 +70,7 @@ use pyo3::wrap_pyfunction;
 /// This library provides basic event camera data processing with focus on
 /// working file loading and core functionality only.
 #[pymodule]
-fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, m)?)?;
 

@@ -74,7 +74,7 @@ all = [
 
 [tool.maturin]
 python-source = "python"
-module-name = "evlib"
+module-name = "evlib._evlib"
 # Strip the library for minimum file size
 strip = true
 # Optionally include extra files in sdist or wheel

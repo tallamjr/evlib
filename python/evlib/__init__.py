@@ -51,93 +51,37 @@ x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
 """
 
 import os
+import sys
 
-# Import the compiled Rust extension module
+# Import the compiled Rust extension module as a private submodule (evlib._evlib).
+# Maturin builds it under the package as `evlib._evlib`, so the Python package
+# __init__.py (this file) is the import entry point for `import evlib`.
 try:
-    import importlib.util
-    import glob
-
-    # Find the compiled module file (.so on Unix, .pyd on Windows)
-    # Check both source directory and site-packages (maturin develop installs to site-packages)
-    import sys
-    import site
-
-    search_paths = [
-        os.path.dirname(__file__),  # Source directory (editable install)
-    ]
-
-    # Add site-packages directories (where maturin develop installs)
-    if hasattr(site, "getsitepackages"):
-        search_paths.extend(site.getsitepackages())
-    if hasattr(site, "getusersitepackages"):
-        search_paths.append(site.getusersitepackages())
-
-    # Critical for Windows venv: sys.prefix/Lib/site-packages might not be in getsitepackages()
-    if hasattr(sys, "prefix"):
-        venv_site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
-        if os.path.isdir(venv_site_packages):
-            search_paths.append(venv_site_packages)
-
-    # Also check sys.path for virtual environments
-    search_paths.extend(sys.path)
-
-    module_files = []
-    for path in search_paths:
-        if path and os.path.isdir(path):
-            # Match both naming conventions:
-            # - evlib.cpython-*.so/pyd (Linux/older naming)
-            # - evlib.cp3*.so/pyd (Windows/newer naming like evlib.cp311-win_amd64.pyd)
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.so")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.pyd")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.so")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.pyd")))
-            # Also check for evlib subdirectory
-            evlib_dir = os.path.join(path, "evlib")
-            if os.path.isdir(evlib_dir):
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so"))
-                )
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd"))
-                )
-                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.so")))
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd"))
-                )
-
-    # Remove duplicates and use first found
-    module_files = list(dict.fromkeys(module_files))
-
-    if module_files:
-        spec = importlib.util.spec_from_file_location("evlib", module_files[0])
-        rust_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(rust_module)
-
-        # CRITICAL FIX: Make this module appear as a package so Python allows submodule imports
-        current_module = sys.modules[__name__]
-        if not hasattr(current_module, "__path__"):
-            current_module.__path__ = [os.path.dirname(__file__)]
-
-        # Access submodules from the compiled module
-        core = rust_module.core
-        formats = rust_module.formats
-        rust_filtering = rust_module.filtering
-
-        # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
-        sys.modules[__name__ + ".core"] = core
-        sys.modules[__name__ + ".formats"] = formats
-        # Don't register Rust filtering yet - we'll decide below
-
-        # Make key functions directly accessible
-        # save_events_to_hdf5 handled below with fallback logic
-        save_events_to_text = formats.save_events_to_text
-        detect_format = formats.detect_format
-        get_format_description = formats.get_format_description
-    else:
-        raise ImportError("Compiled Rust module not found")
-
+    from . import _evlib as _rust
 except ImportError as e:
     raise ImportError(f"Failed to import evlib Rust module: {e}")
+
+# Access Rust submodules from the compiled module
+core = _rust.core
+formats = _rust.formats
+rust_filtering = _rust.filtering
+
+# Register Rust submodules in sys.modules so `import evlib.core` / `import evlib.formats`
+# work with dot notation. (Rust filtering is registered below only if the Python
+# implementation is unavailable.)
+sys.modules[__name__ + ".core"] = core
+sys.modules[__name__ + ".formats"] = formats
+
+# Expose the Rust dense-representation engine as `evlib.representations_rs` if present.
+if hasattr(_rust, "representations_rs"):
+    globals()["representations_rs"] = _rust.representations_rs
+    sys.modules[__name__ + ".representations_rs"] = _rust.representations_rs
+
+# Make key functions directly accessible.
+# save_events_to_hdf5 handled below with fallback logic.
+save_events_to_text = formats.save_events_to_text
+detect_format = formats.detect_format
+get_format_description = formats.get_format_description
 
 # Configure Polars GPU acceleration if available
 try:
