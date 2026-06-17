@@ -49,14 +49,20 @@ def create_evt3_header(width=640, height=480):
         "% end",
     ]
 
-    header_bytes = "\n".join(header).encode("utf-8")
+    # The binary event stream begins after a newline-terminated "% end" line, matching the
+    # OpenEB EVT3 format. Without the trailing newline the reader cannot delimit the header
+    # from the binary data and decodes zero events.
+    header_bytes = ("\n".join(header) + "\n").encode("utf-8")
     return header_bytes
 
 
 def encode_evt3_event(event_type, data_bits):
-    """Encode an EVT3 event as a 16-bit little-endian word"""
-    # EVT3 format: [15:4] data, [3:0] event type
-    raw_data = (data_bits << 4) | event_type
+    """Encode an EVT3 event as a 16-bit little-endian word.
+
+    OpenEB EVT3 wire format: bits [15:12] = 4-bit event type, bits [11:0] = 12-bit data.
+    (The reader extracts the type as ``(word >> 12) & 0xF``.)
+    """
+    raw_data = ((event_type & 0xF) << 12) | (data_bits & 0x0FFF)
     return struct.pack("<H", raw_data)
 
 
@@ -425,12 +431,14 @@ class TestEVT3FormatSupport(unittest.TestCase):
             if include_events and events_data:
                 # Convert events to EVT3 binary format
                 for timestamp_us, x, y, polarity in events_data:
-                    # EVT3 encoding: 4 words per event (16-bit little-endian)
-                    time_high = ((timestamp_us >> 12) & 0xFFF) << 4 | 0x8
-                    time_low = (timestamp_us & 0xFFF) << 4 | 0x6
-                    y_addr = (y & 0x7FF) << 4 | 0x0
+                    # EVT3 encoding (OpenEB wire format): 16-bit little-endian words with the
+                    # 4-bit event type in bits [15:12] and 12-bit data in bits [11:0]. The X
+                    # address word carries polarity at bit 11 and the 11-bit x in bits [10:0].
+                    time_high = (0x8 << 12) | ((timestamp_us >> 12) & 0xFFF)
+                    time_low = (0x6 << 12) | (timestamp_us & 0xFFF)
+                    y_addr = (0x0 << 12) | (y & 0x7FF)
                     x_addr = (
-                        ((1 if polarity > 0 else 0) << 15) | ((x & 0x7FF) << 4) | 0x2
+                        (0x2 << 12) | ((1 if polarity > 0 else 0) << 11) | (x & 0x7FF)
                     )
 
                     # Write as little-endian 16-bit words
@@ -753,15 +761,15 @@ class TestEVT3FormatSupport(unittest.TestCase):
                 words = struct.unpack("<4H", event_data)
                 time_high, time_low, y_addr, x_addr = words
 
-                # Reconstruct timestamp
-                reconstructed_t = ((time_high >> 4) << 12) | (time_low >> 4)
+                # Reconstruct timestamp (OpenEB layout: 12-bit data in bits [11:0])
+                reconstructed_t = ((time_high & 0xFFF) << 12) | (time_low & 0xFFF)
                 self.assertEqual(
                     reconstructed_t, expected_t, f"Event {i} timestamp mismatch"
                 )
 
-                # Reconstruct coordinates
-                reconstructed_x = (x_addr >> 4) & 0x7FF
-                reconstructed_y = (y_addr >> 4) & 0x7FF
+                # Reconstruct coordinates (x/y in bits [10:0])
+                reconstructed_x = x_addr & 0x7FF
+                reconstructed_y = y_addr & 0x7FF
                 self.assertEqual(
                     reconstructed_x, expected_x, f"Event {i} X coordinate mismatch"
                 )
@@ -769,8 +777,8 @@ class TestEVT3FormatSupport(unittest.TestCase):
                     reconstructed_y, expected_y, f"Event {i} Y coordinate mismatch"
                 )
 
-                # Reconstruct polarity
-                reconstructed_p = 1 if (x_addr & 0x8000) else -1
+                # Reconstruct polarity (bit 11 of the X address word)
+                reconstructed_p = 1 if ((x_addr >> 11) & 0x1) else -1
                 self.assertEqual(
                     reconstructed_p, expected_p, f"Event {i} polarity mismatch"
                 )
