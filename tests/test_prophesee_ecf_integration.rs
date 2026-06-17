@@ -68,10 +68,6 @@ fn test_prophesee_file_exists() {
     );
 }
 
-#[ignore = "pre-existing detector representation change: file size is exposed as the typed \
-            metadata.file_size field, not as a \"file_size\" key in the properties map, so this \
-            properties.contains_key assertion no longer holds; unrelated to the API port, tracked \
-            separately"]
 #[test]
 fn test_prophesee_format_detection() {
     if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
@@ -94,11 +90,8 @@ fn test_prophesee_format_detection() {
         detection_result.confidence
     );
 
-    // Check metadata
-    assert!(detection_result
-        .metadata
-        .properties
-        .contains_key("file_size"));
+    // Check metadata: file size is exposed as a typed field on the metadata struct.
+    assert!(detection_result.metadata.file_size > 0);
     println!(
         "✓ Format detection: {:?} (confidence: {:.2})",
         detection_result.format, detection_result.confidence
