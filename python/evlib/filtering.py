@@ -154,6 +154,11 @@ def filter_by_roi(
         filtered = filter_by_roi(events, x_min=200, x_max=400, y_min=150, y_max=350)
         ```
     """
+    if x_min > x_max:
+        raise ValueError(f"invalid ROI: x_min ({x_min}) > x_max ({x_max})")
+    if y_min > y_max:
+        raise ValueError(f"invalid ROI: y_min ({y_min}) > y_max ({y_max})")
+
     events_lf = _ensure_lazy_frame(events)
 
     # Apply spatial filter

@@ -19,8 +19,18 @@ def test_has_hdf5_is_bool():
 
 
 def test_has_hdf5_matches_runtime_probe():
-    """HAS_HDF5 must agree with a direct runtime probe of the module."""
-    expected = sys.platform != "win32" and hasattr(evlib, "save_events_to_hdf5")
+    """HAS_HDF5 must agree with a direct runtime probe of the module.
+
+    The cfg-gated Rust HDF5 support lives on the `formats` submodule; the top-level
+    evlib.save_events_to_hdf5 is an always-present pure-Python h5py wrapper and is not a
+    reliable signal, so the probe targets the Rust submodule.
+    """
+    fmt = getattr(evlib, "formats", None)
+    expected = (
+        sys.platform != "win32"
+        and fmt is not None
+        and hasattr(fmt, "save_events_to_hdf5")
+    )
     assert HAS_HDF5 is expected
 
 
