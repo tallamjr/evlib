@@ -7,6 +7,30 @@ use evlib::{ev_formats, tracing_config};
 use std::path::Path;
 use tracing::{debug, error, info, warn};
 
+/// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+#[derive(Debug, Clone, Copy)]
+struct EventRow {
+    t: f64, // seconds
+    x: u16,
+    y: u16,
+    polarity: i8, // -1/1 for EVT/AER/HDF5; 0/1 for text
+}
+
+fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+    let x = df.column("x").unwrap().i16().unwrap();
+    let y = df.column("y").unwrap().i16().unwrap();
+    let t = df.column("t").unwrap().duration().unwrap();
+    let p = df.column("polarity").unwrap().i8().unwrap();
+    (0..df.height())
+        .map(|i| EventRow {
+            t: t.get(i).unwrap() as f64 / 1_000_000.0,
+            x: x.get(i).unwrap() as u16,
+            y: y.get(i).unwrap() as u16,
+            polarity: p.get(i).unwrap(),
+        })
+        .collect()
+}
+
 #[test]
 fn test_tracing_with_real_event_loading() {
     // Initialize tracing for testing
@@ -42,7 +66,7 @@ fn test_tracing_with_real_event_loading() {
     // Test actual event loading with tracing
     match ev_formats::load_events_from_text(test_file, &config) {
         Ok(events) => {
-            let event_count = events.len();
+            let event_count = events.height();
             info!(
                 file_path = test_file,
                 events_loaded = event_count,
@@ -50,9 +74,10 @@ fn test_tracing_with_real_event_loading() {
             );
 
             // Log some statistics with structured logging
-            if !events.is_empty() {
-                let first_event = &events[0];
-                let last_event = &events[event_count - 1];
+            if event_count > 0 {
+                let rows = dataframe_to_rows(&events);
+                let first_event = &rows[0];
+                let last_event = &rows[event_count - 1];
 
                 debug!(
                     first_timestamp = first_event.t,
@@ -98,7 +123,7 @@ fn test_tracing_with_chunked_loading() {
         Ok(events) => {
             info!(
                 file_path = test_file,
-                events_loaded = events.len(),
+                events_loaded = events.height(),
                 "Chunked loading completed"
             );
 

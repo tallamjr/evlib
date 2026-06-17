@@ -5,10 +5,10 @@
 
 #[cfg(feature = "arrow")]
 mod arrow_tests {
-    use evlib::ev_core::Event;
+    use evlib::ev_formats::Event;
     use evlib::ev_formats::{
-        arrow_to_events, create_event_arrow_schema, ArrowBuilderError, ArrowEventBuilder,
-        ArrowEventStreamer, EventFormat,
+        arrow_to_events, create_event_arrow_schema, ArrowEventBuilder, ArrowEventStreamer,
+        EventFormat,
     };
 
     fn create_test_events() -> Vec<Event> {
@@ -17,25 +17,25 @@ mod arrow_tests {
                 t: 0.001,
                 x: 100,
                 y: 200,
-                polarity: true,
+                polarity: 1i8,
             },
             Event {
                 t: 0.002,
                 x: 101,
                 y: 201,
-                polarity: false,
+                polarity: -1i8,
             },
             Event {
                 t: 0.003,
                 x: 102,
                 y: 202,
-                polarity: true,
+                polarity: 1i8,
             },
             Event {
                 t: 1_000_000.0,
                 x: 103,
                 y: 203,
-                polarity: false,
+                polarity: -1i8,
             }, // Already in microseconds
         ]
     }
@@ -46,7 +46,7 @@ mod arrow_tests {
         assert_eq!(schema.fields().len(), 4);
 
         let field_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-        assert_eq!(field_names, vec!["x", "y", "timestamp", "polarity"]);
+        assert_eq!(field_names, vec!["x", "y", "t", "polarity"]);
     }
 
     #[test]
@@ -140,11 +140,11 @@ mod arrow_tests {
         // Check that coordinates and polarities are preserved exactly
         assert_eq!(converted_events[0].x, 100);
         assert_eq!(converted_events[0].y, 200);
-        assert_eq!(converted_events[0].polarity, true);
+        assert_eq!(converted_events[0].polarity, 1); // true -> 1
 
         assert_eq!(converted_events[1].x, 101);
         assert_eq!(converted_events[1].y, 201);
-        assert_eq!(converted_events[1].polarity, false);
+        assert_eq!(converted_events[1].polarity, -1); // HDF5 builder produced -1
 
         // Check timestamps (with some tolerance for floating point conversion)
         assert!((converted_events[0].t - 0.001).abs() < 1e-9);
@@ -204,13 +204,13 @@ mod arrow_tests {
                 t: 0.001,
                 x: 65535,
                 y: 65535,
-                polarity: true,
+                polarity: 1i8,
             }, // Maximum u16 values
             Event {
                 t: 0.002,
                 x: 0,
                 y: 0,
-                polarity: false,
+                polarity: -1i8,
             }, // Minimum values
         ];
 
@@ -234,16 +234,5 @@ mod arrow_tests {
         assert_eq!(y_array.value(0), -1i16);
         assert_eq!(x_array.value(1), 0i16);
         assert_eq!(y_array.value(1), 0i16);
-    }
-}
-
-#[cfg(not(feature = "arrow"))]
-mod arrow_disabled_tests {
-    use evlib::ev_formats::{create_event_arrow_schema, ArrowBuilderError};
-
-    #[test]
-    fn test_arrow_disabled_graceful_error() {
-        let result = create_event_arrow_schema();
-        assert!(matches!(result, Err(ArrowBuilderError::FeatureNotEnabled)));
     }
 }

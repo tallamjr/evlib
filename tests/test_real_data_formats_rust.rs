@@ -1,12 +1,36 @@
-use evlib::ev_core::{Event, Events};
+#[cfg(all(unix, feature = "hdf5"))]
+use evlib::ev_formats::load_events_from_hdf5;
 use evlib::ev_formats::{
     detect_event_format,
     evt2_reader::{Evt2Config, Evt2Reader},
-    load_events_from_hdf5, load_events_from_text, load_events_with_config, EventFormat, LoadConfig,
-    PolarityEncoding,
+    load_events_from_text, load_events_with_config, EventFormat, LoadConfig, PolarityEncoding,
 };
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+#[derive(Debug, Clone, Copy)]
+struct EventRow {
+    t: f64, // seconds
+    x: u16,
+    y: u16,
+    polarity: i8, // -1/1 for EVT/AER/HDF5; 0/1 for text
+}
+
+fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+    let x = df.column("x").unwrap().i16().unwrap();
+    let y = df.column("y").unwrap().i16().unwrap();
+    let t = df.column("t").unwrap().duration().unwrap();
+    let p = df.column("polarity").unwrap().i8().unwrap();
+    (0..df.height())
+        .map(|i| EventRow {
+            t: t.get(i).unwrap() as f64 / 1_000_000.0,
+            x: x.get(i).unwrap() as u16,
+            y: y.get(i).unwrap() as u16,
+            polarity: p.get(i).unwrap(),
+        })
+        .collect()
+}
 
 /// Test configuration for different data files
 #[allow(dead_code)]
@@ -58,7 +82,7 @@ impl TestFileConfig {
     }
 }
 
-fn validate_events(events: &Events, expected_resolution: (u16, u16)) -> DataIntegrity {
+fn validate_events(events: &[EventRow], expected_resolution: (u16, u16)) -> DataIntegrity {
     if events.is_empty() {
         return DataIntegrity {
             has_nan: false,
@@ -78,7 +102,10 @@ fn validate_events(events: &Events, expected_resolution: (u16, u16)) -> DataInte
         .iter()
         .all(|e| e.x < expected_resolution.0 && e.y < expected_resolution.1);
 
-    let valid_polarities = true; // Bool polarity is always valid
+    // i8 polarity is valid when it is one of the known encodings: -1/0/1.
+    let valid_polarities = events
+        .iter()
+        .all(|e| e.polarity == -1 || e.polarity == 0 || e.polarity == 1);
 
     DataIntegrity {
         has_nan,
@@ -90,7 +117,7 @@ fn validate_events(events: &Events, expected_resolution: (u16, u16)) -> DataInte
 }
 
 fn analyze_events(
-    events: &Events,
+    events: &[EventRow],
     expected_resolution: (u16, u16),
     execution_time: f64,
 ) -> ValidationResults {
@@ -114,8 +141,9 @@ fn analyze_events(
     let t_max = events.iter().map(|e| e.t).fold(f64::NEG_INFINITY, f64::max);
     let duration = t_max - t_min;
 
-    let positive_count = events.iter().filter(|e| e.polarity).count();
-    let negative_count = events.iter().filter(|e| !e.polarity).count();
+    // Positive polarity is encoded as 1; negative is -1 (EVT/HDF5) or 0 (text).
+    let positive_count = events.iter().filter(|e| e.polarity > 0).count();
+    let negative_count = events.iter().filter(|e| e.polarity <= 0).count();
 
     ValidationResults {
         event_count: events.len(),
@@ -228,9 +256,10 @@ fn test_evt2_reader_comprehensive() {
             events_result.err()
         );
         let events = events_result.unwrap();
+        let event_rows = dataframe_to_rows(&events);
 
         // Validate results
-        let results = analyze_events(&events, config.expected_resolution, execution_time);
+        let results = analyze_events(&event_rows, config.expected_resolution, execution_time);
 
         assert!(
             results.event_count >= config.min_expected_events,
@@ -274,23 +303,26 @@ fn test_evt2_reader_comprehensive() {
         let filtered_events = reader
             .read_with_config(config.path.to_str().unwrap(), &filter_config)
             .unwrap();
+        let filtered_rows = dataframe_to_rows(&filtered_events);
         assert!(
-            filtered_events.len() < events.len(),
+            filtered_events.height() < events.height(),
             "Filtering didn't reduce event count"
         );
+        // EVT2 positive polarity is encoded as 1.
         assert!(
-            filtered_events.iter().all(|e| e.polarity),
+            filtered_rows.iter().all(|e| e.polarity == 1),
             "Polarity filtering failed"
         );
 
         println!(
             "OK: EVT2 filtering passed: {full} -> {filtered} events",
-            full = events.len(),
-            filtered = filtered_events.len()
+            full = events.height(),
+            filtered = filtered_events.height()
         );
     }
 }
 
+#[cfg(all(unix, feature = "hdf5"))]
 #[test]
 fn test_hdf5_reader_comprehensive() {
     let test_files = vec![
@@ -333,9 +365,10 @@ fn test_hdf5_reader_comprehensive() {
             events_result.err()
         );
         let events = events_result.unwrap();
+        let event_rows = dataframe_to_rows(&events);
 
         // Validate results
-        let results = analyze_events(&events, config.expected_resolution, execution_time);
+        let results = analyze_events(&event_rows, config.expected_resolution, execution_time);
 
         assert!(
             results.event_count >= config.min_expected_events,
@@ -404,9 +437,10 @@ fn test_text_reader_comprehensive() {
         events_result.err()
     );
     let events = events_result.unwrap();
+    let event_rows = dataframe_to_rows(&events);
 
     // Validate results
-    let results = analyze_events(&events, config.expected_resolution, execution_time);
+    let results = analyze_events(&event_rows, config.expected_resolution, execution_time);
 
     assert!(
         results.event_count >= config.min_expected_events,
@@ -432,12 +466,12 @@ fn test_text_reader_comprehensive() {
         "Invalid polarities found"
     );
 
-    // Check polarity encoding conversion
-    let unique_polarities: std::collections::HashSet<bool> =
-        events.iter().map(|e| e.polarity).collect();
+    // Check polarity encoding: text format preserves the original 0/1 encoding.
+    let unique_polarities: std::collections::HashSet<i8> =
+        event_rows.iter().map(|e| e.polarity).collect();
     assert_eq!(
         unique_polarities,
-        [true, false].iter().cloned().collect(),
+        [0i8, 1i8].iter().cloned().collect(),
         "Polarity encoding conversion failed: {unique_polarities:?}"
     );
 
@@ -455,30 +489,33 @@ fn test_text_reader_comprehensive() {
 
     let filtered_events =
         load_events_from_text(config.path.to_str().unwrap(), &filter_config).unwrap();
+    let filtered_rows = dataframe_to_rows(&filtered_events);
     assert!(
-        filtered_events.len() < events.len(),
+        filtered_events.height() < events.height(),
         "Filtering didn't reduce event count"
     );
+    // Text positive polarity is encoded as 1.
     assert!(
-        filtered_events.iter().all(|e| e.polarity),
+        filtered_rows.iter().all(|e| e.polarity == 1),
         "Polarity filtering failed"
     );
     assert!(
-        filtered_events.iter().all(|e| e.x >= 100 && e.x <= 200),
+        filtered_rows.iter().all(|e| e.x >= 100 && e.x <= 200),
         "X coordinate filtering failed"
     );
     assert!(
-        filtered_events.iter().all(|e| e.y >= 50 && e.y <= 150),
+        filtered_rows.iter().all(|e| e.y >= 50 && e.y <= 150),
         "Y coordinate filtering failed"
     );
 
     println!(
         "OK: Text filtering passed: {full} -> {filtered} events",
-        full = events.len(),
-        filtered = filtered_events.len()
+        full = events.height(),
+        filtered = filtered_events.height()
     );
 }
 
+#[cfg(all(unix, feature = "hdf5"))]
 #[test]
 fn test_data_consistency_evt2_vs_hdf5() {
     let evt2_path = "data/eTram/raw/val_2/val_night_011.raw";
@@ -509,8 +546,8 @@ fn test_data_consistency_evt2_vs_hdf5() {
     let hdf5_events = load_events_from_hdf5(hdf5_path, None).unwrap();
 
     // Compare results
-    let evt2_count = evt2_events.len();
-    let hdf5_count = hdf5_events.len();
+    let evt2_count = evt2_events.height();
+    let hdf5_count = hdf5_events.height();
 
     // Allow for small differences due to format conversion (within 1%)
     let count_diff = evt2_count.abs_diff(hdf5_count);
@@ -553,8 +590,9 @@ fn test_generic_load_function() {
             err = events_result.err()
         );
         let events = events_result.unwrap();
+        let event_rows = dataframe_to_rows(&events);
 
-        let results = analyze_events(&events, expected_resolution, execution_time);
+        let results = analyze_events(&event_rows, expected_resolution, execution_time);
 
         assert!(results.event_count > 0, "No events loaded from {file_path}");
         assert!(
@@ -608,12 +646,12 @@ fn test_performance_benchmarks() {
         let events = load_events_with_config(file_path, &config).unwrap();
         let execution_time = start_time.elapsed().as_secs_f64();
 
-        let events_per_second = events.len() as f64 / execution_time;
+        let events_per_second = events.height() as f64 / execution_time;
         let mb_per_second = file_size / execution_time;
-        let bytes_per_event = (file_size * 1024.0 * 1024.0) / events.len() as f64;
+        let bytes_per_event = (file_size * 1024.0 * 1024.0) / events.height() as f64;
 
         println!("  File size: {file_size:.1} MB");
-        println!("  Events: {count}", count = events.len());
+        println!("  Events: {count}", count = events.height());
         println!("  Time: {execution_time:.2} seconds");
         println!("  Rate: {events_per_second:.0} events/second");
         println!("  Throughput: {mb_per_second:.1} MB/second");
@@ -648,17 +686,19 @@ fn test_memory_efficiency() {
     let config = LoadConfig::new();
     let events = load_events_with_config(file_path, &config).unwrap();
 
-    // Calculate memory usage (rough estimate)
-    let event_size = std::mem::size_of::<Event>();
-    let expected_memory = events.len() * event_size;
+    // Calculate memory usage (rough estimate). The in-memory Event struct is now
+    // { t: f64, x: u16, y: u16, polarity: i8 } which packs to 16 bytes (8 + 2 + 2 + 1
+    // padded to the f64 alignment), down from the legacy 24-byte layout.
+    let event_size = std::mem::size_of::<evlib::ev_formats::Event>();
+    let expected_memory = events.height() * event_size;
     let expected_memory_mb = expected_memory as f64 / 1024.0 / 1024.0;
 
-    println!("  Events: {count}", count = events.len());
+    println!("  Events: {count}", count = events.height());
     println!("  Event size: {event_size} bytes");
     println!("  Expected memory: {expected_memory_mb:.1} MB");
 
-    // Each event should be exactly 24 bytes (8 + 2 + 2 + 1 + padding)
-    assert_eq!(event_size, 24, "Event size changed unexpectedly");
+    // Each event should be exactly 16 bytes (8 + 2 + 2 + 1 + padding to align(8)).
+    assert_eq!(event_size, 16, "Event size changed unexpectedly");
 
     // Memory usage should be reasonable
     assert!(
