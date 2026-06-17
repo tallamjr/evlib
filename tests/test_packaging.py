@@ -10,7 +10,11 @@ def test_filtering_is_the_python_polars_implementation():
     import evlib.filtering as f
 
     assert f.__name__ == "evlib.filtering"
-    assert getattr(f, "__file__", "").endswith("python/evlib/filtering.py")
+    # Must be a real Python source file named filtering.py under the evlib package,
+    # not the Rust extension (which would have no __file__ or a .so path). Normalise
+    # the separator and match the install-agnostic suffix (editable vs site-packages).
+    file_path = (getattr(f, "__file__", "") or "").replace("\\", "/")
+    assert file_path.endswith("evlib/filtering.py"), file_path
 
 
 def test_rvt_is_reachable():
