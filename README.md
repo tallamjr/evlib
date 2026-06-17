@@ -26,6 +26,24 @@
 An event camera processing library with a Rust backend and Python bindings,
 designed for scalable data processing with real-world event camera datasets.
 
+### Architecture
+
+evlib keeps a thin Rust core and does all DataFrame work in Polars from Python:
+
+- **Rust** (`evlib._evlib`) handles only what cannot be expressed as DataFrame
+  operations: binary format parsing (EVT2/EVT3/EVT2.1, AEDAT, AER, HDF5 with the
+  ECF codec), construction of the Polars frame from decoded primitives, and the
+  dense scatter-add that builds RVT stacked-histogram representations.
+- **Python Polars** handles all processing: loading filters, filtering
+  (`evlib.filtering`), and representations (`evlib.representations`, `evlib.rvt`).
+  Every query is a lazy Polars `LazyFrame` collected with a selectable engine, so
+  the same code runs on the CPU streaming engine today and on the GPU via
+  cudf-polars (`collect(engine="gpu")`) where CUDA is available.
+
+`evlib.load_events` returns a `LazyFrame` and applies any time, spatial, or
+polarity filters as Polars expressions, so loading and filtering fuse into one
+GPU-collectable query.
+
 **Full documentation:** <https://tallamjr.github.io/evlib/>
 
 <!-- mtoc-start -->

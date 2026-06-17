@@ -870,12 +870,12 @@ mod tests {
                                      // Check first event
         assert_eq!(events[0].x, 100);
         assert_eq!(events[0].y, 200);
-        assert!(events[0].polarity);
+        assert_eq!(events[0].polarity, 1);
         assert_eq!(events[0].t, 1.000030); // (1000000 + 30) / 1_000_000.0
                                            // Check last event
         assert_eq!(events[3].x, 103);
         assert_eq!(events[3].y, 200);
-        assert!(events[3].polarity);
+        assert_eq!(events[3].polarity, 1);
     }
     #[test]
     fn test_coordinate_validation() {

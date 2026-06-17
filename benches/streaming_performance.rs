@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use evlib::ev_core::Event;
 use evlib::ev_formats::streaming::{PolarsEventStreamer, StreamingConfig};
+use evlib::ev_formats::Event;
 use evlib::ev_formats::EventFormat;
 use std::hint::black_box as hint_black_box;
 
@@ -19,7 +19,7 @@ fn generate_events_with_pattern(count: usize, pattern: &str) -> Vec<Event> {
                 let y = (rng % 480) as u16;
 
                 rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                let polarity = (rng % 2) == 0;
+                let polarity = if rng.is_multiple_of(2) { 1i8 } else { -1i8 };
 
                 events.push(Event {
                     t: i as f64 * 0.00001, // 10μs intervals
@@ -42,7 +42,7 @@ fn generate_events_with_pattern(count: usize, pattern: &str) -> Vec<Event> {
                 let y = cluster_y + (rng % 160) as u16;
 
                 rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                let polarity = (rng % 2) == 0;
+                let polarity = if rng.is_multiple_of(2) { 1i8 } else { -1i8 };
 
                 events.push(Event {
                     t: i as f64 * 0.00001,
@@ -61,7 +61,7 @@ fn generate_events_with_pattern(count: usize, pattern: &str) -> Vec<Event> {
                 let y = (rng % 720) as u16;
 
                 rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                let polarity = (rng % 2) == 0;
+                let polarity = if rng.is_multiple_of(2) { 1i8 } else { -1i8 };
 
                 events.push(Event {
                     t: i as f64 * 0.0001, // 100μs intervals (sparser)

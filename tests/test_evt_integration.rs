@@ -13,6 +13,31 @@ mod evt_format_detection_tests {
 
     const REAL_EVT2_FILE: &str = "data/eTram/raw/val_2/val_night_007.raw";
 
+    /// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+    #[derive(Debug, Clone, Copy)]
+    struct EventRow {
+        t: f64, // seconds
+        x: u16,
+        y: u16,
+        #[allow(dead_code)]
+        polarity: i8, // -1/1 for EVT/AER/HDF5; 0/1 for text
+    }
+
+    fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+        let x = df.column("x").unwrap().i16().unwrap();
+        let y = df.column("y").unwrap().i16().unwrap();
+        let t = df.column("t").unwrap().duration().unwrap();
+        let p = df.column("polarity").unwrap().i8().unwrap();
+        (0..df.height())
+            .map(|i| EventRow {
+                t: t.get(i).unwrap() as f64 / 1_000_000.0,
+                x: x.get(i).unwrap() as u16,
+                y: y.get(i).unwrap() as u16,
+                polarity: p.get(i).unwrap(),
+            })
+            .collect()
+    }
+
     #[test]
     fn test_evt2_vs_evt3_integration_comparison() {
         let temp_dir = TempDir::new().unwrap();
@@ -52,12 +77,12 @@ mod evt_format_detection_tests {
 
         println!("EVT2 vs EVT3 integration comparison:");
         match evt2_result {
-            Ok(events) => println!("  EVT2 events loaded: {}", events.len()),
+            Ok(events) => println!("  EVT2 events loaded: {}", events.height()),
             Err(e) => println!("  EVT2 loading failed: {e}"),
         }
 
         match evt3_result {
-            Ok(events) => println!("  EVT3 events loaded: {}", events.len()),
+            Ok(events) => println!("  EVT3 events loaded: {}", events.height()),
             Err(e) => println!("  EVT3 loading failed: {e}"),
         }
     }
@@ -86,16 +111,17 @@ mod evt_format_detection_tests {
         // Test loading with automatic format detection
         let events = load_events_with_config(file_path.to_str().unwrap(), &config).unwrap();
 
-        assert!(!events.is_empty());
+        assert!(events.height() > 0);
         println!("EVT2 integration test:");
-        println!("  Events loaded: {}", events.len());
+        println!("  Events loaded: {}", events.height());
 
         // Validate events
-        for event in events.iter().take(10) {
+        let rows = dataframe_to_rows(&events);
+        for event in rows.iter().take(10) {
             assert!(event.t >= 0.0);
             assert!(event.x <= 1280); // Use <= instead of < for boundary cases
             assert!(event.y <= 720); // Use <= instead of < for boundary cases
-                                     // Polarity is bool, so always valid
+                                     // Polarity is -1/1, so always valid
         }
     }
 
@@ -109,23 +135,26 @@ mod evt_format_detection_tests {
         writeln!(file, "% format EVT3;height=480;width=640").unwrap();
         writeln!(file, "% end").unwrap();
 
-        // Create synthetic EVT3 data
+        // Create synthetic EVT3 data using the OpenEB wire-format layout:
+        // bits 15..12 = type, bit 11 = polarity/orig, bits 10..0 = address,
+        // and the 12-bit content field is bits 0..11.
+
         let mut binary_data = Vec::new();
 
-        // Time High
-        let time_high = ((0x100u16) << 4) | 0x8;
+        // Time High (type 0x8), high 12 bits of the timestamp
+        let time_high = (0x8u16 << 12) | (0x100u16 & 0x0FFF);
         binary_data.extend_from_slice(&time_high.to_le_bytes());
 
-        // Time Low
-        let time_low = ((0x200u16) << 4) | 0x6;
+        // Time Low (type 0x6), low 12 bits of the timestamp
+        let time_low = (0x6u16 << 12) | (0x200u16 & 0x0FFF);
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
-        // Y address
-        let y_addr = (200u16) << 4;
+        // Y address (type 0x0, so the type nibble contributes nothing): y = 200
+        let y_addr = 200u16 & 0x07FF;
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
-        // X address
-        let x_addr = ((1u16) << 15) | ((300u16) << 4) | 0x2;
+        // X address (type 0x2): x = 300, polarity = true. This emits one event.
+        let x_addr = (0x2u16 << 12) | (1u16 << 11) | (300u16 & 0x07FF);
         binary_data.extend_from_slice(&x_addr.to_le_bytes());
 
         file.write_all(&binary_data).unwrap();
@@ -138,16 +167,17 @@ mod evt_format_detection_tests {
         // Test loading with automatic format detection
         let events = load_events_with_config(file_path.to_str().unwrap(), &config).unwrap();
 
-        assert!(!events.is_empty());
+        assert!(events.height() > 0);
         println!("EVT3 integration test:");
-        println!("  Events loaded: {}", events.len());
+        println!("  Events loaded: {}", events.height());
 
         // Validate events
-        for event in &events {
+        let rows = dataframe_to_rows(&events);
+        for event in &rows {
             assert!(event.t >= 0.0);
             assert!(event.x <= 640); // Use <= instead of < for boundary cases
             assert!(event.y <= 480); // Use <= instead of < for boundary cases
-                                     // Polarity is bool, so always valid
+                                     // Polarity is -1/1, so always valid
         }
     }
 
@@ -169,15 +199,15 @@ mod evt_format_detection_tests {
         let duration = start_time.elapsed();
 
         println!("Format detection + loading performance:");
-        println!("  Events loaded: {}", events.len());
+        println!("  Events loaded: {}", events.height());
         println!("  Total time: {duration:?}");
         println!(
             "  Events per second: {:.2}",
-            events.len() as f64 / duration.as_secs_f64()
+            events.height() as f64 / duration.as_secs_f64()
         );
 
         // Integration should be reasonably fast
-        assert!(!events.is_empty());
+        assert!(events.height() > 0);
         assert!(duration.as_secs() < 30); // Should complete within 30 seconds
     }
 

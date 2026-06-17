@@ -609,19 +609,6 @@ fn dataframe_to_event_iterator(
     Ok(events.into_iter())
 }
 
-/// Load events to Apache Arrow RecordBatch (simple version)
-///
-/// # Arguments
-/// * `path` - Path to the event file
-///
-/// # Returns
-/// Result containing an Arrow RecordBatch with event data
-pub fn load_events_to_arrow_simple(
-    path: &str,
-) -> Result<arrow::record_batch::RecordBatch, Box<dyn std::error::Error>> {
-    load_events_to_arrow(path, &LoadConfig::new())
-}
-
 /// Struct for iterating through a text file of events line by line
 /// without loading everything into memory at once
 pub struct EventFileIterator {
@@ -766,7 +753,7 @@ impl Iterator for TimeWindowIter<'_> {
 pub mod python {
     use super::*;
     use numpy::PyReadonlyArray1;
-    use polars::prelude::{col, lit, DataFrame, IntoLazy, SortMultipleOptions};
+    use polars::prelude::IntoLazy;
     use std::io::Write;
 
     // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
@@ -1024,120 +1011,6 @@ pub mod python {
     /// Returns:
     ///     Python dictionary with event data for Polars LazyFrame creation
     ///
-    /// Load events directly into a Polars DataFrame (optimized path)
-    /// This bypasses the intermediate Event struct and builds DataFrames directly from format readers
-    pub fn load_events_to_dataframe_py(
-        py: Python<'_>,
-        path: &str,
-        config: &LoadConfig,
-    ) -> PyResult<PyObject> {
-        // Detect format for proper reader selection
-        let format_result = detect_event_format(path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to detect format: {e}"))
-        })?;
-
-        let df = match format_result.format {
-            EventFormat::EVT2 | EventFormat::EVT21 => {
-                // Use EVT2 reader with direct DataFrame output
-                let mut evt2_config = Evt2Config {
-                    validate_coordinates: true,
-                    skip_invalid_events: true,
-                    ..Default::default()
-                };
-
-                // Use chunk_size as max_events limit if specified
-                if let Some(chunk_size) = config.chunk_size {
-                    evt2_config.max_events = Some(chunk_size);
-                }
-
-                let reader = Evt2Reader::with_config(evt2_config);
-                let (df, _metadata) = reader.read_file_to_dataframe(path).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to read EVT2 file: {e}"
-                    ))
-                })?;
-
-                // Apply additional filtering if needed using Polars operations
-                apply_config_filters_to_dataframe(df, config)?
-            }
-            _ => {
-                // For other formats, fall back to the existing approach for now
-                // TODO: Add direct DataFrame readers for other formats
-                let events = load_events_with_config(path, config).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                        "Failed to load events: {e}"
-                    ))
-                })?;
-
-                // load_events_with_config already returns a DataFrame, so use it directly
-                events
-            }
-        };
-
-        // Return Polars DataFrame directly to Python
-        use pyo3::IntoPyObject;
-        let py_df = pyo3_polars::PyDataFrame(df);
-        Ok(py_df.into_pyobject(py)?.into())
-    }
-
-    /// Apply LoadConfig filters to a DataFrame using Polars operations
-    fn apply_config_filters_to_dataframe(
-        df: DataFrame,
-        config: &LoadConfig,
-    ) -> PyResult<DataFrame> {
-        let mut lazy_df = df.lazy();
-
-        // Apply time window filter
-        if let (Some(t_start), Some(t_end)) = (config.t_start, config.t_end) {
-            let t_start_micros = (t_start * 1_000_000.0) as i64;
-            let t_end_micros = (t_end * 1_000_000.0) as i64;
-
-            lazy_df = lazy_df.filter(
-                col("t")
-                    .gt_eq(lit(t_start_micros))
-                    .and(col("t").lt_eq(lit(t_end_micros))),
-            );
-        } else if let Some(t_start) = config.t_start {
-            let t_start_micros = (t_start * 1_000_000.0) as i64;
-            lazy_df = lazy_df.filter(col("t").gt_eq(lit(t_start_micros)));
-        } else if let Some(t_end) = config.t_end {
-            let t_end_micros = (t_end * 1_000_000.0) as i64;
-            lazy_df = lazy_df.filter(col("t").lt_eq(lit(t_end_micros)));
-        }
-
-        // Apply spatial bounds
-        if let Some(min_x) = config.min_x {
-            lazy_df = lazy_df.filter(col("x").gt_eq(lit(min_x as i16)));
-        }
-        if let Some(max_x) = config.max_x {
-            lazy_df = lazy_df.filter(col("x").lt_eq(lit(max_x as i16)));
-        }
-        if let Some(min_y) = config.min_y {
-            lazy_df = lazy_df.filter(col("y").gt_eq(lit(min_y as i16)));
-        }
-        if let Some(max_y) = config.max_y {
-            lazy_df = lazy_df.filter(col("y").lt_eq(lit(max_y as i16)));
-        }
-
-        // Apply polarity filter
-        if let Some(polarity) = config.polarity {
-            let polarity_value = if polarity { 1i8 } else { -1i8 };
-            lazy_df = lazy_df.filter(col("polarity").eq(lit(polarity_value)));
-        }
-
-        // Apply sorting if requested
-        if config.sort {
-            lazy_df = lazy_df.sort(["t"], SortMultipleOptions::default());
-        }
-
-        // Collect the result
-        lazy_df.collect().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to apply filters: {e}"
-            ))
-        })
-    }
-
     #[pyfunction]
     #[pyo3(
         signature = (

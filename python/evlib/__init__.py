@@ -51,93 +51,36 @@ x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
 """
 
 import os
+import sys
 
-# Import the compiled Rust extension module
+# Import the compiled Rust extension module as a private submodule (evlib._evlib).
+# Maturin builds it under the package as `evlib._evlib`, so the Python package
+# __init__.py (this file) is the import entry point for `import evlib`.
 try:
-    import importlib.util
-    import glob
-
-    # Find the compiled module file (.so on Unix, .pyd on Windows)
-    # Check both source directory and site-packages (maturin develop installs to site-packages)
-    import sys
-    import site
-
-    search_paths = [
-        os.path.dirname(__file__),  # Source directory (editable install)
-    ]
-
-    # Add site-packages directories (where maturin develop installs)
-    if hasattr(site, "getsitepackages"):
-        search_paths.extend(site.getsitepackages())
-    if hasattr(site, "getusersitepackages"):
-        search_paths.append(site.getusersitepackages())
-
-    # Critical for Windows venv: sys.prefix/Lib/site-packages might not be in getsitepackages()
-    if hasattr(sys, "prefix"):
-        venv_site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
-        if os.path.isdir(venv_site_packages):
-            search_paths.append(venv_site_packages)
-
-    # Also check sys.path for virtual environments
-    search_paths.extend(sys.path)
-
-    module_files = []
-    for path in search_paths:
-        if path and os.path.isdir(path):
-            # Match both naming conventions:
-            # - evlib.cpython-*.so/pyd (Linux/older naming)
-            # - evlib.cp3*.so/pyd (Windows/newer naming like evlib.cp311-win_amd64.pyd)
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.so")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cpython-*.pyd")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.so")))
-            module_files.extend(glob.glob(os.path.join(path, "evlib.cp3*.pyd")))
-            # Also check for evlib subdirectory
-            evlib_dir = os.path.join(path, "evlib")
-            if os.path.isdir(evlib_dir):
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.so"))
-                )
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cpython-*.pyd"))
-                )
-                module_files.extend(glob.glob(os.path.join(evlib_dir, "evlib.cp3*.so")))
-                module_files.extend(
-                    glob.glob(os.path.join(evlib_dir, "evlib.cp3*.pyd"))
-                )
-
-    # Remove duplicates and use first found
-    module_files = list(dict.fromkeys(module_files))
-
-    if module_files:
-        spec = importlib.util.spec_from_file_location("evlib", module_files[0])
-        rust_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(rust_module)
-
-        # CRITICAL FIX: Make this module appear as a package so Python allows submodule imports
-        current_module = sys.modules[__name__]
-        if not hasattr(current_module, "__path__"):
-            current_module.__path__ = [os.path.dirname(__file__)]
-
-        # Access submodules from the compiled module
-        core = rust_module.core
-        formats = rust_module.formats
-        rust_filtering = rust_module.filtering
-
-        # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
-        sys.modules[__name__ + ".core"] = core
-        sys.modules[__name__ + ".formats"] = formats
-        # Don't register Rust filtering yet - we'll decide below
-
-        # Make key functions directly accessible
-        # save_events_to_hdf5 handled below with fallback logic
-        save_events_to_text = formats.save_events_to_text
-        detect_format = formats.detect_format
-        get_format_description = formats.get_format_description
-    else:
-        raise ImportError("Compiled Rust module not found")
-
+    from . import _evlib as _rust
 except ImportError as e:
     raise ImportError(f"Failed to import evlib Rust module: {e}")
+
+# Access Rust submodules from the compiled module
+core = _rust.core
+formats = _rust.formats
+
+# Register Rust submodules in sys.modules so `import evlib.core` / `import evlib.formats`
+# work with dot notation. Filtering is a pure-Python module, registered below.
+sys.modules[__name__ + ".core"] = core
+sys.modules[__name__ + ".formats"] = formats
+
+# Expose the Rust dense-representation engine as `evlib.representations_rs` if present.
+if hasattr(_rust, "representations_rs"):
+    globals()["representations_rs"] = _rust.representations_rs
+    sys.modules[__name__ + ".representations_rs"] = _rust.representations_rs
+
+# Make key functions directly accessible.
+# save_events_to_hdf5 handled below with fallback logic.
+version = _rust.version  # Rust-provided build version function (evlib.version())
+save_events_to_text = formats.save_events_to_text
+detect_format = formats.detect_format
+get_format_description = formats.get_format_description
 
 # Configure Polars GPU acceleration if available
 try:
@@ -255,25 +198,14 @@ if representations:
 if rvt is not None:
     sys.modules[__name__ + ".rvt"] = rvt
 
-# Choose filtering module: Python implementation preferred over Rust
-if python_filtering:
-    # Use Python filtering module
-    filtering = python_filtering
+# Filtering is the pure-Python Polars implementation (the single implementation).
+if python_filtering is None:
+    raise ImportError("Failed to import evlib.filtering Python module")
+filtering = python_filtering
+sys.modules[__name__ + ".filtering"] = python_filtering
 
-    # Register Python filtering module in sys.modules
-    sys.modules[__name__ + ".filtering"] = python_filtering
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print("DEBUG: Using Python filtering module")
-else:
-    # Fallback to Rust filtering module
-    filtering = rust_filtering
-
-    # Register Rust filtering module in sys.modules
-    sys.modules[__name__ + ".filtering"] = rust_filtering
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print("DEBUG: Using Rust filtering module (Python not available)")
+if os.environ.get("DEBUG_EVLIB"):
+    print("DEBUG: Using Python filtering module")
 
 
 try:
@@ -505,17 +437,39 @@ def diagnose_hdf5(file_path=None):
     print("  3. Use evlib.setup_hdf5_plugins() before loading")
 
 
-def load_events(path, **kwargs):
+def load_events(
+    path,
+    t_start=None,
+    t_end=None,
+    min_x=None,
+    max_x=None,
+    min_y=None,
+    max_y=None,
+    polarity=None,
+    sort=True,
+):
     """
-    Load events as Polars LazyFrame.
+    Load events as a Polars LazyFrame.
+
+    The Rust loader performs the full decode and returns the complete frame;
+    all load-time filters are applied here as Polars expressions so that the
+    whole load+filter is a single GPU-collectable LazyFrame.
 
     Args:
-        path: Path to event file
-        **kwargs: Additional arguments (t_start, t_end, min_x, max_x, min_y, max_y, polarity, sort, etc.)
+        path: Path to event file.
+        t_start: Inclusive lower time bound in seconds (optional).
+        t_end: Inclusive upper time bound in seconds (optional).
+        min_x: Inclusive lower x bound (optional).
+        max_x: Inclusive upper x bound (optional).
+        min_y: Inclusive lower y bound (optional).
+        max_y: Inclusive upper y bound (optional).
+        polarity: Keep only events with this polarity value (optional).
+        sort: Sort by timestamp after filtering (default True).
 
     Returns:
         Polars LazyFrame with columns [x, y, t, polarity]
-        - t is always converted to Duration type in microseconds
+        - t is a Duration type in microseconds
+        - polarity is already converted to -1/1
 
     Example:
         # Basic loading
@@ -525,12 +479,36 @@ def load_events(path, **kwargs):
         # from evlib.validation import quick_validate_events
         # is_valid = quick_validate_events(events)
     """
-    # Load data using Rust formats module - this returns a LazyFrame directly
-    lazy_frame = formats.load_events(path, **kwargs)
+    import polars as pl
 
-    # The Rust module already returns the LazyFrame with correct schema and column names
-    # Just return it directly - no need for Python-side conversion
-    return lazy_frame
+    # Full decode in Rust; no row filters passed to the readers.
+    lf = formats.load_events(path)
+
+    preds = []
+    if t_start is not None:
+        preds.append(pl.col("t").dt.total_microseconds() >= int(t_start * 1_000_000))
+    if t_end is not None:
+        preds.append(pl.col("t").dt.total_microseconds() <= int(t_end * 1_000_000))
+    if min_x is not None:
+        preds.append(pl.col("x") >= min_x)
+    if max_x is not None:
+        preds.append(pl.col("x") <= max_x)
+    if min_y is not None:
+        preds.append(pl.col("y") >= min_y)
+    if max_y is not None:
+        preds.append(pl.col("y") <= max_y)
+    if polarity is not None:
+        preds.append(pl.col("polarity") == polarity)
+
+    if preds:
+        from functools import reduce
+
+        lf = lf.filter(reduce(lambda a, b: a & b, preds))
+
+    if sort:
+        lf = lf.sort("t")
+
+    return lf
 
 
 # Define exports

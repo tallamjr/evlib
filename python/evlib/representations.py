@@ -87,20 +87,6 @@ def create_stacked_histogram(
     )
 
 
-def stacked_histogram(
-    events: EventsInput,
-    height: int,
-    width: int,
-    bins: int = 10,
-    window_duration_ms: float = 50.0,
-    engine: EngineType = "auto",
-) -> pl.DataFrame:
-    """Alias for create_stacked_histogram for backwards compatibility"""
-    return create_stacked_histogram(
-        events, height, width, bins, window_duration_ms, engine
-    )
-
-
 def create_voxel_grid(
     events: EventsInput,
     height: int,
@@ -344,7 +330,6 @@ def benchmark_vs_rvt(
 # Export all functions
 __all__ = [
     "create_stacked_histogram",
-    "stacked_histogram",
     "create_voxel_grid",
     "voxel_grid",
     "create_mixed_density_stack",

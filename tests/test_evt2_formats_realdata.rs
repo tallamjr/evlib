@@ -13,6 +13,30 @@ mod evt2_tests {
 
     const REAL_EVT2_FILE: &str = "data/eTram/raw/val_2/val_night_007.raw";
 
+    /// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+    #[derive(Debug, Clone, Copy)]
+    struct EventRow {
+        t: f64, // seconds
+        x: u16,
+        y: u16,
+        polarity: i8, // -1/1 for EVT2
+    }
+
+    fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+        let x = df.column("x").unwrap().i16().unwrap();
+        let y = df.column("y").unwrap().i16().unwrap();
+        let t = df.column("t").unwrap().duration().unwrap();
+        let p = df.column("polarity").unwrap().i8().unwrap();
+        (0..df.height())
+            .map(|i| EventRow {
+                t: t.get(i).unwrap() as f64 / 1_000_000.0,
+                x: x.get(i).unwrap() as u16,
+                y: y.get(i).unwrap() as u16,
+                polarity: p.get(i).unwrap(),
+            })
+            .collect()
+    }
+
     #[test]
     fn test_evt2_format_detection() {
         let file_path = Path::new(REAL_EVT2_FILE);
@@ -67,10 +91,11 @@ mod evt2_tests {
         };
 
         let reader = Evt2Reader::with_config(config);
-        let (events, metadata) = reader.read_file(file_path).unwrap();
+        let (df, metadata) = reader.read_file(file_path).unwrap();
+        let events = dataframe_to_rows(&df);
 
         println!("EVT2 reader test results:");
-        println!("  Events read: {}", events.len());
+        println!("  Events read: {}", df.height());
         println!("  File size: {} bytes", metadata.file_size);
         println!("  Header size: {} bytes", metadata.header_size);
         println!("  Data size: {} bytes", metadata.data_size);
@@ -94,7 +119,8 @@ mod evt2_tests {
             assert!(event.t >= 0.0);
             assert!(event.x < 1280);
             assert!(event.y < 720);
-            // Polarity is bool, so always valid
+            // EVT2 polarity is -1/1
+            assert!(event.polarity == -1 || event.polarity == 1);
         }
 
         // Check timestamp monotonicity (should be approximately sorted)
@@ -137,7 +163,8 @@ mod evt2_tests {
             ..Default::default()
         };
 
-        let events = reader.read_with_config(file_path, &load_config).unwrap();
+        let df = reader.read_with_config(file_path, &load_config).unwrap();
+        let events = dataframe_to_rows(&df);
 
         println!("EVT2 reader with filtering test results:");
         println!("  Filtered events: {}", events.len());
@@ -150,7 +177,8 @@ mod evt2_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 100);
             assert!(event.y <= 200);
-            assert!(event.polarity);
+            // Positive events only (EVT2 encodes positive as 1)
+            assert_eq!(event.polarity, 1);
         }
 
         // Check if events are sorted
@@ -178,7 +206,8 @@ mod evt2_tests {
         };
 
         let reader = Evt2Reader::with_config(config);
-        let (events, _) = reader.read_file(file_path).unwrap();
+        let (df, _) = reader.read_file(file_path).unwrap();
+        let events = dataframe_to_rows(&df);
 
         // All events should have valid coordinates
         for event in &events {
@@ -197,10 +226,10 @@ mod evt2_tests {
         };
 
         let reader_skip = Evt2Reader::with_config(config_skip);
-        let (events_skip, _) = reader_skip.read_file(file_path).unwrap();
+        let (df_skip, _) = reader_skip.read_file(file_path).unwrap();
 
         // Should get similar number of events (assuming most are valid)
-        assert!(events_skip.len() >= events.len() * 95 / 100); // Allow 5% difference
+        assert!(df_skip.height() >= events.len() * 95 / 100); // Allow 5% difference
     }
 
     #[test]
@@ -223,15 +252,17 @@ mod evt2_tests {
         let reader = Evt2Reader::with_config(config);
 
         let start_time = std::time::Instant::now();
-        let (events, metadata) = reader.read_file(file_path).unwrap();
+        let (df, metadata) = reader.read_file(file_path).unwrap();
         let duration = start_time.elapsed();
 
+        let event_count = df.height();
+
         println!("EVT2 reader performance test results:");
-        println!("  Events read: {}", events.len());
+        println!("  Events read: {}", event_count);
         println!("  Time taken: {duration:?}");
         println!(
             "  Events per second: {:.2}",
-            events.len() as f64 / duration.as_secs_f64()
+            event_count as f64 / duration.as_secs_f64()
         );
         println!(
             "  Megabytes per second: {:.2}",
@@ -239,7 +270,7 @@ mod evt2_tests {
         );
 
         // Performance should be reasonable (at least 100k events/second)
-        let events_per_second = events.len() as f64 / duration.as_secs_f64();
+        let events_per_second = event_count as f64 / duration.as_secs_f64();
         assert!(events_per_second > 100_000.0);
     }
 
@@ -276,8 +307,10 @@ mod evt2_tests {
         let reader_large = Evt2Reader::with_config(config_large);
         let reader_small = Evt2Reader::with_config(config_small);
 
-        let (events_large, _) = reader_large.read_file(file_path).unwrap();
-        let (events_small, _) = reader_small.read_file(file_path).unwrap();
+        let (df_large, _) = reader_large.read_file(file_path).unwrap();
+        let (df_small, _) = reader_small.read_file(file_path).unwrap();
+        let events_large = dataframe_to_rows(&df_large);
+        let events_small = dataframe_to_rows(&df_small);
 
         println!("EVT2 chunked reading test results:");
         println!("  Large chunks: {} events", events_large.len());
@@ -364,7 +397,8 @@ mod evt2_tests {
         };
 
         let reader = Evt2Reader::with_config(config);
-        let (events, _) = reader.read_file(file_path).unwrap();
+        let (df, _) = reader.read_file(file_path).unwrap();
+        let events = dataframe_to_rows(&df);
 
         println!("EVT2 timestamp reconstruction test results:");
         println!("  Events read: {}", events.len());

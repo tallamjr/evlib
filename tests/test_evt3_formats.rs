@@ -13,18 +13,49 @@ mod evt3_tests {
     use std::io::Write;
     use tempfile::TempDir;
 
+    /// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+    #[derive(Debug, Clone, Copy)]
+    struct EventRow {
+        t: f64, // seconds
+        x: u16,
+        y: u16,
+        polarity: i8, // -1/1 for EVT3
+    }
+
+    fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+        let x = df.column("x").unwrap().i16().unwrap();
+        let y = df.column("y").unwrap().i16().unwrap();
+        let t = df.column("t").unwrap().duration().unwrap();
+        let p = df.column("polarity").unwrap().i8().unwrap();
+        (0..df.height())
+            .map(|i| EventRow {
+                t: t.get(i).unwrap() as f64 / 1_000_000.0,
+                x: x.get(i).unwrap() as u16,
+                y: y.get(i).unwrap() as u16,
+                polarity: p.get(i).unwrap(),
+            })
+            .collect()
+    }
+
+    /// Build a 16-bit EVT3 word (OpenEB wire format): type in bits 12-15,
+    /// 12-bit content (polarity/orig in bit 11, address in bits 0-10, or a
+    /// generic 12-bit mask/time field) in bits 0-11.
+    fn evt3_word(ty: u16, content: u16) -> u16 {
+        ((ty & 0xF) << 12) | (content & 0xFFF)
+    }
+
     #[test]
     fn test_evt3_event_type_parsing() {
-        // Test all EVT3 event types
+        // Test all EVT3 event types. Type lives in bits 12-15 (OpenEB wire format).
         let test_cases = vec![
-            (0x0000, Evt3EventType::AddrY),
-            (0x0002, Evt3EventType::AddrX),
-            (0x0003, Evt3EventType::VectBaseX),
-            (0x0004, Evt3EventType::Vect12),
-            (0x0005, Evt3EventType::Vect8),
-            (0x0006, Evt3EventType::TimeLow),
-            (0x0008, Evt3EventType::TimeHigh),
-            (0x000A, Evt3EventType::ExtTrigger),
+            (0x0u16 << 12, Evt3EventType::AddrY),
+            (0x2u16 << 12, Evt3EventType::AddrX),
+            (0x3u16 << 12, Evt3EventType::VectBaseX),
+            (0x4u16 << 12, Evt3EventType::Vect12),
+            (0x5u16 << 12, Evt3EventType::Vect8),
+            (0x6u16 << 12, Evt3EventType::TimeLow),
+            (0x8u16 << 12, Evt3EventType::TimeHigh),
+            (0xAu16 << 12, Evt3EventType::ExtTrigger),
         ];
 
         for (raw_data, expected_type) in test_cases {
@@ -32,15 +63,17 @@ mod evt3_tests {
             assert_eq!(raw_event.event_type().unwrap(), expected_type);
         }
 
-        // Test invalid event type
-        let raw_event = RawEvt3Event { data: 0x0001 };
-        assert!(raw_event.event_type().is_err());
+        // Type code 0x1 maps to Reserved1, which is not an error in the current
+        // reader (it is a known reserved type). Assert it parses as Reserved1.
+        let raw_event = RawEvt3Event { data: 0x1u16 << 12 };
+        assert_eq!(raw_event.event_type().unwrap(), Evt3EventType::Reserved1);
     }
 
     #[test]
     fn test_evt3_y_addr_event_parsing() {
         // Test Y address event: y=300, orig=true (slave camera)
-        let raw_data = (1u16 << 15) | (300u16 << 4);
+        // type=AddrY (bits 12-15), orig (bit 11), y (bits 0-10)
+        let raw_data = evt3_word(0x0, (1u16 << 11) | 300);
         let raw_event = RawEvt3Event { data: raw_data };
 
         let y_event = raw_event.as_y_addr_event().unwrap();
@@ -48,7 +81,7 @@ mod evt3_tests {
         assert!(y_event.orig);
 
         // Test Y address event: y=100, orig=false (master camera)
-        let raw_data = 100u16 << 4;
+        let raw_data = evt3_word(0x0, 100);
         let raw_event = RawEvt3Event { data: raw_data };
 
         let y_event = raw_event.as_y_addr_event().unwrap();
@@ -59,7 +92,8 @@ mod evt3_tests {
     #[test]
     fn test_evt3_x_addr_event_parsing() {
         // Test X address event: x=500, polarity=true (positive)
-        let raw_data = (1u16 << 15) | (500u16 << 4) | 0x2;
+        // type=AddrX (bits 12-15), polarity (bit 11), x (bits 0-10)
+        let raw_data = (0x2u16 << 12) | (1u16 << 11) | 500;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let x_event = raw_event.as_x_addr_event().unwrap();
@@ -67,7 +101,7 @@ mod evt3_tests {
         assert!(x_event.polarity);
 
         // Test X address event: x=200, polarity=false (negative)
-        let raw_data = (200u16 << 4) | 0x2;
+        let raw_data = (0x2u16 << 12) | 200;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let x_event = raw_event.as_x_addr_event().unwrap();
@@ -78,7 +112,8 @@ mod evt3_tests {
     #[test]
     fn test_evt3_vect_base_x_event_parsing() {
         // Test Vector Base X event: x=800, polarity=true
-        let raw_data = (1u16 << 15) | (800u16 << 4) | 0x3;
+        // type=VectBaseX (bits 12-15), polarity (bit 11), x (bits 0-10)
+        let raw_data = (0x3u16 << 12) | (1u16 << 11) | 800;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let vect_base_event = raw_event.as_vect_base_x_event().unwrap();
@@ -88,8 +123,9 @@ mod evt3_tests {
 
     #[test]
     fn test_evt3_vect12_event_parsing() {
-        // Test Vector 12 event with validity mask 0xABC (bits 0, 2, 3, 5, 7, 9, 10, 11 set)
-        let raw_data = (0xABCu16 << 4) | 0x4;
+        // Test Vector 12 event with validity mask 0xABC (bits 2, 3, 4, 5, 7, 9, 11 set)
+        // type=Vect12 (bits 12-15), 12-bit mask (bits 0-11)
+        let raw_data = (0x4u16 << 12) | 0xABC;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let vect12_event = raw_event.as_vect12_event().unwrap();
@@ -102,13 +138,14 @@ mod evt3_tests {
                 set_bits += 1;
             }
         }
-        assert_eq!(set_bits, 8); // 0xABC has 8 bits set
+        assert_eq!(set_bits, 7); // 0xABC = 0b1010_1011_1100 has 7 bits set
     }
 
     #[test]
     fn test_evt3_vect8_event_parsing() {
         // Test Vector 8 event with validity mask 0xF0 (bits 4, 5, 6, 7 set)
-        let raw_data = (0xF0u16 << 4) | 0x5;
+        // type=Vect8 (bits 12-15), 8-bit mask (bits 0-7)
+        let raw_data = (0x5u16 << 12) | 0xF0;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let vect8_event = raw_event.as_vect8_event().unwrap();
@@ -127,7 +164,8 @@ mod evt3_tests {
     #[test]
     fn test_evt3_time_event_parsing() {
         // Test Time Low event with time=0x123
-        let raw_data = (0x123u16 << 4) | 0x6;
+        // type=TimeLow (bits 12-15), 12-bit time (bits 0-11)
+        let raw_data = (0x6u16 << 12) | 0x123;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let time_event = raw_event.as_time_event().unwrap();
@@ -135,7 +173,7 @@ mod evt3_tests {
         assert!(!time_event.is_high);
 
         // Test Time High event with time=0x456
-        let raw_data = (0x456u16 << 4) | 0x8;
+        let raw_data = (0x8u16 << 12) | 0x456;
         let raw_event = RawEvt3Event { data: raw_data };
 
         let time_event = raw_event.as_time_event().unwrap();
@@ -199,31 +237,32 @@ mod evt3_tests {
         writeln!(file, "% geometry 640x480").unwrap();
         writeln!(file, "% end").unwrap();
 
-        // Write synthetic binary data sequence
+        // Write synthetic binary data sequence (OpenEB wire format:
+        // type in bits 12-15, polarity/orig in bit 11, address in bits 0-10).
         let mut binary_data = Vec::new();
 
         // 1. Time High event (timestamp high bits = 0x100)
-        let time_high = ((0x100u16) << 4) | 0x8;
+        let time_high = (0x8u16 << 12) | 0x100;
         binary_data.extend_from_slice(&time_high.to_le_bytes());
 
         // 2. Time Low event (timestamp low bits = 0x200)
-        let time_low = ((0x200u16) << 4) | 0x6;
+        let time_low = (0x6u16 << 12) | 0x200;
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
         // 3. Y address event (y=100)
-        let y_addr = (100u16) << 4;
+        let y_addr = evt3_word(0x0, 100);
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // 4. X address event (x=200, polarity=positive)
-        let x_addr = ((1u16) << 15) | ((200u16) << 4) | 0x2;
+        let x_addr = (0x2u16 << 12) | (1u16 << 11) | 200;
         binary_data.extend_from_slice(&x_addr.to_le_bytes());
 
         // 5. Vector Base X event (x=300, polarity=positive)
-        let vect_base_x = ((1u16) << 15) | ((300u16) << 4) | 0x3;
+        let vect_base_x = (0x3u16 << 12) | (1u16 << 11) | 300;
         binary_data.extend_from_slice(&vect_base_x.to_le_bytes());
 
         // 6. Vector 8 event (bits 0, 2, 4 set = 0x15)
-        let vect8 = ((0x15u16) << 4) | 0x5;
+        let vect8 = (0x5u16 << 12) | 0x15;
         binary_data.extend_from_slice(&vect8.to_le_bytes());
 
         file.write_all(&binary_data).unwrap();
@@ -239,7 +278,8 @@ mod evt3_tests {
         };
 
         let reader = Evt3Reader::with_config(config);
-        let (events, metadata) = reader.read_file(&file_path).unwrap();
+        let (df, metadata) = reader.read_file(&file_path).unwrap();
+        let events = dataframe_to_rows(&df);
 
         println!("Synthetic EVT3 data test results:");
         println!("  Events read: {}", events.len());
@@ -254,7 +294,8 @@ mod evt3_tests {
             let first_event = &events[0];
             assert_eq!(first_event.x, 200);
             assert_eq!(first_event.y, 100);
-            assert!(first_event.polarity);
+            // EVT3 encodes positive polarity as 1
+            assert_eq!(first_event.polarity, 1);
 
             // Check timestamp reconstruction (0x100 << 12 | 0x200 = 0x100200)
             let expected_timestamp = 0x100200_u32 as f64 / 1_000_000.0;
@@ -277,26 +318,26 @@ mod evt3_tests {
         // Write multiple events with different coordinates and polarities
         let mut binary_data = Vec::new();
 
-        // Time setup
-        let time_high = ((0x100u16) << 4) | 0x8;
+        // Time setup (OpenEB wire format: type in bits 12-15)
+        let time_high = (0x8u16 << 12) | 0x100;
         binary_data.extend_from_slice(&time_high.to_le_bytes());
-        let time_low = ((0x200u16) << 4) | 0x6;
+        let time_low = (0x6u16 << 12) | 0x200;
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
-        // Y address
-        let y_addr = (150u16) << 4;
+        // Y address (y=150, type AddrY)
+        let y_addr = evt3_word(0x0, 150);
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
         // Event 1: x=100, positive polarity (should be included)
-        let x_addr1 = ((1u16) << 15) | ((100u16) << 4) | 0x2;
+        let x_addr1 = (0x2u16 << 12) | (1u16 << 11) | 100;
         binary_data.extend_from_slice(&x_addr1.to_le_bytes());
 
-        // Event 2: x=50, negative polarity (should be excluded by polarity filter)
-        let x_addr2 = (50u16 << 4) | 0x2;
+        // Event 2: x=50, negative polarity (excluded by bounding box: x < 80)
+        let x_addr2 = (0x2u16 << 12) | 50;
         binary_data.extend_from_slice(&x_addr2.to_le_bytes());
 
-        // Event 3: x=300, positive polarity (should be excluded by coordinate filter)
-        let x_addr3 = ((1u16) << 15) | ((300u16) << 4) | 0x2;
+        // Event 3: x=300, positive polarity (excluded by bounding box: x > 200)
+        let x_addr3 = (0x2u16 << 12) | (1u16 << 11) | 300;
         binary_data.extend_from_slice(&x_addr3.to_le_bytes());
 
         file.write_all(&binary_data).unwrap();
@@ -313,7 +354,8 @@ mod evt3_tests {
         };
 
         let reader = Evt3Reader::new();
-        let events = reader.read_with_config(&file_path, &load_config).unwrap();
+        let df = reader.read_with_config(&file_path, &load_config).unwrap();
+        let events = dataframe_to_rows(&df);
 
         println!("EVT3 filtering test results:");
         println!("  Filtered events: {}", events.len());
@@ -327,7 +369,8 @@ mod evt3_tests {
             assert!(event.x <= 200);
             assert!(event.y >= 140);
             assert!(event.y <= 160);
-            assert!(event.polarity);
+            // Positive events only (EVT3 encodes positive as 1)
+            assert_eq!(event.polarity, 1);
         }
     }
 
@@ -346,18 +389,18 @@ mod evt3_tests {
         // Write binary data with out-of-bounds coordinates
         let mut binary_data = Vec::new();
 
-        // Time setup
-        let time_high = ((0x100u16) << 4) | 0x8;
+        // Time setup (OpenEB wire format: type in bits 12-15)
+        let time_high = (0x8u16 << 12) | 0x100;
         binary_data.extend_from_slice(&time_high.to_le_bytes());
-        let time_low = ((0x200u16) << 4) | 0x6;
+        let time_low = (0x6u16 << 12) | 0x200;
         binary_data.extend_from_slice(&time_low.to_le_bytes());
 
-        // Y address (out of bounds)
-        let y_addr = (150u16) << 4;
+        // Y address (out of bounds: y=150 >= 100)
+        let y_addr = evt3_word(0x0, 150);
         binary_data.extend_from_slice(&y_addr.to_le_bytes());
 
-        // X address (out of bounds)
-        let x_addr = ((1u16) << 15) | ((150u16) << 4) | 0x2;
+        // X address (out of bounds: x=150 >= 100), positive polarity
+        let x_addr = (0x2u16 << 12) | (1u16 << 11) | 150;
         binary_data.extend_from_slice(&x_addr.to_le_bytes());
 
         file.write_all(&binary_data).unwrap();
@@ -373,10 +416,10 @@ mod evt3_tests {
         };
 
         let reader = Evt3Reader::with_config(config);
-        let (events, _) = reader.read_file(&file_path).unwrap();
+        let (df, _) = reader.read_file(&file_path).unwrap();
 
         // Should have no events (all coordinates out of bounds)
-        assert_eq!(events.len(), 0);
+        assert_eq!(df.height(), 0);
 
         // Test with validation disabled
         let config_no_validation = Evt3Config {
@@ -389,16 +432,17 @@ mod evt3_tests {
         };
 
         let reader_no_validation = Evt3Reader::with_config(config_no_validation);
-        let (events_no_validation, _) = reader_no_validation.read_file(&file_path).unwrap();
+        let (df_no_validation, _) = reader_no_validation.read_file(&file_path).unwrap();
 
         // Should have events (validation disabled)
-        assert!(!events_no_validation.is_empty());
+        assert!(df_no_validation.height() > 0);
     }
 
     #[test]
     fn test_evt3_config_defaults() {
         let config = Evt3Config::default();
-        assert!(config.validate_coordinates);
+        // Current default: validation disabled for better real-data compatibility.
+        assert!(!config.validate_coordinates);
         assert!(!config.skip_invalid_events);
         assert_eq!(config.max_events, None);
         assert_eq!(config.sensor_resolution, None);

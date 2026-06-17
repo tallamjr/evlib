@@ -2,20 +2,6 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, Any
-from enum import Enum
-
-
-class ModelArchitecture(Enum):
-    """Supported model architectures."""
-
-    E2VID_UNET = "e2vid_unet"
-    FIRENET = "firenet"
-    E2VID_PLUS = "e2vid_plus"
-    FIRENET_PLUS = "firenet_plus"
-    SPADE_E2VID = "spade_e2vid"
-    HYBRID_SPADE_E2VID = "hybrid_spade_e2vid"
-    SPADE_E2VID_LITE = "spade_e2vid_lite"
-    SSL_E2VID = "ssl_e2vid"
 
 
 @dataclass
@@ -45,34 +31,6 @@ class ModelConfig:
         """Create ModelConfig from dictionary."""
         extra_params = config_dict.pop("extra_params", {})
         return cls(**config_dict, extra_params=extra_params)
-
-
-@dataclass
-class ModelInfo:
-    """Information about a pre-trained model.
-
-    Args:
-        name: Model name (e.g., "e2vid_unet")
-        variant: Model variant (e.g., "base", "plus", "lite")
-        architecture: Model architecture type
-        description: Model description
-        size: Model size in bytes
-        url: URL to download the model
-        checksum: SHA256 checksum for verification
-    """
-
-    name: str
-    variant: str
-    architecture: ModelArchitecture
-    description: str
-    size: int
-    url: str
-    checksum: str
-
-    @property
-    def size_mb(self) -> float:
-        """Return model size in megabytes."""
-        return self.size / (1024 * 1024)
 
 
 # Pre-defined configurations for common use cases

@@ -74,3 +74,27 @@ jobs:
         run: |
           chmod +x .github/scripts/build.sh
           .github/scripts/build.sh
+
+      # Compile every test target (integration tests and in-module unit tests)
+      # under -D warnings so that a rotted/stale test fails CI rather than being
+      # silently skipped. This is the hard gate: it does not link libpython, so
+      # it works regardless of the extension-module link situation.
+      - name: Compile all test targets (rot gate)
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Link libpython explicitly so the extension-module test binaries can be
+      # built and run, then execute the full Rust test suite. Real-data tests
+      # early-return when their (gitignored) sample files are absent in CI.
+      - name: Run Rust tests
+        run: |
+          set -euo pipefail
+          PYTHON_BIN="$(python -c 'import sys; print(sys.executable)')"
+          PY_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          PY_LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          echo "Python: ${PYTHON_BIN} (${PY_VERSION}), libdir: ${PY_LIBDIR}"
+          export RUSTFLAGS="-L ${PY_LIBDIR} -l python${PY_VERSION}"
+          export RUSTDOCFLAGS="-L ${PY_LIBDIR}"
+          export LIBRARY_PATH="${PY_LIBDIR}:${LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="${PY_LIBDIR}:${LD_LIBRARY_PATH:-}"
+          export DYLD_LIBRARY_PATH="${PY_LIBDIR}:${DYLD_LIBRARY_PATH:-}"
+          cargo test --features python --release -- --nocapture

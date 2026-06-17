@@ -1,6 +1,4 @@
 // Core modules (only working functionality)
-pub mod ev_augmentation;
-pub mod ev_filtering;
 pub mod ev_formats;
 pub mod ev_representations;
 
@@ -70,7 +68,7 @@ use pyo3::wrap_pyfunction;
 /// This library provides basic event camera data processing with focus on
 /// working file loading and core functionality only.
 #[pymodule]
-fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, m)?)?;
 
@@ -187,19 +185,6 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &tracing_submodule
     )?)?;
     m.add_submodule(&tracing_submodule)?;
-
-    // Register ev_filtering module as "filtering" in Python - NEW HIGH-PERFORMANCE FILTERING
-    let filtering_submodule = PyModule::new(m.py(), "filtering")?;
-    ev_filtering::python::register_filtering_functions(&filtering_submodule)?;
-    m.add_submodule(&filtering_submodule)?;
-
-    // Also add filtering functions to top-level module for convenience
-    ev_filtering::python::register_filtering_functions(m)?;
-
-    // Register ev_augmentation module as "ev_augmentation" in Python - NEW AUGMENTATION FUNCTIONALITY
-    let augmentation_submodule = PyModule::new(m.py(), "ev_augmentation")?;
-    ev_augmentation::python::register_augmentation_functions(&augmentation_submodule)?;
-    m.add_submodule(&augmentation_submodule)?;
 
     // Register ev_representations module as "representations_rs" in Python - dense scatter-add engine.
     // Named "_rs" to avoid colliding with the pure-Python evlib.representations module.

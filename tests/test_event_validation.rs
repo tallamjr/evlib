@@ -7,10 +7,10 @@
 /// 3. Polarity value correctness
 /// 4. Data consistency across different loading methods
 /// 5. Edge case handling and error reporting
-use evlib::ev_core::{Event, Events};
 use evlib::ev_formats::{
     load_events_from_text, load_events_with_config, AerConfig, AerReader, LoadConfig, TimestampMode,
 };
+use polars::prelude::DataFrame;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -18,39 +18,78 @@ use tempfile::NamedTempFile;
 
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
 
+/// Lightweight synthetic event fixture used by the file-builder helpers.
+///
+/// Replaces the removed `ev_core::Event`. `polarity` is kept as `bool` to
+/// preserve the original file-writer behaviour (`if polarity {1} else {0}`).
+#[derive(Debug, Clone, Copy)]
+struct TestEvent {
+    t: f64,
+    x: u16,
+    y: u16,
+    polarity: bool,
+}
+
+/// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+///
+/// `t` is converted from Duration-microseconds back to f64 SECONDS so the
+/// existing assertion logic (which assumed seconds) stays unchanged.
+#[derive(Debug, Clone, Copy)]
+struct EventRow {
+    t: f64, // seconds
+    x: u16,
+    y: u16,
+    polarity: i8, // 0/1 for text and AER readers used in this suite
+}
+
+fn dataframe_to_rows(df: &DataFrame) -> Vec<EventRow> {
+    let x = df.column("x").unwrap().i16().unwrap();
+    let y = df.column("y").unwrap().i16().unwrap();
+    let t = df.column("t").unwrap().duration().unwrap();
+    let p = df.column("polarity").unwrap().i8().unwrap();
+    (0..df.height())
+        .map(|i| EventRow {
+            t: t.get(i).unwrap() as f64 / 1_000_000.0,
+            x: x.get(i).unwrap() as u16,
+            y: y.get(i).unwrap() as u16,
+            polarity: p.get(i).unwrap(),
+        })
+        .collect()
+}
+
 /// Helper function to check if a test data file exists
 fn check_data_file_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
 /// Create test events with known properties for validation
-fn create_test_events() -> Events {
+fn create_test_events() -> Vec<TestEvent> {
     vec![
-        Event {
+        TestEvent {
             t: 0.001000,
             x: 100,
             y: 150,
             polarity: true,
         },
-        Event {
+        TestEvent {
             t: 0.001005,
             x: 200,
             y: 250,
             polarity: false,
         },
-        Event {
+        TestEvent {
             t: 0.001010,
             x: 300,
             y: 350,
             polarity: true,
         },
-        Event {
+        TestEvent {
             t: 0.001015,
             x: 400,
             y: 450,
             polarity: false,
         },
-        Event {
+        TestEvent {
             t: 0.001020,
             x: 500,
             y: 550,
@@ -60,7 +99,7 @@ fn create_test_events() -> Events {
 }
 
 /// Create a test file with specific event data
-fn create_test_file_with_events(events: &Events) -> NamedTempFile {
+fn create_test_file_with_events(events: &[TestEvent]) -> NamedTempFile {
     let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
 
     writeln!(temp_file, "# timestamp x y polarity").unwrap();
@@ -93,7 +132,7 @@ struct ValidationStats {
     max_x: u16,
     min_y: u16,
     max_y: u16,
-    polarity_distribution: HashMap<bool, usize>,
+    polarity_distribution: HashMap<i8, usize>,
 }
 
 impl ValidationStats {
@@ -109,7 +148,9 @@ impl ValidationStats {
         }
     }
 
-    fn analyze_events(events: &Events) -> Self {
+    fn analyze_events(df: &DataFrame) -> Self {
+        let events = dataframe_to_rows(df);
+
         let mut stats = Self::new();
         stats.total_events = events.len();
 
@@ -144,10 +185,9 @@ impl ValidationStats {
                 stats.coordinate_violations += 1;
             }
 
-            // Check polarity values - with bool type, no validation needed
-            // All bool values are valid
+            // Check polarity values - readers in this suite produce 0/1, both valid
 
-            // Update polarity distribution
+            // Update polarity distribution (keyed by i8 polarity)
             *stats
                 .polarity_distribution
                 .entry(event.polarity)
@@ -156,7 +196,7 @@ impl ValidationStats {
 
         // Check for duplicates (simplified - exact matches only)
         let mut seen = std::collections::HashSet::new();
-        for event in events {
+        for event in &events {
             let key = (
                 (event.t * 1e9) as i64, // Convert to nanoseconds
                 event.x,
@@ -333,16 +373,16 @@ fn test_polarity_validation() {
         count = stats.polarity_violations
     );
 
-    // Should have both positive and negative events
-    let has_positive = stats.polarity_distribution.get(&true).unwrap_or(&0) > &0;
-    let has_negative = stats.polarity_distribution.get(&false).unwrap_or(&0) > &0;
+    // Should have both positive and negative events (text reader uses 0/1)
+    let has_positive = stats.polarity_distribution.get(&1).unwrap_or(&0) > &0;
+    let has_negative = stats.polarity_distribution.get(&0).unwrap_or(&0) > &0;
 
     assert!(has_positive, "Should have positive polarity events");
     assert!(has_negative, "Should have negative polarity events");
 
     // Check polarity balance (shouldn't be too skewed)
     let total_valid = stats.polarity_distribution.values().sum::<usize>();
-    let positive_count = *stats.polarity_distribution.get(&true).unwrap_or(&0);
+    let positive_count = *stats.polarity_distribution.get(&1).unwrap_or(&0);
     let positive_ratio = positive_count as f64 / total_valid as f64;
 
     assert!(
@@ -369,12 +409,13 @@ fn test_synthetic_event_validation() {
 
     // Should load exactly the same events
     assert_eq!(
-        loaded_events.len(),
+        loaded_events.height(),
         test_events.len(),
         "Event count mismatch"
     );
 
-    for (i, (original, loaded)) in test_events.iter().zip(loaded_events.iter()).enumerate() {
+    let loaded_rows = dataframe_to_rows(&loaded_events);
+    for (i, (original, loaded)) in test_events.iter().zip(loaded_rows.iter()).enumerate() {
         assert!(
             (original.t - loaded.t).abs() < 1e-6,
             "Timestamp mismatch at event {i}: {orig} vs {loaded}",
@@ -383,8 +424,10 @@ fn test_synthetic_event_validation() {
         );
         assert_eq!(original.x, loaded.x, "X coordinate mismatch at event {i}");
         assert_eq!(original.y, loaded.y, "Y coordinate mismatch at event {i}");
+        // Text reader produces 0/1; original.polarity is bool -> map to 0/1
+        let expected_polarity = if original.polarity { 1i8 } else { 0i8 };
         assert_eq!(
-            original.polarity, loaded.polarity,
+            expected_polarity, loaded.polarity,
             "Polarity mismatch at event {i}"
         );
     }
@@ -413,19 +456,19 @@ fn test_synthetic_event_validation() {
 fn test_edge_case_coordinates() {
     // Test events with edge case coordinates
     let edge_events = vec![
-        Event {
+        TestEvent {
             t: 0.001,
             x: 0,
             y: 0,
             polarity: true,
         }, // Corner
-        Event {
+        TestEvent {
             t: 0.002,
             x: 1023,
             y: 767,
             polarity: false,
         }, // Max coords
-        Event {
+        TestEvent {
             t: 0.003,
             x: 512,
             y: 384,
@@ -511,12 +554,12 @@ fn test_large_coordinate_filtering() {
         .expect("Failed to load filtered events");
 
     assert!(
-        events_filtered.len() < events_full.len(),
+        events_filtered.height() < events_full.height(),
         "Filtered events should be fewer than full set"
     );
 
     // Validate that all filtered events are within bounds
-    for event in &events_filtered {
+    for event in &dataframe_to_rows(&events_filtered) {
         assert!(
             event.x >= full_stats.min_x + 50,
             "Event x below filter bound"
@@ -540,8 +583,8 @@ fn test_large_coordinate_filtering() {
 
     println!(
         "Spatial filtering validation passed: {full} -> {filtered} events",
-        full = events_full.len(),
-        filtered = events_filtered.len()
+        full = events_full.height(),
+        filtered = events_filtered.height()
     );
 }
 
@@ -555,7 +598,9 @@ fn test_timestamp_precision() {
     }
 
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events_df =
+        load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events = dataframe_to_rows(&events_df);
 
     // Check timestamp precision and resolution
     let mut time_diffs = Vec::new();
@@ -616,7 +661,7 @@ fn test_aer_synthetic_validation() {
             stats.print_summary("AER Synthetic");
 
             // Validate AER-specific properties
-            assert_eq!(events.len(), 3, "Should load 3 synthetic AER events");
+            assert_eq!(events.height(), 3, "Should load 3 synthetic AER events");
             assert_eq!(metadata.event_count, 3);
             assert_eq!(
                 stats.coordinate_violations, 0,
@@ -627,14 +672,15 @@ fn test_aer_synthetic_validation() {
                 "No polarity violations expected"
             );
 
-            // Check specific event values
-            assert_eq!(events[0].x, 100);
-            assert_eq!(events[0].y, 150);
-            assert!(events[0].polarity);
+            // Check specific event values (AER reader produces 0/1 polarity)
+            let rows = dataframe_to_rows(&events);
+            assert_eq!(rows[0].x, 100);
+            assert_eq!(rows[0].y, 150);
+            assert_eq!(rows[0].polarity, 1); // polarity 1 -> 1
 
-            assert_eq!(events[1].x, 200);
-            assert_eq!(events[1].y, 250);
-            assert!(!events[1].polarity); // polarity 0 -> false
+            assert_eq!(rows[1].x, 200);
+            assert_eq!(rows[1].y, 250);
+            assert_eq!(rows[1].polarity, 0); // polarity 0 -> 0
 
             println!("AER synthetic validation passed");
         }
@@ -648,31 +694,31 @@ fn test_aer_synthetic_validation() {
 fn test_duplicate_detection() {
     // Create events with intentional duplicates
     let events_with_dups = vec![
-        Event {
+        TestEvent {
             t: 0.001,
             x: 100,
             y: 150,
             polarity: true,
         },
-        Event {
+        TestEvent {
             t: 0.002,
             x: 200,
             y: 250,
             polarity: false,
         },
-        Event {
+        TestEvent {
             t: 0.001,
             x: 100,
             y: 150,
             polarity: true,
         }, // Exact duplicate
-        Event {
+        TestEvent {
             t: 0.003,
             x: 300,
             y: 350,
             polarity: true,
         },
-        Event {
+        TestEvent {
             t: 0.002,
             x: 200,
             y: 250,
@@ -723,12 +769,14 @@ fn test_consistency_across_load_methods() {
 
     // Results should be identical
     assert_eq!(
-        events1.len(),
-        events2.len(),
+        events1.height(),
+        events2.height(),
         "Event count mismatch between loading methods"
     );
 
-    for (i, (e1, e2)) in events1.iter().zip(events2.iter()).enumerate() {
+    let rows1 = dataframe_to_rows(&events1);
+    let rows2 = dataframe_to_rows(&events2);
+    for (i, (e1, e2)) in rows1.iter().zip(rows2.iter()).enumerate() {
         assert!(
             (e1.t - e2.t).abs() < 1e-9,
             "Timestamp mismatch at event {i}: {e1_t} vs {e2_t}",

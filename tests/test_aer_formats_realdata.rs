@@ -1,3 +1,5 @@
+#[cfg(feature = "hdf5")]
+use evlib::ev_formats::load_events_from_hdf5;
 /// Comprehensive unit tests for AER format implementation
 /// Tests against real data files to verify format detection, loading, and validation
 ///
@@ -9,12 +11,36 @@
 /// 5. Parse HDF5 files correctly
 /// 6. Detect format issues and handle errors gracefully
 use evlib::ev_formats::{
-    detect_event_format, load_events_from_hdf5, load_events_from_text, load_events_with_config,
-    AerConfig, AerReader, EventFormat, LoadConfig,
+    detect_event_format, load_events_from_text, load_events_with_config, AerConfig, AerReader,
+    EventFormat, LoadConfig,
 };
 use std::collections::HashSet;
 use std::path::Path;
 use tempfile::NamedTempFile;
+
+/// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+#[derive(Debug, Clone, Copy)]
+struct EventRow {
+    t: f64, // seconds
+    x: u16,
+    y: u16,
+    polarity: i8, // 0/1 for text and AER (Text-like encoding)
+}
+
+fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+    let x = df.column("x").unwrap().i16().unwrap();
+    let y = df.column("y").unwrap().i16().unwrap();
+    let t = df.column("t").unwrap().duration().unwrap();
+    let p = df.column("polarity").unwrap().i8().unwrap();
+    (0..df.height())
+        .map(|i| EventRow {
+            t: t.get(i).unwrap() as f64 / 1_000_000.0,
+            x: x.get(i).unwrap() as u16,
+            y: y.get(i).unwrap() as u16,
+            polarity: p.get(i).unwrap(),
+        })
+        .collect()
+}
 
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
 const ORIGINAL_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/original/front";
@@ -135,8 +161,9 @@ fn test_load_text_events_basic() {
     }
 
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config)
+    let df = load_events_from_text(&events_chunk_txt, &config)
         .expect("Failed to load events from text file");
+    let events = dataframe_to_rows(&df);
 
     assert!(!events.is_empty(), "No events loaded from text file");
     assert_eq!(events.len(), 50000, "Expected 50000 events in chunk file");
@@ -149,7 +176,8 @@ fn test_load_text_events_basic() {
     );
     assert!(first_event.x <= 1024, "X coordinate should be reasonable");
     assert!(first_event.y <= 1024, "Y coordinate should be reasonable");
-    // Polarity is bool, so always valid
+    // Text polarity is 0/1
+    assert!(first_event.polarity == 0 || first_event.polarity == 1);
 
     println!(
         "Loaded {count} events from {events_chunk_txt}",
@@ -175,8 +203,9 @@ fn test_load_text_events_large_file() {
 
     // Test loading with a limit to avoid memory issues in CI
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_txt, &config)
+    let df = load_events_from_text(&events_txt, &config)
         .expect("Failed to load events from large text file");
+    let events = dataframe_to_rows(&df);
 
     assert!(!events.is_empty(), "No events loaded from large text file");
     assert!(
@@ -218,7 +247,8 @@ fn test_event_timestamp_ordering() {
     }
 
     let config = LoadConfig::new().with_sorting(true);
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let df = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events = dataframe_to_rows(&df);
 
     // Check if timestamps are in ascending order
     let mut violations = 0;
@@ -253,7 +283,8 @@ fn test_event_coordinate_ranges() {
     }
 
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let df = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events = dataframe_to_rows(&df);
 
     let mut min_x = u16::MAX;
     let mut max_x = 0u16;
@@ -286,16 +317,19 @@ fn test_event_polarity_distribution() {
     }
 
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let df = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events = dataframe_to_rows(&df);
 
     let mut positive_count = 0;
     let mut negative_count = 0;
-    let invalid_count = 0;
+    let mut invalid_count = 0;
 
+    // Text polarity is 0/1
     for event in &events {
         match event.polarity {
-            true => positive_count += 1,
-            false => negative_count += 1,
+            1 => positive_count += 1,
+            0 => negative_count += 1,
+            _ => invalid_count += 1,
         }
     }
 
@@ -332,8 +366,9 @@ fn test_load_with_time_filtering() {
 
     // First load without filtering to get time range
     let config_full = LoadConfig::new();
-    let events_full =
+    let df_full =
         load_events_from_text(&events_chunk_txt, &config_full).expect("Failed to load events");
+    let events_full = dataframe_to_rows(&df_full);
 
     let min_time = events_full
         .iter()
@@ -347,8 +382,9 @@ fn test_load_with_time_filtering() {
 
     // Load with time window
     let config_filtered = LoadConfig::new().with_time_window(Some(min_time), Some(mid_time));
-    let events_filtered = load_events_from_text(&events_chunk_txt, &config_filtered)
+    let df_filtered = load_events_from_text(&events_chunk_txt, &config_filtered)
         .expect("Failed to load filtered events");
+    let events_filtered = dataframe_to_rows(&df_filtered);
 
     assert!(
         events_filtered.len() < events_full.len(),
@@ -387,8 +423,9 @@ fn test_load_with_spatial_filtering() {
 
     // Load with spatial bounds
     let config = LoadConfig::new().with_spatial_bounds(Some(50), Some(200), Some(50), Some(200));
-    let events = load_events_from_text(&events_chunk_txt, &config)
+    let df = load_events_from_text(&events_chunk_txt, &config)
         .expect("Failed to load spatially filtered events");
+    let events = dataframe_to_rows(&df);
 
     // Verify all events are within spatial bounds
     for event in &events {
@@ -421,23 +458,26 @@ fn test_load_with_polarity_filtering() {
 
     // Load only positive polarity events
     let config_pos = LoadConfig::new().with_polarity(Some(true));
-    let events_pos = load_events_from_text(&events_chunk_txt, &config_pos)
+    let df_pos = load_events_from_text(&events_chunk_txt, &config_pos)
         .expect("Failed to load positive polarity events");
+    let events_pos = dataframe_to_rows(&df_pos);
 
-    // Verify all events have positive polarity
+    // Verify all events have positive polarity (text encodes positive as 1)
     for event in &events_pos {
-        assert!(event.polarity, "Found non-positive polarity event");
+        assert_eq!(event.polarity, 1, "Found non-positive polarity event");
     }
 
     // Load only negative polarity events
     let config_neg = LoadConfig::new().with_polarity(Some(false));
-    let events_neg = load_events_from_text(&events_chunk_txt, &config_neg)
+    let df_neg = load_events_from_text(&events_chunk_txt, &config_neg)
         .expect("Failed to load negative polarity events");
+    let events_neg = dataframe_to_rows(&df_neg);
 
-    // Verify all events have negative polarity
+    // Verify all events have negative polarity (text encodes negative as 0)
     for event in &events_neg {
-        assert!(
-            !event.polarity,
+        assert_eq!(
+            event.polarity,
+            0,
             "Found non-negative polarity event: {polarity}",
             polarity = event.polarity
         );
@@ -450,6 +490,7 @@ fn test_load_with_polarity_filtering() {
     );
 }
 
+#[cfg(feature = "hdf5")]
 #[test]
 fn test_hdf5_file_loading() {
     let seq01_h5 = format!("{ORIGINAL_HDF5_DIR}/seq01.h5");
@@ -465,7 +506,8 @@ fn test_hdf5_file_loading() {
 
     for dataset_name in &dataset_names {
         match load_events_from_hdf5(&seq01_h5, Some(dataset_name)) {
-            Ok(events) => {
+            Ok(df) => {
+                let events = dataframe_to_rows(&df);
                 assert!(!events.is_empty(), "No events loaded from HDF5 file");
 
                 // Verify event structure
@@ -490,11 +532,11 @@ fn test_hdf5_file_loading() {
     if !loaded {
         // Try without specifying dataset name (auto-detection)
         match load_events_from_hdf5(&seq01_h5, None) {
-            Ok(events) => {
-                assert!(!events.is_empty(), "No events loaded from HDF5 file");
+            Ok(df) => {
+                assert!(df.height() > 0, "No events loaded from HDF5 file");
                 println!(
                     "Successfully loaded {count} events from {file} (auto-detected dataset)",
-                    count = events.len(),
+                    count = df.height(),
                     file = seq01_h5
                 );
             }
@@ -519,7 +561,8 @@ fn test_generic_load_function() {
 
     for file_path in test_files {
         match load_events_with_config(&file_path, &config) {
-            Ok(events) => {
+            Ok(df) => {
+                let events = dataframe_to_rows(&df);
                 assert!(!events.is_empty(), "No events loaded from {file_path}");
 
                 // Basic validation
@@ -527,7 +570,7 @@ fn test_generic_load_function() {
                     assert!(event.t >= 0.0, "Invalid timestamp at event {i}");
                     assert!(event.x < 2048, "Invalid X coordinate at event {i}");
                     assert!(event.y < 2048, "Invalid Y coordinate at event {i}");
-                    // Polarity is bool, so always valid
+                    // Polarity is i8 (0/1 or -1/1 depending on source), always valid
                 }
 
                 println!(
@@ -569,19 +612,20 @@ fn test_aer_binary_format_synthetic() {
 
     // Test reading the synthetic data
     match reader.read_file(temp_file.path()) {
-        Ok((events, metadata)) => {
+        Ok((df, metadata)) => {
+            let events = dataframe_to_rows(&df);
             assert_eq!(events.len(), 3, "Should load 3 synthetic events");
             assert_eq!(metadata.event_count, 3);
             assert_eq!(metadata.bytes_per_event, 4);
 
-            // Verify event data
+            // Verify event data (AER encodes polarity as 0/1)
             assert_eq!(events[0].x, 100);
             assert_eq!(events[0].y, 150);
-            assert!(events[0].polarity);
+            assert_eq!(events[0].polarity, 1);
 
             assert_eq!(events[1].x, 200);
             assert_eq!(events[1].y, 250);
-            assert!(!events[1].polarity); // polarity 0 -> false
+            assert_eq!(events[1].polarity, 0); // polarity 0
 
             println!("Successfully tested AER binary format with synthetic data");
         }
@@ -610,19 +654,19 @@ fn test_event_count_accuracy() {
 
     // Load events
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let df = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
 
     assert_eq!(
-        events.len(),
+        df.height(),
         line_count,
         "Event count mismatch: loaded {loaded} vs {lines} lines",
-        loaded = events.len(),
+        loaded = df.height(),
         lines = line_count
     );
 
     println!(
         "Event count accuracy verified: {count} events",
-        count = events.len()
+        count = df.height()
     );
 }
 
@@ -636,7 +680,8 @@ fn test_duplicate_events() {
     }
 
     let config = LoadConfig::new();
-    let events = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let df = load_events_from_text(&events_chunk_txt, &config).expect("Failed to load events");
+    let events = dataframe_to_rows(&df);
 
     // Check for exact duplicates (same t, x, y, p)
     let mut seen = HashSet::new();
@@ -685,8 +730,8 @@ fn test_error_handling_invalid_files() {
     let empty_file = NamedTempFile::new().expect("Failed to create temp file");
     let result = load_events_from_text(empty_file.path().to_str().unwrap(), &config);
     // Empty file should return empty events, not error
-    if let Ok(events) = result {
-        assert!(events.is_empty(), "Empty file should return empty events");
+    if let Ok(df) = result {
+        assert_eq!(df.height(), 0, "Empty file should return empty events");
     }
     // Also acceptable if it fails
 

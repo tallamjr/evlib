@@ -48,7 +48,7 @@ pub mod examples {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use evlib::tracing_config;
 ///
 /// // Initialize logging with defaults
@@ -87,7 +87,7 @@ pub fn init() {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use evlib::tracing_config;
 ///
 /// // Enable debug logging
@@ -123,7 +123,7 @@ pub fn init_debug() {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```no_run
 /// use evlib::tracing_config;
 ///
 /// // Very verbose logging for ECF decoding
@@ -161,7 +161,7 @@ pub fn init_with_filter(filter: &str) {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// #[cfg(test)]
 /// mod tests {
 ///     use evlib::tracing_config;

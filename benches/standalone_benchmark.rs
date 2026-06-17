@@ -26,7 +26,7 @@ fn generate_events(count: usize, width: u16, height: u16) -> Vec<Event> {
         let y = (rng % height as u64) as u16;
 
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-        let polarity = (rng % 2) == 0;
+        let polarity = rng.is_multiple_of(2);
 
         events.push(Event {
             t: i as f64 * 0.00001, // 10μs intervals

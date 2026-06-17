@@ -14,10 +14,17 @@ import shutil
 try:
     import evlib as _evlib_for_hdf5_probe
 
-    HAS_HDF5 = sys.platform != "win32" and hasattr(
-        _evlib_for_hdf5_probe, "save_events_to_hdf5"
+    # HDF5 read/write is a cfg-gated Rust feature (--features hdf5). The top-level
+    # evlib.save_events_to_hdf5 is a pure-Python h5py wrapper that always exists, so it
+    # is not a reliable signal. Probe the Rust `formats` submodule, where
+    # save_events_to_hdf5 is only registered when the hdf5 feature is compiled in.
+    _fmt = getattr(_evlib_for_hdf5_probe, "formats", None)
+    HAS_HDF5 = (
+        sys.platform != "win32"
+        and _fmt is not None
+        and hasattr(_fmt, "save_events_to_hdf5")
     )
-    del _evlib_for_hdf5_probe
+    del _evlib_for_hdf5_probe, _fmt
 except ImportError:
     HAS_HDF5 = False
 
@@ -68,8 +75,10 @@ def hdf5_available():
     try:
         import evlib
 
-        # Check if save_events_to_hdf5 exists (Unix-only function)
-        return hasattr(evlib, "save_events_to_hdf5")
+        # Probe the cfg-gated Rust `formats` submodule, not the always-present
+        # top-level Python h5py wrapper (see HAS_HDF5 above).
+        fmt = getattr(evlib, "formats", None)
+        return fmt is not None and hasattr(fmt, "save_events_to_hdf5")
     except (ImportError, AttributeError):
         return False
 

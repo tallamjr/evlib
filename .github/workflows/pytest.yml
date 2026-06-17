@@ -122,3 +122,45 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  # Local-only slow/integration lane, made explicit and manually runnable.
+  # Several of these tests (notably the RVT bit-identity acceptance suite)
+  # require gitignored datasets that are absent on hosted runners, so they
+  # will mostly skip here. This job exists to make the lane visible and to
+  # provide a runnable target on a self-hosted runner with the datasets.
+  slow-integration:
+    name: Slow + integration (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: slow-integration-ubuntu-latest
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-dependencies
+        with:
+          python-version: "3.12"
+          enable-gstreamer: "true"
+          os: ubuntu-latest
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install maturin
+        run: uv pip install maturin>=1.7.4
+
+      - name: Build Rust extension
+        run: uv run maturin develop --release --features hdf5
+        shell: bash
+
+      - name: Install Python dependencies
+        run: uv pip install .[all]
+        shell: bash
+
+      - name: Run slow and integration tests
+        run: pytest -v tests/ -m "slow or integration" --run-slow --run-integration
+        shell: bash
