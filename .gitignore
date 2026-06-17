@@ -765,3 +765,6 @@ data/events_gpu_torch.h5
 # Large Prophesee sample fixtures (>100 MB — exceed GitHub file size limit)
 data/prophesee/samples/evt3/pedestrians.raw
 data/prophesee/samples/hdf5/pedestrians.hdf5
+
+# RVT benchmark intermediate pipeline outputs (regenerated, not committed)
+benchmarks/out/work/

@@ -2,6 +2,7 @@
 pub mod ev_augmentation;
 pub mod ev_filtering;
 pub mod ev_formats;
+pub mod ev_representations;
 
 // Tracing configuration for structured logging
 pub mod tracing_config;
@@ -199,6 +200,12 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let augmentation_submodule = PyModule::new(m.py(), "ev_augmentation")?;
     ev_augmentation::python::register_augmentation_functions(&augmentation_submodule)?;
     m.add_submodule(&augmentation_submodule)?;
+
+    // Register ev_representations module as "representations_rs" in Python - dense scatter-add engine.
+    // Named "_rs" to avoid colliding with the pure-Python evlib.representations module.
+    let representations_submodule = PyModule::new(m.py(), "representations_rs")?;
+    ev_representations::python::register_representations_functions(&representations_submodule)?;
+    m.add_submodule(&representations_submodule)?;
 
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

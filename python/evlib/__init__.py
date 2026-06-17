@@ -216,6 +216,13 @@ try:
 except ImportError:
     simulation = None
 
+# RVT preprocessing pipeline. This is the RVT-identical histogram path; the
+# legacy representations.create_stacked_histogram computes a different quantity.
+try:
+    from . import rvt
+except ImportError:
+    rvt = None
+
 
 # Make representation functions directly accessible for backwards compatibility
 if representations:
@@ -242,6 +249,11 @@ if representations:
         print(
             f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}"
         )
+
+# Register the RVT preprocessing package in sys.modules so it is reachable both
+# as `evlib.rvt` and via `import evlib.rvt`.
+if rvt is not None:
+    sys.modules[__name__ + ".rvt"] = rvt
 
 # Choose filtering module: Python implementation preferred over Rust
 if python_filtering:

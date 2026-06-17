@@ -1,0 +1,74 @@
+{
+  "evlib_rust": {
+    "label": "evlib rust\n(dense scatter-add, raw h5)",
+    "note": "evlib rust\n(dense scatter-add, raw h5)",
+    "runs": [
+      {
+        "wall_s": 15.715923292096704,
+        "peak_rss_bytes": 6808371200
+      },
+      {
+        "wall_s": 15.688792790984735,
+        "peak_rss_bytes": 6808797184
+      },
+      {
+        "wall_s": 15.86563583300449,
+        "peak_rss_bytes": 6807633920
+      }
+    ]
+  },
+  "evlib_full": {
+    "label": "evlib streaming\n(h5 to parquet + build)",
+    "note": "evlib streaming\n(h5 to parquet + build)",
+    "runs": [
+      {
+        "wall_s": 58.452100667054765,
+        "peak_rss_bytes": 4602609664
+      },
+      {
+        "wall_s": 60.27778245799709,
+        "peak_rss_bytes": 4575100928
+      },
+      {
+        "wall_s": 58.33421779202763,
+        "peak_rss_bytes": 4546985984
+      }
+    ]
+  },
+  "evlib_build": {
+    "label": "evlib build only\n(from cached parquet)",
+    "note": "evlib build only\n(from cached parquet)",
+    "runs": [
+      {
+        "wall_s": 27.986067207995802,
+        "peak_rss_bytes": 3524771840
+      },
+      {
+        "wall_s": 28.21490087499842,
+        "peak_rss_bytes": 3477831680
+      },
+      {
+        "wall_s": 28.241187916952185,
+        "peak_rss_bytes": 3526803456
+      }
+    ]
+  },
+  "rvt": {
+    "label": "RVT torch\n(reference)",
+    "note": "RVT torch\n(reference)",
+    "runs": [
+      {
+        "wall_s": 22.24491258303169,
+        "peak_rss_bytes": 6867779584
+      },
+      {
+        "wall_s": 23.710180875030346,
+        "peak_rss_bytes": 6868074496
+      },
+      {
+        "wall_s": 23.35551037499681,
+        "peak_rss_bytes": 6869254144
+      }
+    ]
+  }
+}

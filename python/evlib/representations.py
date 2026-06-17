@@ -10,10 +10,9 @@ function names, signatures, and return types for seamless migration.
 
 import polars as pl
 from typing import Union, Literal
-from polars.lazyframe.engine_config import GPUEngine
 
 # Use Polars' native type definition
-EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], GPUEngine]
+EngineType = Union[Literal["auto", "in-memory", "streaming", "gpu"], pl.GPUEngine]
 
 # Helper type for flexible input handling
 EventsInput = Union[pl.LazyFrame, pl.DataFrame]
@@ -39,7 +38,13 @@ def create_stacked_histogram(
     window_duration_ms: float = 50.0,
     engine: EngineType = "auto",
 ) -> pl.DataFrame:
-    """Generate stacked histogram with direct Polars engine selection
+    """Generate a stacked-histogram representation with direct Polars engine selection.
+
+    This bins events into fixed-duration windows relative to the global minimum
+    timestamp and returns a long-format DataFrame. It is NOT the RVT preprocessing
+    representation: for an RVT-identical stacked histogram (the format expected by
+    the RVT detection pipeline) use ``evlib.rvt`` instead, e.g.
+    ``evlib.rvt.process_sequence`` / ``evlib.rvt.build_sparse_histogram``.
 
     Args:
         events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
