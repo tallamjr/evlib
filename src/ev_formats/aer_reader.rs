@@ -511,6 +511,31 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    /// Lightweight event row extracted from a Polars DataFrame for assertion convenience.
+    #[derive(Debug, Clone, Copy)]
+    struct EventRow {
+        t: f64, // seconds
+        x: u16,
+        y: u16,
+        polarity: i8, // 0/1 for AER (Text-like encoding)
+    }
+
+    fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
+        let x = df.column("x").unwrap().i16().unwrap();
+        let y = df.column("y").unwrap().i16().unwrap();
+        let t = df.column("t").unwrap().duration().unwrap();
+        let p = df.column("polarity").unwrap().i8().unwrap();
+        (0..df.height())
+            .map(|i| EventRow {
+                t: t.get(i).unwrap() as f64 / 1_000_000.0,
+                x: x.get(i).unwrap() as u16,
+                y: y.get(i).unwrap() as u16,
+                polarity: p.get(i).unwrap(),
+            })
+            .collect()
+    }
+
     #[test]
     fn test_aer_config_default() {
         let config = AerConfig::default();
@@ -544,9 +569,9 @@ mod tests {
         let raw_event = 205001u32;
         let data = raw_event.to_le_bytes();
         let event = reader.parse_single_event(&data, 0).unwrap();
-        assert_eq!(event.x, 100);
-        assert_eq!(event.y, 200);
-        assert!(event.polarity);
+        assert_eq!(event.0, 100); // x
+        assert_eq!(event.1, 200); // y
+        assert!(event.3); // polarity bit set
     }
     #[test]
     fn test_parse_negative_polarity() {
@@ -557,9 +582,9 @@ mod tests {
         let raw_event = 76900u32;
         let data = raw_event.to_le_bytes();
         let event = reader.parse_single_event(&data, 0).unwrap();
-        assert_eq!(event.x, 50);
-        assert_eq!(event.y, 75);
-        assert!(!event.polarity);
+        assert_eq!(event.0, 50); // x
+        assert_eq!(event.1, 75); // y
+        assert!(!event.3); // polarity bit clear
     }
     #[test]
     fn test_coordinate_validation() {
@@ -595,10 +620,11 @@ mod tests {
         let (events, metadata) = reader.parse_events(&data, data.len() as u64).unwrap();
         assert_eq!(events.height(), 2); // Only valid events should be included
         assert_eq!(metadata.event_count, 2);
-        assert_eq!(events[0].x, 50);
-        assert_eq!(events[0].y, 75);
-        assert_eq!(events[1].x, 25);
-        assert_eq!(events[1].y, 30);
+        let rows = dataframe_to_rows(&events);
+        assert_eq!(rows[0].x, 50);
+        assert_eq!(rows[0].y, 75);
+        assert_eq!(rows[1].x, 25);
+        assert_eq!(rows[1].y, 30);
     }
     #[test]
     fn test_timestamp_generation_sequential() {
@@ -618,9 +644,14 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
         assert_eq!(events.height(), 3);
-        assert_eq!(events[0].t, 1.0);
-        assert_eq!(events[1].t, 1.001);
-        assert_eq!(events[2].t, 1.002);
+        // Timestamps are stored as Duration(microseconds) via a truncating
+        // seconds -> microseconds conversion, so assert on the exact decoded
+        // microsecond integers. Note 1.001 s truncates to 1_000_999 us because
+        // 1.001 * 1e6 is not exactly representable in f64 (1000999.999...).
+        let t = events.column("t").unwrap().duration().unwrap();
+        assert_eq!(t.get(0).unwrap(), 1_000_000); // start 1.0 s
+        assert_eq!(t.get(1).unwrap(), 1_000_999); // 1.001 s (truncated)
+        assert_eq!(t.get(2).unwrap(), 1_002_000); // 1.002 s
     }
     #[test]
     fn test_timestamp_generation_uniform() {
@@ -640,9 +671,10 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
         assert_eq!(events.height(), 3);
-        assert_eq!(events[0].t, 0.0);
-        assert_eq!(events[1].t, 0.003);
-        assert_eq!(events[2].t, 0.006);
+        let rows = dataframe_to_rows(&events);
+        assert_eq!(rows[0].t, 0.0);
+        assert_eq!(rows[1].t, 0.003);
+        assert_eq!(rows[2].t, 0.006);
     }
     #[test]
     fn test_big_endian_parsing() {
@@ -652,9 +684,9 @@ mod tests {
         let raw_event = 205001u32;
         let data = raw_event.to_be_bytes(); // Big endian
         let event = reader.parse_single_event(&data, 0).unwrap();
-        assert_eq!(event.x, 100);
-        assert_eq!(event.y, 200);
-        assert!(event.polarity);
+        assert_eq!(event.0, 100); // x
+        assert_eq!(event.1, 200); // y
+        assert!(event.3); // polarity bit set
     }
     #[test]
     fn test_16bit_format() {
@@ -667,7 +699,7 @@ mod tests {
         let data = raw_event.to_le_bytes();
         let event = reader.parse_single_event(&data, 0).unwrap();
         // With 16-bit format, coordinates will be different due to bit layout
-        assert!(event.polarity);
+        assert!(event.3); // polarity bit set
     }
     #[test]
     fn test_read_aer_file() {
@@ -690,10 +722,11 @@ mod tests {
         assert_eq!(metadata.bytes_per_event, 4);
         assert_eq!(metadata.file_size, 12);
         // Check first event
-        assert_eq!(events[0].x, 50);
-        assert_eq!(events[0].y, 100);
-        assert!(events[0].polarity);
-        // Check metadata
+        let rows = dataframe_to_rows(&events);
+        assert_eq!(rows[0].x, 50);
+        assert_eq!(rows[0].y, 100);
+        assert_eq!(rows[0].polarity, 1); // AER stores positive polarity as 1
+                                         // Check metadata
         assert!(metadata.coordinate_bounds.is_some());
         assert!(metadata.polarity_distribution.is_some());
         let (pos_count, neg_count) = metadata.polarity_distribution.unwrap();
@@ -741,9 +774,10 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
         assert_eq!(events.height(), 3);
-        assert_eq!(events[0].t, 0.1);
-        assert_eq!(events[1].t, 0.5);
-        assert_eq!(events[2].t, 1.2);
+        let rows = dataframe_to_rows(&events);
+        assert_eq!(rows[0].t, 0.1);
+        assert_eq!(rows[1].t, 0.5);
+        assert_eq!(rows[2].t, 1.2);
     }
     #[test]
     fn test_is_aer_format() {

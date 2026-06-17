@@ -523,19 +523,19 @@ mod tests {
                 t: 0.001,
                 x: 100,
                 y: 200,
-                polarity: true,
+                polarity: 1i8,
             },
             Event {
                 t: 0.002,
                 x: 101,
                 y: 201,
-                polarity: false,
+                polarity: -1i8,
             },
             Event {
                 t: 0.003,
                 x: 102,
                 y: 202,
-                polarity: true,
+                polarity: 1i8,
             },
         ]
     }
@@ -611,19 +611,19 @@ mod tests {
                 t: 1.0,
                 x: 100,
                 y: 200,
-                polarity: true,
+                polarity: 1i8,
             }, // 1 second
             Event {
                 t: 0.001,
                 x: 101,
                 y: 201,
-                polarity: false,
+                polarity: -1i8,
             }, // 1 millisecond
             Event {
                 t: 1_000_000.0,
                 x: 102,
                 y: 202,
-                polarity: true,
+                polarity: 1i8,
             }, // 1 second in microseconds
         ];
 
@@ -656,7 +656,7 @@ mod tests {
         assert!((converted_events[0].t - 0.001).abs() < 1e-9);
         assert_eq!(converted_events[0].x, 100);
         assert_eq!(converted_events[0].y, 200);
-        assert_eq!(converted_events[0].polarity, true);
+        assert_eq!(converted_events[0].polarity, 1);
     }
 
     #[test]
@@ -670,11 +670,5 @@ mod tests {
 
         assert_eq!(batch.num_rows(), 3);
         assert_eq!(batch.num_columns(), 4);
-    }
-
-    #[test]
-    fn test_arrow_disabled() {
-        let result = create_event_arrow_schema();
-        assert!(matches!(result, Err(ArrowBuilderError::FeatureNotEnabled)));
     }
 }

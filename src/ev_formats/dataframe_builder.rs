@@ -305,11 +305,11 @@ mod tests {
     fn test_chunk_size_calculation() {
         // Test small file
         let chunk = calculate_optimal_chunk_size(1_000_000, 1_000_000_000); // 1MB file, 1GB memory
-        assert!(chunk >= 100_000 && chunk <= 5_000_000);
+        assert!((100_000..=5_000_000).contains(&chunk));
 
         // Test large file
         let chunk = calculate_optimal_chunk_size(1_000_000_000, 1_000_000_000); // 1GB file, 1GB memory
-        assert!(chunk >= 100_000 && chunk <= 5_000_000);
+        assert!((100_000..=5_000_000).contains(&chunk));
     }
 
     #[test]
