@@ -23,7 +23,7 @@ fn generate_events(count: usize) -> Vec<Event> {
         let y = (rng % 480) as u16;
 
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-        let polarity = (rng % 2) == 0;
+        let polarity = rng.is_multiple_of(2);
 
         events.push(Event {
             t: i as f64 * 0.00001, // 10μs intervals
@@ -277,7 +277,7 @@ fn benchmark_sorting(c: &mut Criterion) {
         let y = (rng % 480) as u16;
 
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-        let polarity = (rng % 2) == 0;
+        let polarity = rng.is_multiple_of(2);
 
         events.push(Event {
             t: random_time,

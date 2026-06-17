@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use evlib::ev_core::Event;
 use evlib::ev_formats::streaming::{
     estimate_memory_usage, should_use_streaming, PolarsEventStreamer,
 };
+use evlib::ev_formats::Event;
 use evlib::ev_formats::EventFormat;
 use evlib::ev_formats::{load_events_with_config, LoadConfig};
 use std::hint::black_box as hint_black_box;
@@ -22,7 +22,7 @@ fn generate_synthetic_events(count: usize, width: u16, height: u16) -> Vec<Event
         let y = (rng % height as u64) as u16;
 
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-        let polarity = (rng % 2) == 0;
+        let polarity = if rng.is_multiple_of(2) { 1i8 } else { -1i8 };
 
         events.push(Event {
             t: i as f64 * 0.00001, // 10μs intervals
@@ -48,7 +48,7 @@ fn write_events_to_temp_file(
             event.t,
             event.x,
             event.y,
-            if event.polarity { 1 } else { 0 }
+            if event.polarity > 0 { 1 } else { 0 }
         )?;
     }
 
@@ -81,7 +81,7 @@ fn benchmark_direct_vs_streaming(c: &mut Criterion) {
                 b.iter(|| {
                     let config = LoadConfig::new();
                     let loaded_events = load_events_with_config(path, &config).unwrap();
-                    hint_black_box(loaded_events.len());
+                    hint_black_box(loaded_events.height());
                 })
             },
         );
@@ -155,7 +155,7 @@ fn benchmark_memory_usage_patterns(c: &mut Criterion) {
                     let streamer = PolarsEventStreamer::new(100_000, *format);
                     let mut converted_count = 0;
                     for event in events.iter() {
-                        let _converted = streamer.convert_polarity(event.polarity);
+                        let _converted = streamer.convert_polarity(event.polarity > 0);
                         converted_count += 1;
                     }
                     hint_black_box(converted_count);
@@ -250,19 +250,19 @@ fn benchmark_data_type_efficiency(c: &mut Criterion) {
             |b, events| {
                 b.iter(|| {
                     let mut x_builder =
-                        PrimitiveChunkedBuilder::<Int16Type>::new("x", events.len());
+                        PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), events.len());
                     let mut y_builder =
-                        PrimitiveChunkedBuilder::<Int16Type>::new("y", events.len());
+                        PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), events.len());
                     let mut timestamp_builder =
-                        PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", events.len());
+                        PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), events.len());
                     let mut polarity_builder =
-                        PrimitiveChunkedBuilder::<Int8Type>::new("polarity", events.len());
+                        PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), events.len());
 
                     for event in events {
                         x_builder.append_value(event.x as i16);
                         y_builder.append_value(event.y as i16);
                         timestamp_builder.append_value((event.t * 1_000_000.0) as i64);
-                        polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
+                        polarity_builder.append_value(if event.polarity > 0 { 1i8 } else { 0i8 });
                     }
 
                     let x_series = x_builder.finish().into_series();
@@ -270,9 +270,13 @@ fn benchmark_data_type_efficiency(c: &mut Criterion) {
                     let timestamp_series = timestamp_builder.finish().into_series();
                     let polarity_series = polarity_builder.finish().into_series();
 
-                    let df =
-                        DataFrame::new(vec![x_series, y_series, timestamp_series, polarity_series])
-                            .unwrap();
+                    let df = DataFrame::new(vec![
+                        x_series.into(),
+                        y_series.into(),
+                        timestamp_series.into(),
+                        polarity_series.into(),
+                    ])
+                    .unwrap();
                     hint_black_box(df.height());
                 })
             },
@@ -285,19 +289,19 @@ fn benchmark_data_type_efficiency(c: &mut Criterion) {
             |b, events| {
                 b.iter(|| {
                     let mut x_builder =
-                        PrimitiveChunkedBuilder::<Int32Type>::new("x", events.len());
+                        PrimitiveChunkedBuilder::<Int32Type>::new("x".into(), events.len());
                     let mut y_builder =
-                        PrimitiveChunkedBuilder::<Int32Type>::new("y", events.len());
+                        PrimitiveChunkedBuilder::<Int32Type>::new("y".into(), events.len());
                     let mut timestamp_builder =
-                        PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", events.len());
+                        PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), events.len());
                     let mut polarity_builder =
-                        PrimitiveChunkedBuilder::<Int32Type>::new("polarity", events.len());
+                        PrimitiveChunkedBuilder::<Int32Type>::new("polarity".into(), events.len());
 
                     for event in events {
                         x_builder.append_value(event.x as i32);
                         y_builder.append_value(event.y as i32);
                         timestamp_builder.append_value((event.t * 1_000_000.0) as i64);
-                        polarity_builder.append_value(if event.polarity { 1i32 } else { 0i32 });
+                        polarity_builder.append_value(if event.polarity > 0 { 1i32 } else { 0i32 });
                     }
 
                     let x_series = x_builder.finish().into_series();
@@ -305,9 +309,13 @@ fn benchmark_data_type_efficiency(c: &mut Criterion) {
                     let timestamp_series = timestamp_builder.finish().into_series();
                     let polarity_series = polarity_builder.finish().into_series();
 
-                    let df =
-                        DataFrame::new(vec![x_series, y_series, timestamp_series, polarity_series])
-                            .unwrap();
+                    let df = DataFrame::new(vec![
+                        x_series.into(),
+                        y_series.into(),
+                        timestamp_series.into(),
+                        polarity_series.into(),
+                    ])
+                    .unwrap();
                     hint_black_box(df.height());
                 })
             },

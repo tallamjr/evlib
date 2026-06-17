@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use evlib::ev_core::Event;
 use evlib::ev_formats::streaming::PolarsEventStreamer;
+use evlib::ev_formats::Event;
 use evlib::ev_formats::{format_detector, load_events_with_config, LoadConfig};
 use evlib::ev_formats::{EventFormat, FormatDetector};
 use std::hint::black_box as hint_black_box;
@@ -20,7 +20,7 @@ fn generate_test_events(count: usize) -> Vec<Event> {
         let y = (rng % 480) as u16;
 
         rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-        let polarity = (rng % 2) == 0;
+        let polarity = if rng.is_multiple_of(2) { 1i8 } else { -1i8 };
 
         events.push(Event {
             t: i as f64 * 0.00001, // 10μs intervals
@@ -43,21 +43,21 @@ fn write_text_file(
     for event in events {
         let polarity_value = match polarity_encoding {
             "0_1" => {
-                if event.polarity {
+                if event.polarity > 0 {
                     1
                 } else {
                     0
                 }
             }
             "neg1_1" => {
-                if event.polarity {
+                if event.polarity > 0 {
                     1
                 } else {
                     -1
                 }
             }
             _ => {
-                if event.polarity {
+                if event.polarity > 0 {
                     1
                 } else {
                     0
@@ -89,7 +89,7 @@ fn write_hdf5_file(events: &[Event]) -> Result<NamedTempFile, Box<dyn std::error
             event.t,
             event.x,
             event.y,
-            if event.polarity { 1 } else { 0 }
+            if event.polarity > 0 { 1 } else { 0 }
         )?;
     }
 
@@ -161,7 +161,7 @@ fn benchmark_format_loading_performance(c: &mut Criterion) {
                         let config = LoadConfig::new();
                         let result = load_events_with_config(path, &config);
                         match result {
-                            Ok(events) => hint_black_box(events.len()),
+                            Ok(events) => hint_black_box(events.height()),
                             Err(_) => hint_black_box(0),
                         }
                     })
@@ -197,8 +197,10 @@ fn benchmark_polarity_encoding(c: &mut Criterion) {
                     let result = load_events_with_config(path, &config);
                     match result {
                         Ok(events) => {
-                            let polarity_sum: i32 =
-                                events.iter().map(|e| if e.polarity { 1 } else { 0 }).sum();
+                            let polarity = events.column("polarity").unwrap().i8().unwrap();
+                            let polarity_sum: i32 = (0..events.height())
+                                .map(|i| if polarity.get(i).unwrap() > 0 { 1 } else { 0 })
+                                .sum();
                             hint_black_box(polarity_sum)
                         }
                         Err(_) => hint_black_box(0),
@@ -286,7 +288,7 @@ fn benchmark_format_polarity_conversion(c: &mut Criterion) {
                     let mut converted_count = 0;
 
                     for event in events.iter() {
-                        let _converted = streamer.convert_polarity(event.polarity);
+                        let _converted = streamer.convert_polarity(event.polarity > 0);
                         converted_count += 1;
                     }
 
