@@ -76,6 +76,8 @@ pyo3-arrow     = { version = "0.10.1", optional = true }
 memmap2        = "0.5"
 lazy_static    = "1.4"
 byteorder      = "1.5"
+# LZ4 frame decompression for AEDAT 4.0 (DV framework) packet bodies
+lz4_flex       = { version = "0.11", default-features = false, features = ["frame"] }
 
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"

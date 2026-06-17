@@ -145,8 +145,8 @@ impl EventDataFrameBuilder {
 
         // VECTORIZED polarity conversion (much faster than per-event)
         let df = match self.format {
-            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family: Convert 0/1 to -1/1 using vectorized operations
+            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 | EventFormat::AEDAT4 => {
+                // EVT2 family and AEDAT 4.0 (DV): Convert 0/1 to -1/1 using vectorized operations
                 df.lazy()
                     .with_column(
                         when(col("polarity").eq(lit(0)))

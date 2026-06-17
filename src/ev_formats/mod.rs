@@ -22,6 +22,9 @@ pub use format_detector::{
 pub mod aedat_reader;
 pub use aedat_reader::{AedatConfig, AedatError, AedatMetadata, AedatReader, AedatVersion};
 
+// AEDAT 4.0 (DV framework) reader module
+pub mod aedat4_reader;
+
 // AER format reader module
 pub mod aer_reader;
 pub use aer_reader::{AerConfig, AerError, AerMetadata, AerReader, TimestampMode};

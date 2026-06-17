@@ -134,7 +134,9 @@ impl From<std::io::Error> for FormatDetectionError {
 
 /// Magic bytes for different formats
 const HDF5_MAGIC: &[u8] = b"\x89HDF\r\n\x1a\n";
-const AEDAT4_MAGIC: &[u8] = b"AEDAT4";
+// Real DV-framework AEDAT 4.0 files begin with `#!AER-DAT4.0`. This must be
+// tested before the generic `#!AER-DAT` (3.x) prefix to avoid misdetection.
+const AEDAT4_MAGIC: &[u8] = b"#!AER-DAT4.0";
 const AEDAT3_MAGIC: &[u8] = b"#!AER-DAT";
 const AEDAT2_MAGIC: &[u8] = b"#!AER-DAT2.0";
 const AEDAT1_MAGIC: &[u8] = b"#!AER-DAT1.0";
@@ -194,6 +196,7 @@ impl FormatDetector {
             Some("txt") | Some("dat") => (EventFormat::Text, 0.7),
             Some("h5") | Some("hdf5") => (EventFormat::HDF5, 0.8),
             Some("aer") => (EventFormat::AER, 0.6),
+            Some("aedat4") => (EventFormat::AEDAT4, 0.7), // DV framework, refined by content magic
             Some("aedat") => (EventFormat::AEDAT2, 0.5), // Default to AEDAT2, will be refined by content
             Some("raw") => (EventFormat::EVT2, 0.5), // Default to EVT2, will be refined by content
             Some("bin") => (EventFormat::Binary, 0.6),
