@@ -47,15 +47,18 @@ try:
         PERMISSIVE_SCHEMA,
     )
     import pandera.polars as pa
-    from pandera import Column, Field
+    from pandera.polars import Column, Field
 
     PANDERA_AVAILABLE = True
-except ImportError:
+    PANDERA_IMPORT_ERROR = ""
+except ImportError as exc:
     PANDERA_AVAILABLE = False
+    PANDERA_IMPORT_ERROR = str(exc)
 
 # Test markers and skip conditions
 requires_pandera = pytest.mark.skipif(
-    not PANDERA_AVAILABLE, reason="pandera not available"
+    not PANDERA_AVAILABLE,
+    reason=f"pandera validation unavailable: {PANDERA_IMPORT_ERROR}",
 )
 requires_evlib = pytest.mark.skipif(True, reason="Check evlib availability in fixture")
 requires_data = pytest.mark.requires_data
