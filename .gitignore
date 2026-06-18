@@ -718,6 +718,7 @@ dkms.conf
 *.mp4
 !sample.mp4
 tests/*.png
+examples/*.png
 
 # Temporary Cargo config for Python linking
 .cargo/config.toml
