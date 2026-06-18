@@ -22,6 +22,14 @@ SAMPLES = {
         "path": "data/prophesee/samples/evt3/pedestrians.raw",
         "format": "EVT3",
     },
+    "sample_data.aedat4": {
+        "path": "lib/dv-processing/tests/io/test_files/sample_data.aedat4",
+        "format": "AEDAT4",
+    },
+    "test-minimal.aedat4": {
+        "path": "lib/dv-processing/tests/io/test_files/test-minimal.aedat4",
+        "format": "AEDAT4",
+    },
 }
 
 

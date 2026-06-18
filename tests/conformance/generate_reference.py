@@ -37,17 +37,32 @@ def _openeb_commit():
         return "unknown"
 
 
+def _decode_reference(fmt, path):
+    """Decode a sample with the appropriate reference oracle -> (events, geometry)."""
+    if fmt == "AEDAT4":
+        from tests.conformance import dv_aedat4_runner
+
+        return dv_aedat4_runner.run_dv_aedat4(path)
+    return openeb_runner.run_openeb(fmt, path)
+
+
 def _build_digest(key):
     spec = canonical.SAMPLES[key]
-    events, geometry = openeb_runner.run_openeb(spec["format"], spec["path"])
+    events, geometry = _decode_reference(spec["format"], spec["path"])
     digest = canonical.compute_digest(events, geometry=geometry)
     digest["sample"] = spec["path"]
     digest["format"] = spec["format"]
-    digest["openeb_provenance"] = {
-        "decoder": openeb_runner._DECODER_DIR[spec["format"]],
-        "openeb_commit": _openeb_commit(),
-        "generated_by": "tests/conformance/generate_reference.py",
-    }
+    if spec["format"] == "AEDAT4":
+        digest["reference_provenance"] = {
+            "oracle": "dv_processing",
+            "generated_by": "tests/conformance/generate_reference.py",
+        }
+    else:
+        digest["openeb_provenance"] = {
+            "decoder": openeb_runner._DECODER_DIR[spec["format"]],
+            "openeb_commit": _openeb_commit(),
+            "generated_by": "tests/conformance/generate_reference.py",
+        }
     return digest
 
 
@@ -73,18 +88,18 @@ def _write(key, digest, update):
 
 def _verify(key):
     spec = canonical.SAMPLES[key]
-    openeb, _ = openeb_runner.run_openeb(spec["format"], spec["path"])
+    reference, _ = _decode_reference(spec["format"], spec["path"])
     evl = evlib_events(spec["path"])
-    o = canonical.canonical_sort(openeb)
+    o = canonical.canonical_sort(reference)
     e = canonical.canonical_sort(evl)
     if len(o) != len(e):
         raise SystemExit(
-            f"{key}: event count differs - OpenEB {len(o)} vs evlib {len(e)}"
+            f"{key}: event count differs - reference {len(o)} vs evlib {len(e)}"
         )
     for i, (a, b) in enumerate(zip(o, e)):
         if a != b:
             raise SystemExit(
-                f"{key}: first divergence at index {i}: OpenEB {a} vs evlib {b}"
+                f"{key}: first divergence at index {i}: reference {a} vs evlib {b}"
             )
     print(f"{key}: byte-identical across {len(o)} events")
 
