@@ -13,13 +13,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.conformance.tonic_reference import tonic_frame, tonic_voxel_grid
+from tests.conformance.tonic_reference import (
+    tonic_frame,
+    tonic_timesurface,
+    tonic_voxel_grid,
+)
 
 _TONIC_ROOT = Path(__file__).resolve().parents[1] / "lib" / "tonic" / "tonic"
 
 REAL_TONIC_PATH = _TONIC_ROOT / "functional" / "to_voxel_grid.py"
 REAL_SLICERS_PATH = _TONIC_ROOT / "slicers.py"
 REAL_TO_FRAME_PATH = _TONIC_ROOT / "functional" / "to_frame.py"
+REAL_TO_TIMESURFACE_PATH = _TONIC_ROOT / "functional" / "to_timesurface.py"
 
 
 def _load_real_tonic():
@@ -50,6 +55,29 @@ def _load_real_to_frame():
     frame_mod = importlib.util.module_from_spec(frame_spec)
     frame_spec.loader.exec_module(frame_mod)
     return frame_mod
+
+
+def _load_real_to_timesurface():
+    """Load real tonic ``to_timesurface_numpy`` by path.
+
+    ``to_timesurface.py`` does ``from tonic.slicers import slice_events_by_time``,
+    so we first load the standalone ``slicers.py`` and register it in
+    ``sys.modules`` as ``tonic.slicers`` (same trick as ``_load_real_to_frame``),
+    avoiding tonic's package ``__init__`` (scipy/librosa).
+    """
+    slicers_spec = importlib.util.spec_from_file_location(
+        "tonic.slicers", REAL_SLICERS_PATH
+    )
+    slicers_mod = importlib.util.module_from_spec(slicers_spec)
+    sys.modules["tonic.slicers"] = slicers_mod
+    slicers_spec.loader.exec_module(slicers_mod)
+
+    ts_spec = importlib.util.spec_from_file_location(
+        "real_to_timesurface", REAL_TO_TIMESURFACE_PATH
+    )
+    ts_mod = importlib.util.module_from_spec(ts_spec)
+    ts_spec.loader.exec_module(ts_mod)
+    return ts_mod
 
 
 def _synthetic_events(n=2000, width=64, height=48, seed=7):
@@ -103,6 +131,56 @@ def test_frame_port_matches_real_tonic_bit_identical():
     assert ref.shape == port.shape
     assert np.array_equal(ref.astype(np.int64), port), (
         "ported frame oracle diverges from real tonic"
+    )
+
+
+@pytest.mark.skipif(
+    not (REAL_SLICERS_PATH.exists() and REAL_TO_TIMESURFACE_PATH.exists()),
+    reason="real tonic source not present",
+)
+def test_timesurface_port_matches_real_tonic():
+    """Port of ``tonic_timesurface`` must match real tonic on a small input.
+
+    Real tonic ``to_timesurface_numpy`` casts each slice via
+    ``structured_to_unstructured(slice, dtype=int)``, so timestamps are coerced
+    to int inside tonic. We therefore use INTEGER timestamps and 0/1 polarity
+    (already the channel index) so the port and tonic see identical data.
+    """
+    width, height, n_pols = 8, 6, 2
+    dt, tau = 100.0, 50.0
+
+    dtype = np.dtype(
+        [("x", np.int64), ("y", np.int64), ("t", np.int64), ("p", np.int64)]
+    )
+    # A handful of events spread across ~5 dt windows (t in [0, 470]).
+    events = np.array(
+        [
+            (0, 0, 0, 0),
+            (1, 2, 30, 1),
+            (3, 4, 90, 0),
+            (3, 4, 110, 1),  # second window, same pixel different pol channel
+            (5, 1, 150, 0),
+            (2, 2, 205, 1),
+            (7, 5, 260, 0),
+            (0, 0, 305, 1),  # overwrites (0,0) ch1 memory later
+            (6, 3, 410, 0),
+            (4, 4, 470, 1),
+        ],
+        dtype=dtype,
+    )
+
+    real = _load_real_to_timesurface()
+    ref = real.to_timesurface_numpy(
+        events.copy(), (width, height, n_pols), dt=dt, tau=tau
+    )
+    port = tonic_timesurface(events.copy(), (width, height, n_pols), dt=dt, tau=tau)
+
+    assert ref.shape == port.shape
+    assert ref.shape[1:] == (n_pols, height, width)
+    assert ref.shape[0] >= 3, "expected several slices for this input"
+    assert np.allclose(ref, port), (
+        f"ported timesurface oracle diverges from real tonic; "
+        f"max abs diff {np.abs(ref - port).max()}"
     )
 
 

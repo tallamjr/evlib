@@ -178,3 +178,107 @@ def tonic_frame(events_struct, sensor_size_whp, n_time_bins):
             1,
         )
     return frames
+
+
+def _slice_events_by_time_indices(times, dt):
+    """Port of tonic ``SliceByTime.get_slice_metadata`` (overlap=0, no incomplete).
+
+    Reproduces ``lib/tonic/tonic/slicers.py`` ``SliceByTime.get_slice_metadata``
+    with ``time_window=dt``, ``overlap=0``, ``include_incomplete=False``,
+    ``start_time=None``, ``end_time=None``. Returns the list of
+    ``(idx_start, idx_end)`` searchsorted-left index pairs.
+
+        stride       = dt
+        start_time   = times[0]
+        end_time     = times[-1]
+        duration     = end_time - start_time
+        n_slices     = floor((duration - dt) / dt) + 1   # include_incomplete=False
+        n_slices     = max(n_slices, 1)
+        starts       = arange(n_slices) * dt + times[0]
+        ends         = starts + dt
+        idx_start    = searchsorted(times, starts, side='left')
+        idx_end      = searchsorted(times, ends,   side='left')
+
+    Each slice i covers events with ``t`` in ``[i*dt + t0, (i+1)*dt + t0)``.
+    """
+    stride = dt
+    start_time = times[0]
+    end_time = times[-1]
+    duration = end_time - start_time
+
+    n_slices = int(np.floor((duration - dt) / stride) + 1)
+    n_slices = max(n_slices, 1)
+
+    window_start_times = np.arange(n_slices) * stride + start_time
+    window_end_times = window_start_times + dt
+    indices_start = np.searchsorted(times, window_start_times)[:n_slices]
+    indices_end = np.searchsorted(times, window_end_times)[:n_slices]
+    return list(zip(indices_start, indices_end))
+
+
+def tonic_timesurface(events_struct, sensor_size_whp, dt, tau):
+    """Build HOTS time surfaces (tonic-identical). See Lagorce et al. 2016.
+
+    PORTS tonic's ``to_timesurface_numpy`` together with the ``SliceByTime``
+    slicer it delegates to. The real tonic source lives at:
+
+        lib/tonic/tonic/functional/to_timesurface.py (``to_timesurface_numpy``)
+        lib/tonic/tonic/slicers.py                    (``SliceByTime``,
+                                                        ``slice_events_by_time``)
+
+    Algorithm (overlap=0, include_incomplete=False):
+      * Slice events by fixed time window ``dt`` (left-closed, right-open).
+      * Maintain ``memory`` of shape ``(P, H, W)`` initialised to ``-inf``;
+        ``start_t`` is the timestamp of the FIRST event.
+      * For slice ``i`` (0-based): write ``memory[p, y, x] = t`` for each event
+        in the slice (later events overwrite), then
+        ``surf = exp(-((i+1)*dt + start_t - memory) / tau)`` and append it.
+      * Pixels never seen keep ``memory = -inf`` so ``surf = exp(-inf) = 0``.
+
+    Returns ``(n_slices, P, H, W)``, float64.
+
+    Parameters
+    ----------
+    events_struct : np.ndarray
+        Structured array with fields ``x``, ``y``, ``t``, ``p``. Events are
+        assumed sorted by ``t`` (tonic slices via ``searchsorted`` and uses
+        ``t[0]``). ``p`` is the channel index: tonic indexes ``memory`` by the
+        raw ``p`` value, which for evlib data must be mapped negative -> channel
+        0, positive -> channel 1 by the CALLER (this oracle indexes ``p`` as-is,
+        matching tonic, so pass 0/1 channel indices).
+    sensor_size_whp : tuple
+        ``(W, H, P)`` sensor size.
+    dt : float
+        Time window for slicing / decay reference.
+    tau : float
+        Exponential decay time constant.
+    """
+    events = events_struct
+    width, height, n_pols = (
+        int(sensor_size_whp[0]),
+        int(sensor_size_whp[1]),
+        int(sensor_size_whp[2]),
+    )
+
+    times = events["t"].astype(np.float64)
+    xs = events["x"].astype(int)
+    ys = events["y"].astype(int)
+    ps = events["p"].astype(int)
+
+    metadata = _slice_events_by_time_indices(times, dt)
+
+    # tonic init: np.ones(sensor_size[::-1]) * -inf -> shape (P, H, W).
+    memory = np.ones((n_pols, height, width), dtype=float) * -np.inf
+    start_t = times[0]
+    all_surfaces = []
+    for i, (start, end) in enumerate(metadata):
+        start, end = int(start), int(end)
+        if end > start:
+            sl = slice(start, end)
+            # later events in the slice overwrite earlier ones at the same pixel,
+            # exactly like tonic's ``memory[tuple(indices)] = timestamps``.
+            memory[ps[sl], ys[sl], xs[sl]] = times[sl]
+        diff = -((i + 1) * dt + start_t - memory)
+        surf = np.exp(diff / tau)
+        all_surfaces.append(surf)
+    return np.array(all_surfaces)
