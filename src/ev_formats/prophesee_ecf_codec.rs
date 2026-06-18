@@ -655,19 +655,16 @@ impl PropheseeECFDecoder {
             for packed_event in vs.iter().take(events_in_group) {
                 let packed_event = *packed_event;
 
-                // Extract fields from packed event (23 bits total per event)
-                // Note: Coordinate values are 11-bit but may need scaling for full sensor range
+                // Extract fields from packed event (23 bits total per event).
+                // The 11-bit x/y fields are the actual sensor coordinates and are
+                // used directly, matching the OpenEB hdf5_ecf reference
+                // (ecf_codec.cpp:199-200), which performs no rescaling.
                 let y_raw = ((packed_event >> 12) & 0x7FF) as u16; // Bits 12-22: Y coordinate (11 bits)
                 let x_raw = ((packed_event >> 1) & 0x7FF) as u16; // Bits 1-11: X coordinate (11 bits)
                 let p = if (packed_event & 1) != 0 { 1 } else { -1 }; // Bit 0: polarity (1 bit)
 
-                // Scale coordinates to full sensor resolution (1280x720)
-                // 11-bit values (0-2047) need to be mapped to sensor dimensions
-                let x = ((x_raw as u32 * 1280) / 2048) as u16; // Scale to 1280 width
-                let y = ((y_raw as u32 * 720) / 2048) as u16; // Scale to 720 height
-
-                x_coords.push(x);
-                y_coords.push(y);
+                x_coords.push(x_raw);
+                y_coords.push(y_raw);
                 polarities.push(p);
 
                 // Event decoded successfully
