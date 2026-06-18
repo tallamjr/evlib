@@ -340,6 +340,164 @@ def densify_voxel_grid(
     return dense
 
 
+def create_time_surface(
+    events: EventsInput,
+    height: int,
+    width: int,
+    dt: float,
+    tau: float,
+    engine: EngineType = "auto",
+) -> pl.DataFrame:
+    """Generate a tonic-validated HOTS time surface (Lagorce et al. 2016).
+
+    Matches tonic's ``to_timesurface_numpy`` semantics (overlap=0,
+    ``include_incomplete=False``). Events are sliced into fixed ``dt`` time
+    windows relative to the FIRST event timestamp (``start_t``); each window is
+    left-closed, right-open. tonic maintains a ``memory`` of the most-recent
+    event timestamp per ``(polarity_channel, y, x)`` that PERSISTS across
+    slices, then for slice ``i`` produces ``exp(-((i+1)*dt + start_t - memory)
+    / tau)`` (unseen pixels -> 0).
+
+    This function does the SLICE-LOCAL part in Polars: it assigns each event a
+    slice index ``i_e = floor((t_us - start_t) / dt)`` and returns, per
+    ``(slice, polarity, y, x)``, the maximum event timestamp WITHIN that slice
+    (``last_t``). Only seen cells get rows. The cross-slice memory persistence
+    (a cummax over slices) and the exponential decay are applied in numpy by
+    :func:`densify_time_surface`, because unseen cells must be 0 and the decay
+    references ``(i+1)*dt + start_t`` per slice -- both are dense operations that
+    are far cleaner (and bit-exact to tonic) in numpy than in Polars.
+
+    Events at or beyond the tonic slice window (``i_e >= n_slices``) are dropped,
+    matching tonic's ``include_incomplete=False`` (the final max-time event is
+    usually dropped). ``n_slices = max(floor((span - dt)/dt) + 1, 1)``.
+
+    Float64 is used for the slice-index division because Polars Float32 division
+    diverges from numpy at window edges (a known evlib issue).
+
+    Args:
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
+        height: Sensor height in pixels
+        width: Sensor width in pixels
+        dt: Time window for slicing (and decay reference), in microseconds
+        tau: Exponential decay time constant (accepted for API symmetry; the
+            decay itself is applied in :func:`densify_time_surface`)
+        engine: Polars engine to use ("auto", "streaming", "gpu", or GPUEngine)
+
+    Returns:
+        Long-format DataFrame with columns ``[slice, polarity, y, x, last_t]``,
+        where ``polarity`` is the channel index (0 negative, 1 positive) and
+        ``last_t`` is the max event timestamp (microseconds, Float64) within that
+        slice at that pixel/channel.
+    """
+    del tau  # decay is applied in densify_time_surface; kept for API symmetry
+
+    events_lf = _ensure_lazy_frame(events)
+
+    base = (
+        events_lf.sort("t")
+        .with_columns(
+            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            # Map evlib polarity (-1/1 or 0/1) to channel index: <=0 -> 0, >0 -> 1.
+            pl.when(pl.col("polarity") > 0)
+            .then(pl.lit(1))
+            .otherwise(pl.lit(0))
+            .cast(pl.Int8)
+            .alias("polarity_idx"),
+        )
+        .with_columns(start_t=pl.col("t_us").min())
+        .with_columns(
+            ((pl.col("t_us") - pl.col("start_t")) / dt)
+            .floor()
+            .cast(pl.Int64)
+            .alias("slice")
+        )
+    )
+
+    # tonic's slice count (include_incomplete=False).
+    span_expr = (pl.col("t_us").max() - pl.col("t_us").min()).cast(pl.Float64)
+    n_slices = (
+        base.select(
+            pl.max_horizontal(
+                ((span_expr - dt) / dt).floor().cast(pl.Int64) + 1, pl.lit(1)
+            ).alias("n")
+        )
+        .collect(engine=engine)
+        .item()
+    )
+
+    filtered = base.filter(
+        pl.col("x").is_between(0, width - 1)
+        & pl.col("y").is_between(0, height - 1)
+        & pl.col("slice").is_between(0, n_slices - 1)
+    )
+
+    return _collect_with_engine(
+        filtered.group_by(["slice", "polarity_idx", "y", "x"])
+        .agg(pl.col("t_us").max().alias("last_t"))
+        .rename({"polarity_idx": "polarity"})
+        .sort(["slice", "polarity", "y", "x"]),
+        engine=engine,
+    )
+
+
+def densify_time_surface(
+    df: pl.DataFrame,
+    n_slices: int,
+    n_polarities: int,
+    height: int,
+    width: int,
+    dt: float,
+    tau: float,
+    start_t: float,
+) -> np.ndarray:
+    """Assemble dense HOTS time surfaces from a long-format DataFrame.
+
+    Bridges the slice-local output of :func:`create_time_surface` (columns
+    ``slice, polarity, y, x, last_t``) into tonic's dense ``(n_slices, P, H, W)``
+    output. It reproduces tonic's persistent ``memory``: the memory at slice
+    ``i`` for a cell is the most-recent event timestamp there over slices
+    ``0..i`` (a cummax across the slice axis). The surface is then
+    ``exp(-((i+1)*dt + start_t - memory) / tau)`` per slice, with unseen cells
+    (memory still ``-inf``) decaying to 0.
+
+    Args:
+        df: DataFrame with columns ``slice``, ``polarity`` (channel index),
+            ``y``, ``x``, ``last_t`` (max event timestamp in that slice).
+        n_slices: Number of time slices (size of axis 0); must equal tonic's
+            slice count for the same ``dt``/``include_incomplete=False``.
+        n_polarities: Number of polarity channels (size of axis 1).
+        height: Sensor height in pixels.
+        width: Sensor width in pixels.
+        dt: Time window (microseconds), same value passed to
+            :func:`create_time_surface`.
+        tau: Exponential decay time constant.
+        start_t: Timestamp of the first event (microseconds); tonic's decay
+            reference origin.
+
+    Returns:
+        Dense ``(n_slices, n_polarities, height, width)`` float64 array.
+    """
+    # Per-slice memory writes: -inf where no event wrote in that slice.
+    memory = np.full((n_slices, n_polarities, height, width), -np.inf, dtype=np.float64)
+    if df.height > 0:
+        slice_idx = df["slice"].to_numpy().astype(np.int64)
+        polarity = df["polarity"].to_numpy().astype(np.int64)
+        y = df["y"].to_numpy().astype(np.int64)
+        x = df["x"].to_numpy().astype(np.int64)
+        last_t = df["last_t"].to_numpy().astype(np.float64)
+        memory[slice_idx, polarity, y, x] = last_t
+
+    # tonic's memory PERSISTS across slices: at slice i the memory is the most
+    # recent write over slices 0..i. With -inf fill, a forward cummax over the
+    # slice axis reproduces "carry the last seen timestamp forward".
+    memory = np.maximum.accumulate(memory, axis=0)
+
+    # surf_i = exp(-((i+1)*dt + start_t - memory)/tau); unseen (-inf) -> 0.
+    i_axis = (np.arange(n_slices, dtype=np.float64) + 1.0) * dt + start_t
+    diff = -(i_axis[:, None, None, None] - memory)
+    return np.exp(diff / tau)
+
+
 def create_mixed_density_stack(
     events: EventsInput,
     height: int,
@@ -510,6 +668,8 @@ __all__ = [
     "densify_voxel_grid",
     "create_event_frame",
     "densify_event_frame",
+    "create_time_surface",
+    "densify_time_surface",
     "create_mixed_density_stack",
     "time_surface",
     "event_histogram",

@@ -13,7 +13,11 @@ import pytest
 
 import evlib
 import evlib.representations as evr
-from tests.conformance.tonic_reference import tonic_frame, tonic_voxel_grid
+from tests.conformance.tonic_reference import (
+    tonic_frame,
+    tonic_timesurface,
+    tonic_voxel_grid,
+)
 
 SLIDER = Path(__file__).resolve().parents[1] / "data" / "slider_depth" / "events.txt"
 
@@ -112,3 +116,84 @@ def test_event_frame_matches_tonic():
     events_lf = evlib.load_events(str(SLIDER)).head(50_000)
     width, height, n_time_bins = 240, 180, 5
     _assert_frame_matches_tonic(events_lf, width, height, n_time_bins)
+
+
+def _tonic_n_slices_and_start_t(t_us, dt):
+    """Replicate tonic's SliceByTime slice count + start_t (overlap=0).
+
+    n_slices = max(floor((duration - dt)/dt) + 1, 1); start_t = first event t.
+    """
+    t_us = np.asarray(t_us, dtype=np.float64)
+    start_t = float(t_us[0])
+    duration = float(t_us[-1] - t_us[0])
+    n_slices = int(np.floor((duration - dt) / dt) + 1)
+    n_slices = max(n_slices, 1)
+    return n_slices, start_t
+
+
+def _assert_time_surface_matches_tonic(events_lf, width, height, dt, tau):
+    events_df = events_lf.collect().sort("t")
+    struct = _evlib_df_to_struct(events_df)
+    # tonic indexes memory by raw p; map evlib 0/1 (or -1/1) -> channel index.
+    struct_ch = struct.copy()
+    struct_ch["p"] = (struct["p"] > 0).astype(np.int64)
+
+    ref = tonic_timesurface(struct_ch, (width, height, 2), dt=dt, tau=tau)
+    n_slices, start_t = _tonic_n_slices_and_start_t(struct["t"], dt)
+
+    long_df = evr.create_time_surface(events_lf, height, width, dt=dt, tau=tau)
+    dense = evr.densify_time_surface(
+        long_df, n_slices, 2, height, width, dt=dt, tau=tau, start_t=start_t
+    )
+
+    assert dense.shape == ref.shape == (n_slices, 2, height, width)
+    atol = 1e-9
+    assert np.allclose(dense, ref, atol=atol), (
+        f"time surface diverges from tonic; max abs diff "
+        f"{np.abs(dense - ref).max()}, n_slices {n_slices}"
+    )
+
+
+def test_time_surface_matches_tonic_synthetic():
+    """Small synthetic input: a few dt windows over a tiny sensor."""
+    width, height = 8, 6
+    dtype = np.dtype(
+        [("x", np.int64), ("y", np.int64), ("t", np.int64), ("p", np.int64)]
+    )
+    rows = [
+        (0, 0, 0, 0),
+        (1, 2, 30, 1),
+        (3, 4, 90, 0),
+        (3, 4, 110, 1),
+        (5, 1, 150, 0),
+        (2, 2, 205, 1),
+        (7, 5, 260, 0),
+        (0, 0, 305, 1),
+        (6, 3, 410, 0),
+        (4, 4, 470, 1),
+    ]
+    arr = np.array(rows, dtype=dtype)
+    df = pl.DataFrame(
+        {
+            "x": arr["x"].astype(np.int16),
+            "y": arr["y"].astype(np.int16),
+            "t": pl.Series(arr["t"], dtype=pl.Int64).cast(pl.Duration("us")),
+            "polarity": arr["p"].astype(np.int8),
+        }
+    )
+    _assert_time_surface_matches_tonic(df.lazy(), width, height, dt=100.0, tau=50.0)
+
+
+@pytest.mark.skipif(not SLIDER.exists(), reason="slider_depth data not present")
+def test_time_surface_matches_tonic_slider_depth():
+    # First 5k events of slider_depth; dt chosen for ~5-20 slices on a small ROI.
+    events_lf = evlib.load_events(str(SLIDER)).head(5_000)
+    events_df = events_lf.collect().sort("t")
+    t_us = events_df["t"].dt.total_microseconds().to_numpy()
+    span = float(t_us[-1] - t_us[0])
+    dt = span / 12.0  # ~12 slices
+    tau = dt * 2.0
+    # Crop to a small ROI so the dense (n_slices, P, H, W) comparison is cheap.
+    width, height = 64, 48
+    roi = events_df.filter((pl.col("x") < width) & (pl.col("y") < height))
+    _assert_time_surface_matches_tonic(roi.lazy(), width, height, dt=dt, tau=tau)
