@@ -752,6 +752,13 @@ impl Evt2Reader {
                             }
                         }
                         Evt2EventType::CdOff | Evt2EventType::CdOn => {
+                            // Skip CD events that precede the first EVT_TIME_HIGH: with
+                            // no time base set their timestamp is meaningless. OpenEB's
+                            // reference decoder gates emission on the first TIME_HIGH the
+                            // same way (see lib/openeb metavision_evt2_raw_file_decoder).
+                            if !first_time_base_set {
+                                continue;
+                            }
                             if let Ok(cd_event) = raw_event.as_cd_event() {
                                 let x = cd_event.x;
                                 let y = cd_event.y;
@@ -862,6 +869,13 @@ impl Evt2Reader {
                             }
                         }
                         Evt2EventType::CdOff | Evt2EventType::CdOn => {
+                            // Skip CD events that precede the first EVT_TIME_HIGH: with
+                            // no time base set their timestamp is meaningless. OpenEB's
+                            // reference decoder gates emission on the first TIME_HIGH the
+                            // same way (see lib/openeb metavision_evt2_raw_file_decoder).
+                            if !first_time_base_set {
+                                continue;
+                            }
                             if let Ok(cd_event) = raw_event.as_cd_event() {
                                 let x = cd_event.x;
                                 let y = cd_event.y;

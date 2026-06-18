@@ -121,6 +121,42 @@ mod evt2_bitlayout_tests {
         );
     }
 
+    /// A CD event that appears before the first EVT_TIME_HIGH has no valid time
+    /// base, so its timestamp is meaningless. OpenEB skips all events until the
+    /// first TIME_HIGH; evlib must do the same, otherwise it emits a spurious
+    /// leading event with a garbage timestamp.
+    #[test]
+    fn test_evt2_skips_cd_events_before_first_time_high() {
+        let words = [
+            cd_word(0x01, 795, 176, 43), // CD before any TIME_HIGH -> must be skipped
+            time_high_word(100),         // first time base = 100 << 6 = 6400
+            cd_word(0x01, 600, 400, 5),  // emitted at t = 6405
+        ];
+        let (_dir, path) = write_evt2(&words);
+
+        let config = Evt2Config {
+            validate_coordinates: false,
+            skip_invalid_events: false,
+            max_events: None,
+            sensor_resolution: Some((1280, 720)),
+            chunk_size: 1000,
+            polarity_encoding: None,
+        };
+        let reader = Evt2Reader::with_config(config);
+        let (df, _) = reader.read_file(&path).unwrap();
+        let rows = dataframe_to_rows(&df);
+
+        assert_eq!(
+            rows.len(),
+            1,
+            "pre-TIME_HIGH event not skipped, got {rows:?}"
+        );
+        assert_eq!(
+            (rows[0].x, rows[0].y, rows[0].polarity, rows[0].t_us),
+            (600, 400, 1, 6405)
+        );
+    }
+
     #[test]
     fn test_evt2_cd_event_matches_openeb_layout() {
         // TIME_HIGH = 100 -> base timestamp = 100 << 6 = 6400 us.
