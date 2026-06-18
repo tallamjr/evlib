@@ -1,270 +1,95 @@
 # Processing API Reference
 
-> **Status Note**: The Rust backend neural network processing module is temporarily disabled in the current version. Neural network functionality is not currently available.
+All event processing in evlib is pure Python Polars. Filtering and representations are lazy Polars queries, so they run on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`) without code changes. Deep learning models live in Python/PyTorch under `evlib.models`.
 
-<!--
-Neural network processing functions for event camera data.
+There is no Rust neural-network backend, and no ONNX, `tch`, or candle bindings: that machinery was removed. Models are Python only.
 
-## E2VID Neural Network
+## `evlib.filtering`
 
-### Model Loading
-
-```python
-def load_e2vid_model(model_path: str) -> torch.nn.Module:
-    """Load E2VID model from file
-
-    Args:
-        model_path: Path to model file (.pth)
-
-    Returns:
-        Loaded PyTorch model ready for inference
-    """
-    pass
-
-def download_e2vid_model(variant: str = "unet", save_dir: str = "models/") -> str:
-    """Download pre-trained E2VID model
-
-    Args:
-        variant: Model variant ("unet")
-        save_dir: Directory to save model
-
-    Returns:
-        Path to downloaded model file
-    """
-    pass
-```
-
-### Inference
+Lazy event filters that accept and return a Polars `LazyFrame` (a `DataFrame` is also accepted as input). Inputs are expected to have columns `[x, y, t, polarity]` as produced by `evlib.load_events`, where `t` is a Duration in microseconds. Every function takes an `engine` argument (`"auto"`, `"streaming"`, `"gpu"`, or a Polars `GPUEngine`).
 
 ```python
-def e2vid_reconstruct(model: torch.nn.Module, voxel_grid: np.ndarray) -> np.ndarray:
-    """Reconstruct image from voxel grid using E2VID
-
-    Args:
-        model: Loaded E2VID model
-        voxel_grid: Input voxel grid (5, H, W)
-
-    Returns:
-        Reconstructed image (H, W) in range [0, 1]
-    """
-    pass
+def filter_by_time(events, t_start=None, t_end=None, engine="auto") -> pl.LazyFrame
+def filter_by_roi(events, x_min, x_max, y_min, y_max, engine="auto") -> pl.LazyFrame
+def filter_by_polarity(events, polarity, engine="auto") -> pl.LazyFrame
+def filter_hot_pixels(events, threshold_percentile=99.9, engine="auto") -> pl.LazyFrame
+def filter_noise(events, method="refractory", refractory_period_us=1000, engine="auto") -> pl.LazyFrame
+def filter_multiple_rois(events, rois, engine="auto") -> pl.LazyFrame
+def preprocess_events(events, ...) -> pl.LazyFrame
 ```
 
-## ONNX Runtime
-
-### Model Loading
+`t_start`/`t_end` are in **seconds** (converted to microseconds internally). `filter_by_polarity` matches the stored `-1`/`+1` encoding.
 
 ```python
-def load_onnx_model(model_path: str) -> Any:
-    """Load ONNX model for inference
+import evlib
+from evlib.filtering import filter_by_time, filter_by_roi, filter_by_polarity
 
-    Args:
-        model_path: Path to ONNX model file
+events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
 
-    Returns:
-        ONNX runtime inference session
-    """
-    pass
+# Chain lazy filters, then collect once
+filtered = filter_by_polarity(
+    filter_by_roi(
+        filter_by_time(events, t_start=0.1, t_end=0.5),
+        x_min=100, x_max=500, y_min=50, y_max=400,
+    ),
+    polarity=1,
+)
 
-def onnx_inference(session: Any, input_data: np.ndarray) -> np.ndarray:
-    """Run ONNX model inference
-
-    Args:
-        session: ONNX inference session
-        input_data: Input voxel grid
-
-    Returns:
-        Model output
-    """
-    pass
+df = filtered.collect(engine="streaming")
+print(f"{len(df):,} events after filtering")
 ```
 
-## Model Architectures
-
-### E2VID UNet
+You can also write the filters directly as Polars expressions instead of calling the helpers:
 
 ```python
-class E2VIDUNet(torch.nn.Module):
-    """E2VID U-Net architecture for event-to-video reconstruction"""
+import polars as pl
 
-    def __init__(self, input_channels: int = 5, output_channels: int = 1):
-        """Initialize E2VID U-Net
-
-        Args:
-            input_channels: Number of input channels (temporal bins)
-            output_channels: Number of output channels (1 for grayscale)
-        """
-        super().__init__()
-        # Model implementation
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass
-
-        Args:
-            x: Input tensor (B, C, H, W)
-
-        Returns:
-            Reconstructed image (B, 1, H, W)
-        """
-        pass
+filtered = events.filter(
+    (pl.col("t").dt.total_microseconds() / 1_000_000).is_between(0.1, 0.5)
+    & pl.col("x").is_between(100, 500)
+    & (pl.col("polarity") == 1)
+)
 ```
 
-## Preprocessing
+## `evlib.representations`
 
-### Input Normalization
+Event-to-representation conversion, also pure Python Polars. The main builders:
 
 ```python
-def normalize_voxel_for_network(voxel_grid: np.ndarray) -> np.ndarray:
-    """Normalize voxel grid for neural network input
-
-    Args:
-        voxel_grid: Input voxel grid (T, H, W)
-
-    Returns:
-        Normalized voxel grid
-    """
-    mean = voxel_grid.mean()
-    std = voxel_grid.std()
-    return (voxel_grid - mean) / (std + 1e-8)
-
-def prepare_batch_input(voxel_grids: List[np.ndarray]) -> torch.Tensor:
-    """Prepare batch of voxel grids for network input
-
-    Args:
-        voxel_grids: List of voxel grids
-
-    Returns:
-        Batch tensor (B, T, H, W)
-    """
-    batch = np.stack(voxel_grids)
-    return torch.from_numpy(batch).float()
+def create_stacked_histogram(events, height, width, bins=10, window_duration_ms=50.0, ...) -> pl.LazyFrame
+def create_voxel_grid(events, height, width, n_time_bins=5, engine="auto") -> pl.LazyFrame
+def create_mixed_density_stack(events, height, width, ...) -> pl.LazyFrame
+def preprocess_for_detection(events, height, width, bins=5, engine="auto") -> pl.LazyFrame
 ```
 
-## Postprocessing
-
-### Output Processing
+Note the parameter names: `create_stacked_histogram` takes `bins` and `window_duration_ms`, while `create_voxel_grid` takes `n_time_bins`.
 
 ```python
-def postprocess_reconstruction(output: np.ndarray,
-                             target_range: Tuple[float, float] = (0, 1)) -> np.ndarray:
-    """Postprocess neural network output
+import evlib
+import evlib.representations as evr
 
-    Args:
-        output: Network output
-        target_range: Target value range
+events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
 
-    Returns:
-        Processed output in target range
-    """
-    # Clamp to [0, 1] range
-    output = np.clip(output, 0, 1)
+# Stacked histogram (RVT-style input)
+hist = evr.create_stacked_histogram(
+    events, height=720, width=1280, bins=5, window_duration_ms=50.0
+)
 
-    # Scale to target range
-    if target_range != (0, 1):
-        min_val, max_val = target_range
-        output = output * (max_val - min_val) + min_val
-
-    return output
+# Voxel grid
+voxel = evr.create_voxel_grid(events, height=720, width=1280, n_time_bins=5)
 ```
 
-## Performance Utilities
+For the RVT-identical preprocessing pipeline (Polars plus the Rust dense scatter-add backend), use `evlib.rvt`. Note that `evlib.rvt` and `evlib.representations.create_stacked_histogram` compute different quantities: use `evlib.rvt` when you need bit-identical RVT preprocessing.
 
-### GPU Setup
+## `evlib.models`
+
+Deep learning models are implemented in Python with PyTorch and ship with real pretrained weights:
+
+- **E2VID**: event-to-video reconstruction (`evlib.models.E2VID`).
+- **RVT**: Recurrent Vision Transformer for detection (`evlib.models.RVT`), with the supporting YOLOX FPN and head components.
 
 ```python
-def setup_gpu_device() -> torch.device:
-    """Setup GPU device for processing
-
-    Returns:
-        PyTorch device (cuda or cpu)
-    """
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device('cpu')
-        print("Using CPU")
-
-    return device
-
-def move_to_device(tensor: torch.Tensor, device: torch.device) -> torch.Tensor:
-    """Move tensor to specified device
-
-    Args:
-        tensor: Input tensor
-        device: Target device
-
-    Returns:
-        Tensor on target device
-    """
-    return tensor.to(device)
+from evlib.models import E2VID  # requires `pip install evlib[torch]`
 ```
 
-### Benchmarking
-
-```python
-def benchmark_model(model: torch.nn.Module,
-                   input_shape: Tuple[int, ...],
-                   device: torch.device,
-                   num_runs: int = 100) -> Dict[str, float]:
-    """Benchmark model performance
-
-    Args:
-        model: Model to benchmark
-        input_shape: Input tensor shape
-        device: Device to run on
-        num_runs: Number of benchmark runs
-
-    Returns:
-        Performance metrics
-    """
-    import time
-
-    model.eval()
-    dummy_input = torch.randn(input_shape).to(device)
-
-    # Warmup
-    for _ in range(10):
-        with torch.no_grad():
-            _ = model(dummy_input)
-
-    # Benchmark
-    times = []
-    for _ in range(num_runs):
-        start = time.time()
-        with torch.no_grad():
-            _ = model(dummy_input)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        times.append(time.time() - start)
-
-    return {
-        'mean_time': np.mean(times),
-        'std_time': np.std(times),
-        'fps': 1.0 / np.mean(times)
-    }
-```
-
-## Error Handling
-
-### Validation
-
-```python
-def validate_model_input(voxel_grid: np.ndarray,
-                        expected_shape: Tuple[int, ...]) -> None:
-    """Validate model input format
-
-    Args:
-        voxel_grid: Input voxel grid
-        expected_shape: Expected input shape
-
-    Raises:
-        ValueError: If input format is invalid
-    """
-    if voxel_grid.shape != expected_shape:
-        raise ValueError(f"Invalid input shape: {voxel_grid.shape}, expected {expected_shape}")
-
-    if not np.isfinite(voxel_grid).all():
-        raise ValueError("Input contains non-finite values")
-```
--->
+These require PyTorch (`pip install evlib[torch]`). If PyTorch is not installed, `evlib.models` imports with a warning and exposes only `ModelConfig`. See the [representations API](representations.md) and the `python/evlib/models/` source for configuration and usage details.

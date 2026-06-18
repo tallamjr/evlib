@@ -1,21 +1,19 @@
 # Architecture
 
-evlib architecture overview: a high-performance event camera processing library with Rust core and Python bindings.
+evlib keeps a thin Rust core and does all DataFrame work in Polars from Python. Rust handles only what cannot be expressed as DataFrame operations: parsing binary event formats and building the Polars frame, plus one dense scatter-add kernel for RVT histograms. Everything else (filtering, representations, models, visualisation) lives in Python.
 
 ## Design Philosophy
 
 ### Core Principles
 
-1. **Rust Backend, Python Frontend**: Leverage Rust's performance and safety with Python's ease of use
-2. **Zero-Copy Operations**: Minimize memory allocations and data copying
-3. **Real Data Validation**: All features tested with real event camera datasets
-4. **Production Ready**: Robust error handling and edge case management
+1. **Thin Rust core, Polars everywhere else**: Rust does binary decoding; Python Polars does the processing.
+2. **Lazy and engine-selectable**: loaders return a Polars `LazyFrame`, so the same query runs on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`) where CUDA is available.
+3. **Real data validation**: format readers are tested against real event camera datasets.
+4. **No dead weight**: the crate carries only the dependencies the two Rust modules actually use.
 
-### Performance Strategy
+### Why this split
 
-- **Complex algorithms in Rust**: Voxel grids, neural networks, file I/O
-- **Simple operations in Python**: Basic array manipulations, plotting
-- **Honest benchmarking**: Document real performance characteristics
+DataFrame work (filtering, windowing, grouping, representation maths) is exactly what Polars is built for, and expressing it as lazy Polars queries makes it GPU-collectable for free. Only the parts Polars cannot do, decoding camera-specific binary containers into columns and the dense scatter-add behind RVT stacked histograms, stay in Rust.
 
 ## System Architecture
 
@@ -23,28 +21,24 @@ evlib architecture overview: a high-performance event camera processing library 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Python Frontend                          │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
-│  │   evlib.    │ │   evlib.    │ │   evlib.    │          │
-│  │ formats     │ │ represent-  │ │ processing  │   ...    │
-│  │             │ │ ations      │ │             │          │
-│  └─────────────┘ └─────────────┘ └─────────────┘          │
+│                    Python (evlib)                           │
+│  load_events  ·  filtering  ·  representations  ·  rvt      │
+│  models (E2VID, RVT)  ·  visualization  ·  simulation       │
+│            all processing as lazy Polars queries            │
 └─────────────────────────────────────────────────────────────┘
-           │                    │                    │
-           │                    │                    │
-           ▼                    ▼                    ▼
+           │  pl.LazyFrame [x, y, t, polarity]
+           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     PyO3 Bindings                           │
+│                  PyO3 boundary (evlib._evlib)               │
+│         load_events · detect_format · arrow bridge          │
+│         representations_rs (dense scatter-add)              │
 └─────────────────────────────────────────────────────────────┘
-           │                    │                    │
-           │                    │                    │
-           ▼                    ▼                    ▼
+           │
+           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     Rust Core                               │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
-│  │ ev_formats  │ │ ev_repre-   │ │ ev_process- │   ...    │
-│  │             │ │ sentations  │ │ ing         │          │
-│  └─────────────┘ └─────────────┘ └─────────────┘          │
+│                      Rust core (src/)                       │
+│  ev_formats         → binary decode + Polars frame build    │
+│  ev_representations → dense scatter-add for RVT histograms  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,394 +46,100 @@ evlib architecture overview: a high-performance event camera processing library 
 
 ```
 evlib/
-├── src/                           # Rust source code
-│   ├── ev_core/                  # Core data structures
-│   │   ├── mod.rs               # Event arrays, validation
-│   │   └── types.rs             # Type definitions
-│   ├── ev_formats/               # File I/O operations
-│   │   ├── mod.rs               # Public API
-│   │   ├── text.rs              # Text file loading
-│   │   └── hdf5.rs              # HDF5 file operations
-│   ├── ev_representations/       # Event representations
-│   │   ├── mod.rs               # Public API
-│   │   ├── voxel_grid.rs        # Standard voxel grids
-│   │   └── smooth_voxel.rs      # Smooth voxel grids
-│   ├── ev_processing/            # Neural networks
-│   │   ├── mod.rs               # Public API
-│   │   ├── e2vid.rs             # E2VID implementations
-│   │   └── pytorch_loader.rs    # PyTorch model loading
-│   ├── ev_transforms/            # Spatial transformations
-│   │   ├── mod.rs               # Public API
-│   │   ├── flip.rs              # Flip operations
-│   │   └── noise.rs             # Noise addition
-│   ├── ev_tracking/              # Event tracking
-│   │   ├── mod.rs               # Public API
-│   │   └── etap.rs              # ETAP integration
-│   └── lib.rs                    # Python bindings
-└── python/                       # Python package structure
-    └── evlib/                    # Python module
-        ├── __init__.py          # Package initialization
-        ├── formats.py           # File format wrappers
-        ├── representations.py   # Representation wrappers
-        ├── processing.py        # Processing wrappers
-        ├── augmentation.py      # Augmentation wrappers
-        └── visualization.py     # Visualization wrappers
+├── src/                            # Rust source (compiled to evlib._evlib)
+│   ├── ev_formats/                 # Binary parsing + frame construction
+│   │   ├── mod.rs                  # Public API, load/save, PyO3 wrappers
+│   │   ├── format_detector.rs      # Automatic format detection
+│   │   ├── evt2_reader.rs          # Prophesee EVT2
+│   │   ├── evt21_reader.rs         # Prophesee EVT2.1
+│   │   ├── evt3_reader.rs          # Prophesee EVT3
+│   │   ├── aedat_reader.rs         # AEDAT (iniVation)
+│   │   ├── aedat4_reader.rs        # AEDAT 4.0 (flatbuffer + LZ4)
+│   │   ├── aer_reader.rs           # AER
+│   │   ├── hdf5_reader.rs          # HDF5 (opt-in, feature = "hdf5")
+│   │   ├── ecf_codec.rs            # ECF codec
+│   │   ├── prophesee_ecf_codec.rs  # Prophesee ECF variant
+│   │   ├── evnt_tcp_reader.rs      # Streaming TCP reader (tokio)
+│   │   ├── dataframe_builder.rs    # Decoded primitives → Polars frame
+│   │   ├── arrow_builder.rs        # Apache Arrow zero-copy bridge
+│   │   ├── polarity_handler.rs     # 0/1 ↔ -1/1 polarity encoding
+│   │   └── streaming.rs            # Chunked reads for large files
+│   ├── ev_representations/         # Dense scatter-add kernel
+│   │   ├── mod.rs                  # PyO3 registration (representations_rs)
+│   │   └── stacked_histogram_dense.rs  # RVT stacked-histogram scatter-add
+│   ├── tracing_config.rs           # Structured logging (tracing)
+│   ├── bin/                        # Small Rust binaries
+│   └── lib.rs                      # PyO3 module definition
+└── python/
+    └── evlib/                      # Python package (the import entry point)
+        ├── __init__.py             # load_events, engine config, re-exports
+        ├── filtering.py            # Event filtering (pure Python Polars)
+        ├── representations.py      # Representations (pure Python Polars)
+        ├── rvt/                    # RVT-identical preprocessing pipeline
+        ├── models/                 # E2VID and RVT (Python / PyTorch)
+        ├── visualization.py        # Plotting helpers (Python-only)
+        └── simulation.py           # ESIM video-to-events simulation
 ```
 
-## Data Flow Architecture
+There is no `ev_core`, `ev_processing`, `ev_transforms`, or `ev_tracking` module: those were removed. The crate has no Rust machine-learning backend (no `tch`, `ort`/ONNX, or candle bindings); all models live in Python under `python/evlib/models/`.
 
-### Event Data Pipeline
+## Data Flow
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Raw       │    │   Parsed    │    │   Filtered  │    │   Processed │
-│   Files     │───►│   Events    │───►│   Events    │───►│   Output    │
-│             │    │             │    │             │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-      │                    │                    │                    │
-      │                    │                    │                    │
-      ▼                    ▼                    ▼                    ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ Text/HDF5   │    │ Event       │    │ Time/Space  │    │ Voxel Grid  │
-│ Files       │    │ Arrays      │    │ Windowing   │    │ Representa- │
-│             │    │ (xs,ys,ts,ps│    │             │    │ tions       │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-```
-
-### Memory Management
+The path from a file on disk to a usable frame is short:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Memory Layout                            │
-│                                                             │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
-│  │ Event Data  │ │ Voxel Grid  │ │ Model       │          │
-│  │ (Stack)     │ │ (Heap)      │ │ Weights     │          │
-│  │             │ │             │ │ (Heap)      │          │
-│  │ xs: u16[]   │ │ f32[][][]   │ │ PyTorch     │          │
-│  │ ys: u16[]   │ │             │ │ Model       │          │
-│  │ ts: f64[]   │ │             │ │             │          │
-│  │ ps: i8[]    │ │             │ │             │          │
-│  └─────────────┘ └─────────────┘ └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
+binary file ──► Rust decode (ev_formats) ──► Polars LazyFrame ──► Python Polars
+  EVT2/3,        format detection,            columns:             filtering,
+  AEDAT, AER,    container parsing,           [x, y, t, polarity]  representations,
+  HDF5, text     polarity handling                                 models, plots
 ```
+
+1. `evlib.load_events(path, ...)` calls the Rust loader, which detects the format, decodes the container, normalises polarity, and builds a Polars frame.
+2. The Rust side returns a `LazyFrame` with columns `[x, y, t, polarity]`: `t` is a Duration in microseconds and `polarity` is already `-1`/`+1`.
+3. `load_events` applies any time, spatial, or polarity filters as Polars expressions, so loading and filtering fuse into one lazy query, then optionally sorts by `t` (default `sort=True`).
+4. Downstream work (`evlib.filtering`, `evlib.representations`, `evlib.rvt`, `evlib.models`) is all Polars, collected with a selectable engine.
+
+For the RVT preprocessing path, `evlib.rvt` builds its lazy Polars query and hands the binned events to the Rust `representations_rs` dense scatter-add kernel for the final stacked-histogram accumulation.
 
 ## Core Components
 
-### Event Data Structure
+### ev_formats: binary decode and frame construction
 
-```rust
-// src/ev_core/types.rs
-#[derive(Debug, Clone)]
-pub struct EventData {
-    pub xs: Vec<u16>,      // X coordinates
-    pub ys: Vec<u16>,      // Y coordinates
-    pub ts: Vec<f64>,      // Timestamps
-    pub ps: Vec<i8>,       // Polarities
-}
+`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame, or through `arrow_builder.rs` for a zero-copy Apache Arrow bridge. `polarity_handler.rs` normalises 0/1 and -1/1 encodings, and `streaming.rs` provides chunked reads for files too large to load whole.
 
-impl EventData {
-    pub fn new(xs: Vec<u16>, ys: Vec<u16>, ts: Vec<f64>, ps: Vec<i8>) -> Self {
-        Self { xs, ys, ts, ps }
-    }
+HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). When the feature is off, or on Windows, use `h5py` from Python for HDF5 I/O.
 
-    pub fn len(&self) -> usize {
-        self.xs.len()
-    }
+### ev_representations: the dense scatter-add kernel
 
-    pub fn validate(&self) -> Result<(), EventError> {
-        // Comprehensive validation
-    }
-}
-```
+`ev_representations` exposes a single dense scatter-add used by the RVT stacked-histogram path. It is registered with Python as `evlib.representations_rs` (named with the `_rs` suffix so it does not collide with the pure-Python `evlib.representations` module). All other representations (voxel grids, mixed density stacks, the general stacked histogram) are pure Python Polars in `evlib.representations`.
 
-### File I/O Architecture
+### Python processing layer
 
-```rust
-// src/ev_formats/mod.rs
-pub trait EventLoader {
-    fn load_events(&self, path: &str, config: &LoadConfig) -> Result<EventData, FormatError>;
-}
+All processing is Python Polars:
 
-pub struct TextLoader;
-pub struct HDF5Loader;
+- `evlib.filtering`: time, ROI, polarity, hot-pixel, and noise filters as lazy Polars expressions.
+- `evlib.representations`: stacked histograms, voxel grids, mixed density stacks.
+- `evlib.rvt`: the RVT-identical preprocessing pipeline (Polars plus the Rust scatter backend).
+- `evlib.models`: E2VID and RVT models in Python/PyTorch with real pretrained weights.
+- `evlib.visualization`: plotting helpers, pure Python.
 
-impl EventLoader for TextLoader {
-    fn load_events(&self, path: &str, config: &LoadConfig) -> Result<EventData, FormatError> {
-        // Text file parsing with filtering
-    }
-}
+## PyO3 Boundary
 
-impl EventLoader for HDF5Loader {
-    fn load_events(&self, path: &str, config: &LoadConfig) -> Result<EventData, FormatError> {
-        // HDF5 file loading with filtering
-    }
-}
-```
+`src/lib.rs` defines the `_evlib` PyO3 module, built by maturin as `evlib._evlib`. It registers:
 
-### Representation Architecture
+- top-level `load_events`, `detect_format`, and the Arrow bridge functions;
+- a `formats` submodule (load/save, detection, ECF test, Arrow conversion);
+- a `core` submodule with a handful of migrated helper functions (`merge_events`, `add_random_events`, `remove_events`, `events_to_block`);
+- `representations_rs` (the dense scatter-add);
+- `tracing_config` for logging control.
 
-```rust
-// src/ev_representations/mod.rs
-pub trait EventRepresentation {
-    type Output;
-
-    fn create(&self, events: &EventData, config: &RepresentationConfig) -> Self::Output;
-}
-
-pub struct VoxelGrid;
-pub struct SmoothVoxelGrid;
-
-impl EventRepresentation for VoxelGrid {
-    type Output = Array3<f32>;
-
-    fn create(&self, events: &EventData, config: &RepresentationConfig) -> Self::Output {
-        // Voxel grid creation
-    }
-}
-```
-
-## PyO3 Integration
-
-### Binding Architecture
-
-```rust
-// src/lib.rs
-use pyo3::prelude::*;
-
-#[pymodule]
-fn evlib(_py: Python, m: &PyModule) -> PyResult<()> {
-    // Core module
-    m.add_function(wrap_pyfunction!(load_events, m)?)?;
-
-    // Representations
-    m.add_function(wrap_pyfunction!(create_voxel_grid, m)?)?;
-    m.add_function(wrap_pyfunction!(create_smooth_voxel_grid, m)?)?;
-
-    // Processing
-    m.add_function(wrap_pyfunction!(events_to_video, m)?)?;
-
-    Ok(())
-}
-```
-
-### Type Conversion
-
-```rust
-// Convert Python types to Rust types
-#[pyfunction]
-fn load_events(
-    file_path: String,
-    t_start: Option<f64>,
-    t_end: Option<f64>,
-    // ... other parameters
-) -> PyResult<(Vec<u16>, Vec<u16>, Vec<f64>, Vec<i8>)> {
-
-    // Create load configuration
-    let config = LoadConfig {
-        t_start,
-        t_end,
-        ..Default::default()
-    };
-
-    // Load events
-    let events = ev_formats::load_events(&file_path, &config)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-
-    // Convert to Python types
-    Ok((events.xs, events.ys, events.ts, events.ps))
-}
-```
-
-## Neural Network Integration
-
-### Model Loading Architecture
-
-```rust
-// src/ev_processing/mod.rs
-pub enum ModelBackend {
-    PyTorch(PyTorchModel),
-    ONNX(OnnxModel),
-}
-
-pub struct PyTorchModel {
-    model: tch::CModule,
-}
-
-pub struct OnnxModel {
-    session: ort::Session,
-}
-
-impl ModelBackend {
-    pub fn load(path: &str, backend: &str) -> Result<Self, ModelError> {
-        match backend {
-            "pytorch" => Ok(ModelBackend::PyTorch(PyTorchModel::load(path)?)),
-            "onnx" => Ok(ModelBackend::ONNX(OnnxModel::load(path)?)),
-            _ => Err(ModelError::UnsupportedBackend(backend.to_string())),
-        }
-    }
-
-    pub fn predict(&self, input: &Array3<f32>) -> Result<Array3<f32>, ModelError> {
-        match self {
-            ModelBackend::PyTorch(model) => model.predict(input),
-            ModelBackend::ONNX(model) => model.predict(input),
-        }
-    }
-}
-```
-
-### E2VID Integration
-
-```rust
-// src/ev_processing/e2vid.rs
-pub struct E2VIDModel {
-    backend: ModelBackend,
-    config: E2VIDConfig,
-}
-
-impl E2VIDModel {
-    pub fn new(model_path: &str) -> Result<Self, ModelError> {
-        let backend = ModelBackend::load(model_path, "pytorch")?;
-        let config = E2VIDConfig::default();
-        Ok(Self { backend, config })
-    }
-
-    pub fn events_to_video(&self, events: &EventData) -> Result<Array3<f32>, ModelError> {
-        // Convert events to voxel grid
-        let voxel_grid = VoxelGrid.create(events, &self.config.voxel_config);
-
-        // Run inference
-        self.backend.predict(&voxel_grid)
-    }
-}
-```
-
-## Performance Optimization
-
-### Memory Layout
-
-```rust
-// Optimize for cache locality
-#[repr(C)]
-pub struct EventBatch {
-    pub count: usize,
-    pub xs: *mut u16,
-    pub ys: *mut u16,
-    pub ts: *mut f64,
-    pub ps: *mut i8,
-}
-
-// SIMD operations for bulk processing
-use std::simd::*;
-
-pub fn process_events_simd(events: &[Event]) -> Vec<ProcessedEvent> {
-    // Vectorized processing
-}
-```
-
-### Parallel Processing
-
-```rust
-use rayon::prelude::*;
-
-pub fn create_voxel_grid_parallel(events: &EventData, config: &VoxelConfig) -> Array3<f32> {
-    // Parallel voxel grid creation
-    events.par_chunks(1000)
-        .map(|chunk| process_chunk(chunk, config))
-        .reduce(|| Array3::zeros((config.bins, config.height, config.width)),
-                |acc, chunk| acc + chunk)
-}
-```
-
-## Error Handling
-
-### Error Types
-
-```rust
-// src/ev_core/error.rs
-#[derive(Debug, thiserror::Error)]
-pub enum EventError {
-    #[error("Invalid event data: {0}")]
-    InvalidData(String),
-
-    #[error("Array length mismatch: expected {expected}, got {actual}")]
-    ArrayLengthMismatch { expected: usize, actual: usize },
-
-    #[error("Timestamp order violation at index {index}")]
-    TimestampOrderViolation { index: usize },
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FormatError {
-    #[error("File not found: {0}")]
-    FileNotFound(String),
-
-    #[error("Invalid file format: {0}")]
-    InvalidFormat(String),
-
-    #[error("HDF5 error: {0}")]
-    HDF5Error(#[from] hdf5::Error),
-}
-```
-
-### Error Propagation
-
-```rust
-// Consistent error handling across modules
-pub fn load_events(path: &str, config: &LoadConfig) -> Result<EventData, FormatError> {
-    let raw_data = read_file(path)?;
-    let events = parse_events(raw_data)?;
-    let validated = events.validate()
-        .map_err(|e| FormatError::InvalidFormat(e.to_string()))?;
-    Ok(validated)
-}
-```
-
-## Testing Architecture
-
-### Test Organization
-
-```
-tests/
-├── integration/           # End-to-end tests
-│   ├── test_pipeline.py  # Full pipeline tests
-│   └── test_models.py    # Model integration tests
-├── unit/                 # Unit tests
-│   ├── test_formats.py   # File I/O tests
-│   ├── test_reprs.py     # Representation tests
-│   └── test_core.py      # Core functionality tests
-├── benchmarks/           # Performance benchmarks
-│   ├── test_benchmarks.py
-│   └── benchmark_utils.py
-└── data/                 # Test data
-    ├── slider_depth/     # Primary test dataset
-    └── synthetic/        # Generated test data
-```
-
-### Test Data Management
-
-```rust
-// src/testing/mod.rs
-pub struct TestDataset {
-    pub name: String,
-    pub events: EventData,
-    pub metadata: DatasetMetadata,
-}
-
-impl TestDataset {
-    pub fn slider_depth() -> Self {
-        // Load standard test dataset
-    }
-
-    pub fn synthetic(config: &SyntheticConfig) -> Self {
-        // Generate synthetic events
-    }
-}
-```
+Frames cross the boundary as Polars objects via `pyo3-polars`; helpers in `lib.rs` (`extract_lazy_frame`, `lazy_frame_to_python`) convert between a Python Polars DataFrame and a Rust `LazyFrame`.
 
 ## Build System
 
-### Maturin Configuration
+### Maturin
+
+evlib is built with maturin (PyO3 bindings). The Python package lives under `python/` and the compiled extension is `evlib._evlib`:
 
 ```toml
 # pyproject.toml
@@ -447,133 +147,54 @@ impl TestDataset {
 requires = ["maturin>=1.3.2"]
 build-backend = "maturin"
 
-[project]
-name = "evlib"
-dynamic = ["version"]
-dependencies = [
-    "numpy>=1.24.0",
-]
-
 [tool.maturin]
-bindings = "pyo3"
-features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "evlib._evlib"
+strip = true
 ```
+
+Python 3.11, 3.12, and 3.13 are supported (`requires-python = ">=3.11"`).
 
 ### Feature Flags
 
 ```toml
 # Cargo.toml
 [features]
-default = ["hdf5"]
-hdf5 = ["dep:hdf5"]
-pytorch = ["dep:tch"]
-cuda = ["tch/cuda"]
-mkl = ["tch/mkl"]
+default          = ["polars", "python", "arrow"]
+python           = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
+extension-module = ["pyo3/extension-module"]
+polars           = ["dep:polars"]
+arrow            = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
+zero-copy        = ["arrow"]   # alias for clarity
+hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only
 ```
 
-## Documentation Architecture
+Key points:
 
-### API Documentation
+- `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,arrow,extension-module`.
+- `hdf5` is opt-in and Unix only. On Windows the underlying HDF5 dependencies are not available, so the feature compiles to no-op stubs there and Python `h5py` is used instead.
+- `zero-copy` is an alias for `arrow`.
 
-```rust
-/// Load events from file with filtering options
-///
-/// # Arguments
-///
-/// * `file_path` - Path to event file
-/// * `t_start` - Start time filter (optional)
-/// * `t_end` - End time filter (optional)
-///
-/// # Returns
-///
-/// Event arrays (xs, ys, ts, ps)
-///
-/// # Errors
-///
-/// Returns `FormatError` if file cannot be loaded or parsed
-///
-/// # Examples
-///
-/// ```rust
-/// let events = load_events("data/slider_depth/events.txt", Some(0.0), Some(1.0))?;
-/// ```
-pub fn load_events(
-    file_path: &str,
-    t_start: Option<f64>,
-    t_end: Option<f64>
-) -> Result<EventData, FormatError> {
-    // Implementation
-}
+There are no `pytorch`, `cuda`, `mkl`, or `metal` Cargo features: GPU acceleration comes from cudf-polars at the Python layer (`collect(engine="gpu")`), not from Rust.
+
+### Common commands
+
+```bash
+maturin develop                 # default minimal build (polars + python + arrow)
+maturin develop --features hdf5 # opt-in HDF5 (Linux/macOS)
+maturin develop --release       # release build for performance work
+cargo test                      # Rust tests (no special flags needed)
+pytest                          # Python tests
 ```
 
-### Cross-Language Documentation
+## Error Handling
 
-- **Rust docs**: `cargo doc --open`
-- **Python docs**: Generated from docstrings
-- **User guides**: Markdown documentation
-- **Examples**: Jupyter notebooks
+Format readers return descriptive errors that include file-offset context where it helps debugging, and surface to Python as standard exceptions (for example `PyIOError` / `PyRuntimeError`). Polarity-encoding variations are handled rather than rejected, and very large files fall back to streaming reads. Structured logging is available via the `tracing` crate, controlled from Python through `evlib._evlib.tracing_config`.
 
-## Deployment Architecture
+## Related crates
 
-### Package Distribution
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PyPI Distribution                         │
-│                                                             │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
-│  │ Linux       │ │ macOS       │ │ Windows     │          │
-│  │ x86_64      │ │ x86_64      │ │ x86_64      │          │
-│  │ aarch64     │ │ aarch64     │ │             │          │
-│  └─────────────┘ └─────────────┘ └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### CI/CD Pipeline
-
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on: [push, pull_request]
-
-jobs:
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          pip install maturin
-          maturin develop
-      - name: Run tests
-        run: pytest
-```
-
-## Future Architecture Considerations
-
-### Planned Enhancements
-
-1. **GPU Acceleration**: CUDA/OpenCL support for voxel grid creation
-2. **Distributed Processing**: Multi-node event processing
-3. **Real-time Streaming**: Live event camera integration
-4. **Advanced Models**: Transformer-based architectures
-5. **Language Bindings**: C++, Julia, R support
-
-### Scalability
-
-- **Memory management**: Streaming large datasets
-- **Parallel processing**: Multi-GPU support
-- **Cloud deployment**: Containerized processing
-- **Edge computing**: Embedded device support
+`wasm/` is a separate tracked crate that builds a WebAssembly event-data demo. It is independent of the Python extension and is not part of the `evlib` Python package.
 
 ---
 
-*This architecture balances performance, maintainability, and ease of use while providing a solid foundation for event-based vision applications.*
+*The architecture keeps Rust minimal and pushes all DataFrame processing into Polars, so the same lazy queries scale from the CPU streaming engine to the GPU without rewriting the pipeline.*

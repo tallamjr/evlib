@@ -1,101 +1,72 @@
 # Core API Reference
 
-Core data structures and utilities for event camera data processing.
+The core loading API is `evlib.load_events`. It returns a single Polars `LazyFrame`, not separate NumPy arrays. Everything downstream (filtering, representations, models) operates on that frame.
 
-## Event Data Structures
-
-### Event Arrays
-
-Event data is represented as four separate arrays:
+## `evlib.load_events`
 
 ```python
-xs: np.ndarray[np.uint16]    # X coordinates (0-639 for 640x480)
-ys: np.ndarray[np.uint16]    # Y coordinates (0-479 for 640x480)
-ts: np.ndarray[np.float64]   # Timestamps in seconds
-ps: np.ndarray[np.int8]      # Polarities (+1 for ON, -1 for OFF)
+def load_events(
+    path,
+    t_start=None,   # inclusive lower time bound, seconds
+    t_end=None,     # inclusive upper time bound, seconds
+    min_x=None, max_x=None,   # inclusive spatial bounds
+    min_y=None, max_y=None,
+    polarity=None,  # keep only events with this polarity value
+    sort=True,      # sort by timestamp after filtering
+) -> pl.LazyFrame
 ```
 
-### Data Validation
+The Rust loader detects the format, decodes the file, and builds the frame. Any time, spatial, or polarity bounds you pass are applied here as Polars expressions, so loading and filtering fuse into one lazy, GPU-collectable query. With `sort=True` (the default) the result is sorted by timestamp.
+
+### Returned frame
+
+A Polars `LazyFrame` with four columns:
+
+| Column     | Type                 | Notes                                            |
+|------------|----------------------|--------------------------------------------------|
+| `x`        | integer              | Pixel x coordinate                               |
+| `y`        | integer              | Pixel y coordinate                               |
+| `t`        | Duration(microseconds) | Timestamp; use `pl.col("t").dt.total_microseconds()` to get an integer |
+| `polarity` | integer              | Already normalised to `-1` / `+1`                |
+
+`t` is a Polars Duration in microseconds, **not** float seconds. To work in seconds, divide the microsecond count: `pl.col("t").dt.total_microseconds() / 1_000_000`. `polarity` is the normalised `-1`/`+1` encoding regardless of how the source file encoded it (0/1 inputs are converted on load).
+
+Because the result is a `LazyFrame`, nothing is computed until you `collect()`. Collect with a selectable engine: `"streaming"` for large CPU datasets, or `"gpu"` where cudf-polars and CUDA are available.
+
+### Example
 
 ```python
-def validate_events(xs, ys, ts, ps):
-    """Validate event arrays for consistency"""
+import evlib
+import polars as pl
 
-    # Check array lengths match
-    lengths = [len(xs), len(ys), len(ts), len(ps)]
-    if len(set(lengths)) != 1:
-        raise ValueError(f"Array lengths don't match: {lengths}")
+# Lazy load with built-in filters fused into the query
+events = evlib.load_events(
+    "data/prophesee/samples/evt2/80_balls.raw",
+    t_start=0.1, t_end=0.5,   # seconds
+    polarity=1,
+)
 
-    # Check data types
-    assert xs.dtype == np.uint16, f"xs must be uint16, got {xs.dtype}"
-    assert ys.dtype == np.uint16, f"ys must be uint16, got {ys.dtype}"
-    assert ts.dtype == np.float64, f"ts must be float64, got {ts.dtype}"
-    assert ps.dtype == np.int8, f"ps must be int8, got {ps.dtype}"
+# Add more Polars expressions lazily, then collect once
+df = (
+    events
+    .filter(pl.col("x").is_between(100, 500))
+    .collect(engine="streaming")
+)
 
-    # Check coordinate bounds
-    assert np.all(xs >= 0), "Negative x coordinates found"
-    assert np.all(ys >= 0), "Negative y coordinates found"
+print(f"Loaded {len(df):,} events")
+print(f"Resolution: {df['x'].max()} x {df['y'].max()}")
+print(f"Duration:   {df['t'].max() - df['t'].min()}")
 
-    # Check polarity values
-    assert np.all(np.isin(ps, [-1, 1])), "Invalid polarity values found"
-
-    # Check temporal ordering
-    assert np.all(ts[:-1] <= ts[1:]), "Timestamps not in ascending order"
-
-    return True
+# Convert timestamps to seconds when needed
+seconds = df.select(
+    (pl.col("t").dt.total_microseconds() / 1_000_000).alias("t_seconds")
+)
 ```
 
-## Utility Functions
+## Related functions
 
-### Array Operations
+- `evlib.detect_format(path)` and `evlib.get_format_description(...)`: automatic format detection.
+- `evlib.save_events_to_text(...)` and `evlib.save_events_to_hdf5(...)`: writing events back out (HDF5 save uses the Rust `hdf5` feature on Linux/macOS, falling back to `h5py` elsewhere).
+- `evlib.formats.load_events_to_pyarrow(path)`: zero-copy Apache Arrow access for the same data.
 
-```python
-def event_count_summary(xs, ys, ts, ps):
-    """Get summary statistics for event arrays"""
-
-    return {
-        'total_events': len(xs),
-        'duration': ts.max() - ts.min(),
-        'event_rate': len(xs) / (ts.max() - ts.min()),
-        'positive_events': np.sum(ps > 0),
-        'negative_events': np.sum(ps < 0),
-        'spatial_extent': {
-            'x_range': (xs.min(), xs.max()),
-            'y_range': (ys.min(), ys.max())
-        }
-    }
-```
-
-### Memory Usage
-
-```python
-def estimate_memory_usage(xs, ys, ts, ps):
-    """Estimate memory usage of event arrays"""
-
-    bytes_per_event = xs.itemsize + ys.itemsize + ts.itemsize + ps.itemsize
-    total_bytes = len(xs) * bytes_per_event
-
-    return {
-        'bytes_per_event': bytes_per_event,
-        'total_bytes': total_bytes,
-        'megabytes': total_bytes / (1024 * 1024)
-    }
-```
-
-## Constants
-
-```python
-# Standard event camera resolutions
-RESOLUTION_VGA = (640, 480)
-RESOLUTION_QVGA = (320, 240)
-RESOLUTION_HD = (1280, 720)
-
-# Polarity values
-POLARITY_POSITIVE = 1
-POLARITY_NEGATIVE = -1
-
-# Data type specifications
-DTYPE_COORDINATES = np.uint16
-DTYPE_TIMESTAMPS = np.float64
-DTYPE_POLARITIES = np.int8
-```
+See the [formats reference](formats.md) for the full list of supported input formats, and the [processing reference](processing.md) for filtering and representations.
