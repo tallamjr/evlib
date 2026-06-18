@@ -151,8 +151,9 @@ impl RawEvt2Event {
         };
 
         Ok(CdEvent {
-            x: (self.data & 0x7FF) as u16,
-            y: ((self.data >> 11) & 0x7FF) as u16,
+            // OpenEB RawEventCD layout: bits[10:0]=y, bits[21:11]=x
+            x: ((self.data >> 11) & 0x7FF) as u16,
+            y: (self.data & 0x7FF) as u16,
             timestamp: ((self.data >> 22) & 0x3F) as u8,
             polarity,
         })
@@ -453,86 +454,96 @@ impl Evt2Reader {
     }
 
     /// Parse EVT2 header
+    ///
+    /// Locates the header/binary boundary the same way the OpenEB reference does:
+    /// the text header consists of lines that begin with `%`, and the binary
+    /// section starts at the first line that does not begin with `%` (or at EOF).
+    /// OpenEB peeks at the next byte and stops the header loop as soon as it is
+    /// not `%`, with no dependence on a `% end` terminator (Gen3 recordings omit
+    /// it). See lib/openeb/standalone_samples/metavision_evt2_raw_file_decoder.
     fn parse_header(&self, file: &mut File) -> Result<(Evt2Metadata, u64), Evt2Error> {
         let mut metadata = Evt2Metadata::default();
-        // Remove unused header_buffer variable
         let mut byte_buffer = [0u8; 1];
         let mut current_line = Vec::new();
+        // Offset of the first byte of the binary section (the first line that does
+        // not start with `%`, or EOF, or the byte right after a `% end` line).
         let mut header_size = 0u64;
 
-        // Read header byte by byte to avoid UTF-8 issues with binary data
-        let mut consecutive_binary_bytes = 0;
-        const MAX_BINARY_BYTES: usize = 10; // If we see this many non-printable bytes, assume binary data started
-
         loop {
+            // Peek the first byte of the next line without consuming it for the
+            // binary section. If it is not `%`, the header has ended here.
             let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
                 // End of file reached - this is OK if we have some valid header data
-                if !metadata.properties.is_empty() {
-                    break;
-                } else {
-                    return Err(Evt2Error::InvalidHeader(
-                        "Unexpected end of file".to_string(),
-                    ));
-                }
+                break;
             }
 
+            if byte_buffer[0] != b'%' {
+                // First byte of a non-`%` line: the binary section begins here.
+                // We consumed this byte while peeking, so seek back so the offset
+                // and the file position point exactly at it.
+                file.seek(SeekFrom::Current(-1))?;
+                break;
+            }
+
+            // This is a header line beginning with `%`. Account for the peeked
+            // byte and read the rest of the line up to and including `\n`.
             header_size += 1;
-            let byte = byte_buffer[0];
-
-            // Check if we're hitting binary data (non-printable ASCII bytes)
-            if byte < 32 && byte != b'\n' && byte != b'\r' && byte != b'\t' {
-                consecutive_binary_bytes += 1;
-                if consecutive_binary_bytes > MAX_BINARY_BYTES {
-                    // We've hit binary data, back up to where it started
-                    header_size -= consecutive_binary_bytes as u64;
+            current_line.clear();
+            current_line.push(byte_buffer[0]);
+            loop {
+                let n = file.read(&mut byte_buffer)?;
+                if n == 0 {
                     break;
                 }
-            } else {
-                consecutive_binary_bytes = 0;
+                header_size += 1;
+                let byte = byte_buffer[0];
+                if byte == b'\n' {
+                    break;
+                }
+                current_line.push(byte);
             }
 
-            if byte == b'\n' {
-                // End of line - process the line
-                let line_str = String::from_utf8_lossy(&current_line);
-                let line = line_str.trim_end();
+            // Process the completed header line.
+            let line_str = String::from_utf8_lossy(&current_line);
+            let line = line_str.trim_end();
 
-                if line == "% end" {
-                    break;
-                }
+            if line == "% end" {
+                // Binary section starts right after this line's `\n`, which we
+                // have already consumed; header_size points there.
+                break;
+            }
 
-                // Parse header fields
-                if let Some(stripped) = line.strip_prefix("% ") {
-                    if let Some((key, value)) = stripped.split_once(' ') {
-                        match key {
-                            "evt" => {
-                                if value != "2.0" {
-                                    return Err(Evt2Error::InvalidHeader(format!(
-                                        "Expected EVT 2.0, got: {value}"
-                                    )));
-                                }
+            if let Some(stripped) = line.strip_prefix("% ") {
+                if let Some((key, value)) = stripped.split_once(' ') {
+                    match key {
+                        "evt" => {
+                            if value != "2.0" {
+                                return Err(Evt2Error::InvalidHeader(format!(
+                                    "Expected EVT 2.0, got: {value}"
+                                )));
                             }
-                            "format" => {
-                                self.parse_format_line(value, &mut metadata)?;
-                            }
-                            "geometry" => {
-                                self.parse_geometry_line(value, &mut metadata)?;
-                            }
-                            _ => {
-                                metadata
-                                    .properties
-                                    .insert(key.to_string(), value.to_string());
-                            }
+                        }
+                        "format" => {
+                            self.parse_format_line(value, &mut metadata)?;
+                        }
+                        "geometry" => {
+                            self.parse_geometry_line(value, &mut metadata)?;
+                        }
+                        _ => {
+                            metadata
+                                .properties
+                                .insert(key.to_string(), value.to_string());
                         }
                     }
                 }
-
-                // Clear current line for next iteration
-                current_line.clear();
-            } else {
-                // Add byte to current line
-                current_line.push(byte);
             }
+        }
+
+        if header_size == 0 {
+            return Err(Evt2Error::InvalidHeader(
+                "Unexpected end of file".to_string(),
+            ));
         }
 
         // For Prophesee RAW files, sensor resolution might not be in header
@@ -695,15 +706,12 @@ impl Evt2Reader {
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
 
-        let mut _bytes_read_total = 0;
-
         loop {
             let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
                 break; // End of file
             }
 
-            _bytes_read_total += bytes_read;
             let events_in_chunk = bytes_read / 4;
 
             // Process events in chunks
@@ -719,7 +727,7 @@ impl Evt2Reader {
                     match event_type {
                         Evt2EventType::TimeHigh => {
                             if let Ok(time_event) = raw_event.as_time_high_event() {
-                                let new_time_base = time_event.timestamp as u64;
+                                let new_time_base = (time_event.timestamp as u64) << 6;
 
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
@@ -741,6 +749,13 @@ impl Evt2Reader {
                             }
                         }
                         Evt2EventType::CdOff | Evt2EventType::CdOn => {
+                            // Skip CD events that precede the first EVT_TIME_HIGH: with
+                            // no time base set their timestamp is meaningless. OpenEB's
+                            // reference decoder gates emission on the first TIME_HIGH the
+                            // same way (see lib/openeb metavision_evt2_raw_file_decoder).
+                            if !first_time_base_set {
+                                continue;
+                            }
                             if let Ok(cd_event) = raw_event.as_cd_event() {
                                 let x = cd_event.x;
                                 let y = cd_event.y;
@@ -806,15 +821,12 @@ impl Evt2Reader {
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
 
-        let mut _bytes_read_total = 0;
-
         loop {
             let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
                 break; // End of file
             }
 
-            _bytes_read_total += bytes_read;
             let events_in_chunk = bytes_read / 4;
 
             // Process events in chunks
@@ -829,7 +841,7 @@ impl Evt2Reader {
                     match event_type {
                         Evt2EventType::TimeHigh => {
                             if let Ok(time_event) = raw_event.as_time_high_event() {
-                                let new_time_base = time_event.timestamp as u64;
+                                let new_time_base = (time_event.timestamp as u64) << 6;
 
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
@@ -851,6 +863,13 @@ impl Evt2Reader {
                             }
                         }
                         Evt2EventType::CdOff | Evt2EventType::CdOn => {
+                            // Skip CD events that precede the first EVT_TIME_HIGH: with
+                            // no time base set their timestamp is meaningless. OpenEB's
+                            // reference decoder gates emission on the first TIME_HIGH the
+                            // same way (see lib/openeb metavision_evt2_raw_file_decoder).
+                            if !first_time_base_set {
+                                continue;
+                            }
                             if let Ok(cd_event) = raw_event.as_cd_event() {
                                 let x = cd_event.x;
                                 let y = cd_event.y;
@@ -961,8 +980,8 @@ mod tests {
     #[test]
     fn test_cd_event_parsing() {
         // Test CD ON event at (100, 200) with timestamp 30
-        // Using correct EVT2.0 bit layout: [31-28: type] [27-22: timestamp] [21-11: Y] [10-0: X]
-        let raw_data = (0x1u32 << 28) | (30u32 << 22) | (200u32 << 11) | 100u32;
+        // OpenEB RawEventCD bit layout: [31-28: type] [27-22: timestamp] [21-11: X] [10-0: Y]
+        let raw_data = (0x1u32 << 28) | (30u32 << 22) | (100u32 << 11) | 200u32;
         let raw_event = RawEvt2Event { data: raw_data };
 
         let cd_event = raw_event.as_cd_event().unwrap();
