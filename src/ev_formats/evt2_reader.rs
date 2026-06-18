@@ -151,8 +151,9 @@ impl RawEvt2Event {
         };
 
         Ok(CdEvent {
-            x: (self.data & 0x7FF) as u16,
-            y: ((self.data >> 11) & 0x7FF) as u16,
+            // OpenEB RawEventCD layout: bits[10:0]=y, bits[21:11]=x
+            x: ((self.data >> 11) & 0x7FF) as u16,
+            y: (self.data & 0x7FF) as u16,
             timestamp: ((self.data >> 22) & 0x3F) as u8,
             polarity,
         })
@@ -719,7 +720,7 @@ impl Evt2Reader {
                     match event_type {
                         Evt2EventType::TimeHigh => {
                             if let Ok(time_event) = raw_event.as_time_high_event() {
-                                let new_time_base = time_event.timestamp as u64;
+                                let new_time_base = (time_event.timestamp as u64) << 6;
 
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
@@ -829,7 +830,7 @@ impl Evt2Reader {
                     match event_type {
                         Evt2EventType::TimeHigh => {
                             if let Ok(time_event) = raw_event.as_time_high_event() {
-                                let new_time_base = time_event.timestamp as u64;
+                                let new_time_base = (time_event.timestamp as u64) << 6;
 
                                 if !first_time_base_set {
                                     current_time_base = new_time_base;
@@ -961,8 +962,8 @@ mod tests {
     #[test]
     fn test_cd_event_parsing() {
         // Test CD ON event at (100, 200) with timestamp 30
-        // Using correct EVT2.0 bit layout: [31-28: type] [27-22: timestamp] [21-11: Y] [10-0: X]
-        let raw_data = (0x1u32 << 28) | (30u32 << 22) | (200u32 << 11) | 100u32;
+        // OpenEB RawEventCD bit layout: [31-28: type] [27-22: timestamp] [21-11: X] [10-0: Y]
+        let raw_data = (0x1u32 << 28) | (30u32 << 22) | (100u32 << 11) | 200u32;
         let raw_event = RawEvt2Event { data: raw_data };
 
         let cd_event = raw_event.as_cd_event().unwrap();
