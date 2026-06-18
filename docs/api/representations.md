@@ -53,7 +53,9 @@ print(f"Columns: {list(hist_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x',
 
 ### create_voxel_grid
 
-Creates traditional voxel grid representation.
+Creates a voxel grid representation with full bilinear temporal interpolation, matching the Zhu et al. 2019 event volume (the `to_voxel_grid` representation in the tonic reference library). Each event splits its signed polarity (+1 or -1) across the two temporal bins that straddle its normalised timestamp, weighted by the fractional distance to each bin centre. This is the SOTA event volume used by E2VID and related models, not a hard temporal histogram.
+
+The output is in long (sparse) format: one row per non-empty `(x, y, time_bin)` cell, with the summed `contribution`. Use `densify_voxel_grid` to scatter it into a dense `(n_time_bins, 1, H, W)` tensor for model input.
 
 **Example Usage:**
 ```python
@@ -70,7 +72,7 @@ voxel_df = evr.create_voxel_grid(
 )
 # Returns Polars DataFrame
 print(f"Generated voxel grid with {len(voxel_df)} entries")
-print(f"Columns: {list(voxel_df.columns)}")
+print(f"Columns: {list(voxel_df.columns)}")  # ['x', 'y', 'time_bin', 'contribution']
 ```
 
 **Parameters:**
@@ -80,7 +82,117 @@ print(f"Columns: {list(voxel_df.columns)}")
 - `n_time_bins` (int): Number of temporal bins (default: 5)
 
 **Returns:**
-- `polars.DataFrame`: DataFrame with columns `[x, y, time_bin, contribution]`
+- `polars.DataFrame`: long-format DataFrame with columns `[x, y, time_bin, contribution]`, where `contribution` is the bilinearly interpolated signed weight summed over all events falling in that cell.
+
+### create_event_frame
+
+Creates a tonic-validated event frame, matching tonic's `to_frame_numpy(n_time_bins=...)` semantics. The whole recording is sliced into `n_time_bins` equal-width time bins and events are counted per `(polarity, y, x)` per bin. This differs from `create_stacked_histogram` (which uses a fixed window duration relative to the global minimum timestamp).
+
+Bin boundaries follow tonic's `SliceByTimeBins` (overlap 0) exactly: the bin width is integer-floored, bins are left-closed and right-open, and events at or beyond the final bin end are dropped (including the final max-time event). The output is long format; use `densify_event_frame` to obtain a dense `(n_time_bins, P, H, W)` tensor.
+
+**Example Usage:**
+```python
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data/slider_depth/events.txt")
+frame_df = evr.create_event_frame(
+    events,
+    height=480,
+    width=640,
+    n_time_bins=10,
+)
+print(f"Columns: {list(frame_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x', 'count']
+```
+
+**Parameters:**
+- `events` (polars.LazyFrame | polars.DataFrame): Polars LazyFrame or DataFrame with event data
+- `height` (int): Sensor height in pixels
+- `width` (int): Sensor width in pixels
+- `n_time_bins` (int): Number of equal-width temporal bins (default: 10)
+
+**Returns:**
+- `polars.DataFrame`: long-format DataFrame with columns `[time_bin, polarity, y, x, count]`, where `polarity` is the channel index (0 for negative, 1 for positive).
+
+### create_time_surface
+
+Creates a tonic-validated HOTS time surface (Lagorce et al. 2016), matching tonic's `to_timesurface_numpy` semantics (overlap 0, `include_incomplete=False`). Events are sliced into fixed `dt` time windows relative to the first event timestamp; each window is left-closed and right-open. tonic maintains, per `(polarity, y, x)`, the most-recent event timestamp that persists across slices and produces `exp(-((i+1)*dt + start_t - memory) / tau)` for slice `i`.
+
+This function performs the slice-local part in Polars and returns, per `(slice, polarity, y, x)`, the maximum event timestamp within that slice (`last_t`). The cross-slice memory persistence and the exponential decay are applied by `densify_time_surface`, because unseen cells must decay to 0 and the decay references a per-slice origin: both are dense numpy operations that stay bit-faithful to tonic.
+
+**Example Usage:**
+```python
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data/slider_depth/events.txt")
+ts_df = evr.create_time_surface(
+    events,
+    height=480,
+    width=640,
+    dt=50000.0,   # slice and decay window, microseconds
+    tau=100000.0, # exponential decay time constant, microseconds
+)
+print(f"Columns: {list(ts_df.columns)}")  # ['slice', 'polarity', 'y', 'x', 'last_t']
+```
+
+**Parameters:**
+- `events` (polars.LazyFrame | polars.DataFrame): Polars LazyFrame or DataFrame with event data
+- `height` (int): Sensor height in pixels
+- `width` (int): Sensor width in pixels
+- `dt` (float): Time window for slicing and decay reference, in microseconds
+- `tau` (float): Exponential decay time constant (applied in `densify_time_surface`)
+
+**Returns:**
+- `polars.DataFrame`: long-format DataFrame with columns `[slice, polarity, y, x, last_t]`, where `polarity` is the channel index (0 negative, 1 positive) and `last_t` is the maximum event timestamp (microseconds) within that slice at that pixel and channel.
+
+## Densify Helpers
+
+The `create_voxel_grid`, `create_event_frame` and `create_time_surface` functions return long-format (sparse) Polars DataFrames. The `densify_*` helpers are the bridge from that long format to a dense numpy tensor, which is the model-ready form. The three `create_*` representations and their densifiers are validated to be bit-faithful or numerically faithful against the tonic reference library in `tests/test_representations_conformance.py`.
+
+### densify_voxel_grid
+
+Scatters a `create_voxel_grid` DataFrame into a dense array.
+
+**Parameters:**
+- `df` (polars.DataFrame): DataFrame with columns `[x, y, time_bin, contribution]`
+- `n_time_bins` (int): Number of temporal bins (size of axis 0)
+- `height` (int): Sensor height in pixels
+- `width` (int): Sensor width in pixels
+
+**Returns:**
+- `numpy.ndarray`: dense `(n_time_bins, 1, height, width)` float64 array.
+
+### densify_event_frame
+
+Scatters a `create_event_frame` DataFrame into a dense array matching tonic's `to_frame_numpy` shape.
+
+**Parameters:**
+- `df` (polars.DataFrame): DataFrame with columns `[time_bin, polarity, y, x, count]`
+- `n_time_bins` (int): Number of temporal bins (size of axis 0)
+- `n_polarities` (int): Number of polarity channels (size of axis 1)
+- `height` (int): Sensor height in pixels
+- `width` (int): Sensor width in pixels
+
+**Returns:**
+- `numpy.ndarray`: dense `(n_time_bins, n_polarities, height, width)` int64 array.
+
+### densify_time_surface
+
+Assembles dense HOTS time surfaces from a `create_time_surface` DataFrame, reproducing tonic's persistent memory (a forward cumulative maximum across the slice axis) before applying the exponential decay.
+
+**Parameters:**
+- `df` (polars.DataFrame): DataFrame with columns `[slice, polarity, y, x, last_t]`
+- `n_slices` (int): Number of time slices (size of axis 0)
+- `n_polarities` (int): Number of polarity channels (size of axis 1)
+- `height` (int): Sensor height in pixels
+- `width` (int): Sensor width in pixels
+- `dt` (float): Time window in microseconds (same value passed to `create_time_surface`)
+- `tau` (float): Exponential decay time constant
+- `start_t` (float): Timestamp of the first event in microseconds (the decay reference origin)
+
+**Returns:**
+- `numpy.ndarray`: dense `(n_slices, n_polarities, height, width)` float64 array.
 
 ### create_mixed_density_stack
 

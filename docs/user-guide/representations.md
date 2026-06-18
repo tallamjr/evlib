@@ -10,8 +10,12 @@ evlib provides high-performance Polars-based implementations for common event re
 
 - **Stacked Histograms**: Temporal binning with polarity channels (RVT-compatible)
 - **Mixed Density Stacks**: Logarithmic time binning with polarity accumulation
-- **Voxel Grids**: Traditional quantized temporal representations
+- **Voxel Grids**: Bilinearly interpolated event volume (Zhu et al. 2019)
+- **Event Frames**: Equal-width time-bin event counts (tonic `to_frame` semantics)
+- **Time Surfaces**: HOTS exponential-decay surfaces (Lagorce et al. 2016)
 - **High-level API**: Easy preprocessing for neural networks
+
+The voxel grid, event frame and time surface are validated to be bit-faithful or numerically faithful against the tonic reference library in `tests/test_representations_conformance.py`. Each returns a long-format Polars DataFrame; pair it with the matching `densify_*` helper to obtain a dense, model-ready numpy tensor.
 
 ## Stacked Histograms (RVT-Compatible)
 
@@ -108,4 +112,81 @@ for nbins in [5, 10, 15]:
 
 estimated_windows = max(1, int(time_span_sec / (window_duration_ms / 1000)))
 print(f"Estimated windows: {estimated_windows}")
+```
+
+## Tonic-Validated Representations and Densify
+
+The voxel grid, event frame and time surface produce long-format (sparse) Polars DataFrames. The `densify_*` helpers scatter those into dense numpy tensors, which is the form models consume. The sparse and dense outputs are checked against the tonic reference library for bit-level or numerical fidelity.
+
+### Voxel Grid (Zhu et al. 2019 event volume)
+
+`create_voxel_grid` splits each event's signed polarity across the two temporal bins that straddle its normalised timestamp, using full bilinear interpolation. This is the event volume used by E2VID and related models, not a hard temporal histogram.
+
+```python
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data/slider_depth/events.txt")
+
+voxel_df = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
+print(f"Columns: {list(voxel_df.columns)}")  # ['x', 'y', 'time_bin', 'contribution']
+
+# Bridge the long-format DataFrame to a dense (n_time_bins, 1, H, W) tensor.
+voxel = evr.densify_voxel_grid(voxel_df, n_time_bins=5, height=480, width=640)
+print(f"Dense voxel shape: {voxel.shape}")  # (5, 1, 480, 640)
+```
+
+### Event Frame (tonic to_frame semantics)
+
+`create_event_frame` slices the whole recording into `n_time_bins` equal-width time bins and counts events per `(polarity, y, x)` per bin, matching tonic's `to_frame_numpy(n_time_bins=...)`.
+
+```python
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data/slider_depth/events.txt")
+
+frame_df = evr.create_event_frame(events, height=480, width=640, n_time_bins=10)
+print(f"Columns: {list(frame_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x', 'count']
+
+# Dense (n_time_bins, P, H, W) tensor; P is the number of polarity channels.
+frame = evr.densify_event_frame(
+    frame_df, n_time_bins=10, n_polarities=2, height=480, width=640
+)
+print(f"Dense frame shape: {frame.shape}")  # (10, 2, 480, 640)
+```
+
+### Time Surface (HOTS, Lagorce et al. 2016)
+
+`create_time_surface` slices events into fixed `dt` windows from the first event and records the most-recent timestamp per cell per slice. `densify_time_surface` applies the persistent cross-slice memory and the exponential decay, matching tonic's `to_timesurface_numpy`.
+
+```python
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data/slider_depth/events.txt")
+
+dt = 50000.0      # slice and decay window, microseconds
+tau = 100000.0    # decay time constant, microseconds
+
+ts_df = evr.create_time_surface(events, height=480, width=640, dt=dt, tau=tau)
+print(f"Columns: {list(ts_df.columns)}")  # ['slice', 'polarity', 'y', 'x', 'last_t']
+
+# start_t is the first event timestamp in microseconds; n_slices must match the
+# slice count create_time_surface used (tonic include_incomplete=False).
+events_df = events.collect()
+start_t = float(events_df["t"].dt.total_microseconds().min())
+n_slices = int(ts_df["slice"].max() + 1) if ts_df.height else 1
+
+surface = evr.densify_time_surface(
+    ts_df,
+    n_slices=n_slices,
+    n_polarities=2,
+    height=480,
+    width=640,
+    dt=dt,
+    tau=tau,
+    start_t=start_t,
+)
+print(f"Dense time surface shape: {surface.shape}")  # (n_slices, 2, 480, 640)
 ```
