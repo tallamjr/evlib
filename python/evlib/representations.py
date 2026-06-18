@@ -8,6 +8,7 @@ This module provides exact API replacements for Rust PyO3 functions with identic
 function names, signatures, and return types for seamless migration.
 """
 
+import numpy as np
 import polars as pl
 from typing import Union, Literal
 
@@ -163,6 +164,42 @@ def voxel_grid(
 ) -> pl.DataFrame:
     """Alias for create_voxel_grid for backwards compatibility"""
     return create_voxel_grid(events, height, width, n_time_bins, engine)
+
+
+def densify_voxel_grid(
+    df: pl.DataFrame,
+    n_time_bins: int,
+    height: int,
+    width: int,
+) -> np.ndarray:
+    """Scatter a long-format voxel grid DataFrame into a dense array.
+
+    Bridges the long-format output of :func:`create_voxel_grid` (columns
+    ``x, y, time_bin, contribution``) to a dense tensor suitable for models and
+    for tonic-style validation. Contributions are summed per cell.
+
+    Args:
+        df: DataFrame with columns ``x``, ``y``, ``time_bin``, ``contribution``.
+        n_time_bins: Number of temporal bins (size of axis 0).
+        height: Sensor height in pixels.
+        width: Sensor width in pixels.
+
+    Returns:
+        Dense ``(n_time_bins, 1, height, width)`` float64 array.
+    """
+    dense = np.zeros((n_time_bins, 1, height, width), dtype=np.float64)
+    if df.height == 0:
+        return dense
+
+    time_bin = df["time_bin"].to_numpy().astype(np.int64)
+    y = df["y"].to_numpy().astype(np.int64)
+    x = df["x"].to_numpy().astype(np.int64)
+    contribution = df["contribution"].to_numpy().astype(np.float64)
+
+    flat = dense.reshape(-1)
+    indices = ((time_bin * height) + y) * width + x
+    np.add.at(flat, indices, contribution)
+    return dense
 
 
 def create_mixed_density_stack(
