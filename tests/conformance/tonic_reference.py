@@ -89,3 +89,92 @@ def tonic_voxel_grid(events_struct, sensor_size_whp, n_time_bins):
     )
 
     return voxel_grid
+
+
+def tonic_frame(events_struct, sensor_size_whp, n_time_bins):
+    """Build a dense event frame by equal-width time bins (tonic-identical).
+
+    PORTS tonic's ``to_frame_numpy`` ``n_time_bins`` path together with the
+    ``SliceByTimeBins`` slicer it delegates to. The real tonic source lives at:
+
+        lib/tonic/tonic/functional/to_frame.py   (``to_frame_numpy``)
+        lib/tonic/tonic/slicers.py               (``SliceByTimeBins``,
+                                                   ``slice_events_by_time_bins``)
+
+    The whole recording is sliced into ``n_time_bins`` equal-width TIME bins and
+    events are counted per ``(polarity, y, x)`` per bin.
+
+    Boundary handling reproduced verbatim from ``SliceByTimeBins`` (overlap=0):
+
+        time_window  = (t[-1] - t[0]) // n_time_bins      # integer floor div
+        stride       = time_window
+        starts       = arange(n_time_bins) * stride + t[0]
+        ends         = starts + time_window
+        idx_start    = searchsorted(t, starts)            # side='left'
+        idx_end      = searchsorted(t, ends)              # side='left'
+        slice_i      = events[idx_start[i] : idx_end[i]]
+
+    Consequences that MUST be matched by any Polars port:
+      * ``time_window`` is integer-floored, so the bins span only
+        ``[t0, t0 + n_time_bins*time_window]`` which is ``<= t_max``. Events at
+        or beyond the last bin end (``t >= t0 + n_time_bins*time_window``) are
+        DROPPED -- in particular the final max-time event is usually dropped.
+      * ``searchsorted`` with ``side='left'`` makes each bin left-closed,
+        right-open: an event exactly on a bin boundary belongs to the later bin.
+
+    Parameters
+    ----------
+    events_struct : np.ndarray
+        Structured array with fields ``x``, ``y``, ``t``, ``p``. Events are
+        assumed sorted by ``t`` (tonic slices via ``searchsorted`` and uses
+        ``t[0]`` / ``t[-1]``). ``p`` is mapped so negative -> channel 0,
+        positive -> channel 1.
+    sensor_size_whp : tuple
+        ``(W, H, P)`` sensor size; ``P`` must equal 2.
+    n_time_bins : int
+        Number of equal-width temporal bins.
+
+    Returns
+    -------
+    np.ndarray
+        Dense frame of shape ``(n_time_bins, P, H, W)``, int64.
+    """
+    events = events_struct
+    sensor_size = sensor_size_whp
+
+    assert "x" and "y" and "t" and "p" in events.dtype.names
+    assert sensor_size[2] == 2
+    width, height, n_pols = (
+        int(sensor_size[0]),
+        int(sensor_size[1]),
+        int(sensor_size[2]),
+    )
+
+    times = events["t"]
+
+    # --- SliceByTimeBins.get_slice_metadata (overlap=0) ---
+    # Integer floor division matches tonic exactly (// on integer timestamps).
+    time_window = (times[-1] - times[0]) // n_time_bins
+    stride = time_window  # overlap == 0
+    window_start_times = np.arange(n_time_bins) * stride + times[0]
+    window_end_times = window_start_times + time_window
+    indices_start = np.searchsorted(times, window_start_times)
+    indices_end = np.searchsorted(times, window_end_times)
+
+    # to_frame_numpy maps polarity to channel index via astype(int). evlib data
+    # is 0/1 or -1/1; tonic's array data is already 0/1. Match evlib by sending
+    # any non-positive polarity to channel 0 and positive to channel 1.
+    pol_idx = (events["p"] > 0).astype(int)
+
+    frames = np.zeros((n_time_bins, n_pols, height, width), dtype=np.int64)
+    for i in range(n_time_bins):
+        start, end = int(indices_start[i]), int(indices_end[i])
+        if end <= start:
+            continue
+        sl = slice(start, end)
+        np.add.at(
+            frames,
+            (i, pol_idx[sl], events["y"][sl].astype(int), events["x"][sl].astype(int)),
+            1,
+        )
+    return frames
