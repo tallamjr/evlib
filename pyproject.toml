@@ -85,6 +85,12 @@ include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", 
 # (nbmake notebooks) need extra deps and data, and CI invokes them explicitly
 # (`pytest --nbmake examples/`, `pytest --markdown-docs docs/`).
 testpaths = ["tests"]
+# Put the repo root on sys.path so tests/conftest.py can do package-qualified
+# imports (`from tests.hdf5_support import ...`) regardless of the working
+# directory. Without this, conftest import fails in CI ("No module named
+# 'tests'") because the repo root is only implicitly importable when pytest
+# happens to run from it.
+pythonpath = ["."]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
