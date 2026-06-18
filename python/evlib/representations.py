@@ -592,7 +592,9 @@ def event_histogram(
         engine: Polars engine to use
 
     Returns:
-        DataFrame with event counts per pixel and polarity
+        DataFrame with columns ``[x, y, polarity, count, t_us_sum]``, where
+        ``count`` is the number of events at that pixel/polarity and ``t_us_sum``
+        is the sum of their timestamps in microseconds.
     """
 
     events_lf = _ensure_lazy_frame(events)
@@ -611,8 +613,10 @@ def event_histogram(
         .agg(
             [
                 pl.len().alias("count"),
-                pl.col("t_us").sum().alias("polarity_sum"),
-            ]  # Mixed density calculation
+                # Sum of event timestamps (microseconds) per (x, y, polarity); this
+                # is a timestamp sum, not a polarity sum, so it is labelled truthfully.
+                pl.col("t_us").sum().alias("t_us_sum"),
+            ]
         ),
         engine=engine,
     )

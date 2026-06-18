@@ -183,6 +183,11 @@ if representations:
     globals()["create_stacked_histogram"] = representations.create_stacked_histogram
     globals()["create_mixed_density_stack"] = representations.create_mixed_density_stack
     globals()["create_voxel_grid"] = representations.create_voxel_grid
+    globals()["densify_voxel_grid"] = representations.densify_voxel_grid
+    globals()["create_event_frame"] = representations.create_event_frame
+    globals()["densify_event_frame"] = representations.densify_event_frame
+    globals()["create_time_surface"] = representations.create_time_surface
+    globals()["densify_time_surface"] = representations.densify_time_surface
     globals()["preprocess_for_detection"] = representations.preprocess_for_detection
     globals()["benchmark_vs_rvt"] = representations.benchmark_vs_rvt
 
@@ -538,6 +543,11 @@ if representations:
             "create_stacked_histogram",
             "create_mixed_density_stack",
             "create_voxel_grid",
+            "densify_voxel_grid",
+            "create_event_frame",
+            "densify_event_frame",
+            "create_time_surface",
+            "densify_time_surface",
             "preprocess_for_detection",
             "benchmark_vs_rvt",
         ]
