@@ -706,15 +706,12 @@ impl Evt2Reader {
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
 
-        let mut _bytes_read_total = 0;
-
         loop {
             let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
                 break; // End of file
             }
 
-            _bytes_read_total += bytes_read;
             let events_in_chunk = bytes_read / 4;
 
             // Process events in chunks
@@ -824,15 +821,12 @@ impl Evt2Reader {
         const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
         const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
 
-        let mut _bytes_read_total = 0;
-
         loop {
             let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
                 break; // End of file
             }
 
-            _bytes_read_total += bytes_read;
             let events_in_chunk = bytes_read / 4;
 
             // Process events in chunks
