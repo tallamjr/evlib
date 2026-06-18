@@ -34,7 +34,7 @@ RUST_LOG=evlib=warn cargo run
 RUST_LOG=evlib::ev_formats::prophesee_ecf_codec=trace cargo run
 
 # Multiple module control
-RUST_LOG="evlib::ev_formats=debug,evlib::ev_processing=info" cargo run
+RUST_LOG="evlib::ev_formats=debug,evlib::ev_representations=info" cargo run
 ```
 
 ## Log Levels
@@ -249,8 +249,18 @@ RUST_LOG=evlib::ev_formats::prophesee_ecf_codec=debug cargo run
 # Debug all format readers
 RUST_LOG=evlib::ev_formats=debug cargo run
 
-# Debug model loading
-RUST_LOG=evlib::ev_processing::model_zoo=debug cargo run
+# Debug HDF5 reading specifically
+RUST_LOG=evlib::ev_formats::hdf5_reader=debug cargo run
+```
+
+The deep-learning models (E2VID, RVT) are implemented in Python under
+`python/evlib/models/`, not in the Rust crate, so they are not controlled by
+`RUST_LOG`. To debug model loading, configure Python logging instead:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 ```
 
 ### Production Logging

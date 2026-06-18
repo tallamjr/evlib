@@ -25,47 +25,47 @@ Comprehensive testing strategy for evlib ensuring reliability and performance.
 
 ```
 tests/
-├── test_acceleration.py            # Acceleration/performance tests
-├── test_ev_core.py                 # Core functionality tests
+├── test_evlib_regression.py        # Core load/filter regression tests
 ├── test_evt3_comprehensive.py      # Comprehensive EVT3 format tests
-├── test_evt3_format_support.py     # EVT3 format support unit tests
-├── test_evt3_working.py            # EVT3 working implementation tests
-├── test_hdf5_roundtrip.py          # HDF5 format roundtrip tests
-├── test_real_data_formats_comprehensive.py  # Real data format tests
-├── test_reconstruction.py          # Event reconstruction tests
-├── test_representations.py         # Voxel grid and representation tests
+├── test_representations.py         # Representation tests
+├── test_prophesee_real_data.py     # Real Prophesee data format tests
+├── test_filtering_real_data.py     # Filtering against real data
 ├── test_simulation.py              # Event simulation tests
-├── test_streaming.py               # Streaming data tests
 ├── test_utilities.py               # Utility function tests
 ├── test_visualization.py           # Visualization tests
-└── [Rust tests]                   # Rust backend tests
+├── test_openeb_conformance.py      # OpenEB conformance gate
+├── test_rvt_acceptance.py          # RVT bit-identity acceptance test
+└── [Rust tests]                    # Rust integration tests (tests/*.rs)
     ├── test_aedat_address_decoding.rs
     ├── test_aer_formats_realdata.rs
     ├── test_event_validation.rs
-    ├── test_evt2_detection.rs
+    ├── test_evt2_bitlayout.rs
     ├── test_evt2_formats_realdata.rs
     ├── test_evt3_formats.rs
-    ├── test_evt_format_detection.rs
     ├── test_format_detection.rs
-    ├── test_hdf5_formats_realdata.rs
     ├── test_polarity_conversion.rs
-    ├── test_real_data_formats_rust.rs
-    └── test_realtime_performance.rs
+    └── test_real_data_formats_rust.rs
 ```
 
 ### Rust Tests
 
+The Rust crate has two modules. Unit tests are embedded in each module via
+`#[cfg(test)]`; cross-cutting integration tests live as separate top-level
+`tests/*.rs` files that exercise the public crate API.
+
 ```
 src/
-├── ev_core/
-│   ├── mod.rs              # Unit tests embedded
-│   └── tests.rs            # Integration tests
-├── ev_formats/
-│   ├── mod.rs              # Unit tests embedded
-│   └── tests.rs            # Integration tests
-└── tests/                  # Rust integration tests
-    ├── test_smooth_voxel.rs
-    └── test_pipeline.rs
+├── ev_formats/                   # Binary parsing (EVT2/3, HDF5+ECF, AEDAT, AER, text)
+│   ├── mod.rs                    # Embedded #[cfg(test)] unit tests
+│   └── ...                       # Per-format readers, each with embedded tests
+├── ev_representations/           # Dense scatter-add stacked histogram (RVT)
+│   ├── mod.rs
+│   └── stacked_histogram_dense.rs  # Embedded #[cfg(test)] unit tests
+└── ...
+tests/                            # Top-level Rust integration tests
+├── test_evt2_bitlayout.rs
+├── test_evt3_formats.rs
+└── test_format_detection.rs
 ```
 
 ## Test Data Management
@@ -278,58 +278,72 @@ class TestEventLoading:
 
 ### Rust Unit Tests
 
+Unit tests are embedded directly in the module under test. The example below is
+taken from the real RVT stacked-histogram engine in
+`src/ev_representations/stacked_histogram_dense.rs`. Its public entry point is:
+
 ```rust
-// src/ev_representations/mod.rs
+pub fn stacked_histogram_dense(
+    t: &[i64],          // event timestamps (microseconds), sorted non-decreasing
+    x: &[i64],          // event x coordinates
+    y: &[i64],          // event y coordinates
+    p: &[i64],          // event polarities
+    grid: &[i64],       // window END timestamps for this batch
+    delta_t_us: i64,    // window length in microseconds
+    nbins: usize,       // time bins per polarity (output has 2 * nbins channels)
+    count_cutoff: u32,  // per-pixel saturation count
+    row_map: &[i64],    // source row -> output row, or -1 if dropped
+    col_map: &[i64],    // source col -> output col, or -1 if dropped
+    out_h: usize,       // downsampled output height
+    out_w: usize,       // downsampled output width
+) -> ndarray::Array4<u8>; // shape (n_windows, 2 * nbins, out_h, out_w)
+```
+
+The embedded test verifies counting into the correct channel and the per-pixel
+cutoff clip:
+
+```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ev_core::EventData;
 
     #[test]
-    fn test_voxel_grid_creation() {
-        // Create test data
-        let xs = vec![100, 200, 300];
-        let ys = vec![150, 250, 350];
-        let ts = vec![0.0, 0.5, 1.0];
-        let ps = vec![1, -1, 1];
+    fn single_window_counts_and_clips() {
+        // 2x2 output, identity maps, nbins=2 so 4 channels.
+        let row_map = [0i64, 1];
+        let col_map = [0i64, 1];
+        // Three events at pixel (y=0, x=0), polarity 1, all at t=0 so tidx=0.
+        // channel = 1 * 2 + 0 = 2.
+        let t = [0i64, 0, 0];
+        let x = [0i64, 0, 0];
+        let y = [0i64, 0, 0];
+        let p = [1i64, 1, 1];
+        let grid = [0i64];
+        let out = stacked_histogram_dense(
+            &t, &x, &y, &p, &grid, 50_000, 2, 10, &row_map, &col_map, 2, 2,
+        );
+        assert_eq!(out.shape(), &[1, 4, 2, 2]);
+        assert_eq!(out[[0, 2, 0, 0]], 3);
 
-        let events = EventData::new(xs, ys, ts, ps);
-
-        // Test voxel grid creation
-        let voxel_grid = create_voxel_grid(&events, 640, 480, 3);
-
-        assert_eq!(voxel_grid.shape(), &[3, 480, 640]);
-        assert!(voxel_grid.iter().any(|&x| x != 0.0), "Voxel grid should not be empty");
-    }
-
-    #[test]
-    fn test_voxel_grid_empty_events() {
-        // Test with empty events
-        let events = EventData::new(vec![], vec![], vec![], vec![]);
-        let voxel_grid = create_voxel_grid(&events, 640, 480, 3);
-
-        assert_eq!(voxel_grid.shape(), &[3, 480, 640]);
-        assert!(voxel_grid.iter().all(|&x| x == 0.0), "Empty events should produce empty voxel grid");
-    }
-
-    #[test]
-    fn test_smooth_voxel_grid_creation() {
-        // Create test data with precise timing
-        let xs = vec![320, 320, 320];
-        let ys = vec![240, 240, 240];
-        let ts = vec![0.0, 0.33, 0.66];
-        let ps = vec![1, 1, 1];
-
-        let events = EventData::new(xs, ys, ts, ps);
-
-        let smooth_voxel = create_smooth_voxel_grid(&events, 640, 480, 3);
-        let regular_voxel = create_voxel_grid(&events, 640, 480, 3);
-
-        // Smooth voxel should have different distribution
-        assert_ne!(smooth_voxel, regular_voxel);
+        // Fifteen events at the same pixel, cutoff 10: counts must clip to 10.
+        let p2 = [1i64; 15];
+        let t2 = [0i64; 15];
+        let x2 = [0i64; 15];
+        let y2 = [0i64; 15];
+        let out2 = stacked_histogram_dense(
+            &t2, &x2, &y2, &p2, &grid, 50_000, 2, 10, &row_map, &col_map, 2, 2,
+        );
+        assert_eq!(out2[[0, 2, 0, 0]], 10);
     }
 }
 ```
+
+Beyond the embedded unit tests, the top-level `tests/*.rs` integration tests
+exercise the format readers against real data (for example
+`tests/test_evt2_bitlayout.rs`, `tests/test_evt3_formats.rs`, and
+`tests/test_format_detection.rs`), and the Python-side OpenEB conformance gate
+(`tests/test_openeb_conformance.py`) checks the EVT2 stream digest against the
+canonical reference.
 
 ## Integration Testing
 
@@ -766,14 +780,14 @@ pytest tests/unit/test_representations.py::TestVoxelGrid::test_voxel_grid_creati
 # Run Rust unit tests
 cargo test
 
-# Run specific test
-cargo test test_voxel_grid_creation
+# Run a specific test by name
+cargo test single_window_counts_and_clips
 
 # Run with optimizations
 cargo test --release
 
-# Run integration tests
-cargo test --test test_smooth_voxel
+# Run a specific integration test file
+cargo test --test test_format_detection
 ```
 
 ### Notebook Tests
