@@ -415,10 +415,10 @@ def combined_filtering_example():
     # Step 3: Create representation
     print("\n3. Create stacked histogram:")
     histogram = evlib.create_stacked_histogram(
-        subsampled, height=240, width=346, nbins=8, window_duration_ms=25.0
+        subsampled, height=180, width=240, bins=8, window_duration_ms=25.0
     )
 
-    print(f"Final histogram shape: {histogram.shape}")
+    print(f"Final histogram cells: {histogram.height:,} (columns {histogram.columns})")
     print("SUCCESS: Combined filtering and Polars native subsampling complete!")
 
 

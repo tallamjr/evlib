@@ -175,9 +175,9 @@ def main():
     print("INTEGRATION TEST: Create Stacked Histogram")
     print("-" * 42)
     histogram = evlib.create_stacked_histogram(
-        reduced_events, height=240, width=346, nbins=8, window_duration_ms=50.0
+        reduced_events, height=180, width=240, bins=8, window_duration_ms=50.0
     )
-    print(f"Histogram shape: {histogram.shape}")
+    print(f"Histogram cells: {histogram.height:,} (columns {histogram.columns})")
     print("SUCCESS: Integration successful!")
     print()
 

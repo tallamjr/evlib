@@ -1,156 +1,101 @@
 #!/usr/bin/env python3
 """
-Demonstration of stacked histogram functionality in evlib.
+Demonstration of the stacked histogram representation in evlib.
 
-This script shows how to use the stacked histogram representation
-to process event camera data with temporal binning.
+`create_stacked_histogram` returns a long-format Polars DataFrame with columns
+[time_bin, polarity, y, x, count]. This script loads tracked data, builds the
+histogram, then densifies a couple of (time_bin, polarity) slices into 2-D numpy
+arrays purely for plotting.
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 
 import evlib
 
+DATA_FILE = "data/slider_depth/events.txt"
+HEIGHT = 180  # slider_depth sensor height (y in [0, 179])
+WIDTH = 240  # slider_depth sensor width  (x in [0, 239])
 
-def load_sample_data():
-    """Load sample event data from the slider_depth dataset."""
-    filename = "data/slider_depth/events.txt"
 
-    try:
-        # Use evlib to load the data properly
-        df = evlib.load_events(filename).collect()
-
-        # Extract arrays from the DataFrame
-        x = df["x"].to_numpy()
-        y = df["y"].to_numpy()
-        pol = df["polarity"].to_numpy()
-        timestamp = df["t"].dt.total_seconds().to_numpy()  # Convert Duration to seconds
-
-        print(f"Successfully loaded {len(x)} events from {filename}")
-        return x, y, pol, timestamp
-
-    except FileNotFoundError:
-        print(f"Real data file not found: {filename}")
-        print("Please ensure the data directory is available")
-        raise
+def densify_slice(hist: pl.DataFrame, time_bin: int, polarity: int) -> np.ndarray:
+    """Scatter a single (time_bin, polarity) slice into a dense [HEIGHT, WIDTH] array."""
+    frame = np.zeros((HEIGHT, WIDTH), dtype=np.float32)
+    sub = hist.filter(
+        (pl.col("time_bin") == time_bin) & (pl.col("polarity") == polarity)
+    )
+    ys = sub["y"].to_numpy()
+    xs = sub["x"].to_numpy()
+    counts = sub["count"].to_numpy()
+    frame[ys, xs] = counts
+    return frame
 
 
 def demonstrate_stacked_histogram():
-    """Demonstrate stacked histogram functionality."""
+    """Build a stacked histogram from tracked data and visualise a few slices."""
     print("Stacked Histogram Demonstration")
     print("=" * 40)
 
-    # Load data
-    filename = "data/slider_depth/events.txt"
-    x, y, pol, timestamp = load_sample_data()
-
-    # Use subset of data for demonstration
-    num_events = min(5000, len(x))
-    x = x[:num_events]
-    y = y[:num_events]
-    pol = pol[:num_events]
-    timestamp = timestamp[:num_events]
-
-    print(f"Processing {num_events} events")
-    print(f"Time range: {timestamp[0]:.6f} to {timestamp[-1]:.6f} seconds")
-    print(f"Spatial range: x=[{x.min()}, {x.max()}], y=[{y.min()}, {y.max()}]")
-
-    # Create stacked histogram
-    bins = 8
-    height = 240
-    width = 346
-
-    stacked_hist = evlib.create_stacked_histogram(
-        filename,
-        height=height,
-        width=width,
-        nbins=bins,
-        window_duration_ms=50.0,
-        count_cutoff=255,
-    )
-
-    print(f"\nStacked histogram shape: {stacked_hist.shape}")
+    # Load events as a LazyFrame [x, y, t, polarity].
+    events = evlib.load_events(DATA_FILE)
+    df = events.collect()
+    print(f"Loaded {df.height:,} events from {DATA_FILE}")
     print(
-        f"Expected shape: [2*{bins}, {height}, {width}] = [{2 * bins}, {height}, {width}]"
+        f"Spatial range: x=[{df['x'].min()}, {df['x'].max()}], "
+        f"y=[{df['y'].min()}, {df['y'].max()}]"
     )
-    print(f"Value range: [{stacked_hist.min()}, {stacked_hist.max()}]")
 
-    # Visualize results - show first 4 bins for clarity
+    bins = 8
+    hist = evlib.create_stacked_histogram(
+        events,
+        height=HEIGHT,
+        width=WIDTH,
+        bins=bins,
+        window_duration_ms=50.0,
+    )
+
+    print(f"\nStacked histogram: {hist.height:,} non-zero cells")
+    print(f"Columns: {hist.columns}")
+    print(f"Temporal bins: {sorted(hist['time_bin'].unique().to_list())}")
+    print(f"Polarities: {sorted(hist['polarity'].unique().to_list())}")
+    print(f"Count range: [{hist['count'].min()}, {hist['count'].max()}]")
+
+    vmax = float(hist["count"].max())
+    polarities = sorted(hist["polarity"].unique().to_list())
+    pos_pol, neg_pol = polarities[-1], polarities[0]
+
+    # Visualise the first few temporal bins for both polarities.
     max_bins_to_show = min(4, bins)
     fig, axes = plt.subplots(2, max_bins_to_show, figsize=(16, 8))
-    fig.suptitle("Stacked Histogram Visualization", fontsize=16)
+    fig.suptitle("Stacked Histogram Visualisation", fontsize=16)
 
-    # Use the first window for visualization
-    window_idx = 0
-
-    # Show positive events for each time bin
     for i in range(max_bins_to_show):
-        ax = axes[0, i]
-        pos_slice = stacked_hist[window_idx, i, :, :]
-        ax.imshow(pos_slice, cmap="Reds", vmin=0, vmax=stacked_hist.max())
-        ax.set_title(f"Positive Events\nTime Bin {i}")
-        ax.axis("off")
+        pos_slice = densify_slice(hist, time_bin=i, polarity=pos_pol)
+        axes[0, i].imshow(pos_slice, cmap="Reds", vmin=0, vmax=vmax)
+        axes[0, i].set_title(f"Positive\nTime Bin {i}")
+        axes[0, i].axis("off")
 
-    # Show negative events for each time bin
-    for i in range(max_bins_to_show):
-        ax = axes[1, i]
-        neg_slice = stacked_hist[window_idx, bins + i, :, :]
-        ax.imshow(neg_slice, cmap="Blues", vmin=0, vmax=stacked_hist.max())
-        ax.set_title(f"Negative Events\nTime Bin {i}")
-        ax.axis("off")
+        neg_slice = densify_slice(hist, time_bin=i, polarity=neg_pol)
+        axes[1, i].imshow(neg_slice, cmap="Blues", vmin=0, vmax=vmax)
+        axes[1, i].set_title(f"Negative\nTime Bin {i}")
+        axes[1, i].axis("off")
 
     plt.tight_layout()
-    plt.savefig("/tmp/stacked_histogram_demo.png")
+    out_path = "/tmp/stacked_histogram_demo.png"
+    plt.savefig(out_path)
     plt.close()
+    print(f"\nSaved figure to {out_path}")
 
-    # Compare with other representations
-    print("\nComparing with other representations:")
-
-    # Voxel grid
+    # Compare with the voxel grid representation [x, y, time_bin, contribution].
     voxel_grid = evlib.create_voxel_grid(
-        filename, height=height, width=width, nbins=bins
+        events, height=HEIGHT, width=WIDTH, n_time_bins=bins
     )
-    print(f"Voxel grid shape: {voxel_grid.shape}")
-    print(f"Voxel grid value range: [{voxel_grid.min():.3f}, {voxel_grid.max():.3f}]")
-
-    # Simple event histogram (manual implementation since no evlib function exists)
-    event_hist = np.zeros((2, height, width), dtype=np.int32)
-    for i in range(num_events):
-        event_hist[pol[i], y[i], x[i]] += 1
-    print(f"Event histogram shape: {event_hist.shape}")
-    print(f"Event histogram value range: [{event_hist.min()}, {event_hist.max()}]")
-
-    # Visualize comparison
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle("Representation Comparison", fontsize=16)
-
-    # Stacked histogram middle bin - First window, middle time bin
-    middle_window = 0
-    middle_time_bin = bins // 2
-    axes[0, 0].imshow(stacked_hist[middle_window, middle_time_bin, :, :], cmap="Reds")
-    axes[0, 0].set_title("Stacked Histogram\n(Middle Time Bin, Positive)")
-    axes[0, 0].axis("off")
-
-    # Voxel grid middle bin
-    axes[0, 1].imshow(voxel_grid[bins // 2, :, :].T, cmap="RdBu_r")
-    axes[0, 1].set_title("Voxel Grid\n(Middle Time Bin)")
-    axes[0, 1].axis("off")
-
-    # Stacked histogram negative events - First window, middle time bin + bins offset
-    axes[1, 0].imshow(
-        stacked_hist[middle_window, bins + middle_time_bin, :, :], cmap="Blues"
+    print(f"\nVoxel grid: {voxel_grid.height:,} cells, columns {voxel_grid.columns}")
+    print(
+        f"Contribution range: "
+        f"[{voxel_grid['contribution'].min():.3f}, {voxel_grid['contribution'].max():.3f}]"
     )
-    axes[1, 0].set_title("Stacked Histogram\n(Middle Time Bin, Negative)")
-    axes[1, 0].axis("off")
-
-    # Event histogram positive
-    axes[1, 1].imshow(event_hist[1], cmap="viridis")
-    axes[1, 1].set_title("Event Histogram\n(Positive Events)")
-    axes[1, 1].axis("off")
-
-    plt.tight_layout()
-    plt.savefig("/tmp/representation_comparison.png")
-    plt.close()
 
     print("\nDemonstration complete!")
 
