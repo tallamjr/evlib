@@ -110,49 +110,65 @@ def create_voxel_grid(
 
     events_lf = _ensure_lazy_frame(events)
 
-    return _collect_with_engine(
-        events_lf.with_columns(
-            [
-                # Convert Duration to microseconds for arithmetic
-                pl.col("t").dt.total_microseconds().alias("t_us")
-            ]
+    # Base frame: sort by time (tonic normalises against the first/last event),
+    # cast time to Float64 microseconds (Float32 division diverges from numpy at
+    # bin boundaries, a known evlib issue), map polarity to +1/-1, and compute
+    # the normalised time, floored bin index and fractional offset. This mirrors
+    # tonic's to_voxel_grid_numpy (Zhu et al. 2019 event volume).
+    span = (pl.col("t_us").max() - pl.col("t_us").min()).cast(pl.Float64)
+    base = (
+        events_lf.sort("t")
+        .with_columns(
+            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            # tonic maps p == 0 -> -1; treat any non-positive polarity as -1
+            pl.when(pl.col("polarity") > 0)
+            .then(pl.lit(1.0))
+            .otherwise(pl.lit(-1.0))
+            .alias("pol"),
         )
         .with_columns(
-            [
-                # Normalize time to [0, n_time_bins)
-                (
-                    (pl.col("t_us") - pl.col("t_us").min())
-                    / (pl.col("t_us").max() - pl.col("t_us").min())
-                    * n_time_bins
-                ).alias("t_norm")
-            ]
+            # Guard the degenerate single-timestamp case (max == min): place all
+            # mass in bin 0 by defining t_norm = 0.
+            pl.when(span > 0)
+            .then((pl.col("t_us") - pl.col("t_us").min()) / span * n_time_bins)
+            .otherwise(pl.lit(0.0))
+            .alias("t_norm")
         )
         .with_columns(
-            [
-                # Bilinear interpolation weights
-                pl.col("t_norm").floor().cast(pl.Int32).alias("t_low"),
-                (pl.col("t_norm").floor() + 1).cast(pl.Int32).alias("t_high"),
-                (pl.col("t_norm") - pl.col("t_norm").floor()).alias("weight_high"),
-                (1.0 - (pl.col("t_norm") - pl.col("t_norm").floor())).alias(
-                    "weight_low"
-                ),
-            ]
+            pl.col("t_norm").floor().alias("t_i"),
+        )
+        .with_columns(
+            pl.col("t_i").cast(pl.Int32).alias("t_i_int"),
+            (pl.col("t_norm") - pl.col("t_i")).alias("dt"),
         )
         .filter(
-            pl.col("x").is_between(0, width - 1)
-            & pl.col("y").is_between(0, height - 1)
-            & pl.col("t_low").is_between(0, n_time_bins - 1)
+            pl.col("x").is_between(0, width - 1) & pl.col("y").is_between(0, height - 1)
         )
-        .select(
-            [
-                pl.col("x"),
-                pl.col("y"),
-                pl.col("t_low").alias("time_bin"),
-                (pl.col("polarity") * pl.col("weight_low")).alias("contribution"),
-            ]
-        ),
-        engine=engine,
     )
+
+    spatial = [pl.col("x"), pl.col("y")]
+
+    # Left scatter: pol * (1 - dt) into bin t_i, where t_i < n_time_bins.
+    left = base.filter(pl.col("t_i_int") < n_time_bins).select(
+        *spatial,
+        pl.col("t_i_int").alias("time_bin"),
+        (pl.col("pol") * (1.0 - pl.col("dt"))).alias("contribution"),
+    )
+
+    # Right scatter: pol * dt into bin t_i + 1, where t_i + 1 < n_time_bins.
+    right = base.filter((pl.col("t_i_int") + 1) < n_time_bins).select(
+        *spatial,
+        (pl.col("t_i_int") + 1).alias("time_bin"),
+        (pl.col("pol") * pl.col("dt")).alias("contribution"),
+    )
+
+    combined = (
+        pl.concat([left, right])
+        .group_by(["x", "y", "time_bin"])
+        .agg(pl.col("contribution").sum().cast(pl.Float64).alias("contribution"))
+    )
+
+    return _collect_with_engine(combined, engine=engine)
 
 
 def voxel_grid(
