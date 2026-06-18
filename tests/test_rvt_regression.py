@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 import evlib.representations as evr
 

@@ -9,7 +9,7 @@ import sys
 import pytest
 from pathlib import Path
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 
 def find_test_data() -> Path:

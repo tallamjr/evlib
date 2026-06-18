@@ -230,7 +230,9 @@ impl AedatReader {
             });
         }
         // Check for version magic bytes - order matters!
-        if buffer.starts_with(b"AEDAT4") {
+        // Real DV-framework AEDAT 4.0 files start with `#!AER-DAT4.0\r\n`, so
+        // the specific 4.0 line must be tested before the generic 3.x fallback.
+        if buffer.starts_with(b"#!AER-DAT4.0") || buffer.starts_with(b"AEDAT4") {
             return Ok(AedatVersion::V4_0);
         }
         if buffer.starts_with(b"#!AER-DAT2.0") {
@@ -406,21 +408,26 @@ impl AedatReader {
                                                // Note: For DVS128, coordinates are max 128x128, so 7 bits each is sufficient
                                                // The coordinate system has (0,0) at lower left, but we convert to upper left
                                                // by inverting y coordinate if sensor resolution is known
-                                               // Validate coordinates and timestamp before adding to builder
-                if self.config.validate_timestamps {
-                    if x > 127 || y > 127 {
-                        if self.config.skip_invalid_events {
-                            continue;
-                        } else {
-                            return Err(AedatError::CoordinateOutOfBounds {
-                                event_index,
-                                x,
-                                y,
-                                max_x: 127,
-                                max_y: 127,
-                            });
+                                               // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x || y >= max_y {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x,
+                                    y,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
                         }
                     }
+                }
+                // Validate timestamp monotonicity before adding to builder
+                if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
                         if self.config.skip_invalid_events {
@@ -560,7 +567,25 @@ impl AedatReader {
                 let x = (address >> 1) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
                                                  // Extract y coordinate from bits 16-30 (up to 15 bits)
                 let y = (address >> 16) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-                                                  // Validate coordinates and timestamp before adding to builder
+                                                  // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x as u32 || y >= max_y as u32 {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x: x as u16,
+                                    y: y as u16,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
+                        }
+                    }
+                }
+                // Validate timestamp monotonicity before adding to builder
                 if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
@@ -714,7 +739,25 @@ impl AedatReader {
                 let y = (address >> 2) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
                                                  // Extract x coordinate from bits 17-31 (up to 15 bits)
                 let x = (address >> 17) & 0x7FFF; // 15 bits: 0x7FFF = 0111 1111 1111 1111
-                                                  // Validate coordinates and timestamp before adding to builder
+                                                  // Validate coordinates against the configured resolution
+                if self.config.validate_coordinates {
+                    if let Some((max_x, max_y)) = self.config.max_resolution {
+                        if x >= max_x as u32 || y >= max_y as u32 {
+                            if self.config.skip_invalid_events {
+                                continue;
+                            } else {
+                                return Err(AedatError::CoordinateOutOfBounds {
+                                    event_index,
+                                    x: x as u16,
+                                    y: y as u16,
+                                    max_x,
+                                    max_y,
+                                });
+                            }
+                        }
+                    }
+                }
+                // Validate timestamp monotonicity before adding to builder
                 if self.config.validate_timestamps {
                     let current_timestamp = timestamp as f64;
                     if current_timestamp < prev_timestamp {
@@ -739,208 +782,18 @@ impl AedatReader {
             })
         }
     }
-    /// Read AEDAT 4.0 format
+    /// Read AEDAT 4.0 format (DV framework: FlatBuffer IOHeader + LZ4 packets).
+    ///
+    /// Delegates to [`crate::ev_formats::aedat4_reader`], which implements the
+    /// real DV on-disk layout. The whole file is read into memory because the
+    /// format is random-access (packet bodies are size-prefixed FlatBuffers and
+    /// a trailing FileDataTable indexes them); the streaming/chunked path is
+    /// reserved for the linear binary AEDAT 1.x/2.0/3.1 formats above.
     fn read_aedat_4_0(&self, file: &mut File) -> Result<(DataFrame, AedatMetadata), AedatError> {
-        let mut metadata = AedatMetadata {
-            version: Some(AedatVersion::V4_0),
-            ..Default::default()
-        };
-        // Parse header
         file.seek(SeekFrom::Start(0))?;
-        let header_size = self.parse_aedat_4_0_header(file, &mut metadata)?;
-        // Read binary event data with DV framework packet structure
-        file.seek(SeekFrom::Start(header_size))?;
-        let events = self.read_aedat_4_0_events(file)?;
-        metadata.event_count = Some(events.height());
-        Ok((events, metadata))
-    }
-    /// Parse AEDAT 4.0 header (DV framework)
-    fn parse_aedat_4_0_header(
-        &self,
-        file: &mut File,
-        metadata: &mut AedatMetadata,
-    ) -> Result<u64, AedatError> {
-        file.seek(SeekFrom::Start(0))?;
-        let mut buffer = Vec::new();
-        let mut temp_buffer = [0u8; 1024];
-        let mut header_size = 0u64;
-        let mut line_index = 0;
-        // Read file in chunks to find header end
-        loop {
-            let bytes_read = file.read(&mut temp_buffer)?;
-            if bytes_read == 0 {
-                break;
-            }
-            buffer.extend_from_slice(&temp_buffer[..bytes_read]);
-            // Look for header end (look for first non-comment line after AEDAT4)
-            let header_str = String::from_utf8_lossy(&buffer);
-            let mut found_header_end = false;
-            let mut byte_pos = 0;
-            for line in header_str.lines() {
-                if line.starts_with("AEDAT4") {
-                    byte_pos += line.len() + 1; // +1 for newline
-                    continue;
-                }
-                if line.starts_with('#') {
-                    byte_pos += line.len() + 1; // +1 for newline
-                    continue;
-                }
-                if line.trim().is_empty() {
-                    byte_pos += line.len() + 1; // +1 for newline
-                    continue;
-                }
-                // Found non-comment, non-empty line - this is the start of data
-                header_size = byte_pos as u64;
-                found_header_end = true;
-                break;
-            }
-            if found_header_end {
-                break;
-            }
-            if bytes_read < 1024 {
-                header_size = buffer.len() as u64;
-                break;
-            }
-        }
-        // Parse header lines
-        let header_str = String::from_utf8_lossy(&buffer[..header_size as usize]);
-        for line in header_str.lines() {
-            if line.starts_with("AEDAT4") {
-                continue; // Skip the format identifier
-            }
-            if line.starts_with('#') {
-                // Parse DV framework header information
-                if line.contains("sizeX") {
-                    if let Some(width) = self.extract_number_from_line(line) {
-                        metadata.sensor_resolution =
-                            Some((width, metadata.sensor_resolution.unwrap_or((0, 0)).1));
-                    }
-                } else if line.contains("sizeY") {
-                    if let Some(height) = self.extract_number_from_line(line) {
-                        metadata.sensor_resolution =
-                            Some((metadata.sensor_resolution.unwrap_or((0, 0)).0, height));
-                    }
-                }
-                metadata
-                    .properties
-                    .insert(format!("header_line_{line_index}"), line.to_string());
-                line_index += 1;
-            } else {
-                // End of header
-                break;
-            }
-        }
-        metadata.header_size = header_size;
-        Ok(header_size)
-    }
-    /// Read AEDAT 4.0 events (DV framework with 28-byte packet headers)
-    fn read_aedat_4_0_events(&self, file: &mut File) -> Result<DataFrame, AedatError> {
-        {
-            let mut builder = EventDataFrameBuilder::new(EventFormat::AEDAT1, 100_000);
-            let mut event_index = 0;
-            let mut prev_timestamp = 0.0;
-            loop {
-                if let Some(max_events) = self.config.max_events {
-                    if event_index >= max_events {
-                        break;
-                    }
-                }
-                // Read packet header (28 bytes)
-                let mut packet_header = [0u8; 28];
-                let bytes_read = file.read(&mut packet_header)?;
-                if bytes_read == 0 {
-                    break; // EOF
-                }
-                if bytes_read != 28 {
-                    if self.config.skip_invalid_events {
-                        continue;
-                    } else {
-                        return Err(AedatError::InsufficientData {
-                            expected: 28,
-                            actual: bytes_read,
-                        });
-                    }
-                }
-                // Parse packet header to determine packet type and size
-                let packet_type = u16::from_le_bytes([packet_header[0], packet_header[1]]);
-                let packet_size = u32::from_le_bytes([
-                    packet_header[4],
-                    packet_header[5],
-                    packet_header[6],
-                    packet_header[7],
-                ]);
-                // Only process polarity event packets (type 1)
-                if packet_type == 1 {
-                    let packet_events =
-                        self.read_aedat_4_0_packet_events(file, packet_size as usize)?;
-                    for (x, y, timestamp, polarity) in packet_events {
-                        // Validate coordinates and timestamp before adding to builder
-                        if self.config.validate_timestamps {
-                            if timestamp < prev_timestamp {
-                                if self.config.skip_invalid_events {
-                                    continue;
-                                } else {
-                                    return Err(AedatError::TimestampMonotonicityViolation {
-                                        event_index,
-                                        prev_timestamp,
-                                        curr_timestamp: timestamp,
-                                    });
-                                }
-                            }
-                            prev_timestamp = timestamp;
-                        }
-                        builder.add_event(x, y, timestamp, polarity);
-                        event_index += 1;
-                    }
-                } else {
-                    // Skip non-polarity packets
-                    file.seek(SeekFrom::Current(packet_size as i64))?;
-                }
-            }
-            builder.build().map_err(|e| AedatError::InvalidBinaryData {
-                offset: 0,
-                message: format!("Failed to build DataFrame: {}", e),
-            })
-        }
-    }
-    /// Read events from AEDAT 4.0 packet
-    fn read_aedat_4_0_packet_events(
-        &self,
-        file: &mut File,
-        packet_size: usize,
-    ) -> Result<Vec<(u16, u16, f64, bool)>, AedatError> {
-        let mut events = Vec::new();
-        let mut buffer = vec![0u8; packet_size];
-        let bytes_read = file.read(&mut buffer)?;
-        if bytes_read != packet_size {
-            return Err(AedatError::InsufficientData {
-                expected: packet_size,
-                actual: bytes_read,
-            });
-        }
-        // Parse polarity events (8 bytes each in DV format)
-        for chunk in buffer.chunks_exact(8) {
-            let timestamp = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            let x = u16::from_le_bytes([chunk[4], chunk[5]]);
-            let y = u16::from_le_bytes([chunk[6], chunk[7]]);
-            // AEDAT 4.0 DV framework format:
-            // - Timestamp: 32-bit microsecond timestamp
-            // - X coordinate: 16-bit value (0-65535)
-            // - Y coordinate: 16-bit value with MSB encoding polarity
-            //   - Bit 15: Polarity (1 = ON, 0 = OFF)
-            //   - Bits 0-14: Y coordinate (0-32767)
-            // Extract polarity from MSB of y
-            let polarity = (y & 0x8000) != 0;
-            // Extract y coordinate by masking out polarity bit
-            let y_clean = y & 0x7FFF; // Remove polarity bit (bit 15)
-                                      // Validate coordinates are within reasonable bounds
-            if x >= 8192 || y_clean >= 8192 {
-                // Skip events with unreasonable coordinates (likely corrupted)
-                continue;
-            }
-            events.push((x, y_clean, timestamp as f64, polarity));
-        }
-        Ok(events)
+        let mut data = Vec::new();
+        file.read_to_end(&mut data)?;
+        crate::ev_formats::aedat4_reader::read_aedat_4_0(&data, &self.config)
     }
     /// Extract numeric value from a header line
     fn extract_number_from_line(&self, line: &str) -> Option<u16> {
@@ -1143,46 +996,38 @@ mod tests {
         // assert_eq!(metadata.sensor_resolution, Some((346, 240)));
         // Events length is always >= 0 by definition, no need to assert
     }
-    /// Test AEDAT 4.0 format reading
+    /// Test AEDAT 4.0 reading against a real DV-framework sample.
+    ///
+    /// Skips when the sample is unavailable (e.g. CI without the dv-processing
+    /// submodule). The detailed parsing assertions and cross-checked event
+    /// counts live in `aedat4_reader::tests`; this guards the top-level
+    /// `AedatReader::read_file` dispatch path end to end.
     #[test]
     fn test_aedat_4_0_reading() {
-        let temp_dir = TempDir::new().unwrap();
-        let file_path = temp_dir.path().join("test_aedat_4_0.aedat");
-        // Create test AEDAT 4.0 file
-        let mut file = File::create(&file_path).unwrap();
-        // Write header
-        writeln!(file, "AEDAT4").unwrap();
-        writeln!(file, "# sizeX 640").unwrap();
-        writeln!(file, "# sizeY 480").unwrap();
-        // Write test packet header (28 bytes)
-        let packet_type = 1u16; // Polarity events
-        let packet_size = 16u32; // 2 events * 8 bytes each
-        file.write_all(&packet_type.to_le_bytes()).unwrap();
-        file.write_all(&[0u8; 2]).unwrap(); // Reserved
-        file.write_all(&packet_size.to_le_bytes()).unwrap();
-        file.write_all(&[0u8; 20]).unwrap(); // Rest of header
-                                             // Write test events in packet (8 bytes each)
-        let test_events = vec![
-            (1000u32, 100u16, 200u16), // timestamp=1000, x=100, y=200, polarity=1
-            (2000u32, 150u16, 250u16), // timestamp=2000, x=150, y=250, polarity=1
-        ];
-        for (timestamp, x, y) in test_events {
-            file.write_all(&timestamp.to_le_bytes()).unwrap();
-            file.write_all(&x.to_le_bytes()).unwrap();
-            file.write_all(&(y | 0x8000).to_le_bytes()).unwrap(); // Set polarity bit
+        let sample = "lib/dv-processing/tests/io/test_files/sample_data.aedat4";
+        if !std::path::Path::new(sample).exists() {
+            eprintln!("skipping AEDAT 4.0 test: sample {sample} not present");
+            return;
         }
-        // Test reading
-        let reader = AedatReader::new();
-        let (events, metadata) = reader.read_file(&file_path).unwrap();
+        // 346x260 sensor; disable timestamp monotonicity (DV streams interleave
+        // packets but coordinates and polarity are the contract under test).
+        let config = AedatConfig {
+            validate_timestamps: false,
+            validate_coordinates: true,
+            validate_polarity: false,
+            skip_invalid_events: false,
+            max_events: None,
+            max_resolution: Some((346, 260)),
+        };
+        let reader = AedatReader::with_config(config);
+        let (events, metadata) = reader.read_file(sample).unwrap();
         assert_eq!(metadata.version, Some(AedatVersion::V4_0));
-        assert_eq!(metadata.sensor_resolution, Some((640, 480)));
-        assert_eq!(events.height(), 2);
-        // Verify first event
+        assert_eq!(events.height(), 9193);
         let rows = dataframe_to_rows(&events);
-        assert_eq!(rows[0].x, 100);
-        assert_eq!(rows[0].y, 200);
-        assert_eq!(rows[0].polarity, 1); // polarity bit set -> 1
-        assert_eq!(rows[0].t, 1000.0);
+        assert_eq!(rows[0].x, 56);
+        assert_eq!(rows[0].y, 16);
+        assert_eq!(rows[0].polarity, 1); // DV ON event -> -1/1 encoding -> 1
+        assert_eq!(rows[0].t, 1_663_249_605_734_020.0);
     }
     /// Test error handling for invalid files
     #[test]
@@ -1238,8 +1083,6 @@ mod tests {
         assert_eq!(events.height(), 2); // Both events should be read
     }
     /// Test coordinate bounds validation
-    #[ignore = "pre-existing AEDAT reader defect: max_resolution bounds are not enforced so \
-                CoordinateOutOfBounds is never returned; unrelated to the API port, tracked separately"]
     #[test]
     fn test_coordinate_bounds_validation() {
         let temp_dir = TempDir::new().unwrap();

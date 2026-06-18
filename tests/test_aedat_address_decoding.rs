@@ -308,83 +308,52 @@ fn test_aedat_3_1_validity_bit() {
     assert_eq!(events[1].y, 60);
 }
 
-/// Test AEDAT 4.0 address decoding with DV framework format
+/// Test AEDAT 4.0 reading against a real DV-framework sample file.
+///
+/// The legacy "28-byte packet header" layout that previous revisions invented
+/// does not exist in the DV framework, so there is no synthetic event to decode
+/// here. Instead this validates the real reader against a genuine `.aedat4`
+/// recording, with the expected event count and first event cross-checked
+/// against dv-processing 2.0.3. Skips when the sample is absent.
 #[test]
 fn test_aedat_4_0_address_decoding() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("test_aedat_4_0_address.aedat");
-
-    // Create test AEDAT 4.0 file
-    let mut file = File::create(&file_path).unwrap();
-    writeln!(file, "AEDAT4").unwrap();
-    writeln!(file, "# sizeX 640").unwrap();
-    writeln!(file, "# sizeY 480").unwrap();
-
-    // Write test packet header (28 bytes)
-    let packet_type = 1u16; // Polarity events
-    let packet_size = 32u32; // 4 events * 8 bytes each
-
-    file.write_all(&packet_type.to_le_bytes()).unwrap();
-    file.write_all(&[0u8; 2]).unwrap(); // Reserved
-    file.write_all(&packet_size.to_le_bytes()).unwrap();
-    file.write_all(&[0u8; 20]).unwrap(); // Rest of header
-
-    // Test various coordinate combinations
-    // AEDAT 4.0 format: timestamp (32-bit) + x (16-bit) + y (16-bit with MSB as polarity)
-    let test_cases = vec![
-        // (expected_x, expected_y, expected_polarity, timestamp)
-        (0, 0, 1, 1000),
-        (0, 0, -1, 2000),
-        (100, 200, 1, 3000),
-        (639, 479, -1, 4000), // Max resolution
-    ];
-
-    for (x, y, polarity, timestamp) in &test_cases {
-        // Create event according to AEDAT 4.0 specification
-        let y_with_polarity = (*y as u16) | if *polarity > 0 { 0x8000 } else { 0 };
-
-        file.write_all(&(*timestamp as u32).to_le_bytes()).unwrap();
-        file.write_all(&(*x as u16).to_le_bytes()).unwrap();
-        file.write_all(&y_with_polarity.to_le_bytes()).unwrap();
+    let sample = "lib/dv-processing/tests/io/test_files/sample_data.aedat4";
+    if !std::path::Path::new(sample).exists() {
+        eprintln!("skipping AEDAT 4.0 decoding test: {sample} not present");
+        return;
     }
 
-    // Test reading
-    let reader = AedatReader::new();
-    let (df, metadata) = reader.read_file(&file_path).unwrap();
+    // 346x260 sensor. DV polarity ON -> 1, OFF -> -1 after conversion.
+    let config = AedatConfig {
+        validate_timestamps: false,
+        validate_coordinates: true,
+        validate_polarity: false,
+        skip_invalid_events: false,
+        max_events: None,
+        max_resolution: Some((346, 260)),
+    };
+    let reader = AedatReader::with_config(config);
+    let (df, metadata) = reader.read_file(sample).unwrap();
     let events = dataframe_to_rows(&df);
 
     assert_eq!(metadata.version, Some(AedatVersion::V4_0));
-    assert_eq!(events.len(), test_cases.len());
+    assert_eq!(events.len(), 9193);
 
-    // Verify each event (AEDAT encodes polarity as ON -> 1, OFF -> 0)
-    for (i, (expected_x, expected_y, expected_polarity, expected_timestamp)) in
-        test_cases.iter().enumerate()
-    {
-        let event = &events[i];
-        assert_eq!(
-            event.x, *expected_x as u16,
-            "Event {i}: X coordinate mismatch"
-        );
-        assert_eq!(
-            event.y, *expected_y as u16,
-            "Event {i}: Y coordinate mismatch"
-        );
-        assert_eq!(
-            event.polarity,
-            if *expected_polarity > 0 { 1 } else { 0 },
-            "Event {i}: Polarity mismatch"
-        );
-        assert_eq!(
-            event.t, *expected_timestamp as i64,
-            "Event {i}: Timestamp mismatch"
-        );
+    // First event cross-checked against dv-processing.
+    assert_eq!(events[0].x, 56);
+    assert_eq!(events[0].y, 16);
+    assert_eq!(events[0].polarity, 1); // ON event
+    assert_eq!(events[0].t, 1_663_249_605_734_020);
+
+    // Coordinates within sensor bounds; polarity strictly in {-1, 1}.
+    for event in &events {
+        assert!(event.x < 346);
+        assert!(event.y < 260);
+        assert!(event.polarity == 1 || event.polarity == -1);
     }
 }
 
 /// Test coordinate bounds checking
-#[ignore = "pre-existing AEDAT reader defect: max_resolution bounds are not enforced so \
-            read_file does not return an error for out-of-bounds coordinates; unrelated to the \
-            API port, tracked separately"]
 #[test]
 fn test_coordinate_bounds_checking() {
     let temp_dir = TempDir::new().unwrap();

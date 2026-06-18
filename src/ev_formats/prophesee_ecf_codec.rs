@@ -655,19 +655,16 @@ impl PropheseeECFDecoder {
             for packed_event in vs.iter().take(events_in_group) {
                 let packed_event = *packed_event;
 
-                // Extract fields from packed event (23 bits total per event)
-                // Note: Coordinate values are 11-bit but may need scaling for full sensor range
+                // Extract fields from packed event (23 bits total per event).
+                // The 11-bit x/y fields are the actual sensor coordinates and are
+                // used directly, matching the OpenEB hdf5_ecf reference
+                // (ecf_codec.cpp:199-200), which performs no rescaling.
                 let y_raw = ((packed_event >> 12) & 0x7FF) as u16; // Bits 12-22: Y coordinate (11 bits)
                 let x_raw = ((packed_event >> 1) & 0x7FF) as u16; // Bits 1-11: X coordinate (11 bits)
                 let p = if (packed_event & 1) != 0 { 1 } else { -1 }; // Bit 0: polarity (1 bit)
 
-                // Scale coordinates to full sensor resolution (1280x720)
-                // 11-bit values (0-2047) need to be mapped to sensor dimensions
-                let x = ((x_raw as u32 * 1280) / 2048) as u16; // Scale to 1280 width
-                let y = ((y_raw as u32 * 720) / 2048) as u16; // Scale to 720 height
-
-                x_coords.push(x);
-                y_coords.push(y);
+                x_coords.push(x_raw);
+                y_coords.push(y_raw);
                 polarities.push(p);
 
                 // Event decoded successfully
@@ -839,26 +836,25 @@ impl PropheseeECFEncoder {
     }
 
     /// Write chunk header
+    ///
+    /// Layout matches the official Prophesee ECF header (and the evlib decoder
+    /// `read_header`): bits 2-31 hold the event count, bit 1 is the
+    /// `ys_xs_and_ps_packed` flag and bit 0 is the `xs_and_ps_packed` flag.
+    /// There is no separate delta-timestamps flag bit; the decoder always
+    /// treats this bit-packed header as delta-timestamp encoded.
     fn write_header(
         &self,
         cursor: &mut Cursor<&mut Vec<u8>>,
         num_events: usize,
         _mode: &EncodingMode,
     ) -> io::Result<()> {
-        // Create bit-packed header matching the new evlib format
-        let mut header = 0u32;
-
-        // Bits 3-31: Number of events (shifted left by 3)
-        header |= (num_events as u32) << 3;
-
-        // Bit 2: delta_timestamps flag - set based on mode
-        // TODO: Use actual mode flag when needed
-        header |= 1u32 << 2; // Always use delta timestamps for now
-
-        // For now, don't set packing flags since we're using uncompressed format
-        // This ensures the header matches the actual data format
-        // Bit 1: ys_xs_and_ps_packed flag = false (not packed)
-        // Bit 0: xs_and_ps_packed flag = false (not packed)
+        // Bits 2-31: number of events.
+        // Bit 1: ys_xs_and_ps_packed flag = false (raw coordinate layout).
+        // Bit 0: xs_and_ps_packed flag = false (raw coordinate layout).
+        // Both packing flags stay clear because `encode_raw_coordinates`
+        // emits the unpacked Y / X / P blocks the decoder reads when neither
+        // flag is set.
+        let header = (num_events as u32) << 2;
 
         cursor.write_u32::<LittleEndian>(header)?;
         Ok(())
@@ -1009,8 +1005,6 @@ impl PropheseeECFEncoder {
 mod tests {
     use super::*;
 
-    #[ignore = "pre-existing ECF codec defect: encode/decode round-trip fails with UnexpectedEof; \
-                unrelated to the API port, tracked separately"]
     #[test]
     fn test_prophesee_ecf_roundtrip() {
         let events = vec![
@@ -1059,8 +1053,6 @@ mod tests {
         }
     }
 
-    #[ignore = "pre-existing ECF codec defect: encode/decode round-trip fails with UnexpectedEof; \
-                unrelated to the API port, tracked separately"]
     #[test]
     fn test_1_bit_delta_encoding() {
         // Test case specifically for 1-bit delta encoding (deltas are 0 or 1)

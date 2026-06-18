@@ -69,7 +69,7 @@ jobs:
           - os: macos-latest  # ARM64 macOS (Apple Silicon)
             platform: macos
             arch: arm64
-            python-version: "3.10"
+            python-version: "3.13"
           - os: macos-latest
             platform: macos
             arch: arm64
@@ -83,7 +83,7 @@ jobs:
           - os: windows-latest
             platform: windows
             arch: x64
-            python-version: "3.10"
+            python-version: "3.13"
           - os: windows-latest
             platform: windows
             arch: x64
@@ -152,14 +152,15 @@ jobs:
           fi
 
           # Build wheel with all features on Unix (HDF5 included via platform dependencies)
-          maturin build --release --features python,polars,arrow --interpreter python${{ matrix.python-version }} --out dist
+          # extension-module is required so the distributed wheel does not link libpython directly.
+          maturin build --release --features python,polars,arrow,extension-module --interpreter python${{ matrix.python-version }} --out dist
 
       - name: Build wheels (Windows)
         if: matrix.platform == 'windows'
         run: |
           .venv\Scripts\activate
           # Windows builds exclude HDF5 due to build complexity
-          maturin build --release --features python,polars --interpreter python --out dist
+          maturin build --release --features python,polars,extension-module --interpreter python --out dist
         env:
           CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
 
@@ -180,7 +181,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
@@ -241,7 +242,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --features python,polars,arrow --interpreter python${{ matrix.python-version }}
+          args: --release --features python,polars,arrow,extension-module --interpreter python${{ matrix.python-version }}
           rust-toolchain: nightly
           manylinux: 2014
           before-script-linux: |

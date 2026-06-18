@@ -134,7 +134,9 @@ impl From<std::io::Error> for FormatDetectionError {
 
 /// Magic bytes for different formats
 const HDF5_MAGIC: &[u8] = b"\x89HDF\r\n\x1a\n";
-const AEDAT4_MAGIC: &[u8] = b"AEDAT4";
+// Real DV-framework AEDAT 4.0 files begin with `#!AER-DAT4.0`. This must be
+// tested before the generic `#!AER-DAT` (3.x) prefix to avoid misdetection.
+const AEDAT4_MAGIC: &[u8] = b"#!AER-DAT4.0";
 const AEDAT3_MAGIC: &[u8] = b"#!AER-DAT";
 const AEDAT2_MAGIC: &[u8] = b"#!AER-DAT2.0";
 const AEDAT1_MAGIC: &[u8] = b"#!AER-DAT1.0";
@@ -194,6 +196,7 @@ impl FormatDetector {
             Some("txt") | Some("dat") => (EventFormat::Text, 0.7),
             Some("h5") | Some("hdf5") => (EventFormat::HDF5, 0.8),
             Some("aer") => (EventFormat::AER, 0.6),
+            Some("aedat4") => (EventFormat::AEDAT4, 0.7), // DV framework, refined by content magic
             Some("aedat") => (EventFormat::AEDAT2, 0.5), // Default to AEDAT2, will be refined by content
             Some("raw") => (EventFormat::EVT2, 0.5), // Default to EVT2, will be refined by content
             Some("bin") => (EventFormat::Binary, 0.6),
@@ -477,16 +480,27 @@ impl FormatDetector {
             .properties
             .insert("detection_method".to_string(), "text_analysis".to_string());
 
-        // Analyze first few lines to determine format
+        // Analyze first few lines to determine format. Count only the lines that
+        // carry event data (skip comments and blank lines) so the confidence ratio
+        // is not diluted by header lines.
+        let mut data_line_count = 0;
+
+        // Read up to 10 lines. The buffer must be cleared on every iteration,
+        // including for skipped comment/blank lines, otherwise their contents leak
+        // into the next read and poison the numeric parsing.
         while line_count < 10 && reader.read_line(&mut line)? > 0 {
             line_count += 1;
 
-            if line.trim().is_empty() || line.starts_with('#') {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                line.clear();
                 continue;
             }
 
+            data_line_count += 1;
+
             // Check if line contains space-separated numeric values
-            let parts: Vec<&str> = line.split_whitespace().collect();
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
             if parts.len() >= 4 {
                 let mut valid_parts = 0;
 
@@ -512,8 +526,8 @@ impl FormatDetector {
             line.clear();
         }
 
-        let confidence = if valid_event_lines > 0 {
-            (valid_event_lines as f64 / line_count as f64) * 0.8
+        let confidence = if data_line_count > 0 && valid_event_lines > 0 {
+            (valid_event_lines as f64 / data_line_count as f64) * 0.9
         } else {
             0.3
         };
@@ -527,29 +541,47 @@ impl FormatDetector {
 
     /// Check if content could be AER format
     fn could_be_aer_format(buffer: &[u8], file_size: u64) -> bool {
-        // AER format typically has 18-bit events, often stored as 32-bit values
-        // Check if file size is consistent with 4-byte events
+        // AER format uses an 18-bit event structure (1 bit polarity + 9 bits x +
+        // 9 bits y) stored in 32-bit little-endian words. The address therefore
+        // occupies bits 0..=18; bits 19..=31 are always zero in genuine AER data.
+        // Check if file size is consistent with 4-byte events.
         if !file_size.is_multiple_of(4) {
             return false;
         }
 
-        // Check for patterns typical of AER data
-        // Events should have reasonable coordinate values
-        if buffer.len() >= 8 {
-            let event1 = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
-            let event2 = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-
-            // Extract x, y coordinates (assuming 9-bit each)
-            let x1 = (event1 >> 1) & 0x1FF;
-            let y1 = (event1 >> 10) & 0x1FF;
-            let x2 = (event2 >> 1) & 0x1FF;
-            let y2 = (event2 >> 10) & 0x1FF;
-
-            // Check if coordinates are reasonable (< 1024 for typical sensors)
-            return x1 < 1024 && y1 < 1024 && x2 < 1024 && y2 < 1024;
+        // Need at least two events to distinguish structured AER data from random
+        // binary. A single 4-byte value is too weak a signal.
+        if buffer.len() < 8 {
+            return false;
         }
 
-        false
+        // Sample every aligned 4-byte event in the buffer and verify the upper bits
+        // (above the 18-bit AER address space) are zero. Random binary data sets
+        // these high bits, so requiring them to be clear rejects false positives
+        // while accepting genuine AER addresses (which never use those bits).
+        const AER_ADDRESS_BITS: u32 = 19; // 1 polarity + 9 x + 9 y
+        let high_bit_mask: u32 = !0u32 << AER_ADDRESS_BITS;
+
+        let mut event_count = 0usize;
+        let mut offset = 0usize;
+        while offset + 4 <= buffer.len() {
+            let event = u32::from_le_bytes([
+                buffer[offset],
+                buffer[offset + 1],
+                buffer[offset + 2],
+                buffer[offset + 3],
+            ]);
+
+            // Any bit set above the AER address space means this is not AER data.
+            if event & high_bit_mask != 0 {
+                return false;
+            }
+
+            event_count += 1;
+            offset += 4;
+        }
+
+        event_count >= 2
     }
 
     /// Analyze AER format

@@ -21,7 +21,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 # Skip entire module on Windows - uses HDF5 files
 pytestmark = pytest.mark.skipif(

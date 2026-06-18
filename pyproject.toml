@@ -10,7 +10,7 @@ authors = [
   { name = "Tarek Allam", email = "t.allam.jr@gmail.com" },
 ]
 license = { file = "LICENSE.md" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: Science/Research",
@@ -19,9 +19,9 @@ classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Rust",
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Image Processing",
@@ -81,7 +81,16 @@ strip = true
 include = [{ path = "rust-toolchain.toml", format = "sdist" }, { path = "dist", format = ["sdist", "wheel"]} ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "docs", "examples"]
+# Bare `pytest` runs the test suite only. docs (markdown-docs) and examples
+# (nbmake notebooks) need extra deps and data, and CI invokes them explicitly
+# (`pytest --nbmake examples/`, `pytest --markdown-docs docs/`).
+testpaths = ["tests"]
+# Put the repo root on sys.path so tests/conftest.py can do package-qualified
+# imports (`from tests.hdf5_support import ...`) regardless of the working
+# directory. Without this, conftest import fails in CI ("No module named
+# 'tests'") because the repo root is only implicitly importable when pytest
+# happens to run from it.
+pythonpath = ["."]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",

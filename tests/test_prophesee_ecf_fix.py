@@ -8,7 +8,7 @@ import os
 import pytest
 from pathlib import Path
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 # h5py is not available on Windows (HDF5 is Unix-only)
 h5py = pytest.importorskip("h5py", reason="h5py not available on Windows")

@@ -362,8 +362,18 @@ pub struct Evt3Metadata {
 /// Decoder state for EVT3 events
 #[derive(Debug, Clone, Default)]
 struct DecoderState {
-    /// Current timestamp (24-bit)
-    current_timestamp: u32,
+    /// Full reconstructed timestamp in microseconds (time base including
+    /// TIME_HIGH loops, plus the current 12-bit TIME_LOW).
+    current_timestamp: u64,
+    /// Time base from TIME_HIGH, including accumulated loop offsets, in
+    /// microseconds (always a multiple of 2^12).
+    current_time_base: u64,
+    /// Current 12-bit TIME_LOW value in microseconds.
+    current_time_low: u64,
+    /// Number of TIME_HIGH wraparounds (loops) observed so far.
+    time_high_loop_count: u64,
+    /// Whether the first TIME_HIGH has been seen (initialises the time base).
+    first_time_base_set: bool,
     /// Current Y coordinate
     current_y: u16,
     /// Current polarity
@@ -658,6 +668,10 @@ impl Evt3Reader {
             let mut builder = EventDataFrameBuilder::new(EventFormat::EVT3, estimated_events);
             let mut buffer = vec![0u8; self.config.chunk_size * 2]; // 2 bytes per event
             let mut decoder_state = DecoderState::default();
+            // EVT3 timebase loop constants (12-bit TIME_HIGH << 12, mirrors OpenEB).
+            const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 12) - 1) << 12; // 16_773_120
+            const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 12); // 16_777_216
+            const LOOP_THRESHOLD: u64 = 10 << 12;
             let mut bytes_read_total = 0;
             loop {
                 let bytes_read = file.read(&mut buffer)?;
@@ -679,19 +693,49 @@ impl Evt3Reader {
                             match event_type {
                                 Evt3EventType::TimeLow => {
                                     if let Ok(time_event) = raw_event.as_time_event() {
-                                        // Update lower 12 bits of timestamp
-                                        decoder_state.current_timestamp =
-                                            (decoder_state.current_timestamp & 0xFFF000)
-                                                | time_event.time as u32;
+                                        // Update the lower 12 bits (TIME_LOW) of the timestamp.
+                                        decoder_state.current_time_low = time_event.time as u64;
+                                        decoder_state.current_timestamp = decoder_state
+                                            .current_time_base
+                                            + decoder_state.current_time_low;
                                         decoder_state.has_timestamp = true;
                                     }
                                 }
                                 Evt3EventType::TimeHigh => {
                                     if let Ok(time_event) = raw_event.as_time_event() {
-                                        // Update upper 12 bits of timestamp
-                                        decoder_state.current_timestamp =
-                                            (decoder_state.current_timestamp & 0x000FFF)
-                                                | ((time_event.time as u32) << 12);
+                                        // Update the upper 12 bits (TIME_HIGH) of the timestamp,
+                                        // tracking 24-bit timebase loops so timestamps keep
+                                        // increasing past the ~16.78s wraparound (matches OpenEB).
+                                        let new_time_base = (time_event.time as u64) << 12;
+
+                                        if !decoder_state.first_time_base_set {
+                                            decoder_state.current_time_base = new_time_base;
+                                            decoder_state.first_time_base_set = true;
+                                        } else {
+                                            let candidate_time_base = new_time_base
+                                                + decoder_state.time_high_loop_count * TIME_LOOP;
+
+                                            // Detect a TIME_HIGH wraparound: the new base appears
+                                            // to jump backwards by almost the full 24-bit range.
+                                            let candidate_time_base = if decoder_state
+                                                .current_time_base
+                                                > candidate_time_base
+                                                && decoder_state.current_time_base
+                                                    - candidate_time_base
+                                                    >= MAX_TIMESTAMP_BASE - LOOP_THRESHOLD
+                                            {
+                                                decoder_state.time_high_loop_count += 1;
+                                                candidate_time_base + TIME_LOOP
+                                            } else {
+                                                candidate_time_base
+                                            };
+
+                                            decoder_state.current_time_base = candidate_time_base;
+                                        }
+
+                                        decoder_state.current_timestamp = decoder_state
+                                            .current_time_base
+                                            + decoder_state.current_time_low;
                                         decoder_state.has_timestamp = true;
                                     }
                                 }

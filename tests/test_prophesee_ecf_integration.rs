@@ -42,6 +42,65 @@ fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
         .collect()
 }
 
+/// Regression test for the ECF packed-coordinate scaling bug.
+///
+/// In the `ys_xs_and_ps_packed` path, each event packs an 11-bit y (bits 12-22),
+/// an 11-bit x (bits 1-11), and a polarity (bit 0) into a 24-bit slot. The OpenEB
+/// reference (lib/hdf5_ecf/ecf_codec.cpp:199-200) uses those 11-bit fields as the
+/// actual sensor coordinates. evlib instead rescaled them (`x*1280/2048`,
+/// `y*720/2048`), silently corrupting every packed event. This builds a packed
+/// chunk by hand and asserts the decoded coordinates equal the raw 11-bit values.
+/// Pure-Rust codec path, so it runs without the `hdf5` feature.
+#[test]
+fn test_prophesee_ecf_packed_coordinates_are_not_rescaled() {
+    use evlib::ev_formats::PropheseeECFDecoder;
+
+    // (x, y, polarity_bit) chosen so the buggy rescaling would change them:
+    //   x=1024 -> 1024*1280/2048 = 640 ; y=512 -> 512*720/2048 = 180
+    let events = [
+        (1024u16, 512u16, 1u32),
+        (2000, 700, 0),
+        (100, 200, 1),
+        (2047, 2047, 0),
+    ];
+
+    // Pack each event into its 24-bit slot: (y << 12) | (x << 1) | polarity.
+    let vs: Vec<u32> = events
+        .iter()
+        .map(|&(x, y, p)| ((y as u32) << 12) | ((x as u32) << 1) | p)
+        .collect();
+
+    // Re-interleave the four 24-bit slots into three 32-bit words, the exact
+    // inverse of the decoder's unpacking.
+    let word0 = (vs[0] << 8) | (vs[1] & 0xFF);
+    let word1 = ((vs[1] >> 8) << 16) | (vs[2] & 0xFFFF);
+    let word2 = ((vs[2] >> 16) << 24) | vs[3];
+
+    let mut chunk = Vec::new();
+    // Header: bits 2-31 = event count, bit 1 = ys_xs_and_ps_packed.
+    chunk.extend_from_slice(&(((events.len() as u32) << 2) | 0x2).to_le_bytes());
+    // Base timestamp (i64).
+    chunk.extend_from_slice(&1_000i64.to_le_bytes());
+    // Packed coordinate words.
+    chunk.extend_from_slice(&word0.to_le_bytes());
+    chunk.extend_from_slice(&word1.to_le_bytes());
+    chunk.extend_from_slice(&word2.to_le_bytes());
+    // Timestamp section: delta_bits = 0 -> every timestamp equals the base.
+    chunk.push(0u8);
+
+    let decoder = PropheseeECFDecoder::new();
+    let decoded = decoder.decode(&chunk).expect("packed chunk should decode");
+
+    assert_eq!(decoded.len(), events.len());
+    for (i, &(x, y, p)) in events.iter().enumerate() {
+        assert_eq!(decoded[i].x, x, "event {i}: x must not be rescaled");
+        assert_eq!(decoded[i].y, y, "event {i}: y must not be rescaled");
+        let expected_p = if p == 1 { 1 } else { -1 };
+        assert_eq!(decoded[i].p, expected_p, "event {i}: polarity");
+        assert_eq!(decoded[i].t, 1_000, "event {i}: timestamp");
+    }
+}
+
 /// Check if we're running in CI environment
 fn is_running_in_ci() -> bool {
     env::var("CI").is_ok()
@@ -68,10 +127,6 @@ fn test_prophesee_file_exists() {
     );
 }
 
-#[ignore = "pre-existing detector representation change: file size is exposed as the typed \
-            metadata.file_size field, not as a \"file_size\" key in the properties map, so this \
-            properties.contains_key assertion no longer holds; unrelated to the API port, tracked \
-            separately"]
 #[test]
 fn test_prophesee_format_detection() {
     if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
@@ -94,11 +149,8 @@ fn test_prophesee_format_detection() {
         detection_result.confidence
     );
 
-    // Check metadata
-    assert!(detection_result
-        .metadata
-        .properties
-        .contains_key("file_size"));
+    // Check metadata: file size is exposed as a typed field on the metadata struct.
+    assert!(detection_result.metadata.file_size > 0);
     println!(
         "✓ Format detection: {:?} (confidence: {:.2})",
         detection_result.format, detection_result.confidence

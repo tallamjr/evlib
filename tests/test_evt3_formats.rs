@@ -438,6 +438,86 @@ mod evt3_tests {
         assert!(df_no_validation.height() > 0);
     }
 
+    /// Regression test for the EVT3 timestamp loop/wraparound bug.
+    ///
+    /// EVT3's timebase is 24 bits at 1us resolution (12-bit TIME_HIGH << 12 |
+    /// 12-bit TIME_LOW), so it wraps every 2^24 us ~= 16.78s. OpenEB's reference
+    /// decoder tracks the number of TIME_HIGH loops and adds `loop_count *
+    /// TimeLoop` so timestamps keep increasing past the wrap. evlib must do the
+    /// same (it already does for EVT2 and EVT2.1). Before the fix, the second
+    /// event below decoded at t=0.0s instead of ~16.777216s, i.e. the stream went
+    /// backwards in time.
+    #[test]
+    fn test_evt3_timestamp_wraparound_is_monotonic() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test_evt3_wraparound.raw");
+
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(file, "% evt 3.0").unwrap();
+        writeln!(file, "% format EVT3;height=480;width=640").unwrap();
+        writeln!(file, "% geometry 640x480").unwrap();
+        writeln!(file, "% end").unwrap();
+
+        let mut binary_data = Vec::new();
+        let mut push = |word: u16| binary_data.extend_from_slice(&word.to_le_bytes());
+
+        // --- Event A, just below the 24-bit timebase ceiling ---
+        // TIME_HIGH = 0xFFF -> time_base = 0xFFF << 12 = 0xFFF000 = 16_773_120 us
+        push((0x8u16 << 12) | 0xFFF);
+        // TIME_LOW = 0x000
+        push(0x6u16 << 12);
+        // Y = 100
+        push(evt3_word(0x0, 100));
+        // X = 100, positive polarity -> emits event A at t = 16_773_120 us
+        push((0x2u16 << 12) | (1u16 << 11) | 100);
+
+        // --- Event B, after the TIME_HIGH wraps back to 0x000 ---
+        // TIME_HIGH = 0x000 -> with loop handling time_base = 0x1000000 = 16_777_216 us
+        push(0x8u16 << 12);
+        // TIME_LOW = 0x000
+        push(0x6u16 << 12);
+        // Y = 100
+        push(evt3_word(0x0, 100));
+        // X = 100, positive polarity -> emits event B at t = 16_777_216 us
+        push((0x2u16 << 12) | (1u16 << 11) | 100);
+
+        file.write_all(&binary_data).unwrap();
+
+        let config = Evt3Config {
+            validate_coordinates: false,
+            skip_invalid_events: false,
+            max_events: Some(100),
+            sensor_resolution: Some((640, 480)),
+            chunk_size: 1000,
+            polarity_encoding: None,
+        };
+        let reader = Evt3Reader::with_config(config);
+        let (df, _) = reader.read_file(&file_path).unwrap();
+        let events = dataframe_to_rows(&df);
+
+        assert_eq!(events.len(), 2, "expected exactly two CD events");
+
+        // Event A: 16_773_120 us = 16.773120 s
+        assert!(
+            (events[0].t - 16.773_120).abs() < 1e-9,
+            "event A timestamp wrong: {}",
+            events[0].t
+        );
+        // Event B must NOT wrap back to 0; OpenEB decodes it at 16_777_216 us.
+        assert!(
+            (events[1].t - 16.777_216).abs() < 1e-9,
+            "event B timestamp wrapped instead of accumulating the time-high loop: {}",
+            events[1].t
+        );
+        // The decoded stream must be monotonic across the TIME_HIGH wrap.
+        assert!(
+            events[1].t > events[0].t,
+            "timestamps went backwards across the wrap: {} -> {}",
+            events[0].t,
+            events[1].t
+        );
+    }
+
     #[test]
     fn test_evt3_config_defaults() {
         let config = Evt3Config::default();

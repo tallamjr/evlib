@@ -23,7 +23,7 @@ import pytest
 # Add the project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from conftest import requires_hdf5
+from tests.hdf5_support import requires_hdf5
 
 import evlib
 

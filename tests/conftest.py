@@ -8,30 +8,10 @@ from pathlib import Path
 import tempfile
 import shutil
 
-# Detect whether the evlib build includes HDF5 support.
-# Mirrors the hdf5_available fixture but available at import time so
-# test modules can apply `pytestmark = requires_hdf5`.
-try:
-    import evlib as _evlib_for_hdf5_probe
-
-    # HDF5 read/write is a cfg-gated Rust feature (--features hdf5). The top-level
-    # evlib.save_events_to_hdf5 is a pure-Python h5py wrapper that always exists, so it
-    # is not a reliable signal. Probe the Rust `formats` submodule, where
-    # save_events_to_hdf5 is only registered when the hdf5 feature is compiled in.
-    _fmt = getattr(_evlib_for_hdf5_probe, "formats", None)
-    HAS_HDF5 = (
-        sys.platform != "win32"
-        and _fmt is not None
-        and hasattr(_fmt, "save_events_to_hdf5")
-    )
-    del _evlib_for_hdf5_probe, _fmt
-except ImportError:
-    HAS_HDF5 = False
-
-requires_hdf5 = pytest.mark.skipif(
-    not HAS_HDF5,
-    reason="HDF5 feature not compiled in (build with --features hdf5)",
-)
+# HDF5 support detection lives in a dedicated helper module so it can be
+# imported via the package-qualified path from test modules. Re-exported here
+# for backwards compatibility with any code that still reads them off conftest.
+from tests.hdf5_support import HAS_HDF5, requires_hdf5  # noqa: F401
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent

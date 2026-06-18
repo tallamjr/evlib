@@ -49,7 +49,7 @@ harness = false
 [dependencies]
 # Python bindings (optional)
 numpy          = { version = "0.25.0", optional = true }
-pyo3           = { version = "0.25.1", features = ["extension-module"], optional = true }
+pyo3           = { version = "0.25.1", optional = true }
 pyo3-ffi       = { version = "0.25.1", optional = true }
 
 # Core data processing
@@ -76,6 +76,8 @@ pyo3-arrow     = { version = "0.10.1", optional = true }
 memmap2        = "0.5"
 lazy_static    = "1.4"
 byteorder      = "1.5"
+# LZ4 frame decompression for AEDAT 4.0 (DV framework) packet bodies
+lz4_flex       = { version = "0.11", default-features = false, features = ["frame"] }
 
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
@@ -105,6 +107,12 @@ default        = ["polars", "python", "arrow"]
 
 # Individual feature flags
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
+# Opt-in PyO3 extension-module mode. Required ONLY for distributable wheels
+# (manylinux/macOS/Windows) so the .so does not link libpython directly.
+# Deliberately NOT in `default`: with it off, pyo3's build script links the
+# present libpython, which lets `cargo test` and `maturin develop` build and
+# run without any RUSTFLAGS hack.
+extension-module = ["pyo3/extension-module"]
 # cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies
 polars         = ["dep:polars"]

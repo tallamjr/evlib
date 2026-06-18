@@ -285,9 +285,17 @@ impl AerReader {
             if self.config.generate_timestamps {
                 self.generate_timestamps_for_parsed_events(&mut parsed_events)?;
             }
-            // Add events to builder
+            // Add events to builder.
+            // Generated timestamps are f64 seconds. Converting to microseconds with
+            // a truncating cast would turn e.g. 1.001 s into 1_000_999 us (because
+            // 1.001 * 1e6 is 1000999.999... in f64) instead of the intended
+            // 1_001_000 us. Round the seconds -> microseconds product here
+            // (round-half-up) and feed exact integer microseconds to the builder.
+            // This rounding is AER-local; the shared builder's seconds heuristic is
+            // left untouched for other readers.
             for (x, y, timestamp, polarity) in &parsed_events {
-                builder.add_event(*x, *y, *timestamp, *polarity);
+                let microseconds = (*timestamp * 1_000_000.0).round() as i64;
+                builder.add_event_microseconds(*x, *y, microseconds, *polarity);
             }
             let events = builder.build().map_err(|e| {
                 AerError::Io(std::io::Error::new(
@@ -644,13 +652,14 @@ mod tests {
         let data: Vec<u8> = events_data.into_iter().flatten().collect();
         let (events, _) = reader.parse_events(&data, data.len() as u64).unwrap();
         assert_eq!(events.height(), 3);
-        // Timestamps are stored as Duration(microseconds) via a truncating
+        // Timestamps are stored as Duration(microseconds) via a rounding
         // seconds -> microseconds conversion, so assert on the exact decoded
-        // microsecond integers. Note 1.001 s truncates to 1_000_999 us because
-        // 1.001 * 1e6 is not exactly representable in f64 (1000999.999...).
+        // microsecond integers. Note 1.001 s rounds to 1_001_000 us; a truncating
+        // conversion would instead give 1_000_999 us because 1.001 * 1e6 is not
+        // exactly representable in f64 (1000999.999...).
         let t = events.column("t").unwrap().duration().unwrap();
         assert_eq!(t.get(0).unwrap(), 1_000_000); // start 1.0 s
-        assert_eq!(t.get(1).unwrap(), 1_000_999); // 1.001 s (truncated)
+        assert_eq!(t.get(1).unwrap(), 1_001_000); // 1.001 s (rounded)
         assert_eq!(t.get(2).unwrap(), 1_002_000); // 1.002 s
     }
     #[test]

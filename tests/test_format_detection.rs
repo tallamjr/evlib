@@ -63,9 +63,6 @@ fn create_random_binary_file() -> NamedTempFile {
     temp_file
 }
 
-#[ignore = "pre-existing format-detector behaviour: synthetic text scores only 0.30 confidence, \
-            below the 0.7 assertion; detector heuristics differ from the test's thresholds, \
-            unrelated to the API port, tracked separately"]
 #[test]
 fn test_text_format_detection() {
     // Test real text files
@@ -179,9 +176,6 @@ fn test_aer_format_detection() {
     );
 }
 
-#[ignore = "pre-existing format-detector behaviour: random binary data is classified as AER \
-            rather than Unknown/Binary because the AER detector accepts any 4-byte-aligned data; \
-            unrelated to the API port, tracked separately"]
 #[test]
 fn test_unknown_format_detection() {
     let random_file = create_random_binary_file();
