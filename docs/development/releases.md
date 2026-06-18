@@ -20,6 +20,11 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ---
 
+!!! warning "Removed in 0.8.x"
+    The 0.8.x feature trim removed the Rust visualisation module and its dependency cascade (tokio, warp, reqwest, ratatui, gstreamer, and others), along with the dead `tch` and `ort` (ONNX) bindings. Features listed in the historical entries below that referenced GStreamer integration, web visualisation, ETAP point tracking, or ONNX runtime are no longer part of the current crate. The entries are kept for changelog continuity and annotated inline where affected. Deep-learning models remain available Python-side via PyTorch in `evlib.models`.
+
+---
+
 ## Version 0.3.0 (Planned)
 
 ### FEATURE: New Features
@@ -29,9 +34,9 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Metal Performance Shaders (macOS)
 - OpenCL backend for cross-platform GPU compute
 
-**Real-time Streaming**
-- GStreamer integration
-- Live event camera support
+**Real-time Streaming** (removed in 0.8.x)
+- GStreamer integration (removed in 0.8.x)
+- Live event camera support (removed in 0.8.x)
 
 ### TOOL: Improvements
 
@@ -58,7 +63,7 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 **Neural Network Support**
 - E2VID UNet implementation with verified weights
 - PyTorch model loading and inference
-- ONNX runtime support for cross-platform deployment
+- ONNX runtime support for cross-platform deployment (removed in 0.8.x)
 - Model download and caching system
 
 **Advanced Representations**
@@ -66,15 +71,15 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 - Configurable temporal binning strategies
 - Memory-efficient representation storage
 
-**Web Visualization**
-- Real-time web-based event visualization
-- Interactive parameter adjustment
-- Export capabilities for presentations
+**Web Visualization** (removed in 0.8.x)
+- Real-time web-based event visualization (removed in 0.8.x)
+- Interactive parameter adjustment (removed in 0.8.x)
+- Export capabilities for presentations (removed in 0.8.x)
 
-**Event Tracking**
-- ETAP (Event-based Tracking Any Point) integration
-- Point tracking with Python interface
-- Trajectory analysis utilities
+**Event Tracking** (removed in 0.8.x)
+- ETAP (Event-based Tracking Any Point) integration (removed in 0.8.x)
+- Point tracking with Python interface (removed in 0.8.x)
+- Trajectory analysis utilities (removed in 0.8.x)
 
 ### TOOL: Improvements
 
@@ -245,11 +250,11 @@ v0.3.0: ████████████████████ 100% - GPU 
 - HDF5 system libraries
 - Optional: PyTorch for neural networks
 
-**v0.3.0 (Planned):**
-- Python ≥ 3.10
+**Current (0.8.x):**
+- Python ≥ 3.11 (supported: 3.11, 3.12, 3.13)
 - NumPy ≥ 1.24.0
-- HDF5 system libraries
-- Optional: CUDA toolkit for GPU acceleration
+- Optional: HDF5 system libraries (opt-in via `--features hdf5`, Linux and macOS only)
+- Optional: PyTorch for neural network models
 
 ### Installation Commands
 

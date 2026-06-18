@@ -27,9 +27,9 @@ designed for scalable data processing with real-world event camera datasets.
 
 ## Core Features
 
-- **Universal Format Support**: Load data from H5, AEDAT, EVT2/3, AER, and text formats
+- **Universal Format Support**: Load data from AEDAT, EVT2/3, AER, text, and H5 formats (HDF5/H5 is opt-in via `--features hdf5`, available on Linux and macOS only, not Windows; use `h5py` directly for HDF5 I/O on Windows)
 - **Automatic Format Detection**: No need to specify format types manually
-- **Polars DataFrame Integration**: High-performance DataFrame operations with up to 360M events/s filtering
+- **Polars DataFrame Integration**: High-performance DataFrame operations (throughput figures are indicative, pending a committed benchmark suite; in progress)
 - **Event Filtering**: Comprehensive filtering with temporal, spatial, and polarity options
 - **Event Representations**: Stacked histograms, voxel grids, and mixed density stacks
 - **Neural Network Models**: E2VID model loading and inference
@@ -220,7 +220,7 @@ For optimal performance, ensure you have the recommended system configuration:
 
 **System Requirements:**
 - **RAM**: 8GB+ recommended for files >100M events
-- **Python**: 3.10+ (3.12 recommended for best performance)
+- **Python**: 3.11+ (supported: 3.11, 3.12, 3.13; 3.12 recommended for best performance)
 - **Polars**: Latest version for advanced DataFrame operations
 
 **Installation for Performance:**
@@ -250,7 +250,7 @@ pip install multiprocessing-logging
 evlib provides comprehensive Polars DataFrame support for high-performance event data processing:
 
 ### Key Benefits
-- **Performance**: 1.9M+ events/s loading speed, 360M+ events/s filtering speed
+- **Performance**: loading and filtering throughput figures are indicative, pending a committed benchmark suite (in progress)
 - **Memory Efficiency**: ~23 bytes/event (5x better than typical 110 bytes/event)
 - **Expressive Queries**: SQL-like operations for complex data analysis
 - **Lazy Evaluation**: Query optimization for better performance
@@ -356,10 +356,10 @@ print(f"Successfully saved {len(x)} processed events to HDF5")
 ![Performance Benchmarks](./benches/performance_benchmark.png)
 
 **Benchmark Results:**
-- **Loading Speed**: 1.9M+ events/second average across formats
-- **Filter Speed**: 360M+ events/second for complex filtering operations
+
+These throughput figures are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`).
+
 - **Memory Efficiency**: ~23 bytes/event
-- **Format Performance**: RAW binary (2.6M events/s) > HDF5 (2.5M events/s) > Text (0.6M events/s)
 
 ### Benchmarking and Monitoring
 
@@ -627,7 +627,7 @@ mypy python/evlib/
 #### Requirements
 
 - **Rust**: Stable toolchain (see `rust-toolchain.toml`)
-- **Python**: ≥3.10 (3.12 recommended)
+- **Python**: ≥3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Maturin**: For building Python extensions
 
 ```bash

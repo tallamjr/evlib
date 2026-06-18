@@ -6,6 +6,9 @@ Performance benchmarks for evlib operations compared to pure Python implementati
 
 evlib provides honest performance characteristics. This page documents comprehensive benchmarks comparing evlib (Rust) implementations with pure Python/NumPy equivalents.
 
+!!! warning "Indicative figures and removed modules"
+    The speedup figures on this page (for example "1.5-2.5x faster than pure Python") are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`). Additionally, the "Event Augmentation" and "Neural Network Performance" sections below reference modules removed in the 0.8.x trim (`evlib.augmentation`, `evlib.processing`, and `evlib.representations.events_to_smooth_voxel_grid`); those code blocks no longer run and are retained only as historical context.
+
 ## Benchmark Environment
 
 All benchmarks run on:

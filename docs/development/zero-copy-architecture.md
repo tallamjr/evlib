@@ -232,11 +232,13 @@ let filtered = x_array.filter(&polarity_mask);    // Vectorized filtering
 
 ### Achieved Metrics
 
+The throughput figures in this section are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`). Memory-per-event is a structural property of the Arrow layout (see the calculation below).
+
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
 | **Memory per event** | ~200+ bytes | 35.8 bytes | **5.6x reduction** |
-| **Loading speed** | ~600k events/s | 2.18M events/s | **3.6x faster** |
-| **Filter speed** | ~50M events/s | 463M events/s | **9.3x faster** |
+| **Loading speed** | indicative, pending benchmark suite | | |
+| **Filter speed** | indicative, pending benchmark suite | | |
 
 ### Why We Achieve 35 bytes/event
 

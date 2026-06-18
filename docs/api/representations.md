@@ -38,7 +38,7 @@ hist_df = evr.create_stacked_histogram(
 )
 # Returns Polars DataFrame
 print(f"Generated stacked histogram with {len(hist_df)} entries")
-print(f"Columns: {list(hist_df.columns)}")  # ['window_id', 'channel', 'time_bin', 'y', 'x', 'count']
+print(f"Columns: {list(hist_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x', 'count']
 ```
 
 **Parameters:**
@@ -47,10 +47,9 @@ print(f"Columns: {list(hist_df.columns)}")  # ['window_id', 'channel', 'time_bin
 - `width` (int): Sensor width in pixels
 - `bins` (int): Number of temporal bins per window (default: 10)
 - `window_duration_ms` (float): Duration of each window in milliseconds (default: 50.0)
-- `stride_ms` (float, optional): Stride between windows
 
 **Returns:**
-- `polars.DataFrame`: DataFrame with columns [time_bin, polarity, y, x, count]
+- `polars.DataFrame`: DataFrame with columns `[time_bin, polarity, y, x, count]`
 
 ### create_voxel_grid
 
@@ -81,7 +80,7 @@ print(f"Columns: {list(voxel_df.columns)}")
 - `n_time_bins` (int): Number of temporal bins (default: 5)
 
 **Returns:**
-- `polars.DataFrame`: DataFrame with columns [time_bin, y, x, value]
+- `polars.DataFrame`: DataFrame with columns `[x, y, time_bin, contribution]`
 
 ### create_mixed_density_stack
 

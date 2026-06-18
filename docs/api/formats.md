@@ -61,7 +61,7 @@ positive_events = events.filter(pl.col('polarity') == 1)
 - `header_lines` (int): Number of header lines to skip
 
 **Returns:**
-- `dict`: Dictionary with keys ["x", "y", "t", "polarity"] for Polars integration
+- `polars.LazyFrame`: A Polars LazyFrame with columns `x`, `y`, `t`, `polarity`. Call `.collect()` to materialise a DataFrame.
 
 ### save_events_to_hdf5
 

@@ -117,7 +117,7 @@ If you want to build evlib from source on Windows:
 ### Requirements
 
 - **Rust**: Nightly toolchain
-- **Python**: ≥3.10
+- **Python**: ≥3.11 (supported: 3.11, 3.12, 3.13)
 - **Visual Studio**: 2019 or later with C++ build tools
 
 ### Build Commands

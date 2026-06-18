@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Python**: ≥ 3.10 (3.12 recommended)
+- **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Operating System**: Linux, macOS, or Windows
 - **Dependencies**: HDF5 system libraries (for file I/O)
 

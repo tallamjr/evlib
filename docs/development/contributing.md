@@ -14,7 +14,7 @@ evlib follows a **"robust over rapid"** philosophy:
 
 ### Prerequisites
 
-- **Python**: ≥ 3.10 (3.12 recommended)
+- **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Rust**: Stable toolchain (see [rustup.rs](https://rustup.rs/))
 - **System dependencies**: HDF5, pkg-config
 
@@ -164,12 +164,10 @@ https://github.com/uzh-rpg/rpg_e2vid
 ```
 evlib/
 ├── src/                    # Rust source code
-│   ├── ev_core/           # Core data structures
-│   ├── ev_formats/        # File I/O (HDF5, text)
-│   ├── ev_representations/ # Voxel grids, smooth voxel
-│   ├── ev_processing/     # Neural networks, E2VID
-│   ├── ev_transforms/     # Spatial transformations
+│   ├── ev_formats/        # Binary parsing (EVT2/3, HDF5+ECF, AEDAT, AER, text) + Polars frame construction
+│   ├── ev_representations/ # Dense scatter-add engine for RVT stacked histograms
 │   └── lib.rs            # Python bindings
+├── python/evlib/          # Python package (Polars processing, models, visualisation)
 ├── tests/                 # Python tests
 ├── examples/              # Jupyter notebooks
 ├── data/                  # Test datasets
@@ -178,14 +176,18 @@ evlib/
 
 ### Module Mapping
 
+The Rust core is intentionally thin: it covers only what cannot be expressed as Polars DataFrame operations. All filtering, representations, and other processing live in Python Polars.
+
 ```
 Rust Module              → Python Module
-src/ev_core/            → evlib.core
 src/ev_formats/         → evlib.formats
-src/ev_representations/ → evlib.representations
-src/ev_processing/      → evlib.processing
-src/ev_transforms/      → evlib.augmentation
-python/evlib/visualization.py → evlib.visualization  # Python-only
+src/ev_representations/ → evlib.representations_rs   # dense scatter-add backend
+
+Python-only modules (pure Polars / PyTorch):
+python/evlib/filtering.py       → evlib.filtering
+python/evlib/representations.py → evlib.representations
+python/evlib/visualization.py   → evlib.visualization
+python/evlib/models/            → evlib.models
 ```
 
 ## Adding New Features
@@ -203,11 +205,15 @@ python/evlib/visualization.py → evlib.visualization  # Python-only
 ```rust
 // src/ev_representations/my_feature.rs
 use ndarray::Array3;
-use crate::ev_core::EventData;
 
-/// Create custom representation from events
+/// Create custom representation from event columns (x, y, t, polarity slices).
+/// The Rust core operates on columnar arrays rather than a struct; the events
+/// arrive as Polars columns from the loader.
 pub fn create_custom_representation(
-    events: &EventData,
+    xs: &[u16],
+    ys: &[u16],
+    ts: &[f64],
+    ps: &[i8],
     width: usize,
     height: usize,
     parameter: f64,
@@ -409,27 +415,25 @@ def test_memory_usage():
 - **Working implementation**: Must have verified download URLs
 - **Test data**: Include sample outputs for validation
 - **Performance metrics**: Document inference time and accuracy
-- **Multiple backends**: Support both PyTorch and ONNX where possible
+- **PyTorch backend**: Models are implemented Python-side via PyTorch in `evlib.models`
 
 ### Model Integration
 
-```rust
-// src/ev_processing/models/custom_model.rs
-use crate::ev_core::EventData;
+Models live in the Python package (`python/evlib/models/`) and use PyTorch. There is no Rust model module; the Rust core only handles binary parsing and the dense scatter-add representation backend.
 
-pub struct CustomModel {
-    // Model state
-}
+```python
+# python/evlib/models/custom_model.py
+import torch
 
-impl CustomModel {
-    pub fn new(model_path: &str) -> Result<Self, ModelError> {
-        // Load model
-    }
 
-    pub fn predict(&self, events: &EventData) -> Array3<f32> {
-        // Inference
-    }
-}
+class CustomModel(torch.nn.Module):
+    def __init__(self, model_path: str) -> None:
+        super().__init__()
+        # Load model weights from model_path
+
+    def forward(self, events) -> torch.Tensor:
+        # Inference over the event representation
+        ...
 ```
 
 ## Testing Strategy

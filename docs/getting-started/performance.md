@@ -8,6 +8,9 @@ evlib prioritizes **reliable performance** over **maximum performance**. We prov
 
 ## Benchmark Results
 
+!!! note "Indicative figures"
+    The speedup figures in the tables below are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`). Treat the numbers below as rough guidance rather than measured results.
+
 All benchmarks performed on:
 - **Hardware**: Apple M1 Pro, 32GB RAM
 - **Python**: 3.12.1
@@ -29,7 +32,6 @@ All benchmarks performed on:
 |-----------|-------|-------------|---------|-------|
 | Voxel grid creation | 120ms | 250ms | 2.1x faster | Complex algorithm advantage |
 | Smooth voxel grid | 180ms | 450ms | 2.5x faster | Interpolation optimized |
-| Event augmentation | 45ms | 380ms | 8.4x faster | Memory efficient |
 
 ### Simple Operations (Where NumPy Wins)
 

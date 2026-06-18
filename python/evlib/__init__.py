@@ -34,8 +34,9 @@ filtered = evlib.filtering.filter_by_polarity(filtered, polarity=1)
 # Create representations
 histogram = evlib.create_stacked_histogram(filtered, height=480, width=640)
 
-# Direct access to Rust formats module (returns NumPy arrays)
-x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
+# Direct access to Rust formats module (returns a Polars LazyFrame with
+# columns x, y, t, polarity; call .collect() to materialise a DataFrame)
+events = evlib.formats.load_events("path/to/your/data.h5")
 ```
 
 ## Available Modules
