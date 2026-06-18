@@ -13,7 +13,7 @@ import pytest
 
 import evlib
 import evlib.representations as evr
-from tests.conformance.tonic_reference import tonic_voxel_grid
+from tests.conformance.tonic_reference import tonic_frame, tonic_voxel_grid
 
 SLIDER = Path(__file__).resolve().parents[1] / "data" / "slider_depth" / "events.txt"
 
@@ -82,3 +82,33 @@ def test_voxel_grid_matches_tonic_slider_depth():
     events_lf = evlib.load_events(str(SLIDER)).head(50_000)
     width, height, n_time_bins = 240, 180, 5
     _assert_matches_tonic(events_lf, width, height, n_time_bins)
+
+
+def _assert_frame_matches_tonic(events_lf, width, height, n_time_bins):
+    events_df = events_lf.collect()
+    long_df = evr.create_event_frame(events_lf, height, width, n_time_bins=n_time_bins)
+    dense = evr.densify_event_frame(long_df, n_time_bins, 2, height, width)
+
+    struct = _evlib_df_to_struct(events_df)
+    ref = tonic_frame(struct, (width, height, 2), n_time_bins)
+
+    assert dense.shape == ref.shape == (n_time_bins, 2, height, width)
+    # Counts are integers: require exact equality, not tolerance.
+    assert np.array_equal(dense, ref), (
+        f"event frame diverges from tonic; evlib sum {dense.sum()} "
+        f"vs tonic sum {ref.sum()}, max abs diff {np.abs(dense - ref).max()}"
+    )
+
+
+def test_event_frame_matches_tonic_synthetic():
+    width, height, n_time_bins = 64, 48, 5
+    _assert_frame_matches_tonic(
+        _synthetic_lazyframe(width, height), width, height, n_time_bins
+    )
+
+
+@pytest.mark.skipif(not SLIDER.exists(), reason="slider_depth data not present")
+def test_event_frame_matches_tonic():
+    events_lf = evlib.load_events(str(SLIDER)).head(50_000)
+    width, height, n_time_bins = 240, 180, 5
+    _assert_frame_matches_tonic(events_lf, width, height, n_time_bins)

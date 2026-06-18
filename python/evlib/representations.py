@@ -182,6 +182,128 @@ def voxel_grid(
     return create_voxel_grid(events, height, width, n_time_bins, engine)
 
 
+def create_event_frame(
+    events: EventsInput,
+    height: int,
+    width: int,
+    n_time_bins: int = 10,
+    engine: EngineType = "auto",
+) -> pl.DataFrame:
+    """Generate a tonic-validated event frame (whole-recording, n_time_bins mode).
+
+    This matches tonic's ``to_frame_numpy(n_time_bins=...)`` semantics: the WHOLE
+    recording is sliced into ``n_time_bins`` equal-width TIME bins and events are
+    counted per ``(polarity, y, x)`` per bin. It is a distinct representation from
+    :func:`create_stacked_histogram` (which uses a fixed window duration).
+
+    Boundary handling reproduces tonic's ``SliceByTimeBins`` (overlap=0) exactly:
+
+      * The bin width is integer-floored: ``time_window = (t_max - t_min) //
+        n_time_bins``. The bins span only ``[t_min, t_min + n_time_bins *
+        time_window]`` (which is ``<= t_max``), so events at or beyond the last
+        bin end (``time_bin >= n_time_bins``) are dropped, including the final
+        max-time event. This mirrors tonic's ``searchsorted(side='left')``.
+      * Bins are left-closed, right-open via ``floor``: an event exactly on a bin
+        boundary belongs to the later bin.
+
+    Float64 is used for the binning division because Polars Float32 division
+    diverges from numpy at bin edges (a known evlib issue).
+
+    Args:
+        events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
+        height: Sensor height in pixels
+        width: Sensor width in pixels
+        n_time_bins: Number of equal-width temporal bins
+        engine: Polars engine to use ("auto", "streaming", "gpu", or GPUEngine)
+
+    Returns:
+        Long-format DataFrame with columns ``[time_bin, polarity, y, x, count]``,
+        where ``polarity`` is the channel index (0 for negative, 1 for positive).
+    """
+
+    events_lf = _ensure_lazy_frame(events)
+
+    # tonic computes the bin width as an INTEGER floor division of the integer
+    # microsecond span; replicate via Float64 floor (Float32 diverges at edges).
+    span = (pl.col("t_us").max() - pl.col("t_us").min()).cast(pl.Float64)
+    time_window = span.floordiv(n_time_bins)
+
+    base = (
+        events_lf.with_columns(
+            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            # Map evlib polarity (-1/1 or 0/1) to channel index: <=0 -> 0, >0 -> 1.
+            pl.when(pl.col("polarity") > 0)
+            .then(pl.lit(1))
+            .otherwise(pl.lit(0))
+            .cast(pl.Int8)
+            .alias("polarity_idx"),
+        )
+        .with_columns(
+            # Degenerate single-timestamp span (time_window == 0): all events in
+            # bin 0, matching tonic where every searchsorted slice but the first
+            # collapses to empty (idx_start == idx_end) and bin 0 holds everything.
+            pl.when(time_window > 0)
+            .then(((pl.col("t_us") - pl.col("t_us").min()) / time_window).floor())
+            .otherwise(pl.lit(0.0))
+            .cast(pl.Int32)
+            .alias("time_bin")
+        )
+        .filter(
+            pl.col("x").is_between(0, width - 1)
+            & pl.col("y").is_between(0, height - 1)
+            & pl.col("time_bin").is_between(0, n_time_bins - 1)
+        )
+    )
+
+    return _collect_with_engine(
+        base.group_by(["time_bin", "polarity_idx", "y", "x"])
+        .agg(pl.len().alias("count"))
+        .rename({"polarity_idx": "polarity"})
+        .sort(["time_bin", "polarity", "y", "x"]),
+        engine=engine,
+    )
+
+
+def densify_event_frame(
+    df: pl.DataFrame,
+    n_time_bins: int,
+    n_polarities: int,
+    height: int,
+    width: int,
+) -> np.ndarray:
+    """Scatter a long-format event frame DataFrame into a dense array.
+
+    Bridges the long-format output of :func:`create_event_frame` (columns
+    ``time_bin, polarity, y, x, count``) to a dense tensor matching tonic's
+    ``to_frame_numpy`` output shape ``(n_time_bins, P, H, W)``.
+
+    Args:
+        df: DataFrame with columns ``time_bin``, ``polarity`` (channel index),
+            ``y``, ``x``, ``count``.
+        n_time_bins: Number of temporal bins (size of axis 0).
+        n_polarities: Number of polarity channels (size of axis 1).
+        height: Sensor height in pixels.
+        width: Sensor width in pixels.
+
+    Returns:
+        Dense ``(n_time_bins, n_polarities, height, width)`` int64 array.
+    """
+    dense = np.zeros((n_time_bins, n_polarities, height, width), dtype=np.int64)
+    if df.height == 0:
+        return dense
+
+    time_bin = df["time_bin"].to_numpy().astype(np.int64)
+    polarity = df["polarity"].to_numpy().astype(np.int64)
+    y = df["y"].to_numpy().astype(np.int64)
+    x = df["x"].to_numpy().astype(np.int64)
+    count = df["count"].to_numpy().astype(np.int64)
+
+    flat = dense.reshape(-1)
+    indices = (((time_bin * n_polarities) + polarity) * height + y) * width + x
+    np.add.at(flat, indices, count)
+    return dense
+
+
 def densify_voxel_grid(
     df: pl.DataFrame,
     n_time_bins: int,
@@ -385,6 +507,9 @@ __all__ = [
     "create_stacked_histogram",
     "create_voxel_grid",
     "voxel_grid",
+    "densify_voxel_grid",
+    "create_event_frame",
+    "densify_event_frame",
     "create_mixed_density_stack",
     "time_surface",
     "event_histogram",
