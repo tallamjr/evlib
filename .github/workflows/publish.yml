@@ -69,7 +69,7 @@ jobs:
           - os: macos-latest  # ARM64 macOS (Apple Silicon)
             platform: macos
             arch: arm64
-            python-version: "3.10"
+            python-version: "3.13"
           - os: macos-latest
             platform: macos
             arch: arm64
@@ -83,7 +83,7 @@ jobs:
           - os: windows-latest
             platform: windows
             arch: x64
-            python-version: "3.10"
+            python-version: "3.13"
           - os: windows-latest
             platform: windows
             arch: x64
@@ -181,7 +181,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
