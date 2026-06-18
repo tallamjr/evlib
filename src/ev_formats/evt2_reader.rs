@@ -454,86 +454,96 @@ impl Evt2Reader {
     }
 
     /// Parse EVT2 header
+    ///
+    /// Locates the header/binary boundary the same way the OpenEB reference does:
+    /// the text header consists of lines that begin with `%`, and the binary
+    /// section starts at the first line that does not begin with `%` (or at EOF).
+    /// OpenEB peeks at the next byte and stops the header loop as soon as it is
+    /// not `%`, with no dependence on a `% end` terminator (Gen3 recordings omit
+    /// it). See lib/openeb/standalone_samples/metavision_evt2_raw_file_decoder.
     fn parse_header(&self, file: &mut File) -> Result<(Evt2Metadata, u64), Evt2Error> {
         let mut metadata = Evt2Metadata::default();
-        // Remove unused header_buffer variable
         let mut byte_buffer = [0u8; 1];
         let mut current_line = Vec::new();
+        // Offset of the first byte of the binary section (the first line that does
+        // not start with `%`, or EOF, or the byte right after a `% end` line).
         let mut header_size = 0u64;
 
-        // Read header byte by byte to avoid UTF-8 issues with binary data
-        let mut consecutive_binary_bytes = 0;
-        const MAX_BINARY_BYTES: usize = 10; // If we see this many non-printable bytes, assume binary data started
-
         loop {
+            // Peek the first byte of the next line without consuming it for the
+            // binary section. If it is not `%`, the header has ended here.
             let bytes_read = file.read(&mut byte_buffer)?;
             if bytes_read == 0 {
                 // End of file reached - this is OK if we have some valid header data
-                if !metadata.properties.is_empty() {
-                    break;
-                } else {
-                    return Err(Evt2Error::InvalidHeader(
-                        "Unexpected end of file".to_string(),
-                    ));
-                }
+                break;
             }
 
+            if byte_buffer[0] != b'%' {
+                // First byte of a non-`%` line: the binary section begins here.
+                // We consumed this byte while peeking, so seek back so the offset
+                // and the file position point exactly at it.
+                file.seek(SeekFrom::Current(-1))?;
+                break;
+            }
+
+            // This is a header line beginning with `%`. Account for the peeked
+            // byte and read the rest of the line up to and including `\n`.
             header_size += 1;
-            let byte = byte_buffer[0];
-
-            // Check if we're hitting binary data (non-printable ASCII bytes)
-            if byte < 32 && byte != b'\n' && byte != b'\r' && byte != b'\t' {
-                consecutive_binary_bytes += 1;
-                if consecutive_binary_bytes > MAX_BINARY_BYTES {
-                    // We've hit binary data, back up to where it started
-                    header_size -= consecutive_binary_bytes as u64;
+            current_line.clear();
+            current_line.push(byte_buffer[0]);
+            loop {
+                let n = file.read(&mut byte_buffer)?;
+                if n == 0 {
                     break;
                 }
-            } else {
-                consecutive_binary_bytes = 0;
+                header_size += 1;
+                let byte = byte_buffer[0];
+                if byte == b'\n' {
+                    break;
+                }
+                current_line.push(byte);
             }
 
-            if byte == b'\n' {
-                // End of line - process the line
-                let line_str = String::from_utf8_lossy(&current_line);
-                let line = line_str.trim_end();
+            // Process the completed header line.
+            let line_str = String::from_utf8_lossy(&current_line);
+            let line = line_str.trim_end();
 
-                if line == "% end" {
-                    break;
-                }
+            if line == "% end" {
+                // Binary section starts right after this line's `\n`, which we
+                // have already consumed; header_size points there.
+                break;
+            }
 
-                // Parse header fields
-                if let Some(stripped) = line.strip_prefix("% ") {
-                    if let Some((key, value)) = stripped.split_once(' ') {
-                        match key {
-                            "evt" => {
-                                if value != "2.0" {
-                                    return Err(Evt2Error::InvalidHeader(format!(
-                                        "Expected EVT 2.0, got: {value}"
-                                    )));
-                                }
+            if let Some(stripped) = line.strip_prefix("% ") {
+                if let Some((key, value)) = stripped.split_once(' ') {
+                    match key {
+                        "evt" => {
+                            if value != "2.0" {
+                                return Err(Evt2Error::InvalidHeader(format!(
+                                    "Expected EVT 2.0, got: {value}"
+                                )));
                             }
-                            "format" => {
-                                self.parse_format_line(value, &mut metadata)?;
-                            }
-                            "geometry" => {
-                                self.parse_geometry_line(value, &mut metadata)?;
-                            }
-                            _ => {
-                                metadata
-                                    .properties
-                                    .insert(key.to_string(), value.to_string());
-                            }
+                        }
+                        "format" => {
+                            self.parse_format_line(value, &mut metadata)?;
+                        }
+                        "geometry" => {
+                            self.parse_geometry_line(value, &mut metadata)?;
+                        }
+                        _ => {
+                            metadata
+                                .properties
+                                .insert(key.to_string(), value.to_string());
                         }
                     }
                 }
-
-                // Clear current line for next iteration
-                current_line.clear();
-            } else {
-                // Add byte to current line
-                current_line.push(byte);
             }
+        }
+
+        if header_size == 0 {
+            return Err(Evt2Error::InvalidHeader(
+                "Unexpected end of file".to_string(),
+            ));
         }
 
         // For Prophesee RAW files, sensor resolution might not be in header

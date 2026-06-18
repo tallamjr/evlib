@@ -65,6 +65,62 @@ mod evt2_bitlayout_tests {
         (dir, path)
     }
 
+    /// Write an EVT2 file whose header lines are given verbatim (so a caller can
+    /// omit the `% end` terminator, as Gen3 recordings do).
+    fn write_evt2_with_header(
+        header_lines: &[&str],
+        words: &[u32],
+    ) -> (TempDir, std::path::PathBuf) {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("synthetic.raw");
+        let mut file = File::create(&path).unwrap();
+        for line in header_lines {
+            writeln!(file, "{line}").unwrap();
+        }
+        for w in words {
+            file.write_all(&w.to_le_bytes()).unwrap();
+        }
+        (dir, path)
+    }
+
+    /// A Gen3-style EVT2 header has no `% end` terminator: the binary data begins
+    /// at the first line that does not start with `%`. The reader must locate that
+    /// boundary by the line prefix (as OpenEB does), not by scanning for a run of
+    /// non-printable bytes, otherwise it reads the binary section as header text
+    /// and the event stream is misaligned.
+    #[test]
+    fn test_evt2_header_without_end_terminator_is_aligned() {
+        let header = ["% evt 2.0", "% integrator_name Prophesee"]; // no "% end"
+        let words = [
+            time_high_word(100),
+            cd_word(0x01, 600, 400, 5), // CD_ON  -> x=600 y=400 t=6405
+            cd_word(0x00, 10, 20, 1),   // CD_OFF -> x=10  y=20  t=6401
+        ];
+        let (_dir, path) = write_evt2_with_header(&header, &words);
+
+        let config = Evt2Config {
+            validate_coordinates: false,
+            skip_invalid_events: false,
+            max_events: None,
+            sensor_resolution: Some((1280, 720)),
+            chunk_size: 1000,
+            polarity_encoding: None,
+        };
+        let reader = Evt2Reader::with_config(config);
+        let (df, _) = reader.read_file(&path).unwrap();
+        let rows = dataframe_to_rows(&df);
+
+        assert_eq!(rows.len(), 2, "binary section misaligned, got {rows:?}");
+        assert_eq!(
+            (rows[0].x, rows[0].y, rows[0].polarity, rows[0].t_us),
+            (600, 400, 1, 6405)
+        );
+        assert_eq!(
+            (rows[1].x, rows[1].y, rows[1].polarity, rows[1].t_us),
+            (10, 20, -1, 6401)
+        );
+    }
+
     #[test]
     fn test_evt2_cd_event_matches_openeb_layout() {
         // TIME_HIGH = 100 -> base timestamp = 100 << 6 = 6400 us.
