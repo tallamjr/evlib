@@ -10,11 +10,47 @@ import polars as pl
 # raw h5 (below), so that ``import evlib.rvt`` works on platforms without h5py (e.g. Windows CI).
 
 from evlib.rvt.downsample import selected_source_indices
-from evlib.rvt.events import convert_h5_to_parquet
-from evlib.rvt.representation import build_sparse_histogram
+from evlib.rvt.representation import (
+    build_sparse_histogram,
+    build_sparse_histogram_assigned,
+)
 from evlib.rvt.writer import H5RepresentationWriter, scatter_window_dense
 
 REPR_NAME = "stacked_histogram_dt50_nbins10"
+
+
+def _assign_window_ids(t_batch: np.ndarray, local_grid: np.ndarray, delta_t_us: int):
+    """Window assignment via searchsorted (O(n_events)), exactly matching RVT membership.
+
+    For each event time ``t`` the windows kept are ``{ i : t <= T_i <= t + delta_t }`` where the
+    contiguous index range is ``[lo, hi]`` with
+        lo = first i with T_i >= t        = searchsorted(grid, t, "left")
+        hi = last  i with T_i <= t + dt   = searchsorted(grid, t + dt, "right") - 1
+    Because consecutive grid steps are >= delta_t, an interval of length delta_t spans at most two
+    windows, so ``hi - lo`` is 0 (single window) or 1 (shared-boundary double-count). Returns
+    ``(event_index_into_batch, local_window_id)`` arrays, one row per event-window membership.
+    """
+    lo = np.searchsorted(local_grid, t_batch, side="left")
+    hi = np.searchsorted(local_grid, t_batch + delta_t_us, side="right") - 1
+    valid = (lo <= hi) & (hi >= 0)
+    if valid.any():
+        span = (hi[valid] - lo[valid]).max()
+        if span > 1:
+            # Would require >2 windows per event (grid step < delta_t); the searchsorted
+            # fast path assumes <= 2. Fail loudly rather than silently drop windows.
+            raise ValueError(
+                f"event spans {span + 1} windows; searchsorted assignment assumes <= 2 "
+                "(grid step must be >= delta_t)"
+            )
+    ev_idx = np.nonzero(valid)[0]
+    win = lo[ev_idx].astype(np.int64)
+    dup = valid & (hi == lo + 1)
+    dup_idx = np.nonzero(dup)[0]
+    dup_win = (lo[dup_idx] + 1).astype(np.int64)
+    return (
+        np.concatenate([ev_idx, dup_idx]),
+        np.concatenate([win, dup_win]),
+    )
 
 
 def _build_index_maps(full_size: int, out_size: int) -> np.ndarray:
@@ -113,6 +149,96 @@ def _process_sequence_rust(
                 writer.write_window(a + local, dense[local])
 
 
+def _process_sequence_polars(
+    in_h5: Path,
+    grid: np.ndarray,
+    height: int,
+    width: int,
+    out_h: int,
+    out_w: int,
+    channels: int,
+    nbins: int,
+    count_cutoff: int,
+    delta_t_us: int,
+    downsample_by_2: bool,
+    writer: H5RepresentationWriter,
+    window_batch_size: int,
+    engine: str,
+    dataset_group: str = "events",
+) -> None:
+    """Polars/GPU backend: searchsorted window assignment + one large group_by per batch.
+
+    Reads the raw h5 directly (no parquet round-trip), corrects time to non-decreasing, and for
+    each batch of ``window_batch_size`` windows assigns events to windows with ``np.searchsorted``
+    (instead of a cross-join, which would blow up at large batch sizes). The tagged events are
+    aggregated in a single ``build_sparse_histogram_assigned`` collect that runs entirely on the
+    selected engine (the cudf-polars GPU engine when ``engine`` is "gpu"/a GPUEngine), then the
+    sparse per-window counts are scattered to dense and written. Larger batches mean far fewer,
+    larger GPU collects than the old per-10-window cross-join path.
+    """
+    try:
+        import hdf5plugin  # noqa: F401  (registers the blosc filter for the raw h5)
+    except ImportError:
+        pass
+    import h5py
+
+    with h5py.File(str(in_h5), "r") as f:
+        grp = f[dataset_group]
+        t_ds = grp["t"]
+        n_total = t_ds.shape[0]
+        t_full = np.empty(n_total, dtype=np.uint32)
+        chunk = 16_000_000
+        for c0 in range(0, n_total, chunk):
+            c1 = min(c0 + chunk, n_total)
+            t_full[c0:c1] = t_ds[c0:c1]
+        np.maximum.accumulate(t_full, out=t_full)
+        starts = np.searchsorted(t_full, grid - delta_t_us, side="left")
+        ends = np.searchsorted(t_full, grid, side="right")
+
+        num_windows = len(grid)
+        for a in range(0, num_windows, window_batch_size):
+            b = min(a + window_batch_size - 1, num_windows - 1)
+            ev_lo = int(starts[a])
+            ev_hi = int(ends[b])
+            if ev_hi <= ev_lo:
+                continue
+            t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
+            local_grid = np.asarray(grid[a : b + 1], dtype=np.int64)
+            ev_idx, win_local = _assign_window_ids(t_batch, local_grid, delta_t_us)
+            if ev_idx.size == 0:
+                continue
+            x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=np.int64)
+            y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=np.int64)
+            p_batch = np.clip(
+                np.asarray(grp["p"][ev_lo:ev_hi], dtype=np.int64), 0, None
+            )
+            df = pl.DataFrame(
+                {
+                    "t": t_batch[ev_idx],
+                    "x": x_batch[ev_idx],
+                    "y": y_batch[ev_idx],
+                    "p": p_batch[ev_idx],
+                    "window_id": win_local,
+                }
+            )
+            sparse = build_sparse_histogram_assigned(
+                df,
+                delta_t_us=delta_t_us,
+                nbins=nbins,
+                count_cutoff=count_cutoff,
+                height=height,
+                width=width,
+                downsample_by_2=downsample_by_2,
+                engine=engine,
+            )
+            if sparse.height:
+                parts = sparse.partition_by("window_id", as_dict=True)
+                for k, wdf in parts.items():
+                    local = k[0] if isinstance(k, tuple) else k
+                    dense = scatter_window_dense(wdf, channels, out_h, out_w)
+                    writer.write_window(a + int(local), dense)
+
+
 def process_sequence(
     in_h5: Path,
     out_dir: Path,
@@ -128,8 +254,8 @@ def process_sequence(
     backend: str = "polars",
     labels_npy: Optional[Path] = None,
     split: str = "val",
-    tmp_parquet: Optional[Path] = None,
     window_batch_size: int = 10,
+    polars_batch_windows: int = 16,
 ) -> Path:
     if backend not in ("polars", "rust"):
         raise ValueError(f"backend must be 'polars' or 'rust', got {backend!r}")
@@ -175,17 +301,8 @@ def process_sequence(
         )
         return out_h5
 
-    pq = Path(tmp_parquet) if tmp_parquet else repr_dir / "_events.parquet"
-    convert_h5_to_parquet(in_h5, pq)
-
-    # Window-batched processing for bounded memory. Each batch covers global window
-    # indices [a, b]. RVT assigns every event with T_i - delta_t <= t <= T_i to window i,
-    # so the events needed for windows [a, b] are exactly those with
-    #   grid[a] - delta_t_us <= t <= grid[b].
-    # Predicate pushdown on the sorted-by-t parquet keeps each batch read bounded.
-    # An event sitting on a shared boundary at grid[b] is also read by the next batch
-    # (its range starts at grid[b+1] - delta_t_us == grid[b] when the step == delta_t),
-    # which reproduces RVT's boundary double-count exactly.
+    # Polars/GPU backend: read the raw h5 directly (no parquet round-trip), assign windows with
+    # searchsorted, and aggregate each large batch of windows in a single engine collect.
     with H5RepresentationWriter(
         out_h5,
         num_windows=num_windows,
@@ -193,38 +310,28 @@ def process_sequence(
         height=out_h,
         width=out_w,
     ) as writer:
-        for a in range(0, num_windows, window_batch_size):
-            b = min(a + window_batch_size - 1, num_windows - 1)
-            t_lo = int(grid[a] - delta_t_us)
-            t_hi = int(grid[b])
-            batch_events = pl.scan_parquet(str(pq)).filter(
-                pl.col("t").is_between(t_lo, t_hi)
-            )
-            sparse = build_sparse_histogram(
-                batch_events,
-                ev_repr_timestamps_us=grid[a : b + 1],
-                delta_t_us=delta_t_us,
-                nbins=nbins,
-                count_cutoff=count_cutoff,
-                height=height,
-                width=width,
-                downsample_by_2=downsample_by_2,
-                engine=engine,
-            )
-            if sparse.height:
-                parts = sparse.partition_by("window_id", as_dict=True)
-                for k, wdf in parts.items():
-                    local = k[0] if isinstance(k, tuple) else k
-                    dense = scatter_window_dense(wdf, channels, out_h, out_w)
-                    writer.write_window(a + int(local), dense)
+        _process_sequence_polars(
+            in_h5,
+            grid,
+            height=height,
+            width=width,
+            out_h=out_h,
+            out_w=out_w,
+            channels=channels,
+            nbins=nbins,
+            count_cutoff=count_cutoff,
+            delta_t_us=delta_t_us,
+            downsample_by_2=downsample_by_2,
+            writer=writer,
+            window_batch_size=polars_batch_windows,
+            engine=engine,
+        )
     np.save(
         str(repr_dir / "timestamps_us.npy"),
         np.asarray(ev_repr_timestamps_us, dtype=np.int64),
     )
 
     _write_labels(labels_npy, split, dataset, repr_dir, out_dir, ev_repr_timestamps_us)
-
-    pq.unlink(missing_ok=True)
     return out_h5
 
 

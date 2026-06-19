@@ -8,7 +8,16 @@ The ``engine`` argument is forwarded to ``LazyFrame.collect(engine=...)``. Accep
 instance. GPU and streaming are mutually exclusive in Polars: the GPU (cudf-polars) backend
 does not stream. Requesting the GPU engine on a host without CUDA / cudf-polars is safe; Polars
 transparently falls back to the default CPU engine and produces identical output, so no explicit
-fallback handling is needed here."""
+fallback handling is needed here.
+
+Two window-assignment front-ends share one binning/aggregation core (``_bin_downsample_aggregate``):
+
+* :func:`build_sparse_histogram` cross-joins events with a (small) window-end grid and filters
+  the RVT membership predicate. Used for bounded per-batch work; GPU-supported.
+* :func:`build_sparse_histogram_assigned` takes events already tagged with ``window_id`` (assigned
+  upstream via ``np.searchsorted``), so a whole sequence can be aggregated in one large GPU pass
+  without the cross-join blow-up.
+"""
 
 from typing import Union
 
@@ -20,45 +29,22 @@ from evlib.rvt.downsample import selected_source_indices
 EngineType = str  # "auto" | "in-memory" | "streaming" | "gpu"
 
 
-def build_sparse_histogram(
-    events: Union[pl.DataFrame, pl.LazyFrame],
-    ev_repr_timestamps_us: np.ndarray,
+def _bin_downsample_aggregate(
+    lf: pl.LazyFrame,
+    *,
     delta_t_us: int,
     nbins: int,
     count_cutoff: int,
     height: int,
     width: int,
     downsample_by_2: bool,
-    engine: EngineType = "auto",
-) -> pl.DataFrame:
-    lf = events.lazy() if isinstance(events, pl.DataFrame) else events
+) -> pl.LazyFrame:
+    """Bit-identity-critical core: per-window time binning -> downsample fold -> count aggregate.
 
-    # --- window assignment ---
-    # RVT slices each window i from the globally sorted event array as
-    #   [searchsorted(t, T_i - delta_t, "left"), searchsorted(t, T_i, "right"))
-    # which keeps every event with  T_i - delta_t <= t <= T_i  (both ends inclusive).
-    # When two consecutive grid timestamps are exactly delta_t apart, an event sitting on
-    # that shared boundary therefore belongs to BOTH windows.
-    #
-    # We reproduce that exactly by cross-joining each (already window-bounded) batch of events
-    # with the batch's small window-end grid and keeping the membership predicate. The set of
-    # windows kept for an event is precisely { i : t <= T_i <= t + delta_t }, identical to the
-    # forward/backward as-of range the previous implementation exploded, and the shared-boundary
-    # event naturally matches two rows. Crucially, cross-join + filter are supported by the
-    # cudf-polars GPU engine, whereas join_asof and int_ranges are not, so the whole query now
-    # runs on the GPU instead of silently falling back to CPU.
-    grid = np.asarray(ev_repr_timestamps_us, dtype=np.int64)
-    grid_lf = pl.DataFrame(
-        {"window_id": np.arange(len(grid), dtype=np.int64), "T": grid}
-    ).lazy()
-    lf = (
-        lf.join(grid_lf, how="cross")
-        .filter(
-            (pl.col("t") >= pl.col("T") - delta_t_us) & (pl.col("t") <= pl.col("T"))
-        )
-        .drop("T")
-    )
-
+    ``lf`` must already carry the columns ``t, x, y, p, window_id`` (each event-window membership
+    is one row, boundary duplicates included). Shared by both window-assignment front-ends so the
+    binning math has a single source of truth.
+    """
     # --- per-window time binning (MUST happen before the downsample fold) ---
     # RVT computes t0 = time[0], t1 = time[-1] over ALL events in the window slice, builds the
     # full-resolution histogram, and only THEN downsamples. So the normalization range t0/t1 must
@@ -146,5 +132,89 @@ def build_sparse_histogram(
         )
         .sort(["window_id", "channel", "y", "x"])
     )
+    return lf
 
+
+def build_sparse_histogram(
+    events: Union[pl.DataFrame, pl.LazyFrame],
+    ev_repr_timestamps_us: np.ndarray,
+    delta_t_us: int,
+    nbins: int,
+    count_cutoff: int,
+    height: int,
+    width: int,
+    downsample_by_2: bool,
+    engine: EngineType = "auto",
+) -> pl.DataFrame:
+    lf = events.lazy() if isinstance(events, pl.DataFrame) else events
+
+    # --- window assignment (cross-join + membership filter) ---
+    # RVT slices each window i from the globally sorted event array as
+    #   [searchsorted(t, T_i - delta_t, "left"), searchsorted(t, T_i, "right"))
+    # which keeps every event with  T_i - delta_t <= t <= T_i  (both ends inclusive).
+    # When two consecutive grid timestamps are exactly delta_t apart, an event sitting on
+    # that shared boundary therefore belongs to BOTH windows.
+    #
+    # We reproduce that exactly by cross-joining each (already window-bounded) batch of events
+    # with the batch's small window-end grid and keeping the membership predicate. The set of
+    # windows kept for an event is precisely { i : t <= T_i <= t + delta_t }, identical to the
+    # forward/backward as-of range the previous implementation exploded, and the shared-boundary
+    # event naturally matches two rows. Crucially, cross-join + filter are supported by the
+    # cudf-polars GPU engine, whereas join_asof and int_ranges are not, so the whole query now
+    # runs on the GPU instead of silently falling back to CPU. (For a whole-sequence single pass
+    # without the cross-join blow-up, use build_sparse_histogram_assigned with searchsorted ids.)
+    grid = np.asarray(ev_repr_timestamps_us, dtype=np.int64)
+    grid_lf = pl.DataFrame(
+        {"window_id": np.arange(len(grid), dtype=np.int64), "T": grid}
+    ).lazy()
+    lf = (
+        lf.join(grid_lf, how="cross")
+        .filter(
+            (pl.col("t") >= pl.col("T") - delta_t_us) & (pl.col("t") <= pl.col("T"))
+        )
+        .drop("T")
+    )
+
+    lf = _bin_downsample_aggregate(
+        lf,
+        delta_t_us=delta_t_us,
+        nbins=nbins,
+        count_cutoff=count_cutoff,
+        height=height,
+        width=width,
+        downsample_by_2=downsample_by_2,
+    )
+    return lf.collect(engine=engine)
+
+
+def build_sparse_histogram_assigned(
+    events_with_window_id: Union[pl.DataFrame, pl.LazyFrame],
+    delta_t_us: int,
+    nbins: int,
+    count_cutoff: int,
+    height: int,
+    width: int,
+    downsample_by_2: bool,
+    engine: EngineType = "auto",
+) -> pl.DataFrame:
+    """Aggregate events already tagged with ``window_id`` (one row per event-window membership).
+
+    Window assignment is done upstream with ``np.searchsorted`` (O(n_events)), so a whole sequence
+    (or a large multi-window batch) can be aggregated in a single GPU pass without the per-window
+    cross-join blow-up. Output is bit-identical to :func:`build_sparse_histogram`.
+    """
+    lf = (
+        events_with_window_id.lazy()
+        if isinstance(events_with_window_id, pl.DataFrame)
+        else events_with_window_id
+    )
+    lf = _bin_downsample_aggregate(
+        lf,
+        delta_t_us=delta_t_us,
+        nbins=nbins,
+        count_cutoff=count_cutoff,
+        height=height,
+        width=width,
+        downsample_by_2=downsample_by_2,
+    )
     return lf.collect(engine=engine)
