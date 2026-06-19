@@ -17,6 +17,8 @@ evlib provides high-performance Polars-based implementations for common event re
 
 The voxel grid, event frame and time surface are validated to be bit-faithful or numerically faithful against the tonic reference library in `tests/test_representations_conformance.py`. Each returns a long-format Polars DataFrame; pair it with the matching `densify_*` helper to obtain a dense, model-ready numpy tensor.
 
+All four builders (`create_voxel_grid`, `create_event_frame`, `create_time_surface`, `create_stacked_histogram`) accept an `engine` argument and run fully on the cudf GPU engine (no CPU fallback) when you pass `engine="gpu"` or a `pl.GPUEngine(...)`. The default is `engine="auto"`.
+
 ## Stacked Histograms (RVT-Compatible)
 
 Stacked histograms divide time into windows and bins, creating representations compatible with RVT preprocessing pipelines but with much better performance.

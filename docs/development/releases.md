@@ -7,265 +7,95 @@ Release history and changelog for evlib.
 ### Semantic Versioning
 
 evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
-- **MAJOR**: Breaking changes to public API
+
+- **MAJOR**: Breaking changes to the public API
 - **MINOR**: New features, backwards compatible
 - **PATCH**: Bug fixes, backwards compatible
 
 ### Release Quality
 
-- **Robust over rapid**: Every release thoroughly tested
-- **Real data validation**: All features tested with real datasets
-- **Performance verification**: Benchmarks run for each release
-- **Documentation complete**: All features documented with examples
+- **Robust over rapid**: every release is tested against real data.
+- **Real data validation**: format readers and the RVT pipeline are checked against real event camera datasets.
+- **Performance verification**: the committed RVT pipeline benchmark (`benchmarks/bench_rvt_pipeline.py`) is the reproducible performance gate.
 
 ---
 
-!!! warning "Removed in 0.8.x"
-    The 0.8.x feature trim removed the Rust visualisation module and its dependency cascade (tokio, warp, reqwest, ratatui, gstreamer, and others), along with the dead `tch` and `ort` (ONNX) bindings. Features listed in the historical entries below that referenced GStreamer integration, web visualisation, ETAP point tracking, or ONNX runtime are no longer part of the current crate. The entries are kept for changelog continuity and annotated inline where affected. Deep-learning models remain available Python-side via PyTorch in `evlib.models`.
+## Changelog
+
+### 0.9.x (current)
+
+The crate version is `0.9.0` (`Cargo.toml`). This series adds native GPU and Apple Silicon compute backends for the RVT stacked-histogram path and tightens the bit-identity guarantees against reference implementations.
+
+**RVT preprocessing backends**
+
+`evlib.rvt.process_sequence(...)` now exposes four backends through the `backend=` argument:
+
+- `"polars"`: the Polars query layer on the CPU, or on the GPU via cudf-polars when `engine=` selects the GPU. This is the default.
+- `"rust"`: the Rust dense scatter-add kernel, CPU only.
+- `"cuda"`: a custom CUDA scatter-add kernel. The kernel is built with `nvcc` into `librvt_scatter.so` and loaded at runtime with `libloading`. The library is located via the `EVLIB_CUDA_LIB` environment variable.
+- `"metal"`: a Metal/MSL scatter-add kernel for Apple Silicon, via `metal-rs`. Build with `CC=clang`.
+
+The native kernels are exposed from the extension as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
+
+**Cargo features**
+
+The crate gained two optional Cargo features in addition to the existing set:
+
+- `cuda` (pulls in `libloading` for runtime loading of the CUDA kernel).
+- `metal` (pulls in `metal` and `objc`; macOS target only).
+
+The full feature set is now `polars`, `python`, `arrow`, `hdf5`, `extension-module`, `zero-copy`, `cuda`, and `metal`. Default features remain `["polars", "python", "arrow"]`.
+
+**Validated benchmark (RVT pipeline)**
+
+Measured on the gen4_1mpx validation split (18 sequences, single pass), on an RTX 4090 for the GPU figures:
+
+| Backend | Time | Note |
+|---------|------|------|
+| evlib CUDA | 283.6s | parity-plus with the RVT torch reference |
+| RVT torch (GPU) | 286.3s | reference |
+| evlib Rust (CPU) | 406.2s | 1.32x faster than the RVT torch CPU reference |
+| RVT torch (CPU) | 534.2s | reference |
+
+evlib CUDA is about 1.01x faster than RVT torch on the GPU, and about 1.88x faster than the RVT torch CPU reference. The evlib output is bit-identical to the RVT torch reference, bar a roughly 1e-10 float-binning boundary quirk that affects 3 of the 18 sequences.
+
+**Bit-identity validation breadth**
+
+The stacked-histogram output has been validated bit-identical against RVT (torch), tonic, OpenEB, and dv_processing.
+
+### 0.8.x
+
+The 0.8.x series trimmed the feature surface to keep the crate lean:
+
+- Removed the Rust visualisation module and its dependency cascade (tokio, warp, reqwest, ratatui, gstreamer, and others).
+- Removed the dead `tch` and `ort` (ONNX runtime) bindings from the Rust crate.
+- Made HDF5 an opt-in Cargo feature (`--features hdf5`) on Linux and macOS; it is not available on Windows.
+
+The Python API was unchanged. Deep-learning models (E2VID, RVT) remain available Python-side via PyTorch in `evlib.models`. `evlib.visualization` remains available as a pure-Python module.
+
+!!! note "Removed modules"
+    The Rust visualisation module, web visualisation, GStreamer integration, ETAP point tracking, ONNX runtime bindings, and the smooth voxel grid are no longer part of the crate. They are not referenced in the current API.
 
 ---
 
-## Version 0.3.0 (Planned)
-
-### FEATURE: New Features
-
-**GPU Acceleration**
-- CUDA support for voxel grid creation
-- Metal Performance Shaders (macOS)
-- OpenCL backend for cross-platform GPU compute
-
-**Real-time Streaming** (removed in 0.8.x)
-- GStreamer integration (removed in 0.8.x)
-- Live event camera support (removed in 0.8.x)
-
-### TOOL: Improvements
-
-**Performance Optimizations**
-- 40% faster voxel grid creation
-- SIMD optimizations for event processing
-- Memory usage reduction (15% improvement)
-
-
-### INCOMPLETE: Bug Fixes
-
-- Fixed memory leak in long-running processes
-- Improved error handling for corrupted files
-- Better cross-platform compatibility
-
----
-
-## Version 0.2.0 (Current)
-
-*Released: January 2025*
-
-### FEATURE: New Features
-
-**Neural Network Support**
-- E2VID UNet implementation with verified weights
-- PyTorch model loading and inference
-- ONNX runtime support for cross-platform deployment (removed in 0.8.x)
-- Model download and caching system
-
-**Advanced Representations**
-- Smooth voxel grids with bilinear interpolation
-- Configurable temporal binning strategies
-- Memory-efficient representation storage
-
-**Web Visualization** (removed in 0.8.x)
-- Real-time web-based event visualization (removed in 0.8.x)
-- Interactive parameter adjustment (removed in 0.8.x)
-- Export capabilities for presentations (removed in 0.8.x)
-
-**Event Tracking** (removed in 0.8.x)
-- ETAP (Event-based Tracking Any Point) integration (removed in 0.8.x)
-- Point tracking with Python interface (removed in 0.8.x)
-- Trajectory analysis utilities (removed in 0.8.x)
-
-### TOOL: Improvements
-
-**Performance Enhancements**
-- 25% faster voxel grid creation
-- Reduced memory allocations
-- Optimized file I/O operations
-
-**Enhanced File Format Support**
-- Improved HDF5 handling with compression
-- Better error messages for invalid files
-- Support for custom column mappings
-
-**Documentation**
-- Complete API documentation
-- Comprehensive user guides
-- Real-world examples and tutorials
-
-### INCOMPLETE: Bug Fixes
-
-- Fixed timestamp precision issues in voxel grids
-- Resolved memory corruption in edge cases
-- Improved error handling for large files
-
-### WARNING: Breaking Changes
-
-- Changed voxel grid axis order from (width, height, bins) to (bins, height, width)
-- Renamed `create_voxel_representation` to `create_voxel_grid`
-- Updated minimum Python version to 3.10
-
----
-
-## Version 0.1.0 (Initial Release)
-
-*Released: December 2024*
-
-### FEATURE: Initial Features
-
-**Core Functionality**
-- Event data loading from text files
-- Basic voxel grid representations
-- Simple event visualization
-- Spatial transformations (flip, rotation)
-
-**File Format Support**
-- Text file loading with filtering
-- HDF5 file I/O with perfect round-trip
-- Configurable column mappings
-- Time window and spatial filtering
-
-**Event Processing**
-- Basic event augmentation
-- Noise addition
-- Polarity filtering
-- Temporal windowing
-
-**Visualization**
-- Ultra-fast terminal visualization
-- Matplotlib integration
-- Basic plotting utilities
-
-### TARGET: Performance Baseline
-
-- File I/O: 0.8x-1.2x vs NumPy
-- Voxel grids: 1.5x-2.5x vs pure Python
-- Memory usage: Optimal data type selection
-- Cross-platform compatibility
-
----
-
-## Development Releases
-
-### v0.3.0-alpha.1 (In Development)
-
-**Current Focus:**
-- GPU acceleration implementation
-- Advanced neural network models
-- Real-time streaming capabilities
-
-**Known Issues:**
-- CUDA support limited to Linux
-- Model downloads require internet connection
-- Large file handling needs optimization
-
-### v0.2.1 (Patch Release)
-
-**Bug Fixes:**
-- Fixed installation issues on Windows
-- Resolved dependency conflicts
-- Improved error messages
-
----
-
-
-## Performance Evolution
-
-### Benchmark History
-
-| Version | Voxel Grid Creation | File Loading | Memory Usage |
-|---------|-------------------|--------------|--------------|
-| v0.1.0  | 1.5x vs Python    | 0.8x vs NumPy | Baseline    |
-| v0.2.0  | 2.0x vs Python    | 1.0x vs NumPy | -15%        |
-| v0.3.0  | 2.5x vs Python    | 1.2x vs NumPy | -30%        |
-
-### Feature Completeness
-
-```
-v0.1.0: ████████░░░░░░░░░░░░ 40% - Core functionality
-v0.2.0: ████████████████░░░░ 80% - Neural networks added
-v0.3.0: ████████████████████ 100% - GPU acceleration complete
-```
-
----
-
-## Quality Metrics
-
-### Test Coverage
-
-| Version | Unit Tests | Integration Tests | Benchmarks |
-|---------|------------|-------------------|------------|
-| v0.1.0  | 85%        | 70%               | 5 tests    |
-| v0.2.0  | 95%        | 85%               | 12 tests   |
-| v0.3.0  | 100%       | 95%               | 20 tests   |
-
-### Documentation Coverage
-
-- **v0.1.0**: Basic API docs, minimal examples
-- **v0.2.0**: Complete API docs, comprehensive user guides
-- **v0.3.0**: Advanced tutorials, performance guides
-
----
-
-## Known Issues
-
-### Current Limitations
-
-**v0.2.0 Issues:**
-- Large file loading (>2GB) may cause memory issues
-- PyTorch model loading requires exact version match
-- Windows build occasionally fails on older systems
-
-**Workarounds:**
-- Use time windowing for large files
-- Use ONNX models for better compatibility
-- Update to latest Windows version
-
-### Future Improvements
-
-**Planned for v0.3.0:**
-- Streaming file loading for large datasets
-- Improved PyTorch version compatibility
-- Better Windows build system
-
----
-
-## Installation Notes
-
-### System Requirements by Version
-
-**v0.1.0:**
-- Python ≥ 3.8
-- NumPy ≥ 1.20.0
-- HDF5 system libraries
-
-**v0.2.0:**
-- Python ≥ 3.10
-- NumPy ≥ 1.24.0
-- HDF5 system libraries
-- Optional: PyTorch for neural networks
-
-**Current (0.8.x):**
-- Python ≥ 3.11 (supported: 3.11, 3.12, 3.13)
-- NumPy ≥ 1.24.0
-- Optional: HDF5 system libraries (opt-in via `--features hdf5`, Linux and macOS only)
-- Optional: PyTorch for neural network models
+## Installation
+
+### System Requirements
+
+- **Python**: >= 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
+- **NumPy**: >= 1.24.0
+- **Rust**: nightly toolchain (see `rust-toolchain.toml`)
+- **Optional**: HDF5 system libraries (opt-in via `--features hdf5`, Linux and macOS only)
+- **Optional**: PyTorch for the deep-learning models
+- **Optional**: a CUDA toolchain (`nvcc`) for the `cuda` backend, or Apple Silicon with `CC=clang` for the `metal` backend
 
 ### Installation Commands
 
 ```bash
-# Latest stable release
+# Latest release from PyPI
 pip install evlib
 
-# Specific version
-pip install evlib==0.2.0
-
-# Development version
+# Development version from source
 pip install git+https://github.com/tallamjr/evlib.git
 
 # With all optional dependencies
@@ -274,93 +104,27 @@ pip install evlib[all]
 
 ---
 
-## Contribution History
-
-### Contributors by Version
-
-**v0.1.0:**
-- Core development team
-- Initial architecture and implementation
-
-**v0.2.0:**
-- Neural network integration
-- Documentation improvements
-- Community bug reports and fixes
-
-**v0.3.0 (Planned):**
-- GPU acceleration team
-- Real-time streaming contributors
-- Performance optimization specialists
-
-### Community Contributions
-
-- **Bug reports**: 25+ issues resolved
-- **Feature requests**: 15+ features implemented
-- **Documentation**: 10+ documentation improvements
-- **Performance**: 5+ optimization contributions
-
----
-
 ## Release Process
 
 ### Quality Gates
 
-1. **All tests pass** on Linux, macOS, Windows
-2. **Performance benchmarks** meet or exceed previous version
-3. **Documentation** updated for all new features
-4. **Breaking changes** clearly documented
-5. **Migration guide** provided for major versions
+1. Python and Rust tests pass (`pytest`, `cargo test`).
+2. The RVT pipeline benchmark runs and meets expectations.
+3. Documentation is updated for new features.
+4. Breaking changes are documented.
 
-### Release Timeline
+### Local-only gates
 
-- **Alpha releases**: Monthly for major features
-- **Beta releases**: Quarterly for stability testing
-- **Stable releases**: Bi-annually for production use
-- **Patch releases**: As needed for critical bugs
+The `slow` and `integration` markered suites (including the RVT bit-identity acceptance test) are local-only gates. They depend on large gitignored datasets and are not run on hosted CI. Run them locally with:
 
-### Automated Checks
-
-- COMPLETE: Unit test coverage > 95%
-- COMPLETE: Integration tests all pass
-- COMPLETE: Performance regression < 5%
-- COMPLETE: Documentation build successful
-- COMPLETE: Cross-platform compatibility verified
+```bash
+.venv/bin/pytest -m "slow or integration" --run-slow --run-integration
+```
 
 ---
 
-## Deprecation Policy
+## Support
 
-### Deprecation Timeline
-
-1. **Announcement**: Feature marked as deprecated
-2. **Warning period**: 2 minor versions with warnings
-3. **Removal**: Next major version removes feature
-
-### Current Deprecations
-
-**v0.2.0:**
-- `create_voxel_representation` → `create_voxel_grid` (removed in v0.3.0)
-
-**v0.3.0 (Planned):**
-- Legacy visualization functions
-- Old-style configuration parameters
-
----
-
-## Support Policy
-
-### Version Support
-
-- **Current major version**: Full support (new features, bug fixes)
-- **Previous major version**: Critical bug fixes only
-- **Older versions**: No official support
-
-### Support Channels
-
-- **GitHub Issues**: Bug reports and feature requests
-- **Discussions**: General questions and community support
-- **Documentation**: Comprehensive guides and examples
-
----
-
-*evlib evolves continuously while maintaining stability and reliability. Each release represents a significant step forward in event-based vision capabilities.*
+- **GitHub Issues**: bug reports and feature requests.
+- **Discussions**: general questions and community support.
+- **Documentation**: guides, API reference, and examples.

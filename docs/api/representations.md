@@ -14,6 +14,8 @@ Event representations are crucial for:
 - **Analysis**: Temporal and spatial aggregation of events
 - **RVT Replacement**: High-performance alternatives to PyTorch preprocessing
 
+`create_voxel_grid`, `create_event_frame`, `create_time_surface` and `create_stacked_histogram` each take an `engine` argument and run fully on the cudf GPU engine (no CPU fallback) when you pass `engine="gpu"` or a `pl.GPUEngine(...)`. The voxel grid, event frame and time surface are bit-validated or numerically validated against the tonic reference library.
+
 ## Core Functions
 
 ### create_stacked_histogram
@@ -47,6 +49,7 @@ print(f"Columns: {list(hist_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x',
 - `width` (int): Sensor width in pixels
 - `bins` (int): Number of temporal bins per window (default: 10)
 - `window_duration_ms` (float): Duration of each window in milliseconds (default: 50.0)
+- `engine` (str | pl.GPUEngine): Polars collection engine (`"auto"`, `"streaming"`, `"gpu"`, or a `pl.GPUEngine(...)`)
 
 **Returns:**
 - `polars.DataFrame`: DataFrame with columns `[time_bin, polarity, y, x, count]`
@@ -80,6 +83,7 @@ print(f"Columns: {list(voxel_df.columns)}")  # ['x', 'y', 'time_bin', 'contribut
 - `height` (int): Sensor height in pixels
 - `width` (int): Sensor width in pixels
 - `n_time_bins` (int): Number of temporal bins (default: 5)
+- `engine` (str | pl.GPUEngine): Polars collection engine (`"auto"`, `"streaming"`, `"gpu"`, or a `pl.GPUEngine(...)`)
 
 **Returns:**
 - `polars.DataFrame`: long-format DataFrame with columns `[x, y, time_bin, contribution]`, where `contribution` is the bilinearly interpolated signed weight summed over all events falling in that cell.
@@ -110,6 +114,7 @@ print(f"Columns: {list(frame_df.columns)}")  # ['time_bin', 'polarity', 'y', 'x'
 - `height` (int): Sensor height in pixels
 - `width` (int): Sensor width in pixels
 - `n_time_bins` (int): Number of equal-width temporal bins (default: 10)
+- `engine` (str | pl.GPUEngine): Polars collection engine (`"auto"`, `"streaming"`, `"gpu"`, or a `pl.GPUEngine(...)`)
 
 **Returns:**
 - `polars.DataFrame`: long-format DataFrame with columns `[time_bin, polarity, y, x, count]`, where `polarity` is the channel index (0 for negative, 1 for positive).
@@ -142,6 +147,7 @@ print(f"Columns: {list(ts_df.columns)}")  # ['slice', 'polarity', 'y', 'x', 'las
 - `width` (int): Sensor width in pixels
 - `dt` (float): Time window for slicing and decay reference, in microseconds
 - `tau` (float): Exponential decay time constant (applied in `densify_time_surface`)
+- `engine` (str | pl.GPUEngine): Polars collection engine (`"auto"`, `"streaming"`, `"gpu"`, or a `pl.GPUEngine(...)`)
 
 **Returns:**
 - `polars.DataFrame`: long-format DataFrame with columns `[slice, polarity, y, x, last_t]`, where `polarity` is the channel index (0 negative, 1 positive) and `last_t` is the maximum event timestamp (microseconds) within that slice at that pixel and channel.
@@ -234,7 +240,7 @@ High-level preprocessing function to replace RVT's preprocessing pipeline.
 import evlib
 import evlib.representations as evr
 
-# High-level preprocessing pipeline (under development)
+# High-level preprocessing pipeline
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
 # High-level preprocessing for neural networks
@@ -271,7 +277,7 @@ import evlib.representations as evr
 # Performance comparison with RVT (manual benchmarking available)
 import time
 
-# evlib approach (using voxel grid as workaround)
+# evlib approach
 start_time = time.time()
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()
@@ -358,11 +364,15 @@ def create_event_image(events_path):
 
 ## Performance Characteristics
 
-| Operation | Performance vs NumPy | Memory Usage | Notes |
-|-----------|---------------------|--------------|-------|
-| Standard voxel grid | ~2.1x faster | Lower | Optimized binning |
-| Smooth voxel grid | ~1.8x faster | Similar | Interpolation overhead |
-| Large datasets (>1M events) | ~3x faster | Much lower | Memory efficiency |
+Measured against the tonic NumPy reference on 20M events:
+
+| Representation | Speedup vs tonic NumPy |
+|----------------|------------------------|
+| voxel_grid | 1.35x |
+| event_frame | 2.9x |
+| time_surface | 2.1x |
+
+These representations also run fully on the cudf GPU engine via `engine="gpu"`. See `benchmarks/out/tonic_bench_time.png`.
 
 ## Advanced Usage
 
@@ -520,5 +530,8 @@ print(f"Voxel grid created with {len(voxel_df)} entries")
 mixed_df = evr.create_mixed_density_stack(events_df, height=height, width=width)
 print(f"Mixed density stack created with {len(mixed_df)} entries")
 
-# Note: Stacked histogram has a known filter predicate issue
-# Mixed density stack and voxel grid work correctly
+# Create stacked histograms (RVT-compatible)
+hist_df = evr.create_stacked_histogram(
+    events_df, height=height, width=width, bins=bins, window_duration_ms=50.0
+)
+print(f"Stacked histogram created with {len(hist_df)} entries")

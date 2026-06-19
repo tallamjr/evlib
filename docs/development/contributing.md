@@ -15,8 +15,8 @@ evlib follows a **"robust over rapid"** philosophy:
 ### Prerequisites
 
 - **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
-- **Rust**: Stable toolchain (see [rustup.rs](https://rustup.rs/))
-- **System dependencies**: HDF5, pkg-config
+- **Rust**: nightly toolchain (pinned in `rust-toolchain.toml`; install via [rustup.rs](https://rustup.rs/))
+- **System dependencies**: pkg-config, cmake; HDF5 only when building `--features hdf5`
 
 ### Installation
 
@@ -68,15 +68,31 @@ maturin develop --release
 pytest
 cargo test
 
-# Run specific test file
-pytest tests/test_evlib.py
-cargo test --test test_smooth_voxel
+# Run a specific test file
+pytest tests/test_representations.py
+cargo test --test test_format_detection
 
 # Run with coverage
 pytest tests/ --cov=evlib --cov-report=xml
 
 # Test notebooks
 pytest --nbmake examples/
+```
+
+### Building the GPU and Apple Silicon backends
+
+The CUDA and Metal scatter-add backends are opt-in Cargo features. They are only needed when working on the `"cuda"` or `"metal"` RVT backends.
+
+```bash
+# CUDA backend (Linux with an NVIDIA toolchain)
+# 1. Build the kernel into librvt_scatter.so with nvcc (see the kernel source under
+#    src/ev_representations/) and point EVLIB_CUDA_LIB at it.
+# 2. Build evlib with the cuda feature.
+export EVLIB_CUDA_LIB=/absolute/path/to/librvt_scatter.so
+maturin develop --features cuda
+
+# Metal backend (Apple Silicon macOS)
+CC=clang maturin develop --features metal
 ```
 
 ### Code Quality
@@ -137,15 +153,15 @@ cargo check
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-feat: add smooth voxel grid implementation
+feat(representations): add CUDA scatter-add backend for RVT histograms
 
-- Implement bilinear interpolation for temporal smoothing
-- Add comprehensive tests with slider_depth dataset
-- Benchmark shows 2.5x speedup vs pure Python
+- Add a custom CUDA scatter-add kernel loaded at runtime via libloading
+- Gate it behind the cuda Cargo feature and EVLIB_CUDA_LIB
+- Validate output bit-identical against the RVT torch reference
 - Add user guide documentation
 
 References:
-https://github.com/uzh-rpg/rpg_e2vid
+https://github.com/uzh-rpg/RVT
 ```
 
 **Types:**

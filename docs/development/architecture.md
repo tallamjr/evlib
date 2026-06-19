@@ -1,6 +1,6 @@
 # Architecture
 
-evlib keeps a thin Rust core and does all DataFrame work in Polars from Python. Rust handles only what cannot be expressed as DataFrame operations: parsing binary event formats and building the Polars frame, plus one dense scatter-add kernel for RVT histograms. Everything else (filtering, representations, models, visualisation) lives in Python.
+evlib keeps a thin Rust core and does all DataFrame work in Polars from Python. Rust handles only what cannot be expressed as DataFrame operations: parsing binary event formats and building the Polars frame, plus the dense scatter-add kernels (CPU, CUDA, and Metal variants) for RVT histograms. Everything else (filtering, representations, models, visualisation) lives in Python.
 
 ## Design Philosophy
 
@@ -8,8 +8,9 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python. 
 
 1. **Thin Rust core, Polars everywhere else**: Rust does binary decoding; Python Polars does the processing.
 2. **Lazy and engine-selectable**: loaders return a Polars `LazyFrame`, so the same query runs on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`) where CUDA is available.
-3. **Real data validation**: format readers are tested against real event camera datasets.
-4. **No dead weight**: the crate carries only the dependencies the two Rust modules actually use.
+3. **Query layer vs compute layer**: Polars is the query, filter, and transform layer (CPU, the cudf GPU engine, and CUDA unified managed memory for larger-than-VRAM work). The native Rust, CUDA, and Metal scatter-add kernels are the compute layer for the stacked histogram. The honest caveat: Polars-GPU is not a free win for a single transfer-bound operation; the custom scatter-add kernels are where the GPU actually wins.
+4. **Real data validation**: format readers are tested against real event camera datasets, and the RVT stacked histogram is validated bit-identical against RVT (torch), tonic, OpenEB, and dv_processing.
+5. **No dead weight**: the crate carries only the dependencies the Rust modules actually use.
 
 ### Why this split
 
@@ -64,9 +65,11 @@ evlib/
 │   │   ├── arrow_builder.rs        # Apache Arrow zero-copy bridge
 │   │   ├── polarity_handler.rs     # 0/1 ↔ -1/1 polarity encoding
 │   │   └── streaming.rs            # Chunked reads for large files
-│   ├── ev_representations/         # Dense scatter-add kernel
+│   ├── ev_representations/         # Dense scatter-add kernels (CPU / CUDA / Metal)
 │   │   ├── mod.rs                  # PyO3 registration (representations_rs)
-│   │   └── stacked_histogram_dense.rs  # RVT stacked-histogram scatter-add
+│   │   ├── stacked_histogram_dense.rs   # RVT stacked-histogram scatter-add (CPU)
+│   │   ├── stacked_histogram_cuda.rs    # CUDA scatter-add (feature = "cuda")
+│   │   └── stacked_histogram_metal.rs   # Metal scatter-add (feature = "metal")
 │   ├── tracing_config.rs           # Structured logging (tracing)
 │   ├── bin/                        # Small Rust binaries
 │   └── lib.rs                      # PyO3 module definition
@@ -99,7 +102,14 @@ binary file ──► Rust decode (ev_formats) ──► Polars LazyFrame ──
 3. `load_events` applies any time, spatial, or polarity filters as Polars expressions, so loading and filtering fuse into one lazy query, then optionally sorts by `t` (default `sort=True`).
 4. Downstream work (`evlib.filtering`, `evlib.representations`, `evlib.rvt`, `evlib.models`) is all Polars, collected with a selectable engine.
 
-For the RVT preprocessing path, `evlib.rvt` builds its lazy Polars query and hands the binned events to the Rust `representations_rs` dense scatter-add kernel for the final stacked-histogram accumulation.
+For the RVT preprocessing path, `evlib.rvt.process_sequence` builds its lazy Polars query and hands the binned events to one of four backends, selected with `backend=`, for the final stacked-histogram accumulation:
+
+- `"polars"`: the Polars query layer on the CPU, or on the GPU via cudf-polars when `engine=` selects the GPU. This is the default.
+- `"rust"`: the Rust dense scatter-add kernel, CPU only.
+- `"cuda"`: a custom CUDA scatter-add kernel, built with `nvcc` into `librvt_scatter.so` and loaded at runtime via `libloading` (located through the `EVLIB_CUDA_LIB` environment variable).
+- `"metal"`: a Metal/MSL scatter-add kernel for Apple Silicon, via `metal-rs`.
+
+The native kernels are exposed as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
 
 ## Core Components
 
@@ -109,9 +119,9 @@ For the RVT preprocessing path, `evlib.rvt` builds its lazy Polars query and han
 
 HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). When the feature is off, or on Windows, use `h5py` from Python for HDF5 I/O.
 
-### ev_representations: the dense scatter-add kernel
+### ev_representations: the dense scatter-add kernels
 
-`ev_representations` exposes a single dense scatter-add used by the RVT stacked-histogram path. It is registered with Python as `evlib.representations_rs` (named with the `_rs` suffix so it does not collide with the pure-Python `evlib.representations` module). All other representations (voxel grids, mixed density stacks, the general stacked histogram) are pure Python Polars in `evlib.representations`.
+`ev_representations` exposes the dense scatter-add used by the RVT stacked-histogram path, in three variants: `stacked_histogram_dense` (CPU), `stacked_histogram_dense_cuda` (custom CUDA kernel), and `stacked_histogram_dense_metal` (Metal/MSL kernel for Apple Silicon). They are registered with Python as `evlib.representations_rs` (named with the `_rs` suffix so it does not collide with the pure-Python `evlib.representations` module). The CUDA and Metal variants are gated behind the `cuda` and `metal` Cargo features respectively. All other representations (voxel grids, mixed density stacks, the general stacked histogram) are pure Python Polars in `evlib.representations`.
 
 ### Python processing layer
 
@@ -165,8 +175,10 @@ python           = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 extension-module = ["pyo3/extension-module"]
 polars           = ["dep:polars"]
 arrow            = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
-zero-copy        = ["arrow"]   # alias for clarity
+zero-copy        = ["arrow"]                       # alias for clarity
 hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only
+cuda             = ["dep:libloading"]              # runtime-loaded CUDA scatter-add kernel
+metal            = ["dep:metal", "dep:objc"]       # Metal scatter-add kernel, macOS target only
 ```
 
 Key points:
@@ -174,8 +186,10 @@ Key points:
 - `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,arrow,extension-module`.
 - `hdf5` is opt-in and Unix only. On Windows the underlying HDF5 dependencies are not available, so the feature compiles to no-op stubs there and Python `h5py` is used instead.
 - `zero-copy` is an alias for `arrow`.
+- `cuda` enables the custom CUDA scatter-add backend. It pulls in `libloading` so the `nvcc`-built `librvt_scatter.so` can be loaded at runtime; there is no link-time CUDA dependency. Set `EVLIB_CUDA_LIB` to point at the built library.
+- `metal` enables the Metal/MSL scatter-add backend on Apple Silicon. It pulls in `metal` and `objc` and is restricted to the macOS target. Build with `CC=clang`.
 
-There are no `pytorch`, `cuda`, `mkl`, or `metal` Cargo features: GPU acceleration comes from cudf-polars at the Python layer (`collect(engine="gpu")`), not from Rust.
+GPU acceleration comes from two complementary places: cudf-polars at the Python query layer (`collect(engine="gpu")`), and the native CUDA and Metal scatter-add kernels in the compute layer behind the `cuda` and `metal` features.
 
 ### Common commands
 

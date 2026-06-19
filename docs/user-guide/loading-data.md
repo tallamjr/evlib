@@ -7,10 +7,14 @@ This guide covers everything you need to know about loading event data with evli
 ```python
 import evlib
 
-# Load events as Polars LazyFrame (recommended)
+# Load events as Polars LazyFrame (recommended).
+# load_events returns a LazyFrame and defaults to sort=True (events sorted by time).
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 print(f"Loaded {len(df)} events")
+
+# Collect on the GPU via cudf-polars where CUDA is available:
+#   df = events.collect(engine="gpu")
 
 # Or access DataFrame columns as NumPy arrays
 events = evlib.load_events("data/slider_depth/events.txt")
@@ -80,8 +84,8 @@ print(f"Saved {len(xs)} events to HDF5 format")
 ```
 
 **HDF5 advantages:**
-- 3-5x faster loading than text files
-- Smaller file sizes (up to 10x compression)
+- Faster loading than text (binary, no ASCII parsing)
+- Smaller file sizes than text
 - Perfect round-trip compatibility
 - Metadata support
 
@@ -247,7 +251,7 @@ Choose the right format for your needs:
 | Format | Best for | Loading Speed | File Size |
 |--------|----------|---------------|-----------|
 | Text (.txt) | Human readability, debugging | Baseline | Large |
-| HDF5 (.h5) | Performance, large datasets | 3-5x faster | 10x smaller |
+| HDF5 (.h5) | Performance, large datasets | Faster (binary) | Smaller |
 
 ### Filtering Performance
 
@@ -261,11 +265,12 @@ events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()  # Convert LazyFrame to DataFrame first
 filtered_events = evf.filter_by_time(events_df, t_start=1.0, t_end=2.0)
 
-# GOOD: Use Polars filtering (lazy evaluation)
+# GOOD: Use Polars filtering (lazy evaluation).
+# t is a Duration column, so compare on total_microseconds, not raw integers.
 events = evlib.load_events("data/slider_depth/events.txt")
 import polars as pl
 filtered = events.filter(
-    (pl.col("t") >= 1.0) & (pl.col("t") <= 2.0)
+    (pl.col("t").dt.total_microseconds() / 1_000_000).is_between(1.0, 2.0)
 )
 df = filtered.collect()
 
