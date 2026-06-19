@@ -1,0 +1,42 @@
+{
+  "voxel_grid": {
+    "tonic": {
+      "wall_s": 1.0021360400132835,
+      "peak_rss_bytes": 44543143936,
+      "n_events": 20000000,
+      "sig": 181587.08418210782
+    },
+    "evlib_cpu": {
+      "wall_s": 0.6229193909093738,
+      "peak_rss_bytes": 44542001152,
+      "n_events": 20000000,
+      "sig": 1330128.0
+    },
+    "evlib_gpu_uvm": {
+      "wall_s": 0.9432733380235732,
+      "peak_rss_bytes": 44542832640,
+      "n_events": 20000000,
+      "sig": 1330128.0
+    }
+  },
+  "event_frame": {
+    "tonic": {
+      "wall_s": 1.064879167941399,
+      "peak_rss_bytes": 44542754816,
+      "n_events": 20000000,
+      "sig": 19999940.0
+    },
+    "evlib_cpu": {
+      "wall_s": 0.32401380606461316,
+      "peak_rss_bytes": 44541157376,
+      "n_events": 20000000,
+      "sig": 1892244.0
+    },
+    "evlib_gpu_uvm": {
+      "wall_s": 0.40048339893110096,
+      "peak_rss_bytes": 44542865408,
+      "n_events": 20000000,
+      "sig": 1892244.0
+    }
+  }
+}
