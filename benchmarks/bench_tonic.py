@@ -35,7 +35,8 @@ sys.path.insert(0, str(ROOT))
 HEIGHT, WIDTH = 720, 1280
 N_TIME_BINS_VOXEL = 5
 N_TIME_BINS_FRAME = 10
-OPS = ("voxel_grid", "event_frame")
+OPS = ("voxel_grid", "event_frame", "time_surface")
+TIME_SURFACE_SLICES = 20  # dt chosen so the recording yields ~this many surfaces
 BACKENDS = ("tonic", "evlib_cpu", "evlib_gpu_uvm")
 LABEL = {
     "tonic": "tonic (NumPy)",
@@ -82,28 +83,45 @@ def _child(args: argparse.Namespace) -> None:
     op, backend = args.child, args.backend
     df = _load_events(Path(args.raw), args.n_events)
     n = df.height
-    start = time.perf_counter()
+    sensor = (WIDTH, HEIGHT, 2)
+
+    # Prepare each library's input BEFORE the timer so we measure only the representation, not the
+    # one-off conversion into tonic's structured-array format (tonic users load straight into it).
     if backend == "tonic":
         import tonic.transforms as T
 
         arr = _tonic_array(df)
-        sensor = (WIDTH, HEIGHT, 2)
-        if op == "voxel_grid":
-            out = T.ToVoxelGrid(sensor_size=sensor, n_time_bins=N_TIME_BINS_VOXEL)(arr)
-        elif op == "event_frame":
-            out = T.ToFrame(sensor_size=sensor, n_time_bins=N_TIME_BINS_FRAME)(arr)
-        else:
-            raise ValueError(op)
-        sig = float(np.asarray(out).sum())
     else:
         import evlib.representations as evr
 
         engine = _uvm_engine() if backend == "evlib_gpu_uvm" else "auto"
         lf = df.lazy()
+
+    dt = tau = 0.0
+    if op == "time_surface":
+        t_us = df["t"].dt.total_microseconds().to_numpy()
+        span = float(t_us[-1] - t_us[0])
+        dt = span / TIME_SURFACE_SLICES
+        tau = 2.0 * dt
+
+    start = time.perf_counter()
+    if backend == "tonic":
+        if op == "voxel_grid":
+            out = T.ToVoxelGrid(sensor_size=sensor, n_time_bins=N_TIME_BINS_VOXEL)(arr)
+        elif op == "event_frame":
+            out = T.ToFrame(sensor_size=sensor, n_time_bins=N_TIME_BINS_FRAME)(arr)
+        elif op == "time_surface":
+            out = T.ToTimesurface(sensor_size=sensor, dt=dt, tau=tau)(arr)
+        else:
+            raise ValueError(op)
+        sig = float(np.asarray(out).sum())
+    else:
         if op == "voxel_grid":
             res = evr.create_voxel_grid(lf, HEIGHT, WIDTH, N_TIME_BINS_VOXEL, engine=engine)
         elif op == "event_frame":
             res = evr.create_event_frame(lf, HEIGHT, WIDTH, N_TIME_BINS_FRAME, engine=engine)
+        elif op == "time_surface":
+            res = evr.create_time_surface(lf, HEIGHT, WIDTH, dt=dt, tau=tau, engine=engine)
         else:
             raise ValueError(op)
         sig = float(res.height)

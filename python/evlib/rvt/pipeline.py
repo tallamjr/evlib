@@ -75,7 +75,7 @@ def _process_sequence_rust(
     writer: H5RepresentationWriter,
     window_batch_size: int,
     dataset_group: str = "events",
-    use_cuda: bool = False,
+    gpu: Optional[str] = None,
 ) -> None:
     """Rust dense scatter-add backend (CPU, or GPU when ``use_cuda``).
 
@@ -128,18 +128,19 @@ def _process_sequence_rust(
             if ev_hi <= ev_lo:
                 continue
             t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
-            # The CUDA kernel takes x/y/p as int32 (their native h5 dtype) to halve the
+            # The GPU kernels (CUDA/Metal) take x/y/p as int32 (their native h5 dtype) to halve the
             # host->device transfer; the CPU Rust kernel takes int64.
-            coord_dt = np.int32 if use_cuda else np.int64
+            coord_dt = np.int32 if gpu else np.int64
             x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=coord_dt)
             y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=coord_dt)
             p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=coord_dt)
 
-            dense_fn = (
-                evlib.representations_rs.stacked_histogram_dense_cuda
-                if use_cuda
-                else evlib.representations_rs.stacked_histogram_dense
-            )
+            if gpu == "cuda":
+                dense_fn = evlib.representations_rs.stacked_histogram_dense_cuda
+            elif gpu == "metal":
+                dense_fn = evlib.representations_rs.stacked_histogram_dense_metal
+            else:
+                dense_fn = evlib.representations_rs.stacked_histogram_dense
             dense = dense_fn(
                 t_batch,
                 x_batch,
@@ -267,8 +268,10 @@ def process_sequence(
     polars_batch_windows: int = 16,
     cuda_batch_windows: int = 128,
 ) -> Path:
-    if backend not in ("polars", "rust", "cuda"):
-        raise ValueError(f"backend must be 'polars', 'rust' or 'cuda', got {backend!r}")
+    if backend not in ("polars", "rust", "cuda", "metal"):
+        raise ValueError(
+            f"backend must be 'polars', 'rust', 'cuda' or 'metal', got {backend!r}"
+        )
     out_dir = Path(out_dir)
     repr_dir = out_dir / "event_representations_v2" / REPR_NAME
     repr_dir.mkdir(parents=True, exist_ok=True)
@@ -280,7 +283,7 @@ def process_sequence(
     suffix = "_ds2_nearest" if downsample_by_2 else ""
     out_h5 = repr_dir / f"event_representations{suffix}.h5"
 
-    if backend in ("rust", "cuda"):
+    if backend in ("rust", "cuda", "metal"):
         with H5RepresentationWriter(
             out_h5,
             num_windows=num_windows,
@@ -304,9 +307,9 @@ def process_sequence(
                 # amortise the host<->device transfer and kernel launch over many windows (the CPU
                 # Rust backend stays at its small default).
                 window_batch_size=(
-                    cuda_batch_windows if backend == "cuda" else window_batch_size
+                    cuda_batch_windows if backend in ("cuda", "metal") else window_batch_size
                 ),
-                use_cuda=(backend == "cuda"),
+                gpu=(backend if backend in ("cuda", "metal") else None),
             )
         np.save(
             str(repr_dir / "timestamps_us.npy"),

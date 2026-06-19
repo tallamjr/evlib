@@ -98,6 +98,11 @@ hdf5-metno-sys = { version = "0.10.1", optional = true }
 tracing        = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
 
+# Metal GPU scatter-add backend (Apple Silicon), opt-in via the `metal` feature. macOS only.
+[target.'cfg(target_os = "macos")'.dependencies]
+metal          = { version = "0.27", optional = true }
+objc           = { version = "0.2", optional = true }
+
 [dev-dependencies]
 tempfile       = "3.8"
 criterion      = { version = "0.5", features = ["html_reports"] }
@@ -118,7 +123,8 @@ python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 extension-module = ["pyo3/extension-module"]
 # CUDA scatter-add backend: loads an nvcc-built librvt_scatter.so at runtime (no link-time CUDA).
 cuda           = ["dep:libloading"]
-# metal          = ["candle-core/metal"]  # Removed with candle dependencies
+# Metal scatter-add backend (Apple Silicon): MSL kernel compiled at runtime via metal-rs.
+metal          = ["dep:metal", "dep:objc"]
 polars         = ["dep:polars"]
 arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
 zero-copy      = ["arrow"]  # Alias for clarity
