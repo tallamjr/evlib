@@ -148,6 +148,43 @@ def _run(op: str, backend: str, raw: Path, n_events: int, timeout: float) -> Dic
     raise RuntimeError(f"no JSON from {op}/{backend}:\n{proc.stdout}\n{proc.stderr}")
 
 
+def plot(results: Dict[str, Dict[str, Dict]], ops: Sequence[str], out_png: Path) -> None:
+    """Grouped horizontal bars: per op, one bar per backend (wall-clock seconds)."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["font.family"] = "Tahoma"
+    colour = {"tonic": "#d86b3b", "evlib_cpu": "#3b7dd8", "evlib_gpu_uvm": "#2a9d5c"}
+    backends = [b for b in BACKENDS if any(b in results[op] for op in ops)]
+    fig, ax = plt.subplots(figsize=(8, 1.4 + 1.1 * len(ops)))
+    n = len(backends)
+    h = 0.8 / n
+    y0 = np.arange(len(ops))
+    for j, b in enumerate(backends):
+        vals = [results[op].get(b, {}).get("wall_s", 0.0) for op in ops]
+        ypos = y0 + (j - (n - 1) / 2) * h
+        ax.barh(ypos, vals, height=h, color=colour.get(b, "#888"), label=LABEL[b], zorder=3)
+        for yp, v in zip(ypos, vals):
+            if v:
+                ax.text(v, yp, f" {v:.2f}s", va="center", ha="left", fontsize=8)
+    ax.set_yticks(y0)
+    ax.set_yticklabels(ops)
+    ax.invert_yaxis()
+    ax.set_xlabel("wall-clock time (s), lower is better")
+    ax.set_title("evlib vs tonic representations (20M events)", loc="left", fontsize=12, fontweight="bold")
+    ax.legend(fontsize=8, loc="lower right")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_facecolor("#f7f7f7")
+    ax.grid(axis="x", color="white", linewidth=1.2, zorder=0)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=300)
+    plt.close(fig)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", type=Path)
@@ -156,6 +193,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--ops", nargs="+", default=list(OPS), choices=list(OPS))
     parser.add_argument("--timeout", type=float, default=1800.0)
     parser.add_argument("--out-prefix", default="tonic_bench")
+    parser.add_argument("--replot", action="store_true", help="re-render plot from saved results JSON")
     parser.add_argument("--child", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--backend", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -163,10 +201,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.child is not None:
         _child(args)
         return 0
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    results_json = OUT_DIR / f"{args.out_prefix}_results.json"
+    if args.replot:
+        results = json.loads(results_json.read_text())
+        plot(results, [op for op in args.ops if op in results], OUT_DIR / f"{args.out_prefix}_time.png")
+        print(f"Wrote {OUT_DIR / f'{args.out_prefix}_time.png'}")
+        return 0
     if args.raw is None:
         parser.error("--raw is required")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     results: Dict[str, Dict[str, Dict]] = {}
     for op in args.ops:
         results[op] = {}
@@ -201,9 +246,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 lines.append(f"")
                 lines.append(f"{LABEL[backend]} is {rel} than tonic for {op} ({bw:.2f}s vs {tw:.2f}s).")
         lines.append("")
-    (OUT_DIR / f"{args.out_prefix}_results.json").write_text(json.dumps(results, indent=2))
+    results_json.write_text(json.dumps(results, indent=2))
     md.write_text("\n".join(lines) + "\n")
-    print(f"\nWrote {md}")
+    try:
+        plot(results, args.ops, OUT_DIR / f"{args.out_prefix}_time.png")
+        print(f"Wrote {OUT_DIR / f'{args.out_prefix}_time.png'}")
+    except ImportError as exc:
+        print(f"Skipped plot (matplotlib unavailable: {exc}); run --replot where it is installed.")
+    print(f"Wrote {md}")
     print("\n" + md.read_text())
     return 0
 
