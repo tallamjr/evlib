@@ -74,11 +74,20 @@ pub fn stacked_histogram_dense(
 
         // Scatter-add into the dense accumulation buffer.
         for i in s..e {
-            let yo = row_map[y[i] as usize];
+            // Drop off-sensor coordinates. A raw Gen4 stream can carry a coordinate beyond the
+            // nominal sensor extent (e.g. x = 1284 on a 1280-wide sensor); the Polars path drops
+            // these via the downsample inner-join / is_between filter, so the dense path must too
+            // to stay bit-identical to RVT (and to avoid an out-of-bounds index into the maps).
+            let yi = y[i];
+            let xi = x[i];
+            if yi < 0 || yi as usize >= row_map.len() || xi < 0 || xi as usize >= col_map.len() {
+                continue;
+            }
+            let yo = row_map[yi as usize];
             if yo < 0 {
                 continue;
             }
-            let xo = col_map[x[i] as usize];
+            let xo = col_map[xi as usize];
             if xo < 0 {
                 continue;
             }
@@ -154,6 +163,29 @@ mod tests {
         assert_eq!(upper_bound(&arr, 30), 6);
         assert_eq!(lower_bound(&arr, 25), 3);
         assert_eq!(upper_bound(&arr, 5), 0);
+    }
+
+    #[test]
+    fn out_of_bounds_source_coords_are_dropped() {
+        // Source sensor is 2x2 (row_map / col_map length 2). A real Gen4 stream can carry an
+        // off-sensor coordinate (e.g. x = 1284 on a 1280-wide sensor); such events must be
+        // DROPPED, matching the Polars path (downsample inner-join / is_between filter) and the
+        // committed RVT reference - not panic and not corrupt a neighbouring pixel.
+        let row_map = [0i64, 1];
+        let col_map = [0i64, 1];
+        // Two events at (y=0): the first in-bounds (x=0), the second off-sensor (x=4, y=3).
+        let t = [0i64, 0];
+        let x = [0i64, 4];
+        let y = [0i64, 3];
+        let p = [1i64, 1];
+        let grid = [0i64];
+        let out = stacked_histogram_dense(
+            &t, &x, &y, &p, &grid, 50_000, 2, 10, &row_map, &col_map, 2, 2,
+        );
+        // Only the in-bounds event is counted: channel = 1*2 + 0 = 2 at (y=0, x=0).
+        assert_eq!(out[[0, 2, 0, 0]], 1);
+        // Total counts across the whole window equal 1 (the off-sensor event was dropped).
+        assert_eq!(out.iter().map(|&v| v as u32).sum::<u32>(), 1);
     }
 
     #[test]
