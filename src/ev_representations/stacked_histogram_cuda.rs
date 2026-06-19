@@ -15,9 +15,9 @@ use std::sync::OnceLock;
 
 type ScatterFn = unsafe extern "C" fn(
     *const c_longlong, // t
-    *const c_longlong, // x
-    *const c_longlong, // y
-    *const c_longlong, // p
+    *const c_int,      // x (int32, native h5 dtype)
+    *const c_int,      // y
+    *const c_int,      // p
     c_longlong,        // n_events
     *const c_longlong, // grid (window end timestamps)
     c_int,             // n_windows
@@ -61,9 +61,9 @@ fn cuda_lib() -> Result<&'static libloading::Library, String> {
 #[allow(clippy::too_many_arguments)]
 pub fn stacked_histogram_dense_cuda(
     t: &[i64],
-    x: &[i64],
-    y: &[i64],
-    p: &[i64],
+    x: &[i32],
+    y: &[i32],
+    p: &[i32],
     grid: &[i64],
     delta_t_us: i64,
     nbins: usize,

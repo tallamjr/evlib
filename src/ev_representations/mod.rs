@@ -86,9 +86,9 @@ pub mod python {
     pub fn stacked_histogram_dense_cuda_py<'py>(
         py: Python<'py>,
         t: PyReadonlyArray1<i64>,
-        x: PyReadonlyArray1<i64>,
-        y: PyReadonlyArray1<i64>,
-        p: PyReadonlyArray1<i64>,
+        x: PyReadonlyArray1<i32>,
+        y: PyReadonlyArray1<i32>,
+        p: PyReadonlyArray1<i32>,
         grid: PyReadonlyArray1<i64>,
         delta_t_us: i64,
         nbins: usize,

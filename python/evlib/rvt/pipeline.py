@@ -128,9 +128,12 @@ def _process_sequence_rust(
             if ev_hi <= ev_lo:
                 continue
             t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
-            x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=np.int64)
-            y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=np.int64)
-            p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=np.int64)
+            # The CUDA kernel takes x/y/p as int32 (their native h5 dtype) to halve the
+            # host->device transfer; the CPU Rust kernel takes int64.
+            coord_dt = np.int32 if use_cuda else np.int64
+            x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=coord_dt)
+            y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=coord_dt)
+            p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=coord_dt)
 
             dense_fn = (
                 evlib.representations_rs.stacked_histogram_dense_cuda
