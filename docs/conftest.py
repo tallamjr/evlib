@@ -23,8 +23,6 @@ class MockEvlib:
         self.formats = MockFormats()
         self.representations = MockRepresentations()
         self.visualization = MockVisualization()
-        self.augmentation = MockAugmentation()
-        self.processing = MockProcessing()
 
 
 class MockFormats:
@@ -63,10 +61,6 @@ class MockRepresentations:
         voxel_shape_shape = (n_bins, h, w)
         return voxel_data, voxel_shape_data, voxel_shape_shape
 
-    def events_to_smooth_voxel_grid(self, xs, ys, ts, ps, n_bins, shape):
-        """Mock events_to_smooth_voxel_grid function."""
-        return self.events_to_voxel_grid(xs, ys, ts, ps, n_bins, shape)
-
 
 class MockVisualization:
     """Mock evlib.visualization module."""
@@ -76,40 +70,6 @@ class MockVisualization:
         import numpy as np
 
         return np.random.rand(height, width)
-
-
-class MockAugmentation:
-    """Mock evlib.augmentation module."""
-
-    def flip_events_x(self, xs, ys, ts, ps, shape):
-        """Mock flip_events_x function."""
-
-        xs_flipped = shape[0] - xs
-        return xs_flipped, ys, ts, ps
-
-    def add_random_events(self, xs, ys, ts, ps, n_events, shape):
-        """Mock add_random_events function."""
-        import numpy as np
-
-        new_xs = np.concatenate([xs, np.random.randint(0, shape[0], n_events)])
-        new_ys = np.concatenate([ys, np.random.randint(0, shape[1], n_events)])
-        new_ts = np.concatenate([ts, np.random.uniform(ts.min(), ts.max(), n_events)])
-        new_ps = np.concatenate([ps, np.random.choice([-1, 1], n_events)])
-        return new_xs, new_ys, new_ts, new_ps
-
-
-class MockProcessing:
-    """Mock evlib.processing module."""
-
-    def download_model(self, model_name):
-        """Mock download_model function."""
-        return f"/mock/path/to/{model_name}"
-
-    def events_to_video(self, xs, ys, ts, ps, model_path, width, height):
-        """Mock events_to_video function."""
-        import numpy as np
-
-        return np.random.rand(height, width, 3)
 
 
 # Global namespace for code blocks
