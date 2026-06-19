@@ -38,28 +38,26 @@ def build_sparse_histogram(
     #   [searchsorted(t, T_i - delta_t, "left"), searchsorted(t, T_i, "right"))
     # which keeps every event with  T_i - delta_t <= t <= T_i  (both ends inclusive).
     # When two consecutive grid timestamps are exactly delta_t apart, an event sitting on
-    # that shared boundary therefore belongs to BOTH windows. We must replicate this
-    # duplication, so an event is assigned to the contiguous range of windows
-    #   lo = first i with T_i >= t      (forward as-of on t)
-    #   hi = last  i with T_i <= t + dt (backward as-of on t + dt)
-    # and the range [lo, hi] is exploded out. For almost all events lo == hi (single
-    # window); the duplicate only appears at a shared boundary.
+    # that shared boundary therefore belongs to BOTH windows.
+    #
+    # We reproduce that exactly by cross-joining each (already window-bounded) batch of events
+    # with the batch's small window-end grid and keeping the membership predicate. The set of
+    # windows kept for an event is precisely { i : t <= T_i <= t + delta_t }, identical to the
+    # forward/backward as-of range the previous implementation exploded, and the shared-boundary
+    # event naturally matches two rows. Crucially, cross-join + filter are supported by the
+    # cudf-polars GPU engine, whereas join_asof and int_ranges are not, so the whole query now
+    # runs on the GPU instead of silently falling back to CPU.
     grid = np.asarray(ev_repr_timestamps_us, dtype=np.int64)
-    grid_ids = np.arange(len(grid), dtype=np.int64)
-    lo_lf = pl.DataFrame({"lo": grid_ids, "T_lo": grid}).lazy().sort("T_lo")
-    hi_lf = pl.DataFrame({"hi": grid_ids, "T_hi": grid}).lazy().sort("T_hi")
-    lf = lf.sort("t")
-    lf = lf.join_asof(lo_lf, left_on="t", right_on="T_lo", strategy="forward")
-    lf = lf.with_columns((pl.col("t") + delta_t_us).alias("_t_hi"))
-    lf = lf.join_asof(hi_lf, left_on="_t_hi", right_on="T_hi", strategy="backward")
-    lf = lf.filter(
-        pl.col("lo").is_not_null()
-        & pl.col("hi").is_not_null()
-        & (pl.col("lo") <= pl.col("hi"))
+    grid_lf = pl.DataFrame(
+        {"window_id": np.arange(len(grid), dtype=np.int64), "T": grid}
+    ).lazy()
+    lf = (
+        lf.join(grid_lf, how="cross")
+        .filter(
+            (pl.col("t") >= pl.col("T") - delta_t_us) & (pl.col("t") <= pl.col("T"))
+        )
+        .drop("T")
     )
-    lf = lf.with_columns(
-        pl.int_ranges(pl.col("lo"), pl.col("hi") + 1).alias("window_id")
-    ).explode("window_id")
 
     # --- per-window time binning (MUST happen before the downsample fold) ---
     # RVT computes t0 = time[0], t1 = time[-1] over ALL events in the window slice, builds the
@@ -74,14 +72,31 @@ def build_sparse_histogram(
     # Float64 is accurate and reproduces torch's result bit-for-bit on this data.
     t0 = pl.col("t").min().over("window_id")
     t1 = pl.col("t").max().over("window_id")
-    denom = (t1 - t0).clip(lower_bound=1).cast(pl.Float64)
+    # clip()s are written as when/then because the cudf-polars GPU engine has no `clip`
+    # unary. Each is exactly equivalent to the clip it replaces (same dtype), so the output
+    # stays bit-identical to torch RVT. denom keeps the Int64 div-by-zero guard (span == 0
+    # for a single-timestamp window).
+    _span = t1 - t0
+    denom = (
+        pl.when(_span < 1)
+        .then(pl.lit(1, dtype=pl.Int64))
+        .otherwise(_span)
+        .cast(pl.Float64)
+    )
     t_norm = ((pl.col("t") - t0).cast(pl.Float64) / denom) * pl.lit(
         nbins, dtype=pl.Float64
     )
-    t_idx = t_norm.floor().cast(pl.Int32).clip(upper_bound=nbins - 1)
+    _idx = t_norm.floor().cast(pl.Int32)
+    t_idx = (
+        pl.when(_idx > nbins - 1)
+        .then(pl.lit(nbins - 1, dtype=pl.Int32))
+        .otherwise(_idx)
+    )
+    _p = pl.col("p").cast(pl.Int32)
     lf = lf.with_columns(t_idx.alias("t_idx")).with_columns(
         (
-            pl.col("p").cast(pl.Int32).clip(lower_bound=0) * nbins + pl.col("t_idx")
+            pl.when(_p < 0).then(pl.lit(0, dtype=pl.Int32)).otherwise(_p) * nbins
+            + pl.col("t_idx")
         ).alias("channel")
     )
 
@@ -120,7 +135,15 @@ def build_sparse_histogram(
         )
         .group_by(["window_id", "channel", "y", "x"])
         .agg(pl.len().alias("count"))
-        .with_columns(pl.col("count").clip(upper_bound=count_cutoff).cast(pl.UInt32))
+        .with_columns(
+            pl.when(pl.col("count") > count_cutoff)
+            .then(pl.lit(count_cutoff, dtype=pl.UInt32))
+            .otherwise(pl.col("count"))
+            .cast(pl.UInt32)
+            .alias(
+                "count"
+            )  # when/then does not preserve the input column name (clip did)
+        )
         .sort(["window_id", "channel", "y", "x"])
     )
 
