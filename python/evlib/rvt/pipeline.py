@@ -262,6 +262,7 @@ def process_sequence(
     split: str = "val",
     window_batch_size: int = 10,
     polars_batch_windows: int = 16,
+    cuda_batch_windows: int = 128,
 ) -> Path:
     if backend not in ("polars", "rust", "cuda"):
         raise ValueError(f"backend must be 'polars', 'rust' or 'cuda', got {backend!r}")
@@ -296,7 +297,12 @@ def process_sequence(
                 delta_t_us=delta_t_us,
                 downsample_by_2=downsample_by_2,
                 writer=writer,
-                window_batch_size=window_batch_size,
+                # The CUDA scatter does one big launch per batch, so use large window batches to
+                # amortise the host<->device transfer and kernel launch over many windows (the CPU
+                # Rust backend stays at its small default).
+                window_batch_size=(
+                    cuda_batch_windows if backend == "cuda" else window_batch_size
+                ),
                 use_cuda=(backend == "cuda"),
             )
         np.save(

@@ -52,6 +52,7 @@ HEIGHT, WIDTH = 720, 1280
 NBINS, COUNT_CUTOFF, DELTA_T_US = 10, 10, 50_000
 
 ALL_BACKENDS = (
+    "evlib_cuda",
     "evlib_gpu",
     "evlib_gpu_uvm",
     "evlib_cpu",
@@ -60,6 +61,7 @@ ALL_BACKENDS = (
     "rvt_cpu",
 )
 BACKEND_LABEL = {
+    "evlib_cuda": "evlib CUDA (Rust scatter-add, GPU)",
     "evlib_gpu": "evlib polars (GPU / cudf, device pool)",
     "evlib_gpu_uvm": "evlib polars (GPU / cudf, UVM managed)",
     "evlib_cpu": "evlib polars (CPU)",
@@ -283,7 +285,9 @@ def _child_main(args: argparse.Namespace) -> None:
     work = Path(args.work)
     backend = args.child
 
-    if backend == "evlib_gpu":
+    if backend == "evlib_cuda":
+        wall, out_h5 = run_evlib(in_h5, grid, work, backend="cuda", engine="auto")
+    elif backend == "evlib_gpu":
         wall, out_h5 = run_evlib(in_h5, grid, work, backend="polars", engine="gpu")
     elif backend == "evlib_gpu_uvm":
         wall, out_h5 = run_evlib(
@@ -497,6 +501,7 @@ def _style_axes(ax) -> None:
 
 
 COLOUR = {
+    "evlib_cuda": "#9b59b6",
     "evlib_gpu": "#2a9d5c",
     "evlib_gpu_uvm": "#1f7a44",
     "evlib_cpu": "#3b7dd8",

@@ -11,6 +11,7 @@
 
 use ndarray::Array4;
 use std::os::raw::{c_int, c_longlong, c_uint};
+use std::sync::OnceLock;
 
 type ScatterFn = unsafe extern "C" fn(
     *const c_longlong, // t
@@ -34,6 +35,22 @@ type ScatterFn = unsafe extern "C" fn(
 
 fn lib_path() -> String {
     std::env::var("EVLIB_CUDA_LIB").unwrap_or_else(|_| "librvt_scatter.so".to_string())
+}
+
+// The CUDA shared library is loaded once per process and cached: dlopen (and the CUDA context it
+// initialises) is expensive, so reloading it per batch dominated the runtime.
+static LIB: OnceLock<libloading::Library> = OnceLock::new();
+
+fn cuda_lib() -> Result<&'static libloading::Library, String> {
+    if let Some(l) = LIB.get() {
+        return Ok(l);
+    }
+    let path = lib_path();
+    let loaded =
+        unsafe { libloading::Library::new(&path) }.map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
+    // Another thread may win the race; either way LIB ends up set, so just read it back.
+    let _ = LIB.set(loaded);
+    Ok(LIB.get().expect("CUDA library set"))
 }
 
 /// Build the dense stacked-histogram for one batch of windows on the GPU.
@@ -61,13 +78,11 @@ pub fn stacked_histogram_dense_cuda(
     let buf_len = n_windows * channels * out_h * out_w;
     let mut out = vec![0u8; buf_len];
 
-    let path = lib_path();
+    let libh = cuda_lib()?;
     unsafe {
-        let libh = libloading::Library::new(&path)
-            .map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
         let func: libloading::Symbol<ScatterFn> = libh
             .get(b"scatter_windows")
-            .map_err(|e| format!("missing symbol scatter_windows in {path}: {e}"))?;
+            .map_err(|e| format!("missing symbol scatter_windows: {e}"))?;
         let rc = func(
             t.as_ptr(),
             x.as_ptr(),
