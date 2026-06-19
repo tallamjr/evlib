@@ -79,6 +79,9 @@ byteorder      = "1.5"
 # LZ4 frame decompression for AEDAT 4.0 (DV framework) packet bodies
 lz4_flex       = { version = "0.11", default-features = false, features = ["frame"] }
 
+# Runtime loader for the nvcc-built CUDA scatter kernel (.so), used by the optional `cuda` backend.
+libloading     = { version = "0.8", optional = true }
+
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
 num_cpus       = "1.16"
@@ -113,7 +116,8 @@ python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 # present libpython, which lets `cargo test` and `maturin develop` build and
 # run without any RUSTFLAGS hack.
 extension-module = ["pyo3/extension-module"]
-# cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
+# CUDA scatter-add backend: loads an nvcc-built librvt_scatter.so at runtime (no link-time CUDA).
+cuda           = ["dep:libloading"]
 # metal          = ["candle-core/metal"]  # Removed with candle dependencies
 polars         = ["dep:polars"]
 arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]

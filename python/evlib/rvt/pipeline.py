@@ -75,8 +75,9 @@ def _process_sequence_rust(
     writer: H5RepresentationWriter,
     window_batch_size: int,
     dataset_group: str = "events",
+    use_cuda: bool = False,
 ) -> None:
-    """Rust dense scatter-add backend.
+    """Rust dense scatter-add backend (CPU, or GPU when ``use_cuda``).
 
     Reads the raw h5 ``/{group}/{t,x,y,p}`` directly (no parquet conversion), applies the
     RVT non-decreasing time correction, computes per-window slices via ``np.searchsorted``
@@ -131,7 +132,12 @@ def _process_sequence_rust(
             y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=np.int64)
             p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=np.int64)
 
-            dense = evlib.representations_rs.stacked_histogram_dense(
+            dense_fn = (
+                evlib.representations_rs.stacked_histogram_dense_cuda
+                if use_cuda
+                else evlib.representations_rs.stacked_histogram_dense
+            )
+            dense = dense_fn(
                 t_batch,
                 x_batch,
                 y_batch,
@@ -257,8 +263,8 @@ def process_sequence(
     window_batch_size: int = 10,
     polars_batch_windows: int = 16,
 ) -> Path:
-    if backend not in ("polars", "rust"):
-        raise ValueError(f"backend must be 'polars' or 'rust', got {backend!r}")
+    if backend not in ("polars", "rust", "cuda"):
+        raise ValueError(f"backend must be 'polars', 'rust' or 'cuda', got {backend!r}")
     out_dir = Path(out_dir)
     repr_dir = out_dir / "event_representations_v2" / REPR_NAME
     repr_dir.mkdir(parents=True, exist_ok=True)
@@ -270,7 +276,7 @@ def process_sequence(
     suffix = "_ds2_nearest" if downsample_by_2 else ""
     out_h5 = repr_dir / f"event_representations{suffix}.h5"
 
-    if backend == "rust":
+    if backend in ("rust", "cuda"):
         with H5RepresentationWriter(
             out_h5,
             num_windows=num_windows,
@@ -291,6 +297,7 @@ def process_sequence(
                 downsample_by_2=downsample_by_2,
                 writer=writer,
                 window_batch_size=window_batch_size,
+                use_cuda=(backend == "cuda"),
             )
         np.save(
             str(repr_dir / "timestamps_us.npy"),
