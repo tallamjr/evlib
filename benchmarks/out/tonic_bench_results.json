@@ -1,42 +1,62 @@
 {
   "voxel_grid": {
     "tonic": {
-      "wall_s": 1.0021360400132835,
-      "peak_rss_bytes": 44543143936,
+      "wall_s": 0.8411720800213516,
+      "peak_rss_bytes": 44541878272,
       "n_events": 20000000,
       "sig": 181587.08418210782
     },
     "evlib_cpu": {
-      "wall_s": 0.6229193909093738,
-      "peak_rss_bytes": 44542001152,
+      "wall_s": 0.6232827260391787,
+      "peak_rss_bytes": 44541333504,
       "n_events": 20000000,
       "sig": 1330128.0
     },
     "evlib_gpu_uvm": {
-      "wall_s": 0.9432733380235732,
-      "peak_rss_bytes": 44542832640,
+      "wall_s": 0.9102681030053645,
+      "peak_rss_bytes": 44541673472,
       "n_events": 20000000,
       "sig": 1330128.0
     }
   },
   "event_frame": {
     "tonic": {
-      "wall_s": 1.064879167941399,
-      "peak_rss_bytes": 44542754816,
+      "wall_s": 0.9172092180233449,
+      "peak_rss_bytes": 44541587456,
       "n_events": 20000000,
       "sig": 19999940.0
     },
     "evlib_cpu": {
-      "wall_s": 0.32401380606461316,
-      "peak_rss_bytes": 44541157376,
+      "wall_s": 0.3245630890596658,
+      "peak_rss_bytes": 44542050304,
       "n_events": 20000000,
       "sig": 1892244.0
     },
     "evlib_gpu_uvm": {
-      "wall_s": 0.40048339893110096,
-      "peak_rss_bytes": 44542865408,
+      "wall_s": 0.38785180205013603,
+      "peak_rss_bytes": 44541784064,
       "n_events": 20000000,
       "sig": 1892244.0
+    }
+  },
+  "time_surface": {
+    "tonic": {
+      "wall_s": 0.552830753964372,
+      "peak_rss_bytes": 44542402560,
+      "n_events": 20000000,
+      "sig": 3144445.519492138
+    },
+    "evlib_cpu": {
+      "wall_s": 0.26128398708533496,
+      "peak_rss_bytes": 44542513152,
+      "n_events": 20000000,
+      "sig": 2355591.0
+    },
+    "evlib_gpu_uvm": {
+      "wall_s": 0.3460138669470325,
+      "peak_rss_bytes": 44542775296,
+      "n_events": 20000000,
+      "sig": 2355591.0
     }
   }
 }
