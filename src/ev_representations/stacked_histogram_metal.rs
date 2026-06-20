@@ -122,13 +122,17 @@ pub fn stacked_histogram_dense_metal(
         .new_library_with_source(MSL, &CompileOptions::new())
         .map_err(|e| format!("MSL compile failed: {e}"))?;
     let pso_scatter = {
-        let f = lib.get_function("scatter_k", None).map_err(|e| e.to_string())?;
+        let f = lib
+            .get_function("scatter_k", None)
+            .map_err(|e| e.to_string())?;
         device
             .new_compute_pipeline_state_with_function(&f)
             .map_err(|e| e.to_string())?
     };
     let pso_clip = {
-        let f = lib.get_function("clip_cast_k", None).map_err(|e| e.to_string())?;
+        let f = lib
+            .get_function("clip_cast_k", None)
+            .map_err(|e| e.to_string())?;
         device
             .new_compute_pipeline_state_with_function(&f)
             .map_err(|e| e.to_string())?
@@ -252,6 +256,9 @@ mod tests {
         )
         .expect("metal backend");
         assert_eq!(cpu.shape(), metal.shape());
-        assert_eq!(cpu, metal, "Metal output must be bit-identical to CPU dense");
+        assert_eq!(
+            cpu, metal,
+            "Metal output must be bit-identical to CPU dense"
+        );
     }
 }

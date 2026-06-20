@@ -46,8 +46,8 @@ fn cuda_lib() -> Result<&'static libloading::Library, String> {
         return Ok(l);
     }
     let path = lib_path();
-    let loaded =
-        unsafe { libloading::Library::new(&path) }.map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
+    let loaded = unsafe { libloading::Library::new(&path) }
+        .map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
     // Another thread may win the race; either way LIB ends up set, so just read it back.
     let _ = LIB.set(loaded);
     Ok(LIB.get().expect("CUDA library set"))

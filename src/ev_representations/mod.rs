@@ -117,7 +117,17 @@ pub mod python {
         let out = py
             .allow_threads(|| {
                 stacked_histogram_dense_cuda(
-                    t, x, y, p, grid, delta_t_us, nbins, count_cutoff, row_map, col_map, out_h,
+                    t,
+                    x,
+                    y,
+                    p,
+                    grid,
+                    delta_t_us,
+                    nbins,
+                    count_cutoff,
+                    row_map,
+                    col_map,
+                    out_h,
                     out_w,
                 )
             })
@@ -162,7 +172,17 @@ pub mod python {
         let out = py
             .allow_threads(|| {
                 stacked_histogram_dense_metal(
-                    t, x, y, p, grid, delta_t_us, nbins, count_cutoff, row_map, col_map, out_h,
+                    t,
+                    x,
+                    y,
+                    p,
+                    grid,
+                    delta_t_us,
+                    nbins,
+                    count_cutoff,
+                    row_map,
+                    col_map,
+                    out_h,
                     out_w,
                 )
             })
