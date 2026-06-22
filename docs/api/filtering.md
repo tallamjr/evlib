@@ -34,12 +34,12 @@ time_filtered_df = evf.filter_by_time(df, t_start=0.1, t_end=0.5)
 ```
 
 **Parameters:**
-- `events` (DataFrame): Polars DataFrame containing event data
+- `events` (LazyFrame | DataFrame): Polars LazyFrame or DataFrame containing event data
 - `t_start` (float): Start time in seconds (None for no lower bound)
 - `t_end` (float): End time in seconds (None for no upper bound)
 
 **Returns:**
-- `DataFrame`: Filtered events
+- `LazyFrame`: Filtered events (lazy; call `.collect()` to materialise)
 
 ### filter_by_roi
 
@@ -63,14 +63,14 @@ filtered_df = evf.filter_by_roi(
 ```
 
 **Parameters:**
-- `events` (DataFrame): Polars DataFrame containing event data
+- `events` (LazyFrame | DataFrame): Polars LazyFrame or DataFrame containing event data
 - `x_min` (int): Minimum x coordinate (inclusive)
 - `x_max` (int): Maximum x coordinate (inclusive)
 - `y_min` (int): Minimum y coordinate (inclusive)
 - `y_max` (int): Maximum y coordinate (inclusive)
 
 **Returns:**
-- `DataFrame`: Spatially filtered events
+- `LazyFrame`: Spatially filtered events (lazy; call `.collect()` to materialise)
 
 ### filter_by_polarity
 
@@ -93,11 +93,11 @@ both_df = evf.filter_by_polarity(df, polarity=[-1, 1])
 ```
 
 **Parameters:**
-- `events` (DataFrame): Polars DataFrame containing event data
+- `events` (LazyFrame | DataFrame): Polars LazyFrame or DataFrame containing event data
 - `polarity` (int|list): Polarity value(s) to keep (None for all)
 
 **Returns:**
-- `DataFrame`: Polarity-filtered events
+- `LazyFrame`: Polarity-filtered events (lazy; call `.collect()` to materialise)
 
 ### filter_hot_pixels
 
@@ -120,11 +120,11 @@ filtered_df = evf.filter_hot_pixels(df, threshold_percentile=99.0)
 ```
 
 **Parameters:**
-- `events` (DataFrame): Polars DataFrame containing event data
+- `events` (LazyFrame | DataFrame): Polars LazyFrame or DataFrame containing event data
 - `threshold_percentile` (float): Percentile threshold for detection (default: 99.9)
 
 **Returns:**
-- `DataFrame`: Events with hot pixels removed
+- `LazyFrame`: Events with hot pixels removed (lazy; call `.collect()` to materialise)
 
 ### filter_noise
 
@@ -148,12 +148,12 @@ filtered_df = evf.filter_noise(
 ```
 
 **Parameters:**
-- `events` (DataFrame): Polars DataFrame containing event data
+- `events` (LazyFrame | DataFrame): Polars LazyFrame or DataFrame containing event data
 - `method` (str): Noise filtering method ("refractory")
 - `refractory_period_us` (int): Refractory period in microseconds
 
 **Returns:**
-- `DataFrame`: Events with noise removed
+- `LazyFrame`: Events with noise removed (lazy; call `.collect()` to materialise)
 
 ## High-Level API
 
@@ -225,12 +225,12 @@ import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()  # Convert LazyFrame to DataFrame first
 
-# Apply filters in sequence
+# Apply filters in sequence (results are LazyFrames)
 filtered = evf.filter_by_time(df, t_start=1.0, t_end=2.0)
 filtered = evf.filter_by_roi(filtered, x_min=100, x_max=500, y_min=100, y_max=400)
 filtered = evf.filter_by_polarity(filtered, polarity=1)
 
-print(f"Filtered to {len(filtered):,} events")
+print(f"Filtered to {len(filtered.collect()):,} events")
 ```
 
 ### Advanced Preprocessing

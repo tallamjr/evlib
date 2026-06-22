@@ -95,11 +95,11 @@ print(f"Stacked histogram entries: {len(hist)}")
 - `"cuda"`: custom CUDA scatter-add kernel, NVIDIA GPU.
 - `"metal"`: Metal scatter-add kernel, Apple Silicon GPU.
 
-The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`. On the gen4_1mpx validation set the CUDA backend reaches parity-plus with the RVT torch-GPU reference and the Rust CPU backend is 1.32x faster than the RVT torch-CPU reference; see [Benchmarks](../examples/benchmarks.md).
+The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda` and `stacked_histogram_dense_metal`. On the gen4_1mpx validation set the CUDA backend reaches parity-plus with the RVT torch-GPU reference and the Rust CPU backend is 1.32x faster than the RVT torch-CPU reference; see [Benchmarks](../examples/benchmarks.md).
 
 ## Selecting the engine
 
-Pass `engine="auto"` (the default) for CPU Polars, or `engine="gpu"` for cudf with CUDA managed memory.
+Pass `engine="auto"` (the default) for CPU Polars, or `engine="gpu"` for cudf with CUDA managed memory. `engine="gpu"` requires `cudf-polars` and a CUDA-capable GPU; it will error if neither is available.
 
 ```python
 import evlib

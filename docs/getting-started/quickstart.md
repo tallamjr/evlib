@@ -160,7 +160,7 @@ ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save events to HDF5 format
 output_path = "quickstart_output.h5"
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_path)
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 print(f"Successfully saved {len(xs)} events to HDF5 format")
 
 # Note: For loading HDF5 files, use existing dataset files

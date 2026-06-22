@@ -54,11 +54,6 @@ positive_events = events.filter(pl.col('polarity') == 1)
 - `max_y` (int, optional): Maximum y coordinate (inclusive)
 - `polarity` (int, optional): Polarity filter (1 for positive, -1 for negative)
 - `sort` (bool): Sort events by time after loading
-- `x_col` (int, optional): Column index for x coordinate (0-based)
-- `y_col` (int, optional): Column index for y coordinate (0-based)
-- `t_col` (int, optional): Column index for time (0-based)
-- `p_col` (int, optional): Column index for polarity (0-based)
-- `header_lines` (int): Number of header lines to skip
 
 **Returns:**
 - `polars.LazyFrame`: A Polars LazyFrame with columns `x`, `y`, `t`, `polarity`. Call `.collect()` to materialise a DataFrame.
@@ -82,7 +77,7 @@ ps = np.array([1, -1, 1], dtype=np.int64)  # Use -1 for negative polarity
 
 # Save events to HDF5
 output_path = "output_example.h5"
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_path)
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 print(f"Saved {len(xs)} events to {output_path}")
 
 # Note: HDF5 round-trip currently has type compatibility limitations
@@ -109,7 +104,7 @@ ts = np.array([0.0001, 0.0002, 0.0003], dtype=np.float64)  # in seconds
 ps = np.array([1, 0, 1], dtype=np.int64)
 
 # Save events to text file
-evlib.formats.save_events_to_text(xs, ys, ts, ps, "output.txt")
+evlib.save_events_to_text(xs, ys, ts, ps, "output.txt")
 ```
 
 ## File Format Support

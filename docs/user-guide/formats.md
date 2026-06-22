@@ -94,7 +94,7 @@ ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5
 output_path = "formats_output.h5"
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, output_path)
+evlib.save_events_to_hdf5(xs, ys, ts, ps, output_path)
 print(f"Successfully saved {len(xs)} events to {output_path}")
 ```
 
@@ -274,35 +274,37 @@ df = events.collect()
 - HDF5 files: May contain 0/1 values
 - EVT2 files: Binary encoding varies
 
-**Solution:**
-```python
-# The high-level API handles polarity conversion automatically
-events = evlib.load_events("data/slider_depth/events.txt")  # Handles 0/1 to -1/1 conversion
-df = events.collect()
+**Actual behaviour:** `load_events` does **not** perform automatic polarity conversion. The polarity value in the loaded DataFrame reflects the on-disk encoding for each format:
 
-# Access DataFrame columns - polarity encoding is handled automatically
+- **EVT2 (`.raw`)**: polarity is `-1`/`+1` (the Rust reader converts the binary `0`/`1` bit).
+- **Text files (e.g. `slider_depth/events.txt`)**: polarity is `0`/`1`, matching the file contents.
+- **HDF5 files**: polarity depends on how the file was written.
+
+```python
+import evlib
+import numpy as np
+
+# Text/slider_depth: polarity is 0/1
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
-# Check if conversion happened correctly
-import numpy as np
-print(f"Unique polarities: {np.unique(ps)}")  # Should be [-1, 1]
+ps = df['polarity'].to_numpy()
+print(f"slider_depth polarities: {np.unique(ps)}")  # [0, 1]
+
+# EVT2: polarity is -1/+1
+events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
+df = events.collect()
+ps = df['polarity'].to_numpy()
+print(f"EVT2 polarities: {np.unique(ps)}")  # [-1, 1]
 ```
 
-**Validation:**
-```python
-# Check polarity encoding in loaded data
-# events = evlib.load_events("data/slider_depth/events.txt")
-# df = events.collect()
-# ps = df['polarity'].to_numpy()
-# unique_polarities = np.unique(ps)
-# print(f"Polarity values: {unique_polarities}")
-#
-# # Should be [-1, 1] after conversion
-# assert np.all(np.isin(unique_polarities, [-1, 1])), "Invalid polarities"
+If your downstream code requires a specific encoding, convert explicitly:
 
-# Example output:
-print("Polarity values: [-1  1]")
+```python
+import polars as pl
+# Convert 0/1 to -1/+1
+df = df.with_columns(
+    pl.when(pl.col("polarity") == 0).then(-1).otherwise(pl.col("polarity")).alias("polarity")
+)
 ```
 
 ### HDF5 Dataset Organization
@@ -322,7 +324,7 @@ xs = df['x'].to_numpy().astype(np.int64)
 ys = df['y'].to_numpy().astype(np.int64)
 ps = df['polarity'].to_numpy().astype(np.int64)
 ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
+evlib.save_events_to_hdf5(xs, ys, ts, ps, "sample.h5")
 
 print("Created HDF5 file with structure:")
 print("  /events/x: event x coordinates")
@@ -397,22 +399,24 @@ def recommend_format(file_size_mb, use_case):
 ```python
 def convert_to_hdf5(input_file, output_file):
     """Convert any format to HDF5 for performance"""
+    import numpy as np
+
     # Load with automatic format detection using high-level API
     events = evlib.load_events(input_file)
     df = events.collect()
 
-    # Validate data
+    # Validate data (note: text format loads polarity as 0/1; EVT2 as -1/+1)
     assert len(df) > 0, "No events loaded"
-    assert df['polarity'].is_in([-1, 1]).all(), "Invalid polarities"
+    assert df['polarity'].is_in([0, 1, -1]).all(), "Invalid polarities"
 
-    # Convert to NumPy for saving
-    xs = df['x'].to_numpy()
-    ys = df['y'].to_numpy()
-    ts = df['t'].to_numpy()
-    ps = df['polarity'].to_numpy()
+    # Convert to NumPy for saving (t is a Duration column; convert to seconds)
+    xs = df['x'].to_numpy().astype(np.int64)
+    ys = df['y'].to_numpy().astype(np.int64)
+    ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
+    ps = df['polarity'].to_numpy().astype(np.int64)
 
     # Save as HDF5
-    evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+    evlib.save_events_to_hdf5(xs, ys, ts, ps, output_file)
 
     # Verify round-trip
     events2 = evlib.load_events(output_file)

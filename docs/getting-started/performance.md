@@ -7,7 +7,7 @@ This guide describes evlib's benchmarked performance and explains when each exec
 evlib splits work across two layers, and understanding the split explains the numbers below.
 
 - **Query, filter and transform layer (Polars).** `load_events` returns a Polars LazyFrame, and filtering and representation building run as Polars expressions. This layer runs on the CPU, on the cudf GPU engine (via `engine="gpu"`), and on CUDA managed memory (UVM) so a workload larger than VRAM can still execute on the GPU.
-- **Compute layer (native scatter-add kernels).** The stacked-histogram for the RVT pipeline is built by dedicated kernels with four backends: Polars, a Rust dense scatter-add (CPU), a custom CUDA scatter-add kernel (NVIDIA GPU), and a Metal scatter-add kernel (Apple Silicon GPU). The native kernels are exposed as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`.
+- **Compute layer (native scatter-add kernels).** The stacked-histogram for the RVT pipeline is built by dedicated kernels with four backends: Polars, a Rust dense scatter-add (CPU), a custom CUDA scatter-add kernel (NVIDIA GPU), and a Metal scatter-add kernel (Apple Silicon GPU). The native kernels are exposed as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda` and `stacked_histogram_dense_metal`.
 
 Polars on the GPU is not a free speed-up for a single transfer-bound operation; the GPU win comes from the custom scatter-add kernels. For the RVT pipeline at scale the shared HDF5 read dominates the largest sequences, so the CUDA-versus-RVT-GPU result is parity-plus rather than a large multiplier.
 

@@ -73,7 +73,7 @@ pip install evlib[all]
 ## Build from Source
 
 ### Prerequisites
-- **Rust**: Stable toolchain (see [rustup.rs](https://rustup.rs/))
+- **Rust**: nightly toolchain (see [rustup.rs](https://rustup.rs/))
 - **Maturin**: Python-Rust build tool
 
 ```bash

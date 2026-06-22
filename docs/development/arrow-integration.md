@@ -328,10 +328,10 @@ pub fn load_events_to_arrow(
     config: &LoadConfig
 ) -> Result<RecordBatch, Box<dyn std::error::Error>>
 
-// Python bindings for PyArrow
+// Python bindings for Arrow (exposed as evlib.formats.load_events_to_arrow)
 #[cfg(all(feature = "python", feature = "arrow"))]
 #[pyfunction]
-pub fn load_events_to_pyarrow(
+pub fn load_events_to_arrow(
     py: Python<'_>,
     path: &str,
     // ... filtering parameters
@@ -415,7 +415,7 @@ df = events.collect()
 # Convert to Arrow when needed for external integration
 arrow_events = df.to_arrow()  # Returns PyArrow Table
 
-# Note: the direct Arrow API (evlib.formats.load_events_to_pyarrow) is built
+# Note: the direct Arrow API (evlib.formats.load_events_to_arrow) is built
 # in by default, since arrow is part of the default feature set.
 ```
 

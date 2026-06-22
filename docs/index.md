@@ -334,7 +334,7 @@ rates = events.with_columns([
 import numpy as np
 events = evlib.load_events("data/slider_depth/events.txt")
 events_df = events.collect()  # Convert LazyFrame to DataFrame first
-processed = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
+processed = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5).collect()
 x, y, t_us, p = processed.select(["x", "y", "t", "polarity"]).to_numpy().T
 # Ensure correct dtypes for save function
 x = x.astype(np.int64)
@@ -342,7 +342,7 @@ y = y.astype(np.int64)
 p = p.astype(np.int64)
 # Convert microseconds to seconds for save function
 t = t_us.astype(np.float64) / 1_000_000
-evlib.formats.save_events_to_hdf5(x, y, t, p, "output.h5")
+evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 print(f"Successfully saved {len(x)} processed events to HDF5")
 ```
 
@@ -547,8 +547,8 @@ y = y.astype(np.int64)
 p = p.astype(np.int64)
 # Convert Duration to seconds for save functions
 t = t_dur.astype('float64') / 1e6  # Convert microseconds to seconds
-evlib.formats.save_events_to_hdf5(x, y, t, p, "output.h5")
-evlib.formats.save_events_to_text(x, y, t, p, "output.txt")
+evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
+evlib.save_events_to_text(x, y, t, p, "output.txt")
 print(f"Successfully saved {len(x)} events to both HDF5 and text formats")
 ```
 
@@ -624,7 +624,7 @@ mypy python/evlib/
 
 #### Requirements
 
-- **Rust**: Stable toolchain (see `rust-toolchain.toml`)
+- **Rust**: nightly toolchain (see `rust-toolchain.toml`)
 - **Python**: ≥3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Maturin**: For building Python extensions
 

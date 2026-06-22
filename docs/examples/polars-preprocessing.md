@@ -4,7 +4,7 @@ This document provides examples for using evlib's Polars-based event representat
 
 ## Overview
 
-The `evlib.representations` module provides Polars-based implementations of common event camera representations. Each function returns a Polars DataFrame (long format) and accepts either a file path or a Polars LazyFrame as input. Internally the work is expressed as Polars operations, so the engine is selectable via the `engine` argument.
+The `evlib.representations` module provides Polars-based implementations of common event camera representations. Each function returns a Polars DataFrame (long format) and accepts a Polars LazyFrame or DataFrame as input (not a file path; load with `evlib.load_events` first). Internally the work is expressed as Polars operations, so the engine is selectable via the `engine` argument.
 
 ### How it executes
 
@@ -103,7 +103,7 @@ print(f"Stacked histogram entries: {len(hist)}")
 
 ## RVT-identical preprocessing
 
-For the exact RVT stacked-histogram preprocessing, use `evlib.rvt.process_sequence`. It has a `backend` argument with four options: `"polars"` (CPU or cudf GPU), `"rust"` (Rust dense scatter-add, CPU), `"cuda"` (custom CUDA scatter-add kernel, NVIDIA GPU), and `"metal"` (Metal scatter-add kernel, Apple Silicon GPU). The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`.
+For the exact RVT stacked-histogram preprocessing, use `evlib.rvt.process_sequence`. It has a `backend` argument with four options: `"polars"` (CPU or cudf GPU), `"rust"` (Rust dense scatter-add, CPU), `"cuda"` (custom CUDA scatter-add kernel, NVIDIA GPU), and `"metal"` (Metal scatter-add kernel, Apple Silicon GPU). The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda` and `stacked_histogram_dense_metal`.
 
 On the gen4_1mpx validation set the CUDA backend reaches parity-plus with the RVT torch-GPU reference (283.6s versus 286.3s) and the Rust CPU backend is 1.32x faster than the RVT torch-CPU reference. See [Benchmarks](benchmarks.md) for the full table and plots.
 

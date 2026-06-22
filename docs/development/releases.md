@@ -22,9 +22,9 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ## Changelog
 
-### 0.9.x (current)
+### 0.12.x (current)
 
-The crate version is `0.9.0` (`Cargo.toml`). This series adds native GPU and Apple Silicon compute backends for the RVT stacked-histogram path and tightens the bit-identity guarantees against reference implementations.
+The crate version is `0.12.0` (`Cargo.toml`). This series adds native GPU and Apple Silicon compute backends for the RVT stacked-histogram path and tightens the bit-identity guarantees against reference implementations.
 
 **RVT preprocessing backends**
 
@@ -71,7 +71,7 @@ The stacked-histogram output has been validated bit-identical against RVT (torch
 
 The 0.8.x series trimmed the feature surface to keep the crate lean:
 
-- Removed the Rust visualisation module and its dependency cascade (tokio, warp, reqwest, ratatui, gstreamer, and others).
+- Removed the Rust visualisation module and its dependency cascade (warp, reqwest, ratatui, gstreamer, and others). Note: tokio is retained as a dependency for the EVT/TCP reader.
 - Removed the dead `tch` and `ort` (ONNX runtime) bindings from the Rust crate.
 - Made HDF5 an opt-in Cargo feature (`--features hdf5`) on Linux and macOS; it is not available on Windows.
 

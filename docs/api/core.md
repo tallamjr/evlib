@@ -42,7 +42,7 @@ import polars as pl
 # Lazy load with built-in filters fused into the query
 events = evlib.load_events(
     "data/prophesee/samples/evt2/80_balls.raw",
-    t_start=0.1, t_end=0.5,   # seconds
+    t_start=24.0, t_end=25.0,   # seconds (file spans ~23.6s-29.9s)
     polarity=1,
 )
 
@@ -67,6 +67,6 @@ seconds = df.select(
 
 - `evlib.detect_format(path)` and `evlib.get_format_description(...)`: automatic format detection.
 - `evlib.save_events_to_text(...)` and `evlib.save_events_to_hdf5(...)`: writing events back out (HDF5 save uses the Rust `hdf5` feature on Linux/macOS, falling back to `h5py` elsewhere).
-- `evlib.formats.load_events_to_pyarrow(path)`: zero-copy Apache Arrow access for the same data.
+- `evlib.formats.load_events_to_arrow(path)`: zero-copy Apache Arrow access for the same data.
 
 See the [formats reference](formats.md) for the full list of supported input formats, and the [processing reference](processing.md) for filtering and representations.

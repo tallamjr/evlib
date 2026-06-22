@@ -45,13 +45,12 @@ export HDF5_PLUGIN_PATH=/usr/local/lib/hdf5/plugins
 
 ## evlib's Multi-Layer ECF Support
 
-evlib implements a sophisticated fallback system that tries multiple approaches:
+evlib implements a fallback system that tries multiple approaches:
 
 1. **Official h5py + ECF plugin** (fastest, requires codec installation)
 2. **Subprocess fallback** (clean environment approach)
-3. **Native Rust ECF decoder** (built-in, no dependencies)
-4. **Pure Python ECF decoder** (experimental fallback)
-5. **Clear error messages** with installation instructions
+3. **Native Rust ECF decoder** (built-in, no external dependencies)
+4. **Clear error messages** with installation instructions
 
 ## Usage
 
@@ -97,35 +96,9 @@ evlib includes a complete Rust implementation of the ECF codec:
 3. **Multiple encoding modes** - Support for different compression strategies
 4. **Header parsing** - Extract event counts and encoding flags
 
-### Python Fallback Implementation
+### Python Fallback
 
-For environments where Rust bindings aren't available:
-
-**Location:** `python/evlib/ecf_decoder.py`
-
-```python
-import evlib
-# from evlib.ecf_decoder import decode_ecf_compressed_chunk  # Not available in current build
-
-# Decode raw ECF-compressed bytes from Prophesee file
-import h5py
-# Example for ECF decoder development (update path for actual testing)
-try:
-    # For available files: use test data
-    events = evlib.load_events('data/slider_depth/events.txt')
-    df = events.collect()
-    print(f"ECF decoder development: Loaded {len(df)} test events")
-    # For Prophesee files: 'data/prophesee/samples/hdf5/pedestrians.hdf5'
-except Exception as e:
-    print(f"ECF decoder test: {e}")
-print("ECF decoder function available for development use")
-```
-
-**Capabilities:**
-- Pure Python ECF decoder
-- No external dependencies beyond NumPy
-- Experimental support for basic ECF modes
-- Significantly slower than Rust implementation
+A pure-Python ECF decoder (`python/evlib/ecf_decoder.py`) is **not present** in the current build. The Rust ECF decoder (`src/ev_formats/prophesee_ecf_codec.rs`) is the built-in fallback. If the Rust HDF5 feature is unavailable, the recommended approach is to install the official ECF plugin and use `h5py` with `hdf5plugin` (see Installation Guide below).
 
 ## Installation Guide
 
@@ -297,26 +270,14 @@ except Exception as e:
 - **Memory**: Efficient
 - **Setup**: No external dependencies
 
-### Python ECF Decoder
-- **Speed**: Slower (pure Python)
-- **Compatibility**: Basic ECF modes only
-- **Memory**: Higher usage
-- **Setup**: No dependencies (fallback option)
-
 ## Advanced Usage
 
 ### Direct ECF Decoder Access
 
 ```python
 import evlib
-# ECF decoding is handled internally by evlib
-# Direct decoder access is not needed for normal usage
-#
-# # For development and testing (internal use only):
-# # from evlib.ecf_decoder import decode_ecf_compressed_chunk
-# # events = decode_ecf_compressed_chunk(raw_compressed_bytes)
-#
-# # Simply use the high-level API:
+# ECF decoding is handled internally by the Rust backend.
+# There is no public Python-level ECF decoder; use the high-level API:
 # events = evlib.load_events("prophesee_file.h5")
 
 print("Use evlib.load_events() for ECF decoding")
@@ -349,17 +310,15 @@ print("Processing pipeline example - replace with actual file paths")
 
 ### Fully Working
 - Complete Rust ECF decoder/encoder
-- Multi-layer fallback system
+- Fallback system (official plugin, subprocess, Rust built-in)
 - Official plugin integration
 - Coordinate scaling (11-bit to 1280x720)
 - Comprehensive error handling
-- Python fallback decoder
 
 ### In Development
 - Advanced ECF compression modes
 - Memory-mapped chunk reading
 - Streaming support for very large files
-- Cython acceleration for Python decoder
 
 ## Technical Notes
 

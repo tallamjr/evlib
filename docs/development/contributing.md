@@ -290,15 +290,15 @@ def test_custom_representation():
     ts = df['t'].dt.total_seconds().to_numpy()
 
     # Test function
-    voxel_lazy = evr.create_voxel_grid(
-        "data/slider_depth/events.txt",
+    events2 = evlib.load_events("data/slider_depth/events.txt")
+    voxel_df = evr.create_voxel_grid(
+        events2,
         height=480, width=640, n_time_bins=5
     )
-    result = voxel_lazy.collect()
 
     # Validate output
-    assert result.shape == (640, 480, 5)
-    assert result.dtype == np.float32
+    assert voxel_df.shape[0] > 0
+    assert "contribution" in voxel_df.columns
 
 def test_custom_representation_benchmark():
     # Benchmark vs pure Python implementation
@@ -401,11 +401,11 @@ def test_memory_usage():
 
     events = evlib.load_events("data/slider_depth/events.txt")
     df = events.collect()
-    voxel_lazy = evr.create_voxel_grid(
-        "data/slider_depth/events.txt",
+    events2 = evlib.load_events("data/slider_depth/events.txt")
+    result = evr.create_voxel_grid(
+        events2,
         height=480, width=640, n_time_bins=5
     )
-    result = voxel_lazy.collect()
     return result
 ```
 

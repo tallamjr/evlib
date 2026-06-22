@@ -1,5 +1,7 @@
 # Structured Logging with Tracing
 
+> **Note for Python users:** This page documents the Rust-internal `tracing_config` module, which is **not** exposed to the Python package. There is no `evlib.tracing_config` in Python. To control Rust log verbosity from Python, set the `RUST_LOG` environment variable before importing evlib (for example `os.environ['RUST_LOG'] = 'evlib=debug'`).
+
 evlib uses the [`tracing`](https://docs.rs/tracing/latest/tracing/) crate for structured, configurable logging. This provides better control over log verbosity, structured output, and integration with external logging systems.
 
 ## Quick Start

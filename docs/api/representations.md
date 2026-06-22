@@ -256,14 +256,14 @@ print(f"Preprocessed {len(data_df)} stacked histogram entries for detection pipe
 ```
 
 **Parameters:**
-- `events_path` (str): Path to event file
-- `representation` (str): Type of representation ("stacked_histogram", "mixed_density", "voxel_grid")
+- `events` (polars.LazyFrame | polars.DataFrame): Polars LazyFrame or DataFrame with event data
 - `height` (int): Output image height
 - `width` (int): Output image width
-- `**kwargs`: Representation-specific parameters
+- `bins` (int): Number of temporal bins (default: 5)
+- `engine` (str | pl.GPUEngine): Polars collection engine (default: `"auto"`)
 
 **Returns:**
-- `polars.LazyFrame`: Preprocessed representation ready for neural networks
+- `polars.DataFrame`: Preprocessed stacked histogram ready for neural networks
 
 ### benchmark_vs_rvt
 
@@ -290,9 +290,10 @@ print("For RVT comparison, implement equivalent PyTorch-based pipeline")
 ```
 
 **Parameters:**
-- `events_path` (str): Path to test event file
+- `events` (polars.LazyFrame | polars.DataFrame): Polars LazyFrame or DataFrame with event data
 - `height` (int): Sensor height
 - `width` (int): Sensor width
+- `engine` (str | pl.GPUEngine): Polars collection engine (default: `"auto"`)
 
 **Returns:**
 - `dict`: Performance comparison results including speedup metrics and output schema
@@ -334,7 +335,7 @@ def analyze_temporal_activity(events_path, time_window=0.1):
 
     # Analyze activity over time (group by temporal bins)
     activity_per_bin = voxel_df.group_by("time_bin").agg([
-        pl.col("value").sum().alias("total_activity")
+        pl.col("contribution").sum().alias("total_activity")
     ])
 
     return activity_per_bin
@@ -356,7 +357,7 @@ def create_event_image(events_path):
 
     # Convert to image format (group by spatial coordinates)
     event_image = voxel_df.group_by(["y", "x"]).agg([
-        pl.col("value").sum().alias("intensity")
+        pl.col("contribution").sum().alias("intensity")
     ])
 
     return event_image
@@ -493,9 +494,9 @@ def validate_voxel_grid(events_path):
     voxel_df = evr.create_voxel_grid(events_df, height=480, width=640, n_time_bins=5)
 
     # Basic validation
-    total_voxel_events = voxel_df["value"].sum()
-    non_zero_bins = (voxel_df["value"] != 0).sum()
-    max_events_per_bin = voxel_df["value"].max()
+    total_voxel_events = voxel_df["contribution"].sum()
+    non_zero_bins = (voxel_df["contribution"] != 0).sum()
+    max_events_per_bin = voxel_df["contribution"].max()
 
     print(f"Total voxel events: {total_voxel_events}")
     print(f"Non-zero bins: {non_zero_bins}")

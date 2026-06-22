@@ -76,7 +76,7 @@ ps = df['polarity'].to_numpy().astype(np.int64)
 ts = df['t'].dt.total_seconds().to_numpy().astype(np.float64)
 
 # Save to HDF5 for efficient storage
-evlib.formats.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
+evlib.save_events_to_hdf5(xs, ys, ts, ps, "output.h5")
 print(f"Saved {len(xs)} events to HDF5 format")
 
 # Note: The save function uses internal type conversions (uint16/int8)
@@ -318,13 +318,19 @@ Validate loaded data:
 
 ```python
 def validate_events(df):
-    """Validate event data integrity"""
+    """Validate event data integrity.
+
+    Note: polarity encoding depends on the source format.
+    EVT2 (.raw) loads as -1/+1; text files (slider_depth) load as 0/1.
+    No automatic conversion is performed by load_events.
+    """
     assert len(df) > 0, "No events loaded"
     assert all(col in df.columns for col in ['x', 'y', 't', 'polarity']), "Required columns missing"
     assert (df['x'] >= 0).all(), "X coordinates must be non-negative"
     assert (df['y'] >= 0).all(), "Y coordinates must be non-negative"
     assert df['t'].is_sorted(), "Timestamps must be sorted"
-    assert df['polarity'].is_in([1, -1]).all(), "Polarities must be +1 or -1"
+    # Accept both 0/1 (text/slider_depth) and -1/+1 (EVT2) polarity encodings
+    assert df['polarity'].is_in([0, 1, -1]).all(), "Polarities must be 0/1 or -1/+1"
     print(f"SUCCESS: Validation passed for {len(df)} events")
 ```
 
@@ -418,7 +424,7 @@ def create_data_pipeline(input_file, output_dir):
     h5_file = f"{output_dir}/events.h5"
     # Convert timestamps to seconds for saving
     ts_seconds = df['t'].dt.total_seconds().to_numpy()
-    evlib.formats.save_events_to_hdf5(
+    evlib.save_events_to_hdf5(
         df['x'].to_numpy(), df['y'].to_numpy(),
         ts_seconds, df['polarity'].to_numpy(),
         h5_file
@@ -428,10 +434,10 @@ def create_data_pipeline(input_file, output_dir):
     pos_file = f"{output_dir}/positive_events.h5"
     events = evlib.load_events(input_file)
     events_df = events.collect()  # Convert LazyFrame to DataFrame first
-    pos_events = evf.filter_by_polarity(events_df, polarity=1)
+    pos_events = evf.filter_by_polarity(events_df, polarity=1).collect()
     # Convert timestamps to seconds for saving
     pos_ts_seconds = pos_events['t'].dt.total_seconds().to_numpy()
-    evlib.formats.save_events_to_hdf5(
+    evlib.save_events_to_hdf5(
         pos_events['x'].to_numpy(), pos_events['y'].to_numpy(),
         pos_ts_seconds, pos_events['polarity'].to_numpy(),
         pos_file

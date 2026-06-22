@@ -181,7 +181,7 @@ evlib's Arrow integration supports all major event camera formats:
 To use DuckDB integration:
 
 ```bash
-pip install evlib[polars] duckdb
+pip install evlib[duckdb]
 ```
 
 Or for development:

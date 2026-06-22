@@ -56,10 +56,10 @@ filtered = events.filter(
 Event-to-representation conversion, also pure Python Polars. The main builders:
 
 ```python
-def create_stacked_histogram(events, height, width, bins=10, window_duration_ms=50.0, ...) -> pl.LazyFrame
-def create_voxel_grid(events, height, width, n_time_bins=5, engine="auto") -> pl.LazyFrame
-def create_mixed_density_stack(events, height, width, ...) -> pl.LazyFrame
-def preprocess_for_detection(events, height, width, bins=5, engine="auto") -> pl.LazyFrame
+def create_stacked_histogram(events, height, width, bins=10, window_duration_ms=50.0, ...) -> pl.DataFrame
+def create_voxel_grid(events, height, width, n_time_bins=5, engine="auto") -> pl.DataFrame
+def create_mixed_density_stack(events, height, width, ...) -> pl.DataFrame
+def preprocess_for_detection(events, height, width, bins=5, engine="auto") -> pl.DataFrame
 ```
 
 Note the parameter names: `create_stacked_histogram` takes `bins` and `window_duration_ms`, while `create_voxel_grid` takes `n_time_bins`.
