@@ -300,8 +300,11 @@ print(f"EVT2 polarities: {np.unique(ps)}")  # [-1, 1]
 If your downstream code requires a specific encoding, convert explicitly:
 
 ```python
+import evlib
 import polars as pl
-# Convert 0/1 to -1/+1
+
+df = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw").collect()
+# Convert 0/1 to -1/+1 (a no-op here since EVT2 already loads as -1/1)
 df = df.with_columns(
     pl.when(pl.col("polarity") == 0).then(-1).otherwise(pl.col("polarity")).alias("polarity")
 )

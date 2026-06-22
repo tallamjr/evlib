@@ -25,17 +25,16 @@ Comprehensive testing strategy for evlib ensuring reliability and performance.
 
 ```
 tests/
-├── test_evlib_regression.py        # Core load/filter regression tests
-├── test_evt3_comprehensive.py      # Comprehensive EVT3 format tests
-├── test_representations.py         # Representation tests
-├── test_prophesee_real_data.py     # Real Prophesee data format tests
-├── test_filtering_real_data.py     # Filtering against real data
-├── test_simulation.py              # Event simulation tests
-├── test_utilities.py               # Utility function tests
-├── test_visualization.py           # Visualization tests
-├── test_openeb_conformance.py      # OpenEB conformance gate
-├── test_rvt_acceptance.py          # RVT bit-identity acceptance test
-└── [Rust tests]                    # Rust integration tests (tests/*.rs)
+├── test_evlib_regression.py             # Core load/filter regression tests
+├── test_evt3_comprehensive.py           # EVT3 schema/dtype contract
+├── test_representations.py              # Representation smoke tests
+├── test_representations_conformance.py  # tonic-oracle representation correctness
+├── test_filtering.py                    # Filtering against real tracked data
+├── test_simulation.py                   # Event simulation tests
+├── test_visualization.py                # Visualization tests
+├── test_openeb_conformance.py           # OpenEB conformance gate
+├── test_rvt_acceptance.py               # RVT bit-identity acceptance test
+└── [Rust tests]                         # Rust integration tests (tests/*.rs)
     ├── test_aedat_address_decoding.rs
     ├── test_aer_formats_realdata.rs
     ├── test_event_validation.rs
@@ -43,8 +42,7 @@ tests/
     ├── test_evt2_formats_realdata.rs
     ├── test_evt3_formats.rs
     ├── test_format_detection.rs
-    ├── test_polarity_conversion.rs
-    └── test_real_data_formats_rust.rs
+    └── test_polarity_conversion.rs
 ```
 
 ### Rust Tests

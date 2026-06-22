@@ -159,6 +159,14 @@ def test_filter_by_roi_schema_preserved(balls_df):
     assert_schema(result, "filter_by_roi")
 
 
+def test_filter_by_roi_rejects_inverted_bounds(balls_df):
+    """An ROI with x_min > x_max or y_min > y_max must raise ValueError."""
+    with pytest.raises(ValueError):
+        flt.filter_by_roi(balls_df, x_min=400, x_max=100, y_min=50, y_max=300)
+    with pytest.raises(ValueError):
+        flt.filter_by_roi(balls_df, x_min=100, x_max=400, y_min=300, y_max=50)
+
+
 # ---------------------------------------------------------------------------
 # filter_multiple_rois
 # ---------------------------------------------------------------------------
