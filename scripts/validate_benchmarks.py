@@ -64,7 +64,7 @@ def validate_benchmark_structure():
     print("CHECK: Validating benchmark structure...")
 
     project_root = Path(__file__).parent.parent
-    benches_dir = project_root / "benches"
+    benches_dir = project_root / "benchmarks" / "rust"
 
     expected_files = [
         "memory_efficiency.rs",

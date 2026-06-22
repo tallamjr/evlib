@@ -363,11 +363,11 @@ Standalone representations versus tonic NumPy (20M events): voxel_grid 1.35x, ev
 Run performance benchmarks to verify optimizations:
 
 ```bash
-# Verify README performance claims and generate plots
-python benches/benchmark_performance_readme.py
+# RVT preprocessing: evlib backends vs the RVT torch reference
+python -m benchmarks.bench_rvt_dataset --orig-root <raw_val> --ref-root <processed_val>
 
-# Memory efficiency benchmark
-python benches/benchmark_memory.py
+# Representations: evlib vs tonic (voxel grid, event frame, time surface)
+python -m benchmarks.bench_tonic --raw <events.raw>
 
 # Test with your own data
 python -c "

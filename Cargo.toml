@@ -26,24 +26,31 @@ exclude         = [
 name           = "evlib"
 crate-type     = ["cdylib", "rlib"]
 
+# Rust criterion benches live under benchmarks/rust/ (alongside the Python suite in benchmarks/),
+# so the repo has a single top-level benchmarks/ folder rather than a separate benches/ dir.
 [[bench]]
 name = "memory_efficiency"
+path = "benchmarks/rust/memory_efficiency.rs"
 harness = false
 
 [[bench]]
 name = "streaming_performance"
+path = "benchmarks/rust/streaming_performance.rs"
 harness = false
 
 [[bench]]
 name = "format_comparison"
+path = "benchmarks/rust/format_comparison.rs"
 harness = false
 
 [[bench]]
 name = "basic_performance"
+path = "benchmarks/rust/basic_performance.rs"
 harness = false
 
 [[bench]]
 name = "standalone_benchmark"
+path = "benchmarks/rust/standalone_benchmark.rs"
 harness = false
 
 [dependencies]
