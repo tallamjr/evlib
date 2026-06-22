@@ -80,29 +80,6 @@ def temp_dir():
     shutil.rmtree(temp_dir)
 
 
-@pytest.fixture
-def mock_data_files(temp_dir):
-    """Create mock data files for testing."""
-    # Create a simple events.txt file
-    events_file = temp_dir / "events.txt"
-    events_file.write_text(
-        """# timestamp x y polarity
-0.000100 320 240 1
-0.000200 321 241 -1
-0.000300 319 239 1
-0.000400 322 242 1
-0.000500 318 238 -1
-"""
-    )
-
-    # Create directory structure
-    slider_depth_dir = temp_dir / "slider_depth"
-    slider_depth_dir.mkdir(parents=True)
-    (slider_depth_dir / "events.txt").write_text(events_file.read_text())
-
-    return temp_dir
-
-
 @pytest.fixture(autouse=True)
 def skip_if_no_evlib(request, evlib_available):
     """Skip tests that require evlib if it's not available."""

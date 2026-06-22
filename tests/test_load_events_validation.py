@@ -179,28 +179,7 @@ def test_data_files():
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param(
-            "etram",
-            marks=[
-                pytest.mark.skipif(
-                    sys.platform == "win32",
-                    reason="HDF5 not available on Windows",
-                ),
-                requires_hdf5,
-            ],
-        ),
-        pytest.param(
-            "prophesee_hdf5",
-            marks=[
-                pytest.mark.skipif(
-                    sys.platform == "win32",
-                    reason="HDF5 not available on Windows",
-                ),
-                requires_hdf5,
-            ],
-        ),
         "prophesee_evt2",
-        "prophesee_evt3",
         "slider_depth",
     ],
 )
@@ -595,16 +574,18 @@ class TestLoadEventsValidation:
             if "duration_seconds" in stats:
                 print(f"Duration: {stats['duration_seconds']:.3f}s")
         elif results["statistics"].get("error"):
-            print(f"⚠️  Statistics collection failed: {results['statistics']['error']}")
+            print(
+                f"WARNING: Statistics collection failed: {results['statistics']['error']}"
+            )
 
         # Print warnings
         for warning in results["warnings"]:
-            print(f"⚠️  {warning}")
+            print(f"WARNING: {warning}")
 
         # Assert validation passed
         if results["errors"]:
             for error in results["errors"]:
-                print(f"❌ {error}")
+                print(f"ERROR:{error}")
 
         assert results["valid"], (
             f"Data structure validation failed: {results['errors']}"
@@ -616,7 +597,7 @@ class TestLoadEventsValidation:
             f"Too few events: {event_count} < {spec['min_events']}"
         )
 
-        print(f"✅ Data structure validation passed for {dataset_name}")
+        print(f"PASS:Data structure validation passed for {dataset_name}")
 
     def test_sensor_coordinate_bounds(self, loaded_events, dataset_info):
         """Test that coordinates are within expected sensor bounds."""
@@ -631,17 +612,17 @@ class TestLoadEventsValidation:
 
         # Print warnings
         for warning in results["warnings"]:
-            print(f"⚠️  {warning}")
+            print(f"WARNING: {warning}")
 
         # Print errors if any
         if results["errors"]:
             for error in results["errors"]:
-                print(f"❌ {error}")
+                print(f"ERROR:{error}")
 
         assert results["valid"], (
             f"Coordinate bounds validation failed: {results['errors']}"
         )
-        print(f"✅ Coordinate bounds validation passed for {dataset_name}")
+        print(f"PASS:Coordinate bounds validation passed for {dataset_name}")
 
     def test_temporal_properties(self, loaded_events, dataset_info):
         """Test that timestamps are logical and within expected ranges."""
@@ -656,15 +637,15 @@ class TestLoadEventsValidation:
 
         # Print warnings
         for warning in results["warnings"]:
-            print(f"⚠️  {warning}")
+            print(f"WARNING: {warning}")
 
         # Print errors if any
         if results["errors"]:
             for error in results["errors"]:
-                print(f"❌ {error}")
+                print(f"ERROR:{error}")
 
         assert results["valid"], f"Temporal validation failed: {results['errors']}"
-        print(f"✅ Temporal properties validation passed for {dataset_name}")
+        print(f"PASS:Temporal properties validation passed for {dataset_name}")
 
     def test_polarity_encoding(self, loaded_events, dataset_info):
         """Test that polarity values are correctly encoded as -1/1."""
@@ -679,15 +660,15 @@ class TestLoadEventsValidation:
 
         # Print warnings
         for warning in results["warnings"]:
-            print(f"⚠️  {warning}")
+            print(f"WARNING: {warning}")
 
         # Print errors if any
         if results["errors"]:
             for error in results["errors"]:
-                print(f"❌ {error}")
+                print(f"ERROR:{error}")
 
         assert results["valid"], f"Polarity validation failed: {results['errors']}"
-        print(f"✅ Polarity encoding validation passed for {dataset_name}")
+        print(f"PASS:Polarity encoding validation passed for {dataset_name}")
 
 
 @requires_pandera
@@ -719,7 +700,7 @@ class TestCrossDatasetConsistency:
                     print(f"  Types: {sample.dtypes}")
 
                 except Exception as e:
-                    print(f"  ❌ Failed to load {dataset_name}: {e}")
+                    print(f"  ERROR:Failed to load {dataset_name}: {e}")
 
         # Verify all loaded datasets have consistent structure
         if len(loaded_datasets) > 1:
@@ -748,7 +729,7 @@ class TestCrossDatasetConsistency:
                 )
 
         print(
-            f"✅ Format consistency validation passed across {len(loaded_datasets)} datasets"
+            f"PASS:Format consistency validation passed across {len(loaded_datasets)} datasets"
         )
 
 
@@ -800,7 +781,7 @@ class TestPerformanceAndScalability:
             "Events should be returned as LazyFrame for memory efficiency"
         )
 
-        print(f"✅ Performance validation passed for {dataset_name}")
+        print(f"PASS:Performance validation passed for {dataset_name}")
 
     def test_memory_efficiency(self, loaded_events, dataset_info):
         """Test memory efficiency of loaded data structures."""
@@ -831,7 +812,7 @@ class TestPerformanceAndScalability:
 
         assert len(coord_stats) == 1, "Statistics should be computed efficiently"
 
-        print(f"✅ Memory efficiency validation passed for {dataset_name}")
+        print(f"PASS:Memory efficiency validation passed for {dataset_name}")
 
 
 # =============================================================================

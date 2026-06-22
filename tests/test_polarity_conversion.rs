@@ -2,6 +2,14 @@ use evlib::ev_formats::polarity_handler::{PolarityConfig, PolarityEncoding, Pola
 use evlib::ev_formats::LoadConfig;
 
 #[test]
+fn test_event_struct_size_is_16_bytes() {
+    // The in-memory Event struct is { t: f64, x: u16, y: u16, polarity: i8 } which packs
+    // to 16 bytes (8 + 2 + 2 + 1 padded to the f64 alignment). Assert this hasn't changed.
+    let event_size = std::mem::size_of::<evlib::ev_formats::Event>();
+    assert_eq!(event_size, 16, "Event struct size changed unexpectedly");
+}
+
+#[test]
 fn test_polarity_conversion_zero_one_to_minus_one_plus_one() {
     // Test basic conversion from 0/1 to -1/1
     let handler = PolarityHandler::new(); // Uses default config: 0/1 -> -1/1

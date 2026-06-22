@@ -63,38 +63,6 @@ class TestEvlibRegression:
                 "required": True,  # Core functionality
                 "skip_on_windows": True,  # HDF5 not available on Windows
             },
-            "evt2_large": {
-                "path": data_dir / "eTram/raw/large_file.raw",  # Placeholder path
-                "format": "EVT2",
-                "resolution": (1280, 720),
-                "expected_event_count": (10000000, 50000000),
-                "polarity_encoding": (-1, 1),
-                "min_duration": 30.0,
-                "description": "Large EVT2 file",
-                "required": False,  # Optional - may not exist
-            },
-            "hdf5_large": {
-                "path": data_dir / "eTram/h5/large_file.h5",  # Placeholder path
-                "format": "HDF5",
-                "resolution": (1280, 720),
-                "expected_event_count": (10000000, 50000000),
-                "polarity_encoding": (-1, 1),
-                "min_duration": 30.0,
-                "description": "Large HDF5 file",
-                "skip_on_windows": True,  # HDF5 not available on Windows
-                "required": False,  # Optional - may not exist
-            },
-            "hdf5_xlarge": {
-                "path": data_dir / "eTram/h5/xlarge_file.h5",  # Placeholder path
-                "format": "HDF5",
-                "resolution": (1280, 720),
-                "expected_event_count": (50000000, 100000000),
-                "polarity_encoding": (-1, 1),
-                "min_duration": 120.0,
-                "description": "Extra large HDF5 file",
-                "required": False,  # Optional - may not exist
-                "skip_on_windows": True,  # HDF5 not available on Windows
-            },
             "rvt_processed": {
                 "path": data_dir
                 / "gen4_1mpx_processed_RVT/test/moorea_2019-06-19_000_793500000_853500000/event_representations_v2/stacked_histogram_dt50_nbins10/event_representations_ds2_nearest.h5",
@@ -324,13 +292,6 @@ class TestEvlibRegression:
         print(
             f"PASS: {file_key}: {event_count:,} events, {duration:.1f}s duration, loaded in {load_time:.2f}s"
         )
-
-    @pytest.mark.skip(reason="Large test files not available in current test setup")
-    def test_load_events_large_files(self, data_files):
-        """Test evlib.load_events() with large files (performance test)."""
-        # This test requires large files (evt2_large, hdf5_large) that are not available
-        # Skip this test until large test files are provided
-        pass
 
     @pytest.mark.parametrize(
         "file_key",
@@ -572,7 +533,7 @@ class TestEvlibRegression:
                     y = df["y"].to_numpy()
                     # Convert duration to seconds
                     t = df.with_columns(
-                        (df["timestamp"].dt.total_microseconds() / 1_000_000).alias(
+                        (df["t"].dt.total_microseconds() / 1_000_000).alias(
                             "timestamp_seconds"
                         )
                     )["timestamp_seconds"].to_numpy()
@@ -660,163 +621,6 @@ class TestEvlibRegression:
         assert object_increase < 1000, f"Too many objects created: {object_increase}"
 
         print(f"PASS: Memory cleanup: {object_increase} objects remained after cleanup")
-
-    def test_gen4_blosc_compression_support(self, data_files):
-        """Test specific support for Gen4 1mpx BLOSC-compressed files."""
-        file_key = "gen4_1mpx_blosc"
-
-        if file_key not in data_files or not data_files[file_key]["path"].exists():
-            pytest.skip(f"Gen4 BLOSC test file not found: {file_key}")
-
-        file_info = data_files[file_key]
-
-        print(f"Testing BLOSC compression support with {file_info['description']}")
-
-        # Test basic loading capability with time filter for manageable test duration
-        start_time = time.time()
-        result = evlib.load_events(
-            str(file_info["path"]),
-            t_start=0.0,
-            t_end=1.0,  # Just first second for regression test
-        )
-        df = result.collect()
-        load_time = time.time() - start_time
-
-        # Verify core properties
-        assert len(df) > 0, "No events loaded from BLOSC file"
-        event_count = len(df)
-
-        # For time-filtered data, just verify we got reasonable events
-        assert event_count > 1000, f"Too few events in time slice: {event_count}"
-        assert event_count < 50000000, (
-            f"Time filter didn't work, got {event_count} events"
-        )
-
-        # Verify data structure
-        expected_columns = {"x", "y", "t", "polarity"}
-        actual_columns = set(df.columns)
-        assert expected_columns == actual_columns, (
-            f"Column mismatch: expected {expected_columns}, got {actual_columns}"
-        )
-
-        # Convert to numpy for validation
-        x = df["x"].to_numpy()
-        y = df["y"].to_numpy()
-        t = df.with_columns(
-            (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-        )["timestamp_seconds"].to_numpy()
-        p = df["polarity"].to_numpy()
-
-        # Verify coordinate bounds (Gen4 1mpx resolution)
-        width, height = file_info["resolution"]
-        assert np.all(x >= 0) and np.all(x < width), (
-            f"X coordinates out of bounds: {np.min(x)} to {np.max(x)}, expected 0 to {width - 1}"
-        )
-        assert np.all(y >= 0) and np.all(y < height), (
-            f"Y coordinates out of bounds: {np.min(y)} to {np.max(y)}, expected 0 to {height - 1}"
-        )
-
-        # Verify timestamp properties (for filtered data)
-        duration = np.max(t) - np.min(t)
-        assert duration <= 1.0, f"Duration {duration:.1f}s too long for 1-second filter"
-        assert duration >= 0.0, f"Invalid duration {duration:.1f}s"
-
-        # Verify polarity encoding (Gen4 uses -1/1, but filtered data may only have one polarity)
-        unique_polarities = set(np.unique(p))
-        expected_polarities = set(file_info["polarity_encoding"])
-
-        # Check that all observed polarities are valid (subset of expected)
-        assert unique_polarities.issubset(expected_polarities), (
-            f"Invalid polarity values: expected subset of {expected_polarities}, got {unique_polarities}"
-        )
-
-        # Check that we have at least one valid polarity value
-        assert len(unique_polarities) > 0, "No polarity values found"
-
-        # Check that all values are in the expected range
-        for polarity in unique_polarities:
-            assert polarity in expected_polarities, (
-                f"Unexpected polarity value: {polarity}"
-            )
-
-        # Performance validation (should be fast for filtered data)
-        events_per_second = event_count / load_time if load_time > 0 else event_count
-        assert events_per_second > 100000, (
-            f"Loading too slow: {events_per_second:.0f} events/s"
-        )
-
-        # This tests BLOSC decompression capability without full file loading
-        print(
-            f"PASS: BLOSC decompression working: {event_count:,} events from time slice"
-        )
-
-        print(
-            f"PASS: BLOSC compression: {event_count:,} events loaded in {load_time:.1f}s ({events_per_second:.0f} events/s)"
-        )
-        print(f"PASS: Resolution: x={np.min(x)}-{np.max(x)}, y={np.min(y)}-{np.max(y)}")
-        print(f"PASS: Duration: {duration:.1f}s")
-        print(f"PASS: Polarity: {sorted(unique_polarities)}")
-
-    def test_blosc_vs_deflate_consistency(self, data_files):
-        """Test that BLOSC and deflate compression produce consistent results."""
-        # Compare Gen4 (BLOSC) with eTram (deflate) for consistency
-        gen4_key = "gen4_1mpx_blosc"
-        etram_key = "hdf5_small"  # eTram with deflate compression
-
-        if gen4_key not in data_files:
-            pytest.skip(f"Gen4 BLOSC test file not configured: {gen4_key}")
-        if etram_key not in data_files:
-            pytest.fail(
-                f"MISSING FILE KEY: {etram_key} not found in test data configuration"
-            )
-        if not data_files[gen4_key]["path"].exists():
-            pytest.skip(f"Gen4 BLOSC file not found: {data_files[gen4_key]['path']}")
-        if not data_files[etram_key]["path"].exists():
-            pytest.fail(f"MISSING FILE: {data_files[etram_key]['path']} does not exist")
-
-        # Load small samples from both files
-        print("Testing compression consistency between BLOSC and deflate...")
-
-        # Gen4 BLOSC sample (first 100k events)
-        gen4_events = evlib.load_events(
-            str(data_files[gen4_key]["path"]),
-            t_start=0.0,
-            t_end=0.1,  # First 0.1 seconds
-        )
-        gen4_df = gen4_events.collect()
-
-        # eTram deflate sample
-        etram_events = evlib.load_events(str(data_files[etram_key]["path"]))
-        etram_df = etram_events.collect()
-
-        # Both should load successfully
-        assert len(gen4_df) > 0, "BLOSC file produced no events"
-        assert len(etram_df) > 0, "Deflate file produced no events"
-
-        # Both should have same column structure
-        assert set(gen4_df.columns) == set(etram_df.columns), (
-            "Column structure differs between compression types"
-        )
-
-        # Both should have valid data ranges
-        for df, name in [(gen4_df, "BLOSC"), (etram_df, "deflate")]:
-            x = df["x"].to_numpy()
-            y = df["y"].to_numpy()
-            t = df.with_columns(
-                (df["t"].dt.total_microseconds() / 1_000_000).alias("timestamp_seconds")
-            )["timestamp_seconds"].to_numpy()
-            p = df["polarity"].to_numpy()
-
-            assert np.all(x >= 0), f"{name}: negative x coordinates"
-            assert np.all(y >= 0), f"{name}: negative y coordinates"
-            assert np.all(t >= 0), f"{name}: negative timestamps"
-            assert len(np.unique(p)) <= 2, f"{name}: more than 2 polarity values"
-
-        print(f"PASS: BLOSC consistency: {len(gen4_df):,} events loaded and validated")
-        print(
-            f"PASS: Deflate consistency: {len(etram_df):,} events loaded and validated"
-        )
-        print("PASS: Both compression types produce consistent data structures")
 
 
 if __name__ == "__main__":

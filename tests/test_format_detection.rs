@@ -13,7 +13,8 @@ use std::path::Path;
 use tempfile::NamedTempFile;
 
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
-const ORIGINAL_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/original/front";
+const PROPHESEE_HDF5_FILE: &str =
+    "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5";
 
 /// Helper function to check if a test data file exists
 fn check_data_file_exists(path: &str) -> bool {
@@ -124,32 +125,26 @@ fn test_text_format_detection() {
 
 #[test]
 fn test_hdf5_format_detection() {
-    let hdf5_files = [
-        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
-        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
-        format!("{ORIGINAL_HDF5_DIR}/seq03.h5"),
-    ];
-
-    for file_path in &hdf5_files {
-        if check_data_file_exists(file_path) {
-            let result = detect_event_format(file_path)
-                .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
-
-            assert_eq!(result.format, EventFormat::HDF5);
-            assert!(
-                result.confidence >= 0.95,
-                "Low confidence for HDF5 detection: {:.2}",
-                result.confidence
-            );
-            assert!(result.metadata.file_size > 0);
-
-            println!(
-                "{}: {} (confidence: {:.2})",
-                file_path, result.format, result.confidence
-            );
-            break; // Test just one to avoid excessive output
-        }
+    if !check_data_file_exists(PROPHESEE_HDF5_FILE) {
+        println!("Skipping HDF5 detection test - file not found: {PROPHESEE_HDF5_FILE}");
+        return;
     }
+
+    let result = detect_event_format(PROPHESEE_HDF5_FILE)
+        .unwrap_or_else(|_| panic!("Failed to detect format for {PROPHESEE_HDF5_FILE}"));
+
+    assert_eq!(result.format, EventFormat::HDF5);
+    assert!(
+        result.confidence >= 0.95,
+        "Low confidence for HDF5 detection: {:.2}",
+        result.confidence
+    );
+    assert!(result.metadata.file_size > 0);
+
+    println!(
+        "{PROPHESEE_HDF5_FILE}: {} (confidence: {:.2})",
+        result.format, result.confidence
+    );
 }
 
 #[test]
@@ -248,7 +243,7 @@ fn test_confidence_scoring_consistency() {
             format!("{SLIDER_DEPTH_DIR}/events_chunk.txt"),
             EventFormat::Text,
         ),
-        (format!("{ORIGINAL_HDF5_DIR}/seq01.h5"), EventFormat::HDF5),
+        (PROPHESEE_HDF5_FILE.to_string(), EventFormat::HDF5),
     ];
 
     for (file_path, expected_format) in test_files {
@@ -344,7 +339,7 @@ fn test_format_description_consistency() {
 fn test_detection_performance() {
     let test_files = vec![
         format!("{SLIDER_DEPTH_DIR}/events_chunk.txt"),
-        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
+        PROPHESEE_HDF5_FILE.to_string(),
     ];
 
     for file_path in test_files {
@@ -357,7 +352,7 @@ fn test_detection_performance() {
             .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
         let duration = start.elapsed();
 
-        // Detection should be fast (< 100ms for typical files)
+        // Detection should be fast (< 1000ms for typical files)
         assert!(
             duration.as_millis() < 1000,
             "Detection too slow: {}ms for {}",

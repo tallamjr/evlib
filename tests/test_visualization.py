@@ -414,16 +414,6 @@ class TesteTramVisualizer:
                 output_dir.rmdir()
 
 
-class TestVideoFrame:
-    """Test video frame utilities if available."""
-
-    def test_video_frame_creation(self):
-        """Test video frame creation and validation."""
-        # This would test the Rust video writer functionality
-        # For now, we'll just ensure the Python layer doesn't crash
-        pass
-
-
 class TestIntegration:
     """Integration tests with real eTram data."""
 

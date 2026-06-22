@@ -354,34 +354,6 @@ fn test_ecf_codec_detection() {
     println!("  - This will trigger ECF codec fallback mechanism");
 }
 
-// Importing Python modules from a native cargo-test binary requires a fully
-// configured embedded interpreter (PYTHONHOME / filesystem codec), which this test
-// harness does not provide; without it Python::with_gil aborts the whole binary.
-// Python module importability is covered by the pytest suite instead.
-#[cfg(feature = "python")]
-#[ignore = "requires a configured embedded Python interpreter not available to the native \
-            cargo-test binary; Python module imports are covered by the pytest suite"]
-#[test]
-fn test_python_fallback_import() {
-    // Test that our Python fallback modules can be imported
-    // This doesn't require the actual ECF codec, just tests module structure
-
-    use pyo3::prelude::*;
-
-    Python::with_gil(|py| {
-        // Test that we can import our fallback modules
-        match py.import("evlib.hdf5_prophesee") {
-            Ok(_) => println!("✓ Python hdf5_prophesee module importable"),
-            Err(e) => println!("⚠ Python fallback module not available: {}", e),
-        }
-
-        match py.import("evlib.ecf_decoder") {
-            Ok(_) => println!("✓ Python ecf_decoder module importable"),
-            Err(e) => println!("⚠ Python ECF decoder module not available: {}", e),
-        }
-    });
-}
-
 #[test]
 fn test_rust_ecf_codec_functionality() {
     // Test our Rust ECF codec implementation with synthetic data

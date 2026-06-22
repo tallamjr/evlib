@@ -43,7 +43,6 @@ fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
 }
 
 const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
-const ORIGINAL_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/original/front";
 const ETRAM_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/eTram/h5/val_2";
 
 /// Helper function to check if a test data file exists
@@ -66,17 +65,10 @@ fn get_test_files() -> Vec<String> {
         files.push(events_chunk_txt);
     }
 
-    // HDF5 files - check a few representative ones
-    let hdf5_files = [
-        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
-        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
-        format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5"),
-    ];
-
-    for file in hdf5_files {
-        if check_data_file_exists(&file) {
-            files.push(file);
-        }
+    // HDF5 file - tracked Prophesee sample
+    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
+    if check_data_file_exists(&etram_hdf5) {
+        files.push(etram_hdf5);
     }
 
     files
@@ -126,29 +118,26 @@ fn test_format_detection_text_files() {
 
 #[test]
 fn test_format_detection_hdf5_files() {
-    let hdf5_files = [
-        format!("{ORIGINAL_HDF5_DIR}/seq01.h5"),
-        format!("{ORIGINAL_HDF5_DIR}/seq02.h5"),
-    ];
-
-    for file_path in &hdf5_files {
-        if check_data_file_exists(file_path) {
-            let result = detect_event_format(file_path)
-                .unwrap_or_else(|_| panic!("Failed to detect format for {file_path}"));
-            assert_eq!(result.format, EventFormat::HDF5);
-            assert!(
-                result.confidence > 0.9,
-                "Low confidence for HDF5 format detection"
-            );
-            assert!(result.metadata.file_size > 0);
-
-            println!(
-                "{file_path} detected as: {format} (confidence: {confidence:.2})",
-                format = result.format,
-                confidence = result.confidence
-            );
-        }
+    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
+    if !check_data_file_exists(&etram_hdf5) {
+        println!("Skipping HDF5 detection test - file not found: {etram_hdf5}");
+        return;
     }
+
+    let result = detect_event_format(&etram_hdf5)
+        .unwrap_or_else(|_| panic!("Failed to detect format for {etram_hdf5}"));
+    assert_eq!(result.format, EventFormat::HDF5);
+    assert!(
+        result.confidence > 0.9,
+        "Low confidence for HDF5 format detection"
+    );
+    assert!(result.metadata.file_size > 0);
+
+    println!(
+        "{etram_hdf5} detected as: {format} (confidence: {confidence:.2})",
+        format = result.format,
+        confidence = result.confidence
+    );
 }
 
 #[test]
@@ -493,57 +482,38 @@ fn test_load_with_polarity_filtering() {
 #[cfg(feature = "hdf5")]
 #[test]
 fn test_hdf5_file_loading() {
-    let seq01_h5 = format!("{ORIGINAL_HDF5_DIR}/seq01.h5");
+    let hdf5_file = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
 
-    if !check_data_file_exists(&seq01_h5) {
-        println!("Skipping test: {seq01_h5} not found");
+    if !check_data_file_exists(&hdf5_file) {
+        println!("Skipping test: {hdf5_file} not found");
         return;
     }
 
-    // Try loading with common dataset names
-    let dataset_names = ["events", "t", "timestamps"];
-    let mut loaded = false;
+    match load_events_from_hdf5(&hdf5_file, None) {
+        Ok(df) => {
+            let events = dataframe_to_rows(&df);
+            assert!(!events.is_empty(), "No events loaded from HDF5 file");
 
-    for dataset_name in &dataset_names {
-        match load_events_from_hdf5(&seq01_h5, Some(dataset_name)) {
-            Ok(df) => {
-                let events = dataframe_to_rows(&df);
-                assert!(!events.is_empty(), "No events loaded from HDF5 file");
+            // Verify event structure
+            let first_event = &events[0];
+            assert!(first_event.t >= 0.0, "Timestamp should be non-negative");
+            assert!(
+                first_event.x < 1280,
+                "X coordinate should be within sensor bounds"
+            );
+            assert!(
+                first_event.y < 720,
+                "Y coordinate should be within sensor bounds"
+            );
 
-                // Verify event structure
-                let first_event = &events[0];
-                assert!(first_event.t >= 0.0, "Timestamp should be non-negative");
-                assert!(first_event.x < 1024, "X coordinate should be reasonable");
-                assert!(first_event.y < 1024, "Y coordinate should be reasonable");
-
-                println!(
-                    "Successfully loaded {count} events from {file} (dataset: {dataset})",
-                    count = events.len(),
-                    file = seq01_h5,
-                    dataset = dataset_name
-                );
-                loaded = true;
-                break;
-            }
-            Err(_) => continue,
+            println!(
+                "Successfully loaded {count} events from {hdf5_file} (auto-detected dataset)",
+                count = events.len()
+            );
         }
-    }
-
-    if !loaded {
-        // Try without specifying dataset name (auto-detection)
-        match load_events_from_hdf5(&seq01_h5, None) {
-            Ok(df) => {
-                assert!(df.height() > 0, "No events loaded from HDF5 file");
-                println!(
-                    "Successfully loaded {count} events from {file} (auto-detected dataset)",
-                    count = df.height(),
-                    file = seq01_h5
-                );
-            }
-            Err(e) => {
-                println!("Warning: Could not load HDF5 file {seq01_h5}: {e}");
-                // Don't fail the test as HDF5 structure may vary
-            }
+        Err(e) => {
+            println!("Warning: Could not load HDF5 file {hdf5_file}: {e}");
+            // Don't fail the test as HDF5 structure may vary
         }
     }
 }

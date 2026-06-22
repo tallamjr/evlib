@@ -56,7 +56,9 @@ def test_validation_helpers_basic():
         assert "valid" in result
 
         print(f"Quick validation: {'PASSED' if is_valid else 'FAILED'}")
-        print(f"Detailed validation: {'PASSED' if result['valid'] else 'FAILED'}")
+        print(
+            f"Detailed validation result: {'PASSED' if result['valid'] else 'FAILED'}"
+        )
 
     except ImportError:
         pytest.skip("Validation helpers not available (pandera not installed)")
@@ -74,7 +76,7 @@ def test_validation_schemas():
         # Test pre-defined schema
         assert ETRAM_SCHEMA is not None
 
-        print("✓ Validation schemas working correctly")
+        print("Validation schemas working correctly")
 
     except ImportError:
         pytest.skip("Validation helpers not available (pandera not installed)")
@@ -84,4 +86,4 @@ if __name__ == "__main__":
     # Run the tests when executed directly
     test_validation_helpers_basic()
     test_validation_schemas()
-    print("✓ All validation helper tests passed!")
+    print("All validation helper tests passed!")

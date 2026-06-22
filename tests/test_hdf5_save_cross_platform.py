@@ -1,56 +1,70 @@
 """
 Test HDF5 save functionality across platforms.
 
-This test verifies that HDF5 save works on:
-- Linux/macOS with Rust hdf5-metno (when HDF5 feature enabled)
-- Windows with Python h5py fallback
+This file tests ``evlib.save_events_to_hdf5``, which is a pure-Python h5py wrapper.
+It does NOT require the Rust HDF5 feature (``--features hdf5``); it only requires
+h5py to be installed. The module skips if h5py is absent.
+
+Real event data is loaded from ``data/slider_depth/events.txt`` (a tracked text-format
+recording, always present in CI) so no synthetic arrays are fabricated.
 """
 
-import tempfile
 import os
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from tests.hdf5_support import requires_hdf5
+h5py = pytest.importorskip("h5py")
 
-pytestmark = requires_hdf5
+import evlib
+
+ROOT = Path(__file__).resolve().parents[1]
+SLIDER_DEPTH_EVENTS = ROOT / "data/slider_depth/events.txt"
+
+
+def _load_slider_events(
+    n: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Load the first *n* events from slider_depth as numpy arrays.
+
+    Returns (xs, ys, ts, ps) where:
+    - xs, ys: int64 pixel coordinates
+    - ts: float64 timestamps in seconds
+    - ps: int64 polarity values (0 or 1 as stored in the text file)
+    """
+    import polars as pl
+
+    df = evlib.load_events(str(SLIDER_DEPTH_EVENTS)).head(n).collect()
+    xs = df["x"].to_numpy().astype(np.int64)
+    ys = df["y"].to_numpy().astype(np.int64)
+    ts = df["t"].dt.total_microseconds().to_numpy() / 1_000_000.0
+    ps = df["polarity"].to_numpy().astype(np.int64)
+    return xs, ys, ts, ps
 
 
 def test_hdf5_save_python_fallback():
-    """Test HDF5 save functionality (uses h5py fallback when Rust unavailable)."""
-    h5py = pytest.importorskip("h5py")
-    import evlib
+    """HDF5 save uses the h5py path and writes all four datasets correctly."""
+    xs, ys, ts, ps = _load_slider_events(1000)
 
-    # Create test data
-    n_events = 1000
-    xs = np.random.randint(0, 640, n_events, dtype=np.int64)
-    ys = np.random.randint(0, 480, n_events, dtype=np.int64)
-    ts = np.sort(np.random.uniform(0, 1.0, n_events))
-    ps = np.random.choice([-1, 1], n_events).astype(np.int64)
-
-    # Save to temporary HDF5 file
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        # Use the public save function (uses Python fallback when Rust not available)
         evlib.save_events_to_hdf5(xs, ys, ts, ps, tmp_path)
 
-        # Verify file was created
         assert os.path.exists(tmp_path)
 
-        # Verify contents using h5py
         with h5py.File(tmp_path, "r") as f:
             assert "events" in f
             grp = f["events"]
 
-            # Check datasets exist
             assert "xs" in grp
             assert "ys" in grp
             assert "ts" in grp
             assert "ps" in grp
 
-            # Verify data
             np.testing.assert_array_equal(grp["xs"][:], xs.astype(np.uint16))
             np.testing.assert_array_equal(grp["ys"][:], ys.astype(np.uint16))
             np.testing.assert_array_almost_equal(grp["ts"][:], ts)
@@ -62,41 +76,27 @@ def test_hdf5_save_python_fallback():
 
 
 def test_hdf5_save_auto_fallback():
-    """Test that save_events_to_hdf5 automatically chooses correct implementation."""
-    h5py = pytest.importorskip("h5py")
-    import evlib
+    """save_events_to_hdf5 writes all four datasets and preserves event count."""
+    xs, ys, ts, ps = _load_slider_events(500)
 
-    # Create test data
-    n_events = 500
-    xs = np.random.randint(0, 640, n_events, dtype=np.int64)
-    ys = np.random.randint(0, 480, n_events, dtype=np.int64)
-    ts = np.sort(np.random.uniform(0, 1.0, n_events))
-    ps = np.random.choice([-1, 1], n_events).astype(np.int64)
-
-    # Save using the auto-fallback function
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        # This should work on all platforms
         evlib.save_events_to_hdf5(xs, ys, ts, ps, tmp_path)
 
-        # Verify file exists
         assert os.path.exists(tmp_path)
 
-        # Verify contents
         with h5py.File(tmp_path, "r") as f:
             assert "events" in f
             grp = f["events"]
 
-            # Check all datasets present
             assert set(grp.keys()) == {"xs", "ys", "ts", "ps"}
 
-            # Verify data integrity
-            assert len(grp["xs"]) == n_events
-            assert len(grp["ys"]) == n_events
-            assert len(grp["ts"]) == n_events
-            assert len(grp["ps"]) == n_events
+            assert len(grp["xs"]) == len(xs)
+            assert len(grp["ys"]) == len(ys)
+            assert len(grp["ts"]) == len(ts)
+            assert len(grp["ps"]) == len(ps)
 
     finally:
         if os.path.exists(tmp_path):
@@ -104,13 +104,9 @@ def test_hdf5_save_auto_fallback():
 
 
 def test_hdf5_save_validation():
-    """Test that save_events_to_hdf5 validates array lengths."""
-    pytest.importorskip("h5py")
-    import evlib
-
-    # Create mismatched arrays
+    """save_events_to_hdf5 raises ValueError when array lengths differ."""
     xs = np.array([1, 2, 3], dtype=np.int64)
-    ys = np.array([1, 2], dtype=np.int64)  # Wrong length
+    ys = np.array([1, 2], dtype=np.int64)  # wrong length
     ts = np.array([0.1, 0.2, 0.3])
     ps = np.array([-1, 1, -1], dtype=np.int64)
 
@@ -118,7 +114,6 @@ def test_hdf5_save_validation():
         tmp_path = tmp.name
 
     try:
-        # Should raise ValueError for mismatched lengths
         with pytest.raises(ValueError, match="Arrays must have the same length"):
             evlib.save_events_to_hdf5(xs, ys, ts, ps, tmp_path)
 
@@ -128,25 +123,15 @@ def test_hdf5_save_validation():
 
 
 def test_hdf5_save_roundtrip():
-    """Test saving and loading HDF5 files."""
-    h5py = pytest.importorskip("h5py")
-    import evlib
-
-    # Create test data
-    n_events = 2000
-    xs = np.random.randint(0, 1280, n_events, dtype=np.int64)
-    ys = np.random.randint(0, 720, n_events, dtype=np.int64)
-    ts = np.sort(np.random.uniform(0, 2.0, n_events))
-    ps = np.random.choice([-1, 1], n_events).astype(np.int64)
+    """Saving and reloading events via h5py produces bit-identical arrays."""
+    xs, ys, ts, ps = _load_slider_events(2000)
 
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        # Save events
         evlib.save_events_to_hdf5(xs, ys, ts, ps, tmp_path)
 
-        # Load back using h5py
         with h5py.File(tmp_path, "r") as f:
             grp = f["events"]
             loaded_xs = grp["xs"][:]
@@ -154,7 +139,6 @@ def test_hdf5_save_roundtrip():
             loaded_ts = grp["ts"][:]
             loaded_ps = grp["ps"][:]
 
-        # Verify roundtrip
         np.testing.assert_array_equal(loaded_xs, xs.astype(np.uint16))
         np.testing.assert_array_equal(loaded_ys, ys.astype(np.uint16))
         np.testing.assert_array_almost_equal(loaded_ts, ts)
