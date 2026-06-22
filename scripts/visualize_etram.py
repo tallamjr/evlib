@@ -5,8 +5,8 @@ eTram Event Data Visualization CLI
 Command-line tool for visualizing eTram processed event camera data as videos.
 Provides similar visualization to the WASM demo with red/blue polarity rendering.
 
-Example usage:
-    python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 --output test_day_001.mp4
+Example usage (write under outputs/, which is gitignored, to keep the repo root clean):
+    python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 --output outputs/test_day_001.mp4
     python scripts/visualize_etram.py --batch data/eTram_processed/test --output-dir outputs/videos/
     python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 --fps 60 --decay 50
 """
@@ -94,16 +94,16 @@ def main():
         description="Visualize eTram event camera data as videos",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
+Examples (write under outputs/, which is gitignored, to keep the repo root clean):
   # Single file processing
-  python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 --output test.mp4
+  python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 --output outputs/test.mp4
 
   # Batch processing
   python scripts/visualize_etram.py --batch data/eTram_processed/test --output-dir outputs/
 
   # Custom parameters
   python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 \\
-    --output test.mp4 --fps 60 --decay 50 --resolution 1280x720
+    --output outputs/test.mp4 --fps 60 --decay 50 --resolution 1280x720
 
   # Time range selection
   python scripts/visualize_etram.py --input data/eTram_processed/test/test_day_001 \\
