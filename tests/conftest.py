@@ -17,6 +17,11 @@ from tests.hdf5_support import HAS_HDF5, requires_hdf5  # noqa: F401
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "python"))
 
+# Ensure the basetemp parent (tests/.output, configured via --basetemp in
+# pyproject.toml) exists before pytest creates its numbered tmp dirs, so a clean
+# checkout's first run does not fail while creating the nested basetemp path.
+(Path(__file__).parent / ".output").mkdir(parents=True, exist_ok=True)
+
 
 # Test markers
 def pytest_configure(config):

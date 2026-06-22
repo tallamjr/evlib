@@ -6,6 +6,7 @@ found in the documentation.
 """
 
 import pytest
+import shutil
 import sys
 import os
 from pathlib import Path
@@ -128,12 +129,23 @@ def setup_global_namespace():
     _global_namespace["numpy"] = np
     _global_namespace["time"] = time
 
-    # Use real project data directory
+    # Run documentation examples inside a contained scratch directory so any
+    # files they write (output.h5, events.parquet, ...) land under
+    # tests/.output/ instead of the repository root. Read-only resource
+    # directories are symlinked in so the examples' relative "data/..." paths
+    # still resolve.
     project_root = Path(__file__).parent.parent
+    scratch = project_root / "tests" / ".output" / "docs"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+    for resource in ("data", "benchmarks", "examples"):
+        src = project_root / resource
+        if src.exists():
+            (scratch / resource).symlink_to(src, target_is_directory=True)
 
-    # Change to project root directory so relative paths work
     original_cwd = os.getcwd()
-    os.chdir(project_root)
+    os.chdir(scratch)
     _global_namespace["_original_cwd"] = original_cwd
 
     yield _global_namespace

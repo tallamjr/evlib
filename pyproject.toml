@@ -99,6 +99,10 @@ markers = [
 ]
 addopts = [
     "--markdown-docs",
+    # Keep all test-generated temp files (tmp_path / tmpdir) inside the tests
+    # folder rather than the OS temp dir, so test outputs stay contained and
+    # gitignored. The dot-prefixed dir is excluded from collection by default.
+    "--basetemp=tests/.output/pytest",
 ]
 log_cli = "true"
 log_cli_level = "INFO"

@@ -749,6 +749,9 @@ output.*
 output_example.*
 events.parquet
 
+# Contained scratch dir for all test- and doc-generated outputs
+tests/.output/
+
 **/tasks/*.md
 
 python/evlib/models/weights
