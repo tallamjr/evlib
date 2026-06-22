@@ -19,9 +19,25 @@ The voxel grid, event frame and time surface are validated to be bit-faithful or
 
 All four builders (`create_voxel_grid`, `create_event_frame`, `create_time_surface`, `create_stacked_histogram`) accept an `engine` argument and run fully on the cudf GPU engine (no CPU fallback) when you pass `engine="gpu"` or a `pl.GPUEngine(...)`. The default is `engine="auto"`.
 
+The figure below applies these representations to the same 250ms window of events, with **event time encoded as colour** (dark blue is the start of the window, red is the end) and brightness set by event density. That makes each representation's temporal resolution visible at a glance: raw events show smooth colour-graded motion trails (full microsecond time); `create_event_frame` is grayscale because it keeps no time axis; `create_voxel_grid` and `create_stacked_histogram` show banded colour (time quantised into bins); and `create_time_surface` shows a smooth recency gradient.
+
+![evlib representations with event time encoded as colour, compared on the same window](../images/representation_gallery.png)
+
 ## Stacked Histograms (RVT-Compatible)
 
 Stacked histograms divide time into windows and bins, creating representations compatible with RVT preprocessing pipelines but with much better performance.
+
+`create_stacked_histogram(bins=N, window_duration_ms=D)` produces `N` temporal bins of `D` milliseconds each, so the representation spans `N x D` milliseconds in total (the example below covers `5 x 50 = 250` ms). Each bin keeps positive and negative polarity as separate channels.
+
+The figure below shows the transformation: on the left, the raw asynchronous event stream accumulated into a single signed frame (red `+1`, blue `-1`); on the right, the same 250ms window emitted by `create_stacked_histogram` as five 50ms temporal bins. Because the representation is deliberately motion-agnostic, fast objects smear across the frame and advance bin to bin.
+
+![Raw events transformed into a stacked-histogram representation, 80_balls EVT2 sample](../images/representations_sidebyside.png)
+
+The same transformation on the Prophesee `pedestrians` sequence (1280x720), where the walking figures progress across the temporal bins:
+
+![Raw events transformed into a stacked-histogram representation, pedestrians sequence](../images/representations_pedestrians.png)
+
+Both figures are produced by `scripts/generate_representation_figures.py`. The `80_balls` figure uses the tracked EVT2 sample and is fully reproducible; the `pedestrians` figure requires the larger local sample.
 
 ### Basic Usage
 

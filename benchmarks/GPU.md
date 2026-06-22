@@ -29,7 +29,7 @@ assume a speedup.
 
 There is also a deeper point from the CPU benchmark (see `README.md`): RVT's torch path is
 a dense scatter-add, which is algorithmically cheaper than our Polars hash group-by. A GPU
-group-by may or may not beat a GPU scatter-add (torch on CUDA). The honest expectation is
+group-by may or may not beat a GPU scatter-add (torch on CUDA). The expectation is
 "measure it", not "GPU will obviously win".
 
 ## Step-by-step on a CUDA machine
@@ -37,9 +37,11 @@ group-by may or may not beat a GPU scatter-add (torch on CUDA). The honest expec
 1. Install a cudf-polars build matching the CUDA toolkit and the installed Polars version
    (1.30.0 here). Follow the current RAPIDS install matrix at
    https://docs.rapids.ai/install , e.g. for CUDA 12:
+
    ```
    pip install --extra-index-url=https://pypi.nvidia.com cudf-polars-cu12
    ```
+
    Verify: `python -c "import cudf_polars; print('cudf-polars ok')"`.
 
 2. Confirm bit-identity on GPU first (correctness before speed). Run the acceptance test
@@ -48,9 +50,11 @@ group-by may or may not beat a GPU scatter-add (torch on CUDA). The honest expec
    The GPU output MUST be bit-identical; if it is not, stop and investigate before timing.
 
 3. Measure GPU coverage (the critical check). Run with verbose fallback reporting:
+
    ```
    POLARS_VERBOSE=1 evlib-rvt-preprocess ... --engine gpu 2>&1 | grep -i "fallback\|gpu\|cpu"
    ```
+
    If `join_asof`, `explode`, or the `over` window expression report a CPU fallback, the
    GPU is not actually accelerating those stages. Note exactly which stages run on GPU.
 
