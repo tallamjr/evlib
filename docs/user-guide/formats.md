@@ -10,7 +10,7 @@ This guide covers all supported event data formats in evlib, including format sp
 |--------|-----------|--------|----------|
 | **Text** | `.txt`, `.csv` | Production | Human-readable, debugging |
 | **HDF5** | `.h5`, `.hdf5` | Production (opt-in `--features hdf5`, Unix only) | Large datasets, fast I/O |
-| **EVT2** | `.raw` | Production (byte-identical to OpenEB) | Prophesee cameras (Gen 1-3) |
+| **EVT2** | `.raw` | Production (matches OpenEB exactly) | Prophesee cameras (Gen 1-3) |
 | **EVT3** | `.raw`, `.evt3` | Production | Prophesee cameras (Gen 4+) |
 | **AEDAT** | `.aedat`, `.aedat4` | Production | iniVation cameras |
 | **AER** | `.aer` | Production | Address Event Representation |
@@ -526,6 +526,6 @@ See the [Contributing Guide](../development/contributing.md) for detailed instru
 
 ## Summary
 
-evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. All formats are production ready, and EVT2 decode is byte-identical to the OpenEB reference. The HDF5 format is recommended for performance-critical applications and large datasets, and is opt-in via `--features hdf5` on Linux and macOS.
+evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. All formats are production ready, and EVT2 decode matches the OpenEB reference exactly. The HDF5 format is recommended for performance-critical applications and large datasets, and is opt-in via `--features hdf5` on Linux and macOS.
 
 For questions or issues with specific formats, please check the [Testing Documentation](../development/testing.md) or file an issue on GitHub.

@@ -172,8 +172,8 @@ The underlying native kernels are exposed directly as
 
 evlib is bit-validated against the reference implementations it competes with:
 RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set
-(18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT
-torch bar a single roughly 1e-10 boundary quirk, and the timings are:
+(18 sequences, RTX 4090), the RVT preprocessing output matches RVT torch
+exactly bar a single roughly 1e-10 boundary quirk, and the timings are:
 
 - evlib CUDA: 283.6s, slightly ahead of RVT torch-GPU at 286.3s (parity-plus,
   about 1.01x).
@@ -189,10 +189,10 @@ margins are evlib's CPU backends and the standalone representations.
 
 > [!Note]
 >
-> **State of the GPU and Metal work**: the CUDA backend is the production GPU path and edges out RVT's torch-GPU pipeline. The Metal backend is bit-identical to the CPU kernel on an M2 Pro, but about 3x slower there: the workload is memory-bound and the M2 Pro's CPU cores win. Metal is a portability path (an on-device kernel where torch-CUDA cannot run), not a speed win on M2-class hardware; use `backend="rust"` for the fastest Apple-CPU path.
+> **State of the GPU and Metal work**: the CUDA backend is the production GPU path and edges out RVT's torch-GPU pipeline. The Metal backend matches the CPU kernel exactly on an M2 Pro, but about 3x slower there: the workload is memory-bound and the M2 Pro's CPU cores win. Metal is a portability path (an on-device kernel where torch-CUDA cannot run), not a speed win on M2-class hardware; use `backend="rust"` for the fastest Apple-CPU path.
 
 <p align="center">
-  <img src="./benchmarks/out/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, bit-identical">
+  <img src="./benchmarks/out/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, with matching output">
 </p>
 
 More plots: the full five-backend chart

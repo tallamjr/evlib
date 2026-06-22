@@ -88,7 +88,7 @@ print(f"Time surface entries: {len(surface)}")
 
 ## Stacked histogram
 
-`create_stacked_histogram` bins events into fixed-duration windows and counts per (time_bin, polarity, y, x). This is a general representation; for the RVT-identical stacked histogram expected by the RVT detection pipeline, use `evlib.rvt` (see the RVT preprocessing section below).
+`create_stacked_histogram` bins events into fixed-duration windows and counts per (time_bin, polarity, y, x). This is a general representation; for the RVT-compatible stacked histogram expected by the RVT detection pipeline, use `evlib.rvt` (see the RVT preprocessing section below).
 
 ```python
 import evlib
@@ -101,7 +101,7 @@ hist = evr.create_stacked_histogram(
 print(f"Stacked histogram entries: {len(hist)}")
 ```
 
-## RVT-identical preprocessing
+## RVT-compatible preprocessing
 
 For the exact RVT stacked-histogram preprocessing, use `evlib.rvt.process_sequence`. It has a `backend` argument with four options: `"polars"` (CPU or cudf GPU), `"rust"` (Rust dense scatter-add, CPU), `"cuda"` (custom CUDA scatter-add kernel, NVIDIA GPU), and `"metal"` (Metal scatter-add kernel, Apple Silicon GPU). The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda` and `stacked_histogram_dense_metal`.
 

@@ -12,12 +12,12 @@ time, peak resident memory, and throughput for five pipelines:
 
 Each (backend, sequence) run executes in a fresh subprocess so peak RSS is an unambiguous
 per-process ``RUSAGE_SELF.ru_maxrss``. Every output is asserted bit-identical to that
-sequence's committed RVT reference h5 before its timing is kept; a non-identical output is a
+sequence's committed RVT reference h5 before its timing is kept; any divergent output is a
 hard failure (the whole point of the comparison is exact reproduction).
 
 The window grid for each sequence is taken from that sequence's own RVT
 ``timestamps_us.npy`` so the comparison isolates the representation computation (both
-pipelines window over the identical grid) rather than re-deriving it from labels.
+pipelines window over the same grid) rather than re-deriving it from labels.
 
 Run on the box (after activating the env)::
 
@@ -192,7 +192,7 @@ def run_rvt(
     """Run RVT's own modules; ``device='cuda'`` moves every window's events onto the GPU.
 
     Integer scatter-add (StackedHistogram, fastmode uint8) and nearest 0.5 downsample are
-    device-agnostic, so the GPU output is expected bit-identical to the CPU reference.
+    device-agnostic, so the GPU output is expected to match the CPU reference exactly.
     """
     _add_rvt_paths()
     import hdf5plugin  # noqa: F401  registers blosc/zstd filters used by RVT's H5Writer
@@ -245,13 +245,13 @@ def run_rvt(
 
 # A handful of boundary events differ from the torch reference because evlib's float64
 # binning only reproduces torch's float32 floor "on most data" (a pre-existing evlib-vs-torch
-# edge case, identical on CPU and GPU). Tolerate these tiny counts but hard-fail on anything
+# edge case, the same on CPU and GPU). Tolerate these tiny counts but hard-fail on anything
 # large enough to indicate a real regression.
 DIFF_HARD_FAIL = 10_000
 
 
 def verify_against_reference(out_h5: Path, ref_h5: Path) -> int:
-    """Return the number of elements differing from the committed reference (0 = bit-identical).
+    """Return the number of elements differing from the committed reference (0 = exact match).
 
     Raises on a shape mismatch or on a diff large enough to be a real bug (not boundary noise).
     """
@@ -400,7 +400,7 @@ def run_benchmark(
             run = _run_child(backend, seq, work, timeout)
             results[backend].append(run)
             tag = (
-                "bit-identical"
+                "exact match"
                 if run.diff_elems == 0
                 else f"{run.diff_elems} boundary elems differ"
             )
@@ -452,7 +452,7 @@ def write_summary_md(results: Dict[str, List[SeqRun]], path: Path) -> None:
         tdiff = sum(r.diff_elems for r in runs)
         total_elems = sum(r.n_windows for r in runs) * 20 * 360 * 640
         diff_str = (
-            "0 (bit-identical)"
+            "0 (exact match)"
             if tdiff == 0
             else f"{tdiff} / {total_elems} ({tdiff / total_elems:.1e})"
         )

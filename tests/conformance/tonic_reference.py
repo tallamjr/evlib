@@ -24,7 +24,7 @@ import numpy as np
 
 
 def tonic_voxel_grid(events_struct, sensor_size_whp, n_time_bins):
-    """Build a bilinear-interpolated event-volume voxel grid (tonic-identical).
+    """Build a bilinear-interpolated event-volume voxel grid (tonic-compatible).
 
     Parameters
     ----------
@@ -92,7 +92,7 @@ def tonic_voxel_grid(events_struct, sensor_size_whp, n_time_bins):
 
 
 def tonic_frame(events_struct, sensor_size_whp, n_time_bins):
-    """Build a dense event frame by equal-width time bins (tonic-identical).
+    """Build a dense event frame by equal-width time bins (tonic-compatible).
 
     PORTS tonic's ``to_frame_numpy`` ``n_time_bins`` path together with the
     ``SliceByTimeBins`` slicer it delegates to. The real tonic source lives at:
@@ -217,7 +217,7 @@ def _slice_events_by_time_indices(times, dt):
 
 
 def tonic_timesurface(events_struct, sensor_size_whp, dt, tau):
-    """Build HOTS time surfaces (tonic-identical). See Lagorce et al. 2016.
+    """Build HOTS time surfaces (tonic-compatible). See Lagorce et al. 2016.
 
     PORTS tonic's ``to_timesurface_numpy`` together with the ``SliceByTime``
     slicer it delegates to. The real tonic source lives at:

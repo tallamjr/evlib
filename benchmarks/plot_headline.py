@@ -46,7 +46,7 @@ def main() -> int:
     ax.invert_yaxis()
     ax.set_xlabel("total wall-clock over 18 gen4 sequences (s), lower is better")
     ax.set_title(
-        "evlib vs RVT preprocessing (RTX 4090): faster on GPU and CPU, bit-identical",
+        "evlib vs RVT preprocessing (RTX 4090): faster on GPU and CPU, with matching output",
         loc="left",
         fontsize=11,
         fontweight="bold",

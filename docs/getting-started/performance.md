@@ -30,7 +30,7 @@ The CUDA backend reaches parity-plus with RVT's own GPU pipeline because the sha
 
 ## Representations versus tonic
 
-For the general representation surface (voxel grid, event frame, time surface) the natural baseline is tonic (pure NumPy). The comparison feeds the identical events (a 20M-event eTram stream) to both libraries.
+For the general representation surface (voxel grid, event frame, time surface) the natural baseline is tonic (pure NumPy). The comparison feeds the same events (a 20M-event eTram stream) to both libraries.
 
 | Representation | evlib Polars CPU | tonic (NumPy) | Speedup |
 |----------------|------------------|---------------|---------|
@@ -46,21 +46,21 @@ evlib's cudf GPU plus UVM path runs all three of these fully on the GPU. At this
 
 The Metal backend was verified on an Apple M2 Pro. It compiles the MSL kernel at runtime and dispatches it on the actual Metal device, and its output is bit-identical to the CPU kernel (it bins with integer division, so there is no float32 precision caveat). On a realistic per-launch batch (5.1M events, 128 windows, 1280x720 downsampled to 640x360) the result was:
 
-| Backend | Per-batch time (M2 Pro) | Bit-identical |
+| Backend | Per-batch time (M2 Pro) | Matches CPU |
 |---------|-------------------------|---------------|
 | Rust dense scatter-add (CPU) | 94 ms | reference |
 | Metal scatter-add (Apple GPU) | 281 ms | yes |
 
 Metal is about 3x slower than the multi-threaded Rust CPU kernel on the M2 Pro. The kernel runs on the GPU (per-call setup is only about 5 ms once the shader is cached), but the workload is memory-bound: it allocates and reads back a large dense buffer, and the M2 Pro's integrated GPU loses that to the chip's fast CPU cores. The CUDA win on a discrete RTX 4090 does not transfer to an integrated Apple GPU.
 
-Metal is therefore a portability path: a bit-identical on-device kernel on Apple Silicon, where the torch-CUDA reference cannot run, but not a speed win on M2-class hardware. Use `backend="rust"` for the fastest path on an Apple machine. A larger Apple GPU (M-series Max or Ultra) may change the balance; that is unmeasured.
+Metal is therefore a portability path: an exact on-device match on Apple Silicon, where the torch-CUDA reference cannot run, but not a speed win on M2-class hardware. Use `backend="rust"` for the fastest path on an Apple machine. A larger Apple GPU (M-series Max or Ultra) may change the balance; that is unmeasured.
 
 ## Choosing an engine and backend
 
 - **Representations on a single stream:** use the default CPU Polars engine (`engine="auto"`). It is the fastest evlib path for transfer-bound calls and beats tonic across voxel grid, event frame and time surface.
 - **Representations on a workload larger than VRAM:** use `engine="gpu"`, which runs on cudf with CUDA managed memory so it can oversubscribe VRAM.
 - **RVT preprocessing on NVIDIA hardware:** use `backend="cuda"` for parity-plus with the RVT torch-GPU reference.
-- **RVT preprocessing on Apple Silicon:** use `backend="rust"` for the fastest path; `backend="metal"` runs the same computation on the Apple GPU bit-identically but is slower on M2-class hardware (see above).
+- **RVT preprocessing on Apple Silicon:** use `backend="rust"` for the fastest path; `backend="metal"` runs the same computation on the Apple GPU with matching output but is slower on M2-class hardware (see above).
 - **RVT preprocessing on CPU:** use `backend="rust"`, which is 1.32x faster than the RVT torch-CPU reference.
 
 ## Working with loaded events
@@ -116,4 +116,4 @@ python -m benchmarks.bench_tonic \
     --n-events 30000000
 ```
 
-Both harnesses run each measurement in a fresh subprocess so peak resident memory is an unambiguous per-process figure, and the RVT harness asserts every output is bit-identical to the reference before keeping its timing.
+Both harnesses run each measurement in a fresh subprocess so peak resident memory is an unambiguous per-process figure, and the RVT harness asserts every output matches the reference exactly before keeping its timing.

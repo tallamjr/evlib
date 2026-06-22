@@ -37,11 +37,11 @@ python -m benchmarks.bench_rvt_dataset \
     --backends evlib_gpu evlib_cpu evlib_rust rvt_gpu rvt_cpu
 ```
 
-The harness drives the raw to processed RVT stacked-histogram preprocessing across every sequence of a split, runs each (backend, sequence) in a fresh subprocess, and asserts every output is bit-identical to that sequence's committed RVT reference before keeping its timing. A non-identical output is a hard failure.
+The harness drives the raw to processed RVT stacked-histogram preprocessing across every sequence of a split, runs each (backend, sequence) in a fresh subprocess, and asserts every output matches that sequence's committed RVT reference exactly before keeping its timing. Any divergence is a hard failure.
 
 ## Representations versus tonic
 
-For the general representation surface (voxel grid, event frame, time surface), tonic (pure NumPy) is the natural baseline. The harness loads one real event stream once and feeds the identical events to both libraries. The numbers below are from a 20M-event eTram stream.
+For the general representation surface (voxel grid, event frame, time surface), tonic (pure NumPy) is the natural baseline. The harness loads one real event stream once and feeds the same events to both libraries. The numbers below are from a 20M-event eTram stream.
 
 | Representation | evlib Polars CPU | tonic (NumPy) | Speedup |
 |----------------|------------------|---------------|---------|

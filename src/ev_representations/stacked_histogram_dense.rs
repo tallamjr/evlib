@@ -17,7 +17,7 @@
 //!    window is sliced independently this happens naturally; do not deduplicate.
 //! 3. Counts are accumulated in a wide integer (`u32`) and only then clipped to the
 //!    cutoff and cast to `u8`. The reference has no pixel that wraps a u8, so wide-int +
-//!    clip is bit-identical to torch's u8 accumulation; do NOT emulate u8 wraparound.
+//!    clip matches torch's u8 accumulation exactly; do NOT emulate u8 wraparound.
 
 use ndarray::Array4;
 
@@ -77,7 +77,7 @@ pub fn stacked_histogram_dense(
             // Drop off-sensor coordinates. A raw Gen4 stream can carry a coordinate beyond the
             // nominal sensor extent (e.g. x = 1284 on a 1280-wide sensor); the Polars path drops
             // these via the downsample inner-join / is_between filter, so the dense path must too
-            // to stay bit-identical to RVT (and to avoid an out-of-bounds index into the maps).
+            // to match RVT exactly (and to avoid an out-of-bounds index into the maps).
             let yi = y[i];
             let xi = x[i];
             if yi < 0 || yi as usize >= row_map.len() || xi < 0 || xi as usize >= col_map.len() {

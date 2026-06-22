@@ -73,7 +73,7 @@ print(f"Time surface entries: {len(surface)}")
 
 ### `create_stacked_histogram(events, height, width, bins=10, window_duration_ms=50.0, engine="auto")`
 
-Bins events into fixed-duration windows and counts per (time_bin, polarity, y, x). Returns a DataFrame with columns `time_bin`, `polarity`, `y`, `x`, `count`. This is a general representation; for the RVT-identical stacked histogram, use `evlib.rvt` (see below).
+Bins events into fixed-duration windows and counts per (time_bin, polarity, y, x). Returns a DataFrame with columns `time_bin`, `polarity`, `y`, `x`, `count`. This is a general representation; for the RVT-compatible stacked histogram, use `evlib.rvt` (see below).
 
 ```python
 import evlib
@@ -86,7 +86,7 @@ hist = evr.create_stacked_histogram(
 print(f"Stacked histogram entries: {len(hist)}")
 ```
 
-### RVT-identical preprocessing
+### RVT-compatible preprocessing
 
 `evlib.rvt.process_sequence` reproduces RVT's stacked-histogram preprocessing. Its `backend` argument has four options:
 

@@ -1,4 +1,4 @@
-//! Event representations: dense scatter-add stacked histogram (RVT-identical).
+//! Event representations: dense scatter-add stacked histogram (RVT-compatible).
 
 pub mod stacked_histogram_dense;
 

@@ -1,4 +1,4 @@
-"""Orchestrate the RVT-identical preprocessing for one sequence."""
+"""Orchestrate the RVT-compatible preprocessing for one sequence."""
 
 from pathlib import Path
 from typing import Optional
@@ -307,7 +307,9 @@ def process_sequence(
                 # amortise the host<->device transfer and kernel launch over many windows (the CPU
                 # Rust backend stays at its small default).
                 window_batch_size=(
-                    cuda_batch_windows if backend in ("cuda", "metal") else window_batch_size
+                    cuda_batch_windows
+                    if backend in ("cuda", "metal")
+                    else window_batch_size
                 ),
                 gpu=(backend if backend in ("cuda", "metal") else None),
             )

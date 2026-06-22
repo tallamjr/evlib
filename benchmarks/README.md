@@ -13,7 +13,7 @@ Run it with:
 
 ## What is compared
 
-Four pipeline variants, all producing the identical output tensor of shape
+Four pipeline variants, all producing the same output tensor of shape
 `(1198, 20, 360, 640)` in `uint8`:
 
 1. **evlib rust (dense scatter-add)**: `evlib.rvt.process_sequence(backend="rust")`. Reads
@@ -38,16 +38,16 @@ Four pipeline variants, all producing the identical output tensor of shape
 
 - **Same raw input** for all variants: the committed Gen4 val h5.
 - **Same reference grid**: every variant windows over the committed reference
-  `timestamps_us.npy` (1198 window-end timestamps), so the windowing is identical. The
+  `timestamps_us.npy` (1198 window-end timestamps), so the windowing is the same. The
   RVT reference is fed this grid directly rather than recomputing it from labels, which
   is the only adaptation made to its code.
 - **Bit-identical outputs verified**: before any timing, each variant is run once and its
   output asserted `np.array_equal` to the committed reference output across all 1198
-  windows. The run aborts if any variant is not bit-identical, so we never benchmark a
+  windows. The run aborts if any variant diverges from the reference, so we never benchmark a
   broken build. All four variants pass.
 - **Timing**: each variant runs in a fresh subprocess, `--repeats 3` times. The bar shows
   the median with min..max error bars. The reported time is the pipeline body wall-clock
-  (excluding interpreter and import start-up, which is identical across variants).
+  (excluding interpreter and import start-up, which is the same across variants).
 - **Peak memory**: each subprocess reports its own peak resident set size via
   `resource.getrusage(RUSAGE_SELF).ru_maxrss`, normalised to bytes per platform (bytes on
   macOS, KiB on Linux). This captures native Polars and torch buffers that `tracemalloc`

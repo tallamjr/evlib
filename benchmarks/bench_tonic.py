@@ -2,7 +2,7 @@
 
 tonic (pure NumPy) is the natural baseline for evlib's general representation/filtering surface
 (unlike RVT, which is a single-model preprocessing script). This harness loads one real event
-stream once, feeds the IDENTICAL events to both libraries, and compares wall-clock and peak RSS
+stream once, feeds the same events to both libraries, and compares wall-clock and peak RSS
 for the representations both implement: voxel grid, event frame (ToFrame n_time_bins), and HOTS
 time surface. evlib's outputs are already bit/closely validated against tonic, so this measures
 speed and memory, not correctness.
@@ -72,8 +72,10 @@ def _tonic_array(df):
     y = df["y"].to_numpy().astype(np.int16)
     t = df["t"].dt.total_microseconds().to_numpy().astype(np.int64)
     pol = df["polarity"].to_numpy()
-    p = ((pol > 0).astype(np.int8))  # evlib -1/+1 -> tonic 0/1
-    dtype = np.dtype([("x", np.int16), ("y", np.int16), ("t", np.int64), ("p", np.int8)])
+    p = (pol > 0).astype(np.int8)  # evlib -1/+1 -> tonic 0/1
+    dtype = np.dtype(
+        [("x", np.int16), ("y", np.int16), ("t", np.int64), ("p", np.int8)]
+    )
     arr = np.empty(len(x), dtype=dtype)
     arr["x"], arr["y"], arr["t"], arr["p"] = x, y, t, p
     return arr
@@ -117,30 +119,52 @@ def _child(args: argparse.Namespace) -> None:
         sig = float(np.asarray(out).sum())
     else:
         if op == "voxel_grid":
-            res = evr.create_voxel_grid(lf, HEIGHT, WIDTH, N_TIME_BINS_VOXEL, engine=engine)
+            res = evr.create_voxel_grid(
+                lf, HEIGHT, WIDTH, N_TIME_BINS_VOXEL, engine=engine
+            )
         elif op == "event_frame":
-            res = evr.create_event_frame(lf, HEIGHT, WIDTH, N_TIME_BINS_FRAME, engine=engine)
+            res = evr.create_event_frame(
+                lf, HEIGHT, WIDTH, N_TIME_BINS_FRAME, engine=engine
+            )
         elif op == "time_surface":
-            res = evr.create_time_surface(lf, HEIGHT, WIDTH, dt=dt, tau=tau, engine=engine)
+            res = evr.create_time_surface(
+                lf, HEIGHT, WIDTH, dt=dt, tau=tau, engine=engine
+            )
         else:
             raise ValueError(op)
         sig = float(res.height)
     wall = time.perf_counter() - start
     peak = ru_maxrss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-    print(json.dumps({"wall_s": wall, "peak_rss_bytes": peak, "n_events": n, "sig": sig}))
+    print(
+        json.dumps({"wall_s": wall, "peak_rss_bytes": peak, "n_events": n, "sig": sig})
+    )
 
 
 def _run(op: str, backend: str, raw: Path, n_events: int, timeout: float) -> Dict:
     proc = subprocess.run(
         [
-            sys.executable, "-m", "benchmarks.bench_tonic",
-            "--child", op, "--backend", backend, "--raw", str(raw),
-            "--n-events", str(n_events),
+            sys.executable,
+            "-m",
+            "benchmarks.bench_tonic",
+            "--child",
+            op,
+            "--backend",
+            backend,
+            "--raw",
+            str(raw),
+            "--n-events",
+            str(n_events),
         ],
-        cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"{op}/{backend} failed (rc={proc.returncode})\n{proc.stdout}\n{proc.stderr}")
+        raise RuntimeError(
+            f"{op}/{backend} failed (rc={proc.returncode})\n{proc.stdout}\n{proc.stderr}"
+        )
     for line in proc.stdout.splitlines():
         line = line.strip()
         if line.startswith("{") and "peak_rss_bytes" in line:
@@ -148,7 +172,9 @@ def _run(op: str, backend: str, raw: Path, n_events: int, timeout: float) -> Dic
     raise RuntimeError(f"no JSON from {op}/{backend}:\n{proc.stdout}\n{proc.stderr}")
 
 
-def plot(results: Dict[str, Dict[str, Dict]], ops: Sequence[str], out_png: Path) -> None:
+def plot(
+    results: Dict[str, Dict[str, Dict]], ops: Sequence[str], out_png: Path
+) -> None:
     """Grouped horizontal bars: per op, one bar per backend (wall-clock seconds)."""
     import matplotlib
 
@@ -165,7 +191,9 @@ def plot(results: Dict[str, Dict[str, Dict]], ops: Sequence[str], out_png: Path)
     for j, b in enumerate(backends):
         vals = [results[op].get(b, {}).get("wall_s", 0.0) for op in ops]
         ypos = y0 + (j - (n - 1) / 2) * h
-        ax.barh(ypos, vals, height=h, color=colour.get(b, "#888"), label=LABEL[b], zorder=3)
+        ax.barh(
+            ypos, vals, height=h, color=colour.get(b, "#888"), label=LABEL[b], zorder=3
+        )
         for yp, v in zip(ypos, vals):
             if v:
                 ax.text(v, yp, f" {v:.2f}s", va="center", ha="left", fontsize=8)
@@ -173,7 +201,12 @@ def plot(results: Dict[str, Dict[str, Dict]], ops: Sequence[str], out_png: Path)
     ax.set_yticklabels(ops)
     ax.invert_yaxis()
     ax.set_xlabel("wall-clock time (s), lower is better")
-    ax.set_title("evlib vs tonic representations (20M events)", loc="left", fontsize=12, fontweight="bold")
+    ax.set_title(
+        "evlib vs tonic representations (20M events)",
+        loc="left",
+        fontsize=12,
+        fontweight="bold",
+    )
     ax.legend(fontsize=8, loc="lower right")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -189,11 +222,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", type=Path)
     parser.add_argument("--n-events", type=int, default=30_000_000)
-    parser.add_argument("--backends", nargs="+", default=list(BACKENDS), choices=list(BACKENDS))
+    parser.add_argument(
+        "--backends", nargs="+", default=list(BACKENDS), choices=list(BACKENDS)
+    )
     parser.add_argument("--ops", nargs="+", default=list(OPS), choices=list(OPS))
     parser.add_argument("--timeout", type=float, default=1800.0)
     parser.add_argument("--out-prefix", default="tonic_bench")
-    parser.add_argument("--replot", action="store_true", help="re-render plot from saved results JSON")
+    parser.add_argument(
+        "--replot", action="store_true", help="re-render plot from saved results JSON"
+    )
     parser.add_argument("--child", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--backend", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -206,7 +243,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results_json = OUT_DIR / f"{args.out_prefix}_results.json"
     if args.replot:
         results = json.loads(results_json.read_text())
-        plot(results, [op for op in args.ops if op in results], OUT_DIR / f"{args.out_prefix}_time.png")
+        plot(
+            results,
+            [op for op in args.ops if op in results],
+            OUT_DIR / f"{args.out_prefix}_time.png",
+        )
         print(f"Wrote {OUT_DIR / f'{args.out_prefix}_time.png'}")
         return 0
     if args.raw is None:
@@ -219,22 +260,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for backend in args.backends:
             r = _run(op, backend, args.raw, args.n_events, args.timeout)
             results[op][backend] = r
-            print(f"  {LABEL[backend]:30s} {r['wall_s']:8.2f}s  peak {r['peak_rss_bytes']/1024**3:6.2f} GB")
+            print(
+                f"  {LABEL[backend]:30s} {r['wall_s']:8.2f}s  peak {r['peak_rss_bytes'] / 1024**3:6.2f} GB"
+            )
 
     md = OUT_DIR / f"{args.out_prefix}.md"
     lines = [
         "# evlib vs tonic representation benchmark",
         "",
-        f"Single event stream, {args.n_events:,} events, eTram (1280x720). Identical events to both.",
+        f"Single event stream, {args.n_events:,} events, eTram (1280x720). Same events to both.",
         "Wall-clock and peak RSS per (op, backend) in isolated subprocesses (single pass).",
         "",
     ]
     for op in args.ops:
-        lines += [f"## {op}", "", "| backend | time (s) | peak RSS (GB) | events/s |", "| --- | --- | --- | --- |"]
+        lines += [
+            f"## {op}",
+            "",
+            "| backend | time (s) | peak RSS (GB) | events/s |",
+            "| --- | --- | --- | --- |",
+        ]
         for backend in args.backends:
             r = results[op][backend]
             eps = r["n_events"] / r["wall_s"]
-            lines.append(f"| {LABEL[backend]} | {r['wall_s']:.2f} | {r['peak_rss_bytes']/1024**3:.2f} | {eps/1e6:.1f}M |")
+            lines.append(
+                f"| {LABEL[backend]} | {r['wall_s']:.2f} | {r['peak_rss_bytes'] / 1024**3:.2f} | {eps / 1e6:.1f}M |"
+            )
         # speedup vs tonic
         if "tonic" in results[op]:
             tw = results[op]["tonic"]["wall_s"]
@@ -242,9 +292,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 if backend == "tonic":
                     continue
                 bw = results[op][backend]["wall_s"]
-                rel = f"{tw/bw:.2f}x faster" if bw <= tw else f"{bw/tw:.2f}x slower"
-                lines.append(f"")
-                lines.append(f"{LABEL[backend]} is {rel} than tonic for {op} ({bw:.2f}s vs {tw:.2f}s).")
+                rel = f"{tw / bw:.2f}x faster" if bw <= tw else f"{bw / tw:.2f}x slower"
+                lines.append("")
+                lines.append(
+                    f"{LABEL[backend]} is {rel} than tonic for {op} ({bw:.2f}s vs {tw:.2f}s)."
+                )
         lines.append("")
     results_json.write_text(json.dumps(results, indent=2))
     md.write_text("\n".join(lines) + "\n")
@@ -252,7 +304,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         plot(results, args.ops, OUT_DIR / f"{args.out_prefix}_time.png")
         print(f"Wrote {OUT_DIR / f'{args.out_prefix}_time.png'}")
     except ImportError as exc:
-        print(f"Skipped plot (matplotlib unavailable: {exc}); run --replot where it is installed.")
+        print(
+            f"Skipped plot (matplotlib unavailable: {exc}); run --replot where it is installed."
+        )
     print(f"Wrote {md}")
     print("\n" + md.read_text())
     return 0

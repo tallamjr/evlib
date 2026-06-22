@@ -78,7 +78,7 @@ evlib/
         ├── __init__.py             # load_events, engine config, re-exports
         ├── filtering.py            # Event filtering (pure Python Polars)
         ├── representations.py      # Representations (pure Python Polars)
-        ├── rvt/                    # RVT-identical preprocessing pipeline
+        ├── rvt/                    # RVT-compatible preprocessing pipeline
         ├── models/                 # E2VID and RVT (Python / PyTorch)
         ├── visualization.py        # Plotting helpers (Python-only)
         └── simulation.py           # ESIM video-to-events simulation
@@ -129,7 +129,7 @@ All processing is Python Polars:
 
 - `evlib.filtering`: time, ROI, polarity, hot-pixel, and noise filters as lazy Polars expressions.
 - `evlib.representations`: stacked histograms, voxel grids, mixed density stacks.
-- `evlib.rvt`: the RVT-identical preprocessing pipeline (Polars plus the Rust scatter backend).
+- `evlib.rvt`: the RVT-compatible preprocessing pipeline (Polars plus the Rust scatter backend).
 - `evlib.models`: E2VID and RVT models in Python/PyTorch with real pretrained weights.
 - `evlib.visualization`: plotting helpers, pure Python.
 

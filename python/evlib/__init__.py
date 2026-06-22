@@ -160,7 +160,7 @@ try:
 except ImportError:
     simulation = None
 
-# RVT preprocessing pipeline. This is the RVT-identical histogram path; the
+# RVT preprocessing pipeline. This is the RVT-compatible histogram path; the
 # legacy representations.create_stacked_histogram computes a different quantity.
 try:
     from . import rvt

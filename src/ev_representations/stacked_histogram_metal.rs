@@ -256,9 +256,6 @@ mod tests {
         )
         .expect("metal backend");
         assert_eq!(cpu.shape(), metal.shape());
-        assert_eq!(
-            cpu, metal,
-            "Metal output must be bit-identical to CPU dense"
-        );
+        assert_eq!(cpu, metal, "Metal output must match CPU dense exactly");
     }
 }

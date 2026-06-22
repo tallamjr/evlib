@@ -129,7 +129,7 @@ E2VID and RVT models are available in Python via `evlib.models` (requires `pip i
 from evlib.models import E2VID, RVT
 ```
 
-For RVT-identical preprocessing, use `evlib.rvt.process_sequence(...)`, which offers four backends (`polars`, `rust`, `cuda`, `metal`).
+For RVT-compatible preprocessing, use `evlib.rvt.process_sequence(...)`, which offers four backends (`polars`, `rust`, `cuda`, `metal`).
 
 ## File Format Support
 

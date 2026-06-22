@@ -32,13 +32,13 @@ designed for scalable data processing with real-world event camera datasets.
 - **Polars DataFrame Integration**: High-performance lazy DataFrame operations; `load_events` returns a `LazyFrame` that collects on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`)
 - **Event Filtering**: Comprehensive filtering with temporal, spatial, and polarity options
 - **Event Representations**: Voxel grids, event frames, time surfaces, and stacked histograms; bit-validated against tonic, and the GPU path runs fully on the cudf engine with no CPU fallback
-- **GPU-Accelerated RVT Preprocessing**: `evlib.rvt.process_sequence` offers four backends (`polars`, `rust`, `cuda`, `metal`) with native CUDA and Metal scatter-add kernels, bit-identical to RVT (PyTorch)
+- **GPU-Accelerated RVT Preprocessing**: `evlib.rvt.process_sequence` offers four backends (`polars`, `rust`, `cuda`, `metal`) with native CUDA and Metal scatter-add kernels, matching RVT (PyTorch) exactly
 - **Neural Network Models**: E2VID and RVT model loading and inference (Python/PyTorch, via `evlib.models`)
 - **Real-time Data Processing**: Handle large datasets (550MB+ files) efficiently
 - **Polarity Encoding**: Automatic conversion between 0/1 and -1/1 polarities
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
-evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT torch bar a single roughly 1e-10 boundary quirk: evlib CUDA runs at 283.6s (parity-plus versus RVT torch-GPU at 286.3s), evlib Rust-CPU at 406.2s is 1.32x faster than RVT torch-CPU (534.2s), and evlib CUDA is 1.88x faster than RVT torch-CPU. Standalone representations beat tonic NumPy on 20M events: voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. See `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`.
+evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), the RVT preprocessing output matches RVT torch exactly bar a single roughly 1e-10 boundary quirk: evlib CUDA runs at 283.6s (parity-plus versus RVT torch-GPU at 286.3s), evlib Rust-CPU at 406.2s is 1.32x faster than RVT torch-CPU (534.2s), and evlib CUDA is 1.88x faster than RVT torch-CPU. Standalone representations beat tonic NumPy on 20M events: voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. See `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`.
 
 ---
 
@@ -348,7 +348,7 @@ print(f"Successfully saved {len(x)} processed events to HDF5")
 
 ### Performance Benchmarks
 
-evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), RVT preprocessing is bit-identical to RVT torch bar a single roughly 1e-10 boundary quirk:
+evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), RVT preprocessing reproduces RVT torch exactly bar a single roughly 1e-10 boundary quirk:
 
 - evlib CUDA: 283.6s (parity-plus versus RVT torch-GPU at 286.3s, about 1.01x)
 - evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU (534.2s)
@@ -505,7 +505,7 @@ evlib provides several Python modules for different aspects of event processing:
 - **`evlib.formats`**: Direct Rust access for format loading and detection
 - **`evlib.filtering`**: High-performance event filtering with Polars
 - **`evlib.representations`**: Event representations (voxel grids, event frames, time surfaces, stacked histograms)
-- **`evlib.rvt`**: RVT-identical preprocessing with four backends (`polars`, `rust`, `cuda`, `metal`)
+- **`evlib.rvt`**: RVT-compatible preprocessing with four backends (`polars`, `rust`, `cuda`, `metal`)
 - **`evlib.models`**: E2VID and RVT model loading and inference (Python/PyTorch)
 
 ### Module Overview

@@ -150,7 +150,7 @@ def run_pipeline_subprocess(
         )
     payload = _parse_child_json(proc.stdout)
     # Prefer the child's own internal pipeline wall-clock for the bar (excludes the
-    # ~1-2s interpreter + import start-up that is identical across pipelines).
+    # ~1-2s interpreter + import start-up that is the same across pipelines).
     wall_s = float(payload.get("wall_s", elapsed))
     peak = int(payload["peak_rss_bytes"])
     return RunResult(wall_s=wall_s, peak_rss_bytes=peak)
@@ -305,7 +305,7 @@ def run_rvt_reference(out_h5: Path) -> float:
     (count_cutoff=10, fastmode=True), ``downsample_ev_repr`` (nearest-exact 0.5), and
     ``H5Writer`` exactly as in ``write_event_representations``. The only adaptation is
     that the window-end grid is supplied directly (the committed reference grid) instead
-    of being recomputed from labels, so both pipelines window over the identical grid.
+    of being recomputed from labels, so both pipelines window over the same grid.
     Returns internal wall-clock seconds for the pipeline body.
     """
     _add_rvt_paths()
@@ -363,7 +363,7 @@ def run_rvt_reference(out_h5: Path) -> float:
 
 
 def verify_against_reference(out_h5: Path) -> None:
-    """Assert ``out_h5`` is bit-identical to the committed reference output."""
+    """Assert ``out_h5`` matches the committed reference output exactly."""
     import h5py
     import hdf5plugin  # noqa: F401  registers blosc/zstd filters used by the reference h5
 
@@ -380,7 +380,7 @@ def verify_against_reference(out_h5: Path) -> None:
     if not np.array_equal(ref, got):
         diff = int(np.count_nonzero(ref != got))
         raise AssertionError(
-            f"{out_h5} not bit-identical to reference: {diff} differing elements "
+            f"{out_h5} does not match reference exactly: {diff} differing elements "
             f"of {ref.size}"
         )
 
@@ -397,7 +397,7 @@ def run_benchmark(
 ) -> Dict[str, PipelineResult]:
     """Run all pipelines ``repeats`` times in subprocesses, returning measurements.
 
-    Verifies each pipeline's output bit-identical to the reference once before timing.
+    Verifies each pipeline's output matches the reference exactly once before timing.
     ``rvt_repeats`` lets the (slower) RVT reference use fewer repeats than evlib.
     """
     if rvt_repeats is None:
@@ -414,11 +414,11 @@ def run_benchmark(
     ]
 
     # Verification pass: run each pipeline once and check the output.
-    print("Verification pass (one run each, asserting bit-identical output)...")
+    print("Verification pass (one run each, asserting exact-match output)...")
     for key, _label, _n in specs:
         out_h5 = _verify_one(key, work, timeout)
         verify_against_reference(out_h5)
-        print(f"  {key}: output verified bit-identical to reference -> {out_h5}")
+        print(f"  {key}: output verified an exact match to reference -> {out_h5}")
 
     results: Dict[str, PipelineResult] = {}
     for key, label, n in specs:

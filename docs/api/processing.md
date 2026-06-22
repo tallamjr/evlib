@@ -79,7 +79,7 @@ hist = evr.create_stacked_histogram(
 voxel = evr.create_voxel_grid(events, height=720, width=1280, n_time_bins=5)
 ```
 
-For the RVT-identical preprocessing pipeline, use `evlib.rvt.process_sequence(...)`. It offers four interchangeable backends via `backend=`:
+For the RVT-compatible preprocessing pipeline, use `evlib.rvt.process_sequence(...)`. It offers four interchangeable backends via `backend=`:
 
 - `"polars"`: Polars on the CPU, or on the cudf GPU engine when you pass an `engine=` of `"gpu"` or a `pl.GPUEngine(...)`.
 - `"rust"`: Rust dense scatter-add on the CPU.
@@ -88,7 +88,7 @@ For the RVT-identical preprocessing pipeline, use `evlib.rvt.process_sequence(..
 
 The native kernels behind these backends are exposed directly as `evlib.representations_rs.stacked_histogram_dense` (CPU), `stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
 
-Note that `evlib.rvt` and `evlib.representations.create_stacked_histogram` compute different quantities: use `evlib.rvt` when you need bit-identical RVT preprocessing.
+Note that `evlib.rvt` and `evlib.representations.create_stacked_histogram` compute different quantities: use `evlib.rvt` when you need output that matches RVT exactly.
 
 ## `evlib.models`
 

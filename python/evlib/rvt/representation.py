@@ -7,7 +7,7 @@ The ``engine`` argument is forwarded to ``LazyFrame.collect(engine=...)``. Accep
 ``"auto"``, ``"in-memory"``, ``"streaming"``, ``"gpu"`` (string) or a ``pl.GPUEngine(...)``
 instance. GPU and streaming are mutually exclusive in Polars: the GPU (cudf-polars) backend
 does not stream. Requesting the GPU engine on a host without CUDA / cudf-polars is safe; Polars
-transparently falls back to the default CPU engine and produces identical output, so no explicit
+transparently falls back to the default CPU engine and produces the same output, so no explicit
 fallback handling is needed here.
 
 Two window-assignment front-ends share one binning/aggregation core (``_bin_downsample_aggregate``):
@@ -60,7 +60,7 @@ def _bin_downsample_aggregate(
     t1 = pl.col("t").max().over("window_id")
     # clip()s are written as when/then because the cudf-polars GPU engine has no `clip`
     # unary. Each is exactly equivalent to the clip it replaces (same dtype), so the output
-    # stays bit-identical to torch RVT. denom keeps the Int64 div-by-zero guard (span == 0
+    # matches torch RVT exactly. denom keeps the Int64 div-by-zero guard (span == 0
     # for a single-timestamp window).
     _span = t1 - t0
     denom = (
@@ -157,7 +157,7 @@ def build_sparse_histogram(
     #
     # We reproduce that exactly by cross-joining each (already window-bounded) batch of events
     # with the batch's small window-end grid and keeping the membership predicate. The set of
-    # windows kept for an event is precisely { i : t <= T_i <= t + delta_t }, identical to the
+    # windows kept for an event is precisely { i : t <= T_i <= t + delta_t }, the same as the
     # forward/backward as-of range the previous implementation exploded, and the shared-boundary
     # event naturally matches two rows. Crucially, cross-join + filter are supported by the
     # cudf-polars GPU engine, whereas join_asof and int_ranges are not, so the whole query now
@@ -201,7 +201,7 @@ def build_sparse_histogram_assigned(
 
     Window assignment is done upstream with ``np.searchsorted`` (O(n_events)), so a whole sequence
     (or a large multi-window batch) can be aggregated in a single GPU pass without the per-window
-    cross-join blow-up. Output is bit-identical to :func:`build_sparse_histogram`.
+    cross-join blow-up. Output matches :func:`build_sparse_histogram` exactly.
     """
     lf = (
         events_with_window_id.lazy()

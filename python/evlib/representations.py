@@ -43,7 +43,7 @@ def create_stacked_histogram(
 
     This bins events into fixed-duration windows relative to the global minimum
     timestamp and returns a long-format DataFrame. It is NOT the RVT preprocessing
-    representation: for an RVT-identical stacked histogram (the format expected by
+    representation: for an RVT-compatible stacked histogram (the format expected by
     the RVT detection pipeline) use ``evlib.rvt`` instead, e.g.
     ``evlib.rvt.process_sequence`` / ``evlib.rvt.build_sparse_histogram``.
 

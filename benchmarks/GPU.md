@@ -10,7 +10,7 @@ evlib-rvt-preprocess --in-h5 <raw.h5> --grid-npy <timestamps_us.npy> \
 ```
 
 On a host without CUDA / cudf-polars (such as this macOS laptop) Polars transparently
-falls back to the CPU engine and produces identical output, so the GPU path cannot be
+falls back to the CPU engine and produces the same output, so the GPU path cannot be
 benchmarked here. It must be validated on an NVIDIA CUDA machine.
 
 ## Why this needs real validation, not assumption
@@ -44,7 +44,7 @@ group-by may or may not beat a GPU scatter-add (torch on CUDA). The expectation 
 
    Verify: `python -c "import cudf_polars; print('cudf-polars ok')"`.
 
-2. Confirm bit-identity on GPU first (correctness before speed). Run the acceptance test
+2. Confirm exact GPU output first (correctness before speed). Run the acceptance test
    with the engine overridden to gpu, or run `process_sequence(..., engine="gpu")` and
    `np.array_equal` the output against the reference `event_representations_ds2_nearest.h5`.
    The GPU output MUST be bit-identical; if it is not, stop and investigate before timing.
@@ -70,6 +70,6 @@ To actually exploit the GPU, the window-assignment and per-window normalisation 
 restructuring into GPU-supported operations (e.g. replacing the `join_asof` + `explode`
 window assignment with an integer-arithmetic window id and the `.over()` min/max with a
 `group_by` + join of per-window bounds). That restructuring must keep the output
-bit-identical (the acceptance gate is the arbiter) and should only be written and merged on
+matching the reference (the acceptance gate is the arbiter) and should only be written and merged on
 a machine where it can actually be run and verified, per the project's rule against
 unvalidated code.

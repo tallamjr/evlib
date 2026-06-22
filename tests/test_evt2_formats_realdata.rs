@@ -357,7 +357,7 @@ mod evt2_tests {
 
         // 80_balls.raw contains ~4.5M events; assert a non-trivial count
         assert!(
-            events.len() > 0,
+            !events.is_empty(),
             "Should have loaded events from 80_balls.raw"
         );
 

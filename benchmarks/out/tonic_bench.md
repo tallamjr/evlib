@@ -1,6 +1,6 @@
 # evlib vs tonic representation benchmark
 
-Single event stream, 20,000,000 events, eTram (1280x720). Identical events to both.
+Single event stream, 20,000,000 events, eTram (1280x720). Same events to both.
 Wall-clock and peak RSS per (op, backend) in isolated subprocesses (single pass).
 
 ## voxel_grid
@@ -38,4 +38,3 @@ evlib Polars (GPU / cudf UVM) is 2.36x faster than tonic for event_frame (0.39s 
 evlib Polars (CPU) is 2.12x faster than tonic for time_surface (0.26s vs 0.55s).
 
 evlib Polars (GPU / cudf UVM) is 1.60x faster than tonic for time_surface (0.35s vs 0.55s).
-
