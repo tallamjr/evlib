@@ -2,16 +2,20 @@
 
 This guide covers all supported event data formats in evlib, including format specifications, compatibility notes, and usage examples.
 
+`evlib.load_events` returns a Polars `LazyFrame` for every format. Call `.collect()` to materialise a `DataFrame`. The timestamp column is named `t` and is a Polars Duration in microseconds, so filter it with `evlib.filtering.filter_by_time` or `pl.col("t").dt.total_microseconds()`, never with raw integer comparisons. `x`/`y` are `Int16` and `polarity` is `Int8` (`-1`/`+1`).
+
 ## Supported Formats Overview
 
-| Format | Extension | Status | Use Case | Performance |
-|--------|-----------|--------|----------|-------------|
-| **Text** | `.txt`, `.csv` | SUCCESS: Production | Human-readable, debugging | Baseline |
-| **HDF5** | `.h5`, `.hdf5` | SUCCESS: Production | Large datasets, fast I/O | 3-5x faster |
-| **EVT2** | `.raw` | WARNING: Partial | Prophesee cameras (Gen 1-3) | Fast binary |
-| **EVT3** | `.evt3` | SUCCESS: Production | Prophesee cameras (Gen 4+) | Fast binary |
-| **AEDAT** | `.aedat` | SUCCESS: Production | iniVation cameras | Binary |
-| **AER** | `.aer` | SUCCESS: Production | Address Event Representation | Binary |
+| Format | Extension | Status | Use Case |
+|--------|-----------|--------|----------|
+| **Text** | `.txt`, `.csv` | Production | Human-readable, debugging |
+| **HDF5** | `.h5`, `.hdf5` | Production (opt-in `--features hdf5`, Unix only) | Large datasets, fast I/O |
+| **EVT2** | `.raw` | Production (byte-identical to OpenEB) | Prophesee cameras (Gen 1-3) |
+| **EVT3** | `.raw`, `.evt3` | Production | Prophesee cameras (Gen 4+) |
+| **AEDAT** | `.aedat`, `.aedat4` | Production | iniVation cameras |
+| **AER** | `.aer` | Production | Address Event Representation |
+
+HDF5 is opt-in via `--features hdf5` on Linux and macOS; the other formats work without it. On Windows, use `h5py` directly for HDF5 I/O.
 
 ## Format Specifications
 
@@ -26,11 +30,7 @@ timestamp x y polarity
 0.000300 319 239 1
 ```
 
-**Data Types:**
-- `timestamp`: Float64 (seconds)
-- `x`: Uint16 (pixel coordinate)
-- `y`: Uint16 (pixel coordinate)
-- `polarity`: Int8 (1 for positive, -1 for negative)
+**On-disk layout** (one event per line): `timestamp x y polarity`, with `timestamp` in seconds. After loading, the in-memory columns are `t` (Duration in microseconds), `x`/`y` (Int16) and `polarity` (Int8, `-1`/`+1`).
 
 **Loading:**
 ```python
@@ -40,16 +40,12 @@ import evlib
 events = evlib.load_events("data/slider_depth/events.txt")
 df = events.collect()
 
-# Access DataFrame columns as NumPy arrays
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
-
-# Note: Custom column order requires format-specific handling
-# Standard evlib.load_events handles most common formats automatically
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
+# Access DataFrame columns as NumPy arrays.
+# t is a Duration column; convert to seconds before treating it as a number.
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 **Advantages:**
@@ -116,40 +112,29 @@ print(f"Successfully saved {len(xs)} events to {output_path}")
 
 ### EVT2 Format (.raw)
 
-**Status:** WARNING: Partial support - some event types not handled
+**Status:** Production ready. evlib's EVT2 decode is byte-identical to the OpenEB reference decoder, guarded by an OpenEB conformance gate (`tests/test_openeb_conformance.py`).
 
 **Specification:**
 - **Source**: Prophesee cameras (Gen 1-3)
 - **Encoding**: Binary, little-endian
 - **Resolution**: Up to 1280x720
-- **Event Types**: CD (Change Detection), some extension events
-
-**Known Issues:**
-- Real EVT2 files may contain event type 12 and others not handled by current reader
-- **Error**: `InvalidEventType { type_value: 12, offset: 366 }`
-- **Workaround**: Use format detection and handle errors gracefully
+- **Event Types**: CD (Change Detection) plus the trigger and time-base event types
 
 **Loading:**
 ```python
-try:
-    # Try high-level API first
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-except Exception as e:
-    print(f"EVT2 loading failed: {e}")
-    # Fallback to direct format access
-    try:
-        events_alt = evlib.load_events("data/slider_depth/events.txt")
-        df_alt = events_alt.collect()
-        xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
-    except Exception as e2:
-        print(f"Direct loading also failed: {e2}")
-```
+import evlib
 
-**Real Data Testing:**
-- SUCCESS: Format detection works (>95% confidence)
-- ERROR: Event loading fails on some real files
-- DATA: Test files: `data/eTram/raw/val_2/*.raw` (15MB-526MB)
+# EVT2 files are automatically detected.
+events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
+df = events.collect()
+print(f"Loaded {len(df)} events")
+
+# Access columns as NumPy arrays (t is a Duration column).
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
+```
 
 ### EVT3 Format (.evt3)
 
@@ -178,22 +163,21 @@ Each event consists of 4 × 16-bit words:
 3. **Y_ADDR**: `(y & 0x7FF) << 4 | 0x0`
 4. **X_ADDR**: `(polarity_bit << 15) | (x & 0x7FF) << 4 | 0x2`
 
-**Loading:**
-```python
-# EVT3 files are automatically detected - high-level API
-events = evlib.load_events("data/slider_depth/events.txt")
+**Loading** (EVT3 samples are large and gitignored, so this example is not run in CI):
+```python notest
+import evlib
+
+# EVT3 files are automatically detected.
+events = evlib.load_events("data/prophesee/samples/evt3/pedestrians.raw")
 df = events.collect()
 print(f"Loaded {len(df)} events")
-print(f"Columns: {df.columns}")  # ['x', 'y', 'timestamp', 'polarity']
+print(f"Columns: {df.columns}")  # ['x', 'y', 't', 'polarity']
 
-# Access DataFrame columns as NumPy arrays if needed
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
-print(f"X coordinates: {xs}")
-print(f"Y coordinates: {ys}")
-print(f"Timestamps: {ts}")
-print(f"Polarities: {ps}")
+# Access columns as NumPy arrays (t is a Duration column).
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 **Key Features:**
@@ -217,16 +201,17 @@ print(f"Polarities: {ps}")
 - **Encoding**: Binary with headers
 - **Version**: AEDAT 2.0 and 3.0 supported
 
-**Loading:**
-```python
-# AEDAT files with address decoding - high-level API
-events = evlib.load_events("data/slider_depth/events.txt")
+**Loading** (provide your own AEDAT recording):
+```python notest
+import evlib
+
+events = evlib.load_events("recording.aedat4")
 df = events.collect()
 
-# Access DataFrame columns as NumPy arrays
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 **Features:**
@@ -244,16 +229,17 @@ xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df[
 - **Encoding**: Binary address events
 - **Compatibility**: Multiple AER variations
 
-**Loading:**
-```python
-# AER format with real data - high-level API
-events = evlib.load_events("data/slider_depth/events.txt")
+**Loading** (provide your own AER recording):
+```python notest
+import evlib
+
+events = evlib.load_events("recording.aer")
 df = events.collect()
 
-# Access DataFrame columns as NumPy arrays
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
+xs = df['x'].to_numpy()
+ys = df['y'].to_numpy()
+ps = df['polarity'].to_numpy()
+ts = df['t'].dt.total_seconds().to_numpy()
 ```
 
 ## Format Detection
@@ -317,50 +303,6 @@ print(f"Unique polarities: {np.unique(ps)}")  # Should be [-1, 1]
 
 # Example output:
 print("Polarity values: [-1  1]")
-```
-
-### EVT2 Event Type Errors
-
-**Problem**: Real EVT2 files contain event types not handled by current reader.
-
-**Error Message:**
-```
-InvalidEventType { type_value: 12, offset: 366 }
-```
-
-**Solution:**
-```python
-# Use the high-level API which has better error handling
-try:
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    print(f"Successfully loaded {len(df)} events")
-except Exception as e:
-    print(f"High-level loading failed: {e}")
-    # Fallback to direct format access
-    try:
-        events_alt = evlib.load_events("data/slider_depth/events.txt")
-        df_alt = events_alt.collect()
-        xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
-        print(f"Alternative loading succeeded: {len(xs)} events")
-    except Exception as e2:
-        print(f"All loading methods failed: {e2}")
-```
-
-**Workaround:**
-```python
-# Alternative: Use format detection and fallback
-format_info = evlib.formats.detect_format("data/slider_depth/events.txt")
-print(f"Detected format: {format_info}")
-
-try:
-    # Try high-level API first
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    print(f"Loaded {len(df)} events")
-except Exception:
-    print("EVT2 loading failed, trying alternative approach")
-    # Alternative: Convert to H5 format first for reliable access
 ```
 
 ### HDF5 Dataset Organization
@@ -503,23 +445,8 @@ def load_events_robust(file_path):
             return df
 
         except Exception as e1:
-            print(f"High-level API failed: {e1}")
-
-            # Fallback to direct format access
-            try:
-                events_alt = evlib.load_events(file_path)
-                df_alt = events_alt.collect()
-                xs, ys, ts, ps = df_alt['x'].to_numpy(), df_alt['y'].to_numpy(), df_alt['timestamp'].to_numpy(), df_alt['polarity'].to_numpy()
-
-                if len(xs) == 0:
-                    raise ValueError("No events loaded")
-
-                print(f"Alternative access succeeded: {len(xs)} events")
-                return df_alt
-
-            except Exception as e2:
-                print(f"Direct access also failed: {e2}")
-                raise e2
+            print(f"Loading failed: {e1}")
+            raise e1
 
     except Exception as e:
         print(f"ERROR: Failed to load {file_path}: {e}")
@@ -550,9 +477,11 @@ def process_large_file(file_path, time_window=1.0):
     for t_start in np.arange(0, duration, time_window):
         t_end = min(t_start + time_window, duration)
 
-        # Use filtering API for time windows
-        window_events = evlib.filter_by_time(
-            file_path, t_start=t_start, t_end=t_end
+        # Use the filtering API for time windows
+        import evlib.filtering as evf
+        events = evlib.load_events(file_path)
+        window_events = evf.filter_by_time(
+            events, t_start=float(t_start), t_end=float(t_end)
         )
 
         window_df = window_events.collect()
@@ -567,17 +496,12 @@ def process_large_file(file_path, time_window=1.0):
 
 ### Planned Improvements
 
-1. **EVT2 Enhancement**
-   - Support for all event types (including type 12)
-   - Improved error recovery
-   - Better real-world file compatibility
-
-2. **Streaming Support**
+1. **Streaming Support**
    - Chunked reading for very large files
    - Progress reporting
    - Memory-mapped file access
 
-3. **Format Extensions**
+2. **Format Extensions**
    - Direct camera integration
    - Real-time streaming protocols
    - Custom format plugins
@@ -595,6 +519,6 @@ See the [Contributing Guide](../development/contributing.md) for detailed instru
 
 ## Summary
 
-evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. While most formats work well in production, some (like EVT2) require careful error handling when working with real-world data files. The HDF5 format is recommended for performance-critical applications and large datasets.
+evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. All formats are production ready, and EVT2 decode is byte-identical to the OpenEB reference. The HDF5 format is recommended for performance-critical applications and large datasets, and is opt-in via `--features hdf5` on Linux and macOS.
 
 For questions or issues with specific formats, please check the [Testing Documentation](../development/testing.md) or file an issue on GitHub.

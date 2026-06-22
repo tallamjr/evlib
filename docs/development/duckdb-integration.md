@@ -14,9 +14,9 @@ evlib provides seamless integration with the Apache Arrow ecosystem through zero
 import evlib
 import polars as pl
 
-# Load events as Polars DataFrame (Arrow integration coming soon)
+# Load events as a Polars LazyFrame
 events_df = evlib.load_events("data/slider_depth/events.txt")
-# Convert to Arrow for DuckDB integration
+# Convert to Arrow for DuckDB integration (Arrow ships in the default build)
 events = events_df.collect().to_arrow()
 ```
 

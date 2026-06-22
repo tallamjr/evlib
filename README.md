@@ -33,7 +33,9 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python:
 - **Rust** (`evlib._evlib`) handles only what cannot be expressed as DataFrame
   operations: binary format parsing (EVT2/EVT3/EVT2.1, AEDAT, AER, HDF5 with the
   ECF codec), construction of the Polars frame from decoded primitives, and the
-  dense scatter-add that builds RVT stacked-histogram representations.
+  native dense scatter-add kernels that build RVT stacked-histogram
+  representations (`evlib.representations_rs.stacked_histogram_dense` on the CPU,
+  plus `_cuda` and `_metal` GPU kernels).
 - **Python Polars** handles all processing: loading filters, filtering
   (`evlib.filtering`), and representations (`evlib.representations`, `evlib.rvt`).
   Every query is a lazy Polars `LazyFrame` collected with a selectable engine, so
@@ -43,6 +45,46 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python:
 `evlib.load_events` returns a `LazyFrame` and applies any time, spatial, or
 polarity filters as Polars expressions, so loading and filtering fuse into one
 GPU-collectable query.
+
+### RVT preprocessing backends
+
+`evlib.rvt.process_sequence(...)` reproduces the RVT stacked-histogram
+preprocessing pipeline and offers four interchangeable backends via `backend=`:
+
+- `"polars"`: Polars on the CPU, or on the cudf GPU engine when you pass an
+  `engine=` of `"gpu"` or a `pl.GPUEngine(...)`.
+- `"rust"`: Rust dense scatter-add on the CPU.
+- `"cuda"`: a custom CUDA scatter-add kernel on an NVIDIA GPU. It loads the
+  nvcc-built `librvt_scatter.so` via the `EVLIB_CUDA_LIB` environment variable.
+- `"metal"`: a Metal scatter-add kernel on Apple Silicon. Build it with
+  `CC=clang maturin develop --features metal`.
+
+The underlying native kernels are exposed directly as
+`evlib.representations_rs.stacked_histogram_dense` (CPU),
+`stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
+
+### Performance
+
+evlib is bit-validated against the reference implementations it competes with:
+RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set
+(18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT
+torch bar a single roughly 1e-10 boundary quirk, and the timings are:
+
+- evlib CUDA: 283.6s, slightly ahead of RVT torch-GPU at 286.3s (parity-plus,
+  about 1.01x).
+- evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU at 534.2s.
+- evlib CUDA is 1.88x faster than RVT torch-CPU.
+
+For the standalone representations (20M events, versus tonic NumPy): voxel_grid
+1.35x, event_frame 2.9x, time_surface 2.1x.
+
+A caveat on honesty: the Polars GPU engine is not a free win for single
+operations, and the CUDA-versus-RVT-GPU margin is parity-plus rather than a large
+speedup. The clearest wins are evlib's CPU backends and the standalone
+representations.
+
+Plots: [`benchmarks/out/rvt_final_time.png`](./benchmarks/out/rvt_final_time.png)
+and [`benchmarks/out/tonic_bench_time.png`](./benchmarks/out/tonic_bench_time.png).
 
 **Full documentation:** <https://tallamjr.github.io/evlib/>
 
@@ -100,7 +142,7 @@ For a deeper introduction, see the
 ```python
 import evlib
 
-# Automatic format detection — returns a Polars LazyFrame
+# Automatic format detection: returns a Polars LazyFrame
 events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
 
 df = events.collect(engine="streaming")
@@ -162,7 +204,12 @@ Distributable wheels are built with the opt-in `extension-module` feature, e.g.
 feature is deliberately off by default so `cargo test` and `maturin develop`
 build and run without linking errors.
 
-HDF5 is opt-in on Linux/macOS and unavailable on Windows — use `h5py` directly
+GPU scatter-add kernels are opt-in features. For the CUDA backend, build the
+nvcc kernel and point `EVLIB_CUDA_LIB` at the resulting `librvt_scatter.so`. For
+the Metal backend on Apple Silicon, build with
+`CC=clang maturin develop --features metal`.
+
+HDF5 is opt-in on Linux/macOS and unavailable on Windows; use `h5py` directly
 for HDF5 I/O on Windows. Full details and platform-specific notes live in
 the [installation guide](https://tallamjr.github.io/evlib/getting-started/installation/).
 
@@ -171,10 +218,10 @@ the [installation guide](https://tallamjr.github.io/evlib/getting-started/instal
 Complete documentation is published at <https://tallamjr.github.io/evlib/>:
 
 - [Quick Start](https://tallamjr.github.io/evlib/getting-started/quickstart/)
-- [Loading Data](https://tallamjr.github.io/evlib/user-guide/loading-data/) — formats, polarity encoding, streaming
+- [Loading Data](https://tallamjr.github.io/evlib/user-guide/loading-data/): formats, polarity encoding, streaming
 - [Event Representations](https://tallamjr.github.io/evlib/user-guide/representations/)
 - [Polars Preprocessing](https://tallamjr.github.io/evlib/user-guide/polars-preprocessing/)
-- [Performance Guide](https://tallamjr.github.io/evlib/getting-started/performance/) — benchmarks, memory monitoring, troubleshooting
+- [Performance Guide](https://tallamjr.github.io/evlib/getting-started/performance/): benchmarks, memory monitoring, troubleshooting
 - [API Reference](https://tallamjr.github.io/evlib/api/core/)
 - [Platform Support](https://tallamjr.github.io/evlib/platform-support/windows/)
 
@@ -220,4 +267,4 @@ See [CONTRIBUTING](./docs/development/contributing.md) and the
 
 ## License
 
-MIT License — see [LICENSE.md](LICENSE.md) for details.
+MIT License. See [LICENSE.md](LICENSE.md) for details.

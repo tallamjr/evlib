@@ -215,7 +215,7 @@ except ImportError:
     # Convert to numpy arrays as an alternative
     x_array = df['x'].to_numpy()
     y_array = df['y'].to_numpy()
-    t_array = df['timestamp'].dt.total_seconds().to_numpy()
+    t_array = df['t'].dt.total_seconds().to_numpy()
     p_array = df['polarity'].to_numpy()
     print(f"Converted to numpy arrays: {len(x_array)} events")
 ```
@@ -232,13 +232,11 @@ let filtered = x_array.filter(&polarity_mask);    // Vectorized filtering
 
 ### Achieved Metrics
 
-The throughput figures in this section are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`). Memory-per-event is a structural property of the Arrow layout (see the calculation below).
+Memory-per-event is a structural property of the Arrow layout (see the calculation below). The committed reproducible benchmark is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`); see the release notes for its validated figures.
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
 | **Memory per event** | ~200+ bytes | 35.8 bytes | **5.6x reduction** |
-| **Loading speed** | indicative, pending benchmark suite | | |
-| **Filter speed** | indicative, pending benchmark suite | | |
 
 ### Why We Achieve 35 bytes/event
 
@@ -311,7 +309,9 @@ The "zero-copy" architecture in evlib leverages Apache Arrow's columnar memory f
 4. **Provide ecosystem compatibility** with Arrow-based tools
 5. **Achieve exceptional performance** with minimal memory overhead
 
-This architecture provides the foundation for evlib's industry-leading performance while maintaining full API compatibility and ease of use.
+This architecture provides the foundation for evlib's performance while maintaining full API compatibility and ease of use.
+
+The Arrow columnar layout is the query and transform layer. The heavy compute for the RVT stacked histogram sits in a separate compute layer: native dense scatter-add kernels (CPU, plus optional CUDA and Metal variants), which read directly from the columnar buffers and accumulate the histogram without leaving Rust.
 
 ## Further Reading
 

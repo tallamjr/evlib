@@ -39,10 +39,8 @@ File → Rust Format Reader → Rust Events Vec → Arrow RecordBatch → Python
 ### Loading Events as Arrow
 
 ```python
-# Arrow integration requires the 'arrow' feature to be enabled during build
-# Build evlib with: maturin develop --features arrow
-
-# For standard installations, use Polars which provides Arrow internally:
+# Arrow is in the default feature set, so a plain `maturin develop` includes it.
+# Polars also exposes Arrow internally, which is the path used below.
 import evlib
 
 # Load events as Polars DataFrame (uses Arrow columnar format internally)
@@ -98,8 +96,7 @@ print(f"Event types: {list(events_dict.keys())}")
 ### Integration with External Tools
 
 ```python
-# External tool integration via Arrow is under development
-# For now, use Polars DataFrames:
+# External tool integration via Arrow goes through Polars DataFrames:
 
 import evlib
 import duckdb
@@ -168,14 +165,17 @@ Automatic time handling:
 
 ### Installation
 
-Arrow support requires the `arrow` feature flag:
+Arrow is in the default feature set, so a plain build already includes it:
 
 ```bash
-# Install with Arrow support
+# Default build (polars + python + arrow)
+maturin develop
+
+# Equivalent explicit form
 maturin develop --features arrow,polars,python
 
-# Or build for distribution
-maturin build --release --features arrow,polars,python
+# Build a distributable wheel (extension-module avoids linking libpython)
+maturin build --release --features polars,python,arrow,extension-module
 ```
 
 ### Feature Configuration
@@ -183,15 +183,19 @@ maturin build --release --features arrow,polars,python
 ```toml
 # Cargo.toml
 [features]
-default = ["polars", "python"]
+default = ["polars", "python", "arrow"]   # arrow is in the default build
 arrow = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
-zero-copy = ["arrow"]  # Alias for clarity
+zero-copy = ["arrow"]                      # alias for clarity
+cuda = ["dep:libloading"]                  # optional: CUDA scatter-add backend
+metal = ["dep:metal", "dep:objc"]          # optional: Metal scatter-add backend (macOS)
 
 [dependencies]
 arrow = { version = "55.0", default-features = false, optional = true }
 arrow-array = { version = "55.0", optional = true }
 pyo3-arrow = { version = "0.10.1", optional = true }
 ```
+
+Arrow ships in the default feature set, so a plain `maturin develop` already includes it. The `cuda` and `metal` features are separate, optional backends for the RVT scatter-add kernels and are unrelated to Arrow.
 
 ## Performance Characteristics
 
@@ -411,8 +415,8 @@ df = events.collect()
 # Convert to Arrow when needed for external integration
 arrow_events = df.to_arrow()  # Returns PyArrow Table
 
-# Note: Direct Arrow API (evlib.formats.load_events_to_pyarrow) requires
-# building evlib with --features arrow flag
+# Note: the direct Arrow API (evlib.formats.load_events_to_pyarrow) is built
+# in by default, since arrow is part of the default feature set.
 ```
 
 ## Conclusion

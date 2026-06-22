@@ -66,7 +66,7 @@ def create_stacked_histogram(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
-                pl.col("t").dt.total_microseconds().alias("t_us")
+                pl.col("t").cast(pl.Int64).alias("t_us")
             ]
         )
         .with_columns(
@@ -119,7 +119,7 @@ def create_voxel_grid(
     base = (
         events_lf.sort("t")
         .with_columns(
-            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            pl.col("t").cast(pl.Int64).cast(pl.Float64).alias("t_us"),
             # tonic maps p == 0 -> -1; treat any non-positive polarity as -1
             pl.when(pl.col("polarity") > 0)
             .then(pl.lit(1.0))
@@ -230,7 +230,7 @@ def create_event_frame(
 
     base = (
         events_lf.with_columns(
-            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            pl.col("t").cast(pl.Int64).cast(pl.Float64).alias("t_us"),
             # Map evlib polarity (-1/1 or 0/1) to channel index: <=0 -> 0, >0 -> 1.
             pl.when(pl.col("polarity") > 0)
             .then(pl.lit(1))
@@ -396,7 +396,7 @@ def create_time_surface(
     base = (
         events_lf.sort("t")
         .with_columns(
-            pl.col("t").dt.total_microseconds().cast(pl.Float64).alias("t_us"),
+            pl.col("t").cast(pl.Int64).cast(pl.Float64).alias("t_us"),
             # Map evlib polarity (-1/1 or 0/1) to channel index: <=0 -> 0, >0 -> 1.
             pl.when(pl.col("polarity") > 0)
             .then(pl.lit(1))
@@ -522,7 +522,7 @@ def create_mixed_density_stack(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic
-                pl.col("t").dt.total_microseconds().alias("t_us")
+                pl.col("t").cast(pl.Int64).alias("t_us")
             ]
         )
         .filter(
@@ -603,7 +603,7 @@ def event_histogram(
         events_lf.with_columns(
             [
                 # Convert Duration to microseconds for arithmetic if needed
-                pl.col("t").dt.total_microseconds().alias("t_us")
+                pl.col("t").cast(pl.Int64).alias("t_us")
             ]
         )
         .filter(

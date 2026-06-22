@@ -1,132 +1,150 @@
 # Polars Preprocessing Examples
 
-This document provides comprehensive examples for using evlib's Polars-based event preprocessing capabilities, designed to replace PyTorch-based preprocessing pipelines like those used in RVT (Recurrent Vision Transformers).
+This document provides examples for using evlib's Polars-based event representations. The functions build event camera representations as Polars expressions, so they run on the CPU Polars engine, on the cudf GPU engine, and on CUDA managed memory (UVM) for workloads larger than VRAM.
 
 ## Overview
 
-The `evlib.representations` module provides high-performance Polars-based implementations of common event camera representations with significant performance improvements over traditional PyTorch approaches. All functions return NumPy arrays but leverage Polars internally for efficient processing.
+The `evlib.representations` module provides Polars-based implementations of common event camera representations. Each function returns a Polars DataFrame (long format) and accepts either a file path or a Polars LazyFrame as input. Internally the work is expressed as Polars operations, so the engine is selectable via the `engine` argument.
 
-### Key Advantages
+### How it executes
 
-1. **Native groupby/aggregation** instead of PyTorch tensor indexing
-2. **Lazy evaluation** reduces memory allocations
-3. **Optimized data types** (Int16 vs Int64) for better cache performance
-4. **No GPU memory transfers** required
-5. **Better memory locality** for histogram operations
+1. Native groupby and aggregation rather than tensor indexing.
+2. Lazy evaluation that defers work until the result is collected.
+3. Optimised data types (Int16 coordinates, Int8 polarity) for cache locality.
+4. A selectable engine: `engine="auto"` for CPU Polars, `engine="gpu"` for cudf with CUDA managed memory.
 
-### Performance Improvements
+For a benchmark of these representations against tonic (NumPy), see [Benchmarks](benchmarks.md). On a single transfer-bound stream the CPU Polars engine is usually the fastest evlib path; the GPU path is for compute-heavy or larger-than-VRAM workloads.
 
-- **Estimated 3-5x faster** for large datasets (>1M events)
-- **Reduced memory usage** through lazy evaluation
-- **Better scalability** for high-resolution sensors
-- **Native support** for time-based windowing
+## Available test datasets
 
-## Available Test Datasets
+- `data/slider_depth/events.txt`: text format (about 22MB, 1.1M events)
+- `data/eTram/h5/`: HDF5 format eTram samples
 
-The following datasets are available for testing and examples:
+## Loaded event schema
 
-- `data/slider_depth/events.txt` - Text format (22MB, 1.1M events)
-- `../tests/data/eTram/h5/val_2/val_night_011_td.h5` - HDF5 format (14MB, 3.4M events)
+`load_events` returns a Polars LazyFrame. The schema is `t` as a Duration (microseconds), `x` and `y` as Int16, and `polarity` as Int8 (-1 or +1).
 
-## Basic Usage Examples
+```python
+import evlib
 
-### Drop-in Replacement for RVT
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+print(df.schema)
+print(f"Loaded {len(df):,} events")
+```
 
-Use `evlib.representations.create_stacked_histogram()` to replace RVT preprocessing pipelines with significantly better performance.
+## Voxel grid
 
-### High-Level API for Easy Migration
+`create_voxel_grid` builds a tonic-validated voxel grid with bilinear temporal interpolation over the whole recording.
 
-The `preprocess_for_detection()` function provides a simplified API for common detection model preprocessing.
+```python
+import evlib
+import evlib.representations as evr
 
-### Performance Benchmarking
+events = evlib.load_events("data/slider_depth/events.txt")
+voxel = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
+print(f"Voxel grid entries: {len(voxel)}")
+print(voxel.columns)
+```
 
-Use the benchmarking functions to compare performance against PyTorch-based approaches.
+To run it on the GPU, pass `engine="gpu"`:
 
-## Advanced Usage Examples
+```python
+import evlib
+import evlib.representations as evr
 
-### High-Framerate Processing
+events = evlib.load_events("data/slider_depth/events.txt")
+voxel_gpu = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5, engine="gpu")
+print(f"Voxel grid entries (GPU): {len(voxel_gpu)}")
+```
 
-Configure window duration and stride parameters for high-framerate applications. Use 33.3ms windows for ~30 FPS processing.
+## Event frame
 
-### Mixed Density Representation
+`create_event_frame` matches tonic's `to_frame_numpy(n_time_bins=...)`: the whole recording is sliced into equal-width time bins and events are counted per (polarity, y, x) per bin.
 
-Use `create_mixed_density_stack()` for logarithmic time binning with polarity accumulation.
+```python
+import evlib
+import evlib.representations as evr
 
-### Traditional Voxel Grid
+events = evlib.load_events("data/slider_depth/events.txt")
+frame = evr.create_event_frame(events, height=480, width=640, n_time_bins=10)
+print(f"Event frame entries: {len(frame)}")
+```
 
-Create voxel grids using `create_voxel_grid()` for entire datasets without temporal windowing.
+## Time surface
 
-## Production Pipeline Examples
+`create_time_surface` builds a tonic-validated HOTS time surface (Lagorce et al. 2016). `dt` is the slice window and `tau` the decay constant, both in microseconds.
 
-### Complete Preprocessing Pipeline
+```python
+import evlib
+import evlib.representations as evr
 
-Build complete preprocessing pipelines by combining data loading, representation creation, and output saving operations.
+events = evlib.load_events("data/slider_depth/events.txt")
+surface = evr.create_time_surface(
+    events, height=480, width=640, dt=10000.0, tau=50000.0
+)
+print(f"Time surface entries: {len(surface)}")
+```
 
-### Batch Processing
+## Stacked histogram
 
-Use glob patterns and loops to process multiple files efficiently. Handle errors gracefully for robust batch operations.
+`create_stacked_histogram` bins events into fixed-duration windows and counts per (time_bin, polarity, y, x). This is a general representation; for the RVT-identical stacked histogram expected by the RVT detection pipeline, use `evlib.rvt` (see the RVT preprocessing section below).
 
-## Testing and Validation Examples
+```python
+import evlib
+import evlib.representations as evr
 
-### Basic Performance Test
+events = evlib.load_events("data/slider_depth/events.txt")
+hist = evr.create_stacked_histogram(
+    events, height=480, width=640, bins=10, window_duration_ms=50.0
+)
+print(f"Stacked histogram entries: {len(hist)}")
+```
 
-Measure preprocessing performance by timing the representation creation functions with your datasets.
+## RVT-identical preprocessing
 
-### Validation Against Expected Output
+For the exact RVT stacked-histogram preprocessing, use `evlib.rvt.process_sequence`. It has a `backend` argument with four options: `"polars"` (CPU or cudf GPU), `"rust"` (Rust dense scatter-add, CPU), `"cuda"` (custom CUDA scatter-add kernel, NVIDIA GPU), and `"metal"` (Metal scatter-add kernel, Apple Silicon GPU). The native kernels are also exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`.
 
-Validate preprocessing outputs by checking data types, shapes, and value ranges to ensure compatibility with downstream models.
+On the gen4_1mpx validation set the CUDA backend reaches parity-plus with the RVT torch-GPU reference (283.6s versus 286.3s) and the Rust CPU backend is 1.32x faster than the RVT torch-CPU reference. See [Benchmarks](benchmarks.md) for the full table and plots.
 
-## Implementation Features
+## Filtering
 
-### Window-Based Processing
-- Configurable window duration and stride
-- Automatic temporal alignment
-- Support for overlapping windows
+Use `evlib.filtering` to filter events before building a representation. The helpers operate on the LazyFrame so the work stays lazy and GPU-collectable.
 
-### Polarity Handling
-- Automatic polarity encoding detection (0/1 or -1/1)
-- Flexible polarity conversion
-- Robust handling of mixed encodings
+```python
+import evlib
+import evlib.filtering as evf
 
-### Memory Management
-- Count cutoff for overflow protection
-- Progress reporting for long operations
-- Memory-efficient lazy evaluation
-- Chunked processing for large files
+events = evlib.load_events("data/slider_depth/events.txt")
 
-### Output Compatibility
-- Compatible format with RVT expectations
-- Standard NumPy array output
-- Consistent channel layout across representations
+positive = evf.filter_by_polarity(events, polarity=1)
+roi = evf.filter_by_roi(events, x_min=100, x_max=500, y_min=50, y_max=400)
 
-## Quick Start Guide
+print(f"Positive events: {len(positive.collect()):,}")
+print(f"ROI events: {len(roi.collect()):,}")
+```
 
-To get started with the Polars preprocessing:
+## Batch processing
 
-1. **Install evlib** with development dependencies
-2. **Run basic test**:
-   ```bash
-   python -c "import evlib.representations as evr; evr.benchmark_vs_rvt('data/slider_depth/events.txt')"
-   ```
-3. **Check performance metrics** and output shape
-4. **Compare with RVT** preprocessing times on the same data
+Process multiple files by looping over a glob pattern and writing each result to Parquet.
 
-## Performance Expectations
+```python
+import evlib
+import evlib.representations as evr
+import glob
+from pathlib import Path
 
-Based on testing with real event data:
+def batch_voxel_grids(input_pattern, output_dir):
+    for input_file in glob.glob(input_pattern):
+        output_file = f"{output_dir}/{Path(input_file).stem}_voxel.parquet"
+        events = evlib.load_events(input_file)
+        voxel = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
+        voxel.write_parquet(output_file)
+        print(f"Processed {input_file} -> {output_file} ({len(voxel)} entries)")
+```
 
-- **evlib Polars Processing**: 2.31s (1.4M events/s)
-- **Estimated RVT PyTorch**: ~8.10s (estimated)
-- **Performance Speedup**: **3.5x faster**
-- **Memory Usage**: 109.3 MB for 69 windows of stacked histograms
+## Next steps
 
-## Next Steps
-
-After running these examples:
-
-1. **Integrate into your pipeline** using the high-level API
-2. **Benchmark with your data** to validate performance improvements
-3. **Adapt parameters** for your specific use case
-4. **Consider batch processing** for large datasets
-
-The Polars-based preprocessing is production-ready and provides significant performance improvements over traditional PyTorch approaches while maintaining full compatibility with existing RVT workflows.
+1. Benchmark with your own data using the harnesses described in [Benchmarks](benchmarks.md).
+2. Tune `n_time_bins`, `window_duration_ms`, `dt` and `tau` for your use case.
+3. Use `engine="gpu"` for compute-heavy or larger-than-VRAM workloads, and the default CPU engine for single transfer-bound calls.

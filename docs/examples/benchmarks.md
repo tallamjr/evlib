@@ -1,407 +1,100 @@
 # Benchmarks
 
-Performance benchmarks for evlib operations compared to pure Python implementations.
+This page documents evlib's two committed benchmark suites: the RVT preprocessing pipeline and the representation comparison against tonic. Both run each measurement in a fresh subprocess so peak resident memory is an unambiguous per-process figure.
 
-## Overview
+## The four compute backends
 
-evlib provides honest performance characteristics. This page documents comprehensive benchmarks comparing evlib (Rust) implementations with pure Python/NumPy equivalents.
+The RVT stacked-histogram is built by dedicated native scatter-add kernels. `evlib.rvt.process_sequence(..., backend=...)` selects between them:
 
-!!! warning "Indicative figures and removed modules"
-    The speedup figures on this page (for example "1.5-2.5x faster than pure Python") are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`). Additionally, the "Event Augmentation" and "Neural Network Performance" sections below reference modules removed in the 0.8.x trim (`evlib.augmentation`, `evlib.processing`, and `evlib.representations.events_to_smooth_voxel_grid`); those code blocks no longer run and are retained only as historical context.
+- `"polars"`: Polars, CPU or cudf GPU (via `engine="gpu"`).
+- `"rust"`: Rust dense scatter-add, CPU.
+- `"cuda"`: custom CUDA scatter-add kernel, NVIDIA GPU.
+- `"metal"`: Metal scatter-add kernel, Apple Silicon GPU.
 
-## Benchmark Environment
+The kernels are exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`.
 
-All benchmarks run on:
-- **Hardware**: Modern multi-core systems with sufficient RAM
-- **Dataset**: slider_depth dataset (1M+ events)
-- **Methodology**: Multiple runs with statistical significance testing
+Polars is the query, filter and transform layer (CPU, cudf GPU engine, and CUDA managed memory for workloads larger than VRAM). The native scatter-add kernels are the compute layer. Honest caveat: Polars on the GPU is not a free speed-up for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins, and the CUDA-versus-RVT-GPU result is parity-plus because the shared HDF5 read dominates the largest sequences.
 
-## File I/O Performance
+## RVT preprocessing pipeline
 
-### Text File Loading
+Validation run on the gen4_1mpx set (18 sequences, single pass) on an RTX 4090. Every output was asserted bit-identical to the RVT torch reference, except a roughly 1e-10 float-binning boundary quirk on three sequences.
+
+| Pipeline | Total time (18 sequences) | Relative to RVT |
+|----------|---------------------------|-----------------|
+| evlib CUDA (custom kernel) | 283.6s | 1.01x faster than RVT torch-GPU (parity, edging ahead); 1.88x faster than RVT torch-CPU |
+| RVT torch-GPU (reference) | 286.3s | baseline (GPU) |
+| evlib Rust-CPU | 406.2s | 1.32x faster than RVT torch-CPU |
+| RVT torch-CPU (reference) | 534.2s | baseline (CPU) |
+
+Plots: `benchmarks/out/rvt_final_time.png` (wall-clock) and `benchmarks/out/rvt_final_memory.png` (peak resident memory).
+
+### Running the RVT benchmark
+
+```bash
+python -m benchmarks.bench_rvt_dataset \
+    --orig-root ~/datasets/gen4_1mpx_original/val \
+    --ref-root  ~/datasets/gen4_1mpx_processed_RVT/gen4/val \
+    --backends evlib_gpu evlib_cpu evlib_rust rvt_gpu rvt_cpu
+```
+
+The harness drives the raw to processed RVT stacked-histogram preprocessing across every sequence of a split, runs each (backend, sequence) in a fresh subprocess, and asserts every output is bit-identical to that sequence's committed RVT reference before keeping its timing. A non-identical output is a hard failure.
+
+## Representations versus tonic
+
+For the general representation surface (voxel grid, event frame, time surface), tonic (pure NumPy) is the natural baseline. The harness loads one real event stream once and feeds the identical events to both libraries. The numbers below are from a 20M-event eTram stream.
+
+| Representation | evlib Polars CPU | tonic (NumPy) | Speedup |
+|----------------|------------------|---------------|---------|
+| voxel_grid | 0.62s | 0.84s | 1.35x |
+| event_frame | 0.32s | 0.92s | 2.9x |
+| time_surface | 0.26s | 0.55s | 2.1x |
+
+Plot: `benchmarks/out/tonic_bench_time.png`.
+
+evlib's cudf GPU plus UVM path runs all three fully on the GPU. At this stream size the operations are transfer-bound, so CPU Polars is the fastest evlib path; the GPU path still beats tonic on event_frame and time_surface.
+
+### Running the tonic benchmark
+
+```bash
+python -m benchmarks.bench_tonic \
+    --raw ~/datasets/eTram/raw/test_1/test_day_001.raw \
+    --n-events 30000000
+```
+
+This runs each (operation, backend) in a fresh subprocess across tonic, evlib CPU Polars, and evlib GPU (cudf with UVM). evlib's outputs are already validated against tonic, so this harness measures speed and memory, not correctness.
+
+## Reproducing the representation timings yourself
+
+The representation functions return Polars DataFrames and accept either a file path or a LazyFrame.
 
 ```python
-# Benchmark: Loading 1M events from text file
 import time
-import evlib
-import numpy as np
-
-def benchmark_text_loading():
-    file_path = "data/slider_depth/events.txt"
-
-    # evlib loading
-    start = time.time()
-    events = evlib.load_events(file_path)
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
-    evlib_time = time.time() - start
-
-    # Pure Python loading
-    start = time.time()
-    data = np.loadtxt(file_path)
-    numpy_time = time.time() - start
-
-    print(f"evlib: {evlib_time:.3f}s")
-    print(f"NumPy: {numpy_time:.3f}s")
-    print(f"Speedup: {numpy_time/evlib_time:.2f}x")
-```
-
-**Results:**
-- evlib: 0.85x-1.2x vs NumPy loadtxt
-- Similar performance for most text files
-- evlib adds filtering capabilities during loading
-
-### HDF5 File Performance
-
-```python
-def benchmark_hdf5_performance():
-    # Create test dataset
-    xs = np.random.randint(0, 640, 1000000, dtype=np.int64)
-    ys = np.random.randint(0, 480, 1000000, dtype=np.int64)
-    ts = np.sort(np.random.rand(1000000).astype(np.float64))
-    ps = np.random.choice([-1, 1], 1000000, dtype=np.int64)
-
-    # Save with evlib
-    start = time.time()
-    evlib.save_events_to_hdf5(xs, ys, ts, ps, "test_evlib.h5")
-    evlib_save_time = time.time() - start
-
-    # Load with evlib
-    start = time.time()
-    events2 = evlib.load_events("test_evlib.h5")
-    df2 = events2.collect()
-    xs2, ys2, ts2, ps2 = df2['x'].to_numpy(), df2['y'].to_numpy(), df2['t'].to_numpy(), df2['polarity'].to_numpy()
-    evlib_load_time = time.time() - start
-
-    print(f"Save time: {evlib_save_time:.3f}s")
-    print(f"Load time: {evlib_load_time:.3f}s")
-```
-
-**Results:**
-- HDF5 loading: 3-5x faster than text files
-- HDF5 file size: 5-10x smaller than text
-- Perfect round-trip compatibility
-
-## Event Representations
-
-### Voxel Grid Creation
-
-```python
 import evlib
 import evlib.representations as evr
-import numpy as np
-import time
 
-def benchmark_voxel_grid():
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
+events = evlib.load_events("data/slider_depth/events.txt")
 
-    # evlib implementation
-    start = time.time()
-    voxel_lazy = evr.create_voxel_grid(
-        "data/slider_depth/events.txt",
-        height=480, width=640, n_time_bins=5
-    )
-    voxel_df = voxel_lazy.collect()
-    evlib_time = time.time() - start
+start = time.time()
+voxel = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
+print(f"voxel_grid: {time.time() - start:.3f}s, {len(voxel)} entries")
 
-    # Pure Python implementation
-    start = time.time()
-    voxel_numpy = create_voxel_grid_numpy(xs, ys, ts, ps, 640, 480, 5)
-    numpy_time = time.time() - start
-
-    print(f"evlib: {evlib_time:.3f}s")
-    print(f"NumPy: {numpy_time:.3f}s")
-    print(f"Speedup: {numpy_time/evlib_time:.2f}x")
-
-def create_voxel_grid_numpy(xs, ys, ts, ps, width, height, bins):
-    """Pure Python/NumPy voxel grid implementation"""
-    voxel_grid = np.zeros((bins, height, width), dtype=np.float32)
-
-    # Temporal binning
-    t_min, t_max = ts.min(), ts.max()
-    t_bins = np.linspace(t_min, t_max, bins + 1)
-
-    for i in range(len(xs)):
-        x, y, t, p = xs[i], ys[i], ts[i], ps[i]
-
-        # Find temporal bin
-        bin_idx = np.searchsorted(t_bins[1:], t)
-        bin_idx = min(bin_idx, bins - 1)
-
-        # Add to voxel grid
-        voxel_grid[bin_idx, y, x] += p
-
-    return voxel_grid
+events = evlib.load_events("data/slider_depth/events.txt")
+start = time.time()
+frame = evr.create_event_frame(events, height=480, width=640, n_time_bins=10)
+print(f"event_frame: {time.time() - start:.3f}s, {len(frame)} entries")
 ```
 
-**Results:**
-- evlib: 1.5-2.5x faster than pure Python
-- Better memory efficiency
-- Consistent performance across different event densities
+To run on the GPU, pass `engine="gpu"` to any representation function; on a single transfer-bound stream the CPU engine (`engine="auto"`) is typically faster.
 
-### Smooth Voxel Grid
+## Loaded event schema
+
+`load_events` returns a Polars LazyFrame with `t` as a Duration (microseconds), `x` and `y` as Int16, and `polarity` as Int8 (-1 or +1).
 
 ```python
-def benchmark_smooth_voxel():
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
+import evlib
 
-    # evlib smooth voxel
-    start = time.time()
-    smooth_evlib_data, smooth_evlib_shape = evlib.representations.events_to_smooth_voxel_grid(
-        xs, ys, ts, ps, 640, 480, 5
-    )
-    evlib_time = time.time() - start
-
-    # Pure Python with bilinear interpolation
-    start = time.time()
-    smooth_numpy = create_smooth_voxel_numpy(xs, ys, ts, ps, 640, 480, 5)
-    numpy_time = time.time() - start
-
-    print(f"evlib: {evlib_time:.3f}s")
-    print(f"NumPy: {numpy_time:.3f}s")
-    print(f"Speedup: {numpy_time/evlib_time:.2f}x")
+events = evlib.load_events("data/slider_depth/events.txt")
+df = events.collect()
+print(df.schema)
+print(f"Loaded {len(df):,} events")
 ```
-
-**Results:**
-- evlib: 2-3x faster than pure Python
-- Significantly better for bilinear interpolation
-- More accurate temporal interpolation
-
-## Event Augmentation
-
-### Spatial Transformations
-
-```python
-def benchmark_augmentation():
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
-
-    # evlib flip
-    start = time.time()
-    xs_flip, ys_flip, ts_flip, ps_flip = evlib.augmentation.flip_events_x(
-        xs, ys, ts, ps, 640
-    )
-    evlib_time = time.time() - start
-
-    # Pure Python flip
-    start = time.time()
-    xs_flip_py = 640 - 1 - xs
-    numpy_time = time.time() - start
-
-    print(f"evlib: {evlib_time:.3f}s")
-    print(f"NumPy: {numpy_time:.3f}s")
-    print(f"Speedup: {numpy_time/evlib_time:.2f}x")
-```
-
-**Results:**
-- evlib: 0.1-0.3x vs pure NumPy (NumPy faster for simple operations)
-- evlib provides validation and consistency checks
-- Trade-off: safety vs raw speed
-
-### Noise Addition
-
-```python
-def benchmark_noise_addition():
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
-
-    # evlib noise addition
-    start = time.time()
-    xs_noisy, ys_noisy, ts_noisy, ps_noisy = evlib.augmentation.add_random_events(
-        xs, ys, ts, ps, 10000, 640, 480
-    )
-    evlib_time = time.time() - start
-
-    print(f"evlib: {evlib_time:.3f}s")
-    print(f"Added {len(xs_noisy) - len(xs)} noise events")
-```
-
-**Results:**
-- evlib: Efficient noise event generation
-- Maintains temporal ordering and realistic distributions
-- 1-2x faster than naive Python implementations
-
-## Neural Network Performance
-
-### E2VID Model Loading
-
-```python
-def benchmark_model_loading():
-    # Model download and loading
-    start = time.time()
-    model_path = evlib.processing.download_model("e2vid_unet")
-    download_time = time.time() - start
-
-    # Model inference
-    events = evlib.load_events("data/slider_depth/events.txt")
-    df = events.collect()
-    xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
-    # Convert Duration timestamps to seconds (float64)
-    ts = df['t'].dt.total_seconds().to_numpy()
-
-    voxel_lazy = evr.create_voxel_grid(
-        "data/slider_depth/events.txt",
-        height=480, width=640, n_time_bins=5
-    )
-    voxel_df = voxel_lazy.collect()
-
-    start = time.time()
-    reconstructed = evlib.processing.events_to_video(
-        xs, ys, ts, ps, model_path, 640, 480
-    )
-    inference_time = time.time() - start
-
-    print(f"Model download: {download_time:.3f}s")
-    print(f"Inference: {inference_time:.3f}s")
-```
-
-**Results:**
-- One-time model download: 10-30s (depends on connection)
-- Inference: 50-200ms per frame (depends on hardware)
-- Competitive with pure PyTorch implementations
-
-## Memory Usage
-
-### Memory Efficiency Comparison
-
-```python
-def benchmark_memory_usage():
-    import psutil
-    import os
-
-    process = psutil.Process(os.getpid())
-
-    # Baseline memory
-    baseline_memory = process.memory_info().rss / 1024 / 1024  # MB
-
-    # Load large dataset
-    events = evlib.load_events("data/slider_depth/events.txt")
-    loaded_memory = process.memory_info().rss / 1024 / 1024  # MB
-
-    # Create voxel grid
-    voxel_lazy = evr.create_voxel_grid(
-        "data/slider_depth/events.txt",
-        height=480, width=640, n_time_bins=5
-    )
-    voxel_df = voxel_lazy.collect()
-    voxel_memory = process.memory_info().rss / 1024 / 1024  # MB
-
-    print(f"Baseline: {baseline_memory:.1f} MB")
-    print(f"After loading: {loaded_memory:.1f} MB")
-    print(f"After voxel grid: {voxel_memory:.1f} MB")
-
-    # Memory per event
-    events_memory = loaded_memory - baseline_memory
-    print(f"Memory per event: {events_memory * 1024 / len(xs):.2f} KB")
-```
-
-**Results:**
-- ~13 bytes per event (optimal for data types used)
-- Minimal memory overhead vs pure NumPy
-- Efficient memory layout for cache performance
-
-## Performance Summary
-
-### When to Use evlib
-
-SUCCESS: **Use evlib for:**
-- **Complex algorithms**: Voxel grids, smooth interpolation, model inference
-- **Large datasets**: >100k events where memory efficiency matters
-- **Production pipelines**: Need reliability and error handling
-- **File I/O**: HDF5 format, filtered loading
-- **Memory-constrained environments**: Optimal data type usage
-
-### When to Use NumPy
-
-SUCCESS: **Use NumPy for:**
-- **Simple operations**: Basic arithmetic, slicing, indexing
-- **Small datasets**: <10k events where setup overhead dominates
-- **Rapid prototyping**: Quick experiments and debugging
-- **Single operations**: When you need maximum speed for one specific task
-
-### Performance Ranges
-
-| Operation | evlib vs NumPy | Use Case |
-|-----------|---------------|----------|
-| File I/O | 0.8x-1.2x | Similar performance |
-| Voxel grids | 1.5x-3x faster | Complex algorithms |
-| Simple ops | 0.1x-0.8x | NumPy optimized |
-| Memory usage | 0.9x-1.1x | Similar efficiency |
-
-## Running Benchmarks
-
-### Setup
-```bash
-# Install benchmark dependencies
-pip install evlib[all] pytest-benchmark
-
-# Run benchmarks
-python -m pytest tests/test_benchmarks.py --benchmark-only
-```
-
-### Custom Benchmarks
-```python
-# Create your own benchmark
-def benchmark_custom_operation():
-    # Your code here
-    pass
-
-if __name__ == "__main__":
-    benchmark_custom_operation()
-```
-
-## Profiling Tools
-
-### Memory Profiling
-
-Use standard Python profiling tools to monitor memory usage during evlib operations.
-
-### Performance Profiling
-```python
-import cProfile
-import pstats
-
-def profile_operation():
-    cProfile.run('your_evlib_operation()', 'profile_stats')
-    stats = pstats.Stats('profile_stats')
-    stats.sort_stats('cumulative')
-    stats.print_stats(10)
-```
-
-## Benchmark Results Archive
-
-Historical benchmark results are maintained in the repository to track performance regression:
-
-- **v0.1.0**: Baseline performance measurements
-- **v0.2.0**: 15% improvement in voxel grid creation
-- **v0.3.0**: 25% memory usage reduction
-
-## Contributing Benchmarks
-
-To add new benchmarks:
-
-1. Create benchmark functions in `tests/test_benchmarks.py`
-2. Follow the existing benchmark patterns
-3. Include both evlib and pure Python implementations
-4. Document expected performance characteristics
-5. Submit PR with benchmark results on your system
-
----
-
-*Performance is measured honestly. evlib prioritizes correctness and reliability over maximum speed in all cases.*

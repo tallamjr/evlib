@@ -36,12 +36,14 @@ pip install evlib[all]
 
 All core functionality works identically on Windows as on Linux/macOS:
 
-- **Event Loading**: EVT2, EVT3, AEDAT (1.0-4.0), AER, text formats
-- **Event Processing**: Filtering, augmentation, transformations
-- **Polars DataFrames**: High-performance DataFrame operations (360M+ events/s)
-- **Event Representations**: Voxel grids, frames, histograms
+- **Event Loading**: EVT2, EVT3, AEDAT (1.0-4.0), AER, text formats. `load_events` returns a Polars `LazyFrame`.
+- **Event Processing**: Filtering via `evlib.filtering` (lazy Polars)
+- **Polars DataFrames**: High-performance lazy DataFrame operations
+- **Event Representations**: Voxel grids, event frames, time surfaces, stacked histograms
 - **Visualisation**: Plotting via the Python `evlib.visualization` module
-- **PyTorch Integration**: Model loading and inference via the Python `evlib.models` module
+- **PyTorch Integration**: E2VID and RVT model loading and inference via the Python `evlib.models` module
+
+GPU acceleration note: the CUDA scatter-add backend is Linux-oriented (NVIDIA) and the Metal backend is Apple Silicon only; neither applies to Windows. On Windows, the RVT pipeline and representations run on the CPU Polars and Rust backends.
 
 ### Platform-Specific Limitations ⚠️
 
@@ -56,18 +58,17 @@ All core functionality works identically on Windows as on Linux/macOS:
 ```python
 import evlib
 import h5py
-import numpy as np
 
-# Load events normally
-events = evlib.load_events("data.evt2")
+# Load events normally (load_events returns a LazyFrame; collect to a DataFrame)
+df = evlib.load_events("data.evt2").collect()
 
 # Save using h5py
 with h5py.File("output.h5", "w") as f:
     grp = f.create_group("events")
-    grp.create_dataset("x", data=events["x"].to_numpy())
-    grp.create_dataset("y", data=events["y"].to_numpy())
-    grp.create_dataset("t", data=events["t"].to_numpy())
-    grp.create_dataset("p", data=events["p"].to_numpy())
+    grp.create_dataset("x", data=df["x"].to_numpy())
+    grp.create_dataset("y", data=df["y"].to_numpy())
+    grp.create_dataset("t", data=df["t"].dt.total_microseconds().to_numpy())
+    grp.create_dataset("p", data=df["polarity"].to_numpy())
 ```
 
 #### HDF5 Reading with ECF Codec
@@ -159,52 +160,43 @@ events = evlib.load_events("data.txt")  # Text format
 import evlib
 import polars as pl
 
-# Load as Polars DataFrame (360M+ events/s filtering)
+# Load as a Polars LazyFrame
 events = evlib.load_events("data.evt2")
 
-# Filter by time window
+# Filter by time window. t is a Duration column, so compare on total_microseconds.
 events_filtered = events.filter(
-    (pl.col("t") >= 1000000) & (pl.col("t") <= 2000000)
+    pl.col("t").dt.total_microseconds().is_between(1_000_000, 2_000_000)
 )
 
 # Filter by spatial region
 events_roi = events.filter(
-    (pl.col("x") >= 100) & (pl.col("x") <= 500) &
-    (pl.col("y") >= 100) & (pl.col("y") <= 500)
+    pl.col("x").is_between(100, 500) & pl.col("y").is_between(100, 500)
 )
 ```
 
 ### Creating Event Representations
 
 ```python
-import evlib.representations as repr
+import evlib
+import evlib.representations as evr
+
+events = evlib.load_events("data.evt2")
 
 # Create voxel grid (works on Windows)
-voxel_grid = repr.create_voxel_grid(
+voxel_grid = evr.create_voxel_grid(
     events,
-    num_bins=5,
     height=480,
-    width=640
+    width=640,
+    n_time_bins=5,
 )
 
 # Create event frame
-frame = repr.create_event_frame(
+frame = evr.create_event_frame(
     events,
     height=480,
-    width=640
+    width=640,
+    n_time_bins=10,
 )
-```
-
-### Data Augmentation
-
-```python
-import evlib.augmentation as aug
-
-# All augmentation functions work on Windows
-events_flipped = aug.spatial_flip(events, flip_x=True, flip_y=False)
-events_rotated = aug.spatial_rotation(events, angle=45.0)
-events_cropped = aug.spatial_crop(events, x=100, y=100, width=400, height=400)
-events_noisy = aug.add_noise(events, noise_rate=0.1)
 ```
 
 ## Performance Considerations
@@ -213,11 +205,11 @@ Windows builds perform comparably to Linux/macOS:
 
 | Operation | Windows Performance | Notes |
 |-----------|---------------------|-------|
-| EVT2/3 Loading | ✅ Full speed | Native Rust implementation |
-| Polars Filtering | ✅ Full speed | 360M+ events/s |
-| Voxel Grid Creation | ✅ Full speed | Optimised Rust code |
-| AEDAT Parsing | ✅ Full speed | Format-agnostic |
-| HDF5 Reading (h5py) | ⚠️ Slightly slower | Pure Python overhead |
+| EVT2/3 Loading | Full speed | Native Rust implementation |
+| Polars Filtering | Full speed | Lazy Polars |
+| Voxel Grid Creation | Full speed | Polars (CPU) |
+| AEDAT Parsing | Full speed | Format-agnostic |
+| HDF5 Reading (h5py) | Slightly slower | Pure Python overhead |
 
 ## Troubleshooting
 
@@ -246,9 +238,9 @@ This is expected on Windows. Use the h5py workaround shown above.
 import polars as pl
 import evlib
 
-# This should return a Polars DataFrame
+# load_events returns a Polars LazyFrame
 events = evlib.load_events("data.evt2")
-print(type(events))  # Should be polars.dataframe.frame.DataFrame
+print(type(events))  # Should be polars.lazyframe.frame.LazyFrame
 ```
 
 ## Frequently Asked Questions
@@ -287,29 +279,29 @@ import evlib
 import h5py
 import numpy as np
 
-# Step 1: Load EVT2 file (native Rust, very fast)
+# Step 1: Load EVT2 file (native Rust, very fast). load_events returns a LazyFrame.
 events = evlib.load_events("recording.evt2")
 
-# Step 2: Process events using Polars
+# Step 2: Process events using Polars (t is a Duration column)
 import polars as pl
 
-events_processed = events.filter(
-    (pl.col("t") >= 1e6) & (pl.col("t") <= 2e6)  # Time window
+df = events.filter(
+    pl.col("t").dt.total_microseconds().is_between(1_000_000, 2_000_000)  # Time window
 ).filter(
-    pl.col("p") == 1  # Only positive polarity
-)
+    pl.col("polarity") == 1  # Only positive polarity
+).collect()
 
 # Step 3: Save to HDF5 using h5py
 with h5py.File("processed.h5", "w") as f:
     grp = f.create_group("events")
 
     # Convert Polars to NumPy for h5py
-    grp.create_dataset("x", data=events_processed["x"].to_numpy(), compression="gzip")
-    grp.create_dataset("y", data=events_processed["y"].to_numpy(), compression="gzip")
-    grp.create_dataset("t", data=events_processed["t"].to_numpy(), compression="gzip")
-    grp.create_dataset("p", data=events_processed["p"].to_numpy(), compression="gzip")
+    grp.create_dataset("x", data=df["x"].to_numpy(), compression="gzip")
+    grp.create_dataset("y", data=df["y"].to_numpy(), compression="gzip")
+    grp.create_dataset("t", data=df["t"].dt.total_microseconds().to_numpy(), compression="gzip")
+    grp.create_dataset("p", data=df["polarity"].to_numpy(), compression="gzip")
 
-print(f"Saved {len(events_processed)} events to processed.h5")
+print(f"Saved {len(df)} events to processed.h5")
 ```
 
 ### Loading Prophesee HDF5 with ECF
@@ -325,17 +317,17 @@ with h5py.File("prophesee_recording.h5", "r") as f:
     # Prophesee format: CD/events dataset
     cd_events = f["CD"]["events"][:]
 
-# Convert to evlib format
+# Convert to evlib's column layout (t as a Duration in microseconds, polarity column)
 events = pl.DataFrame({
-    "x": cd_events["x"].astype(np.uint16),
-    "y": cd_events["y"].astype(np.uint16),
-    "t": cd_events["t"].astype(np.int64),
-    "p": cd_events["p"].astype(np.int8)
+    "x": cd_events["x"].astype(np.int16),
+    "y": cd_events["y"].astype(np.int16),
+    "t": pl.duration(microseconds=cd_events["t"].astype(np.int64)),
+    "polarity": cd_events["p"].astype(np.int8),
 })
 
 # Now use evlib for processing
-import evlib.representations as repr
-voxel_grid = repr.create_voxel_grid(events, num_bins=5, height=720, width=1280)
+import evlib.representations as evr
+voxel_grid = evr.create_voxel_grid(events, height=720, width=1280, n_time_bins=5)
 ```
 
 ## Support

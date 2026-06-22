@@ -27,23 +27,18 @@ designed for scalable data processing with real-world event camera datasets.
 
 ## Core Features
 
-- **Universal Format Support**: Load data from AEDAT, EVT2/3, AER, text, and H5 formats (HDF5/H5 is opt-in via `--features hdf5`, available on Linux and macOS only, not Windows; use `h5py` directly for HDF5 I/O on Windows)
+- **Universal Format Support**: Load data from AEDAT, EVT2/3, AER, text, and H5 formats (HDF5/H5 is opt-in via `--features hdf5`, available on Linux and macOS only, not Windows; use `h5py` directly for HDF5 I/O on Windows). EVT2 decode is byte-identical to OpenEB (there is an OpenEB conformance gate).
 - **Automatic Format Detection**: No need to specify format types manually
-- **Polars DataFrame Integration**: High-performance DataFrame operations (throughput figures are indicative, pending a committed benchmark suite; in progress)
+- **Polars DataFrame Integration**: High-performance lazy DataFrame operations; `load_events` returns a `LazyFrame` that collects on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`)
 - **Event Filtering**: Comprehensive filtering with temporal, spatial, and polarity options
-- **Event Representations**: Stacked histograms, voxel grids, and mixed density stacks
-- **Neural Network Models**: E2VID model loading and inference
+- **Event Representations**: Voxel grids, event frames, time surfaces, and stacked histograms; bit-validated against tonic, and the GPU path runs fully on the cudf engine with no CPU fallback
+- **GPU-Accelerated RVT Preprocessing**: `evlib.rvt.process_sequence` offers four backends (`polars`, `rust`, `cuda`, `metal`) with native CUDA and Metal scatter-add kernels, bit-identical to RVT (PyTorch)
+- **Neural Network Models**: E2VID and RVT model loading and inference (Python/PyTorch, via `evlib.models`)
 - **Real-time Data Processing**: Handle large datasets (550MB+ files) efficiently
 - **Polarity Encoding**: Automatic conversion between 0/1 and -1/1 polarities
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
-**In Development:** Advanced neural network processing (hopefully with Rust
-backend, maybe Candle) Real-time visualization (Only simulated working at the
-moment — see `wasm-evlib`)
-
-**Note**: The Rust backend currently focuses on data loading and processing,
-with Python modules providing advanced features like filtering and
-representations.
+evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT torch bar a single roughly 1e-10 boundary quirk: evlib CUDA runs at 283.6s (parity-plus versus RVT torch-GPU at 286.3s), evlib Rust-CPU at 406.2s is 1.32x faster than RVT torch-CPU (534.2s), and evlib CUDA is 1.88x faster than RVT torch-CPU. Standalone representations beat tonic NumPy on 20M events: voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. See `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`.
 
 ---
 
@@ -141,7 +136,7 @@ denoised = evf.filter_noise(clean_events, method="refractory", refractory_period
 import evlib
 import evlib.representations as evr
 
-# Create voxel grid representation (reliable alternative to stacked histogram)
+# Create voxel grid representation
 events = evlib.load_events("data/slider_depth/events.txt")
 # Functions accept both LazyFrame and DataFrame - no need to .collect() explicitly
 voxel_df = evr.create_voxel_grid(
@@ -250,7 +245,7 @@ pip install multiprocessing-logging
 evlib provides comprehensive Polars DataFrame support for high-performance event data processing:
 
 ### Key Benefits
-- **Performance**: loading and filtering throughput figures are indicative, pending a committed benchmark suite (in progress)
+- **Performance**: lazy queries collect on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`)
 - **Memory Efficiency**: ~23 bytes/event (5x better than typical 110 bytes/event)
 - **Expressive Queries**: SQL-like operations for complex data analysis
 - **Lazy Evaluation**: Query optimization for better performance
@@ -353,11 +348,13 @@ print(f"Successfully saved {len(x)} processed events to HDF5")
 
 ### Performance Benchmarks
 
-![Performance Benchmarks](./benches/performance_benchmark.png)
+evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), RVT preprocessing is bit-identical to RVT torch bar a single roughly 1e-10 boundary quirk:
 
-**Benchmark Results:**
+- evlib CUDA: 283.6s (parity-plus versus RVT torch-GPU at 286.3s, about 1.01x)
+- evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU (534.2s)
+- evlib CUDA: 1.88x faster than RVT torch-CPU
 
-These throughput figures are indicative, pending a committed benchmark suite (in progress). The only reproducible benchmark currently committed is the RVT pipeline (`benchmarks/bench_rvt_pipeline.py`).
+Standalone representations versus tonic NumPy (20M events): voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. Plots: `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`. The Polars GPU engine is not a free win for single operations, and the CUDA-versus-RVT-GPU margin is parity-plus; the clearest wins are the CPU backends and the standalone representations.
 
 - **Memory Efficiency**: ~23 bytes/event
 
@@ -507,8 +504,9 @@ evlib provides several Python modules for different aspects of event processing:
 ### Core Modules
 - **`evlib.formats`**: Direct Rust access for format loading and detection
 - **`evlib.filtering`**: High-performance event filtering with Polars
-- **`evlib.representations`**: Event representations (stacked histograms, voxel grids)
-- **`evlib.models`**: Neural network model loading and inference (Under construction)
+- **`evlib.representations`**: Event representations (voxel grids, event frames, time surfaces, stacked histograms)
+- **`evlib.rvt`**: RVT-identical preprocessing with four backends (`polars`, `rust`, `cuda`, `metal`)
+- **`evlib.models`**: E2VID and RVT model loading and inference (Python/PyTorch)
 
 ### Module Overview
 ```python
@@ -536,8 +534,8 @@ voxel_df = evr.create_voxel_grid(events_df, height=480, width=640, n_time_bins=1
 mixed_df = evr.create_mixed_density_stack(events_df, height=480, width=640)
 print(f"Created voxel grid with {len(voxel_df)} entries and mixed density stack with {len(mixed_df)} entries")
 
-# Neural network models (limited functionality)
-# from evlib.models import ModelConfig  # If available - under development
+# Neural network models (requires `pip install evlib[torch]`)
+# from evlib.models import E2VID, RVT
 
 # Data saving (need to get arrays first)
 import numpy as np
@@ -636,6 +634,9 @@ maturin develop
 
 # Enable HDF5 support (Unix only)
 maturin develop --features hdf5
+
+# Metal GPU scatter-add kernel (Apple Silicon)
+CC=clang maturin develop --features metal
 
 # Release build
 maturin build --release

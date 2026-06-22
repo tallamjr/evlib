@@ -79,6 +79,9 @@ byteorder      = "1.5"
 # LZ4 frame decompression for AEDAT 4.0 (DV framework) packet bodies
 lz4_flex       = { version = "0.11", default-features = false, features = ["frame"] }
 
+# Runtime loader for the nvcc-built CUDA scatter kernel (.so), used by the optional `cuda` backend.
+libloading     = { version = "0.8", optional = true }
+
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = "1.0"
 num_cpus       = "1.16"
@@ -94,6 +97,11 @@ hdf5-metno     = { version = "0.10.1", features = ["blosc-all"], optional = true
 hdf5-metno-sys = { version = "0.10.1", optional = true }
 tracing        = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
+
+# Metal GPU scatter-add backend (Apple Silicon), opt-in via the `metal` feature. macOS only.
+[target.'cfg(target_os = "macos")'.dependencies]
+metal          = { version = "0.27", optional = true }
+objc           = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tempfile       = "3.8"
@@ -113,8 +121,10 @@ python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 # present libpython, which lets `cargo test` and `maturin develop` build and
 # run without any RUSTFLAGS hack.
 extension-module = ["pyo3/extension-module"]
-# cuda           = ["candle-core/cuda"]  # Removed with candle dependencies
-# metal          = ["candle-core/metal"]  # Removed with candle dependencies
+# CUDA scatter-add backend: loads an nvcc-built librvt_scatter.so at runtime (no link-time CUDA).
+cuda           = ["dep:libloading"]
+# Metal scatter-add backend (Apple Silicon): MSL kernel compiled at runtime via metal-rs.
+metal          = ["dep:metal", "dep:objc"]
 polars         = ["dep:polars"]
 arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
 zero-copy      = ["arrow"]  # Alias for clarity

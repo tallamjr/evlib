@@ -197,12 +197,12 @@ class TestEventLoading:
         df = events.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
 
         assert len(xs) > 0, "No events loaded"
         assert isinstance(xs, np.ndarray), "xs should be numpy array"
-        assert xs.dtype == np.uint16, "xs should be uint16"
-        assert ys.dtype == np.uint16, "ys should be uint16"
+        assert xs.dtype == np.int16, "xs should be Int16"
+        assert ys.dtype == np.int16, "ys should be Int16"
         assert ts.dtype == np.float64, "ts should be float64"
         assert ps.dtype == np.int8, "ps should be int8"
 
@@ -213,7 +213,7 @@ class TestEventLoading:
         df = filtered.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
 
         assert len(xs) > 0, "No events loaded with time filter"
         # Convert durations to seconds for comparison
@@ -231,7 +231,7 @@ class TestEventLoading:
         df = filtered.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
 
         assert len(xs) > 0, "No events loaded with spatial filter"
         assert np.all(xs >= 200), "Events below min_x found"
@@ -364,7 +364,7 @@ class TestEventProcessingPipeline:
         df = events.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
 
         # Create voxel grid
         voxel_lazy = evr.create_voxel_grid(
@@ -396,7 +396,7 @@ class TestEventProcessingPipeline:
         df = events.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
 
         # Save to HDF5
         evlib.save_events_to_hdf5(xs, ys, ts, ps, "test_output.h5")
@@ -406,7 +406,7 @@ class TestEventProcessingPipeline:
         df2 = events2.collect()
         xs2, ys2, ps2 = df2['x'].to_numpy(), df2['y'].to_numpy(), df2['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts2 = df2['timestamp'].dt.total_seconds().to_numpy()
+        ts2 = df2['t'].dt.total_seconds().to_numpy()
 
         # Verify perfect roundtrip
         np.testing.assert_array_equal(xs, xs2)
@@ -623,7 +623,7 @@ class TestPerformanceBenchmarks:
         df = events.collect()
         xs, ys, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
-        ts = df['timestamp'].dt.total_seconds().to_numpy()
+        ts = df['t'].dt.total_seconds().to_numpy()
         loaded = process.memory_info().rss / 1024 / 1024  # MB
 
         # Create voxel grid
@@ -790,6 +790,18 @@ cargo test --release
 cargo test --test test_format_detection
 ```
 
+### Local-only slow and integration gates
+
+The `slow` and `integration` markered suites, including the RVT bit-identity acceptance test, are local-only gates. They depend on large gitignored datasets and are not run on hosted CI. Run them locally with:
+
+```bash
+.venv/bin/pytest -m "slow or integration" --run-slow --run-integration
+```
+
+### RVT backends under test
+
+`evlib.rvt.process_sequence` has four backends, selected with `backend=`: `"polars"` (Polars CPU or cudf GPU via `engine=`), `"rust"` (Rust dense scatter-add, CPU), `"cuda"` (custom CUDA kernel), and `"metal"` (Metal/MSL kernel, Apple Silicon). The acceptance test validates the output bit-identical against RVT (torch), tonic, OpenEB, and dv_processing. The `cuda` and `metal` backends require the matching Cargo feature and hardware, so they are exercised locally rather than on hosted CI.
+
 ### Notebook Tests
 
 ```bash
@@ -843,7 +855,7 @@ jobs:
     - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: nightly
         default: true
 
     - name: Install dependencies

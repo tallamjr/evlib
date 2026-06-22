@@ -4,25 +4,26 @@
 
 - **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Operating System**: Linux, macOS, or Windows
-- **Dependencies**: HDF5 system libraries (for file I/O)
+
+HDF5 is **opt-in**: EVT2/3, AEDAT, AER and text formats all work without it. You only need HDF5 system libraries if you build the Rust HDF5 reader with `--features hdf5` (Linux and macOS only). On Windows, use `h5py` directly for HDF5 I/O.
 
 ## System Dependencies
+
+`pkg-config` is the only system dependency for a default build. HDF5 system libraries are needed only for an opt-in `--features hdf5` build.
 
 ### Ubuntu/Debian
 ```bash
 sudo apt update
-sudo apt install libhdf5-dev pkg-config
+sudo apt install pkg-config
+# Only if building with --features hdf5:
+sudo apt install libhdf5-dev
 ```
 
 ### macOS
 ```bash
-brew install hdf5 pkg-config
-```
-
-### Windows
-```bash
-# Using conda (recommended)
-conda install -c conda-forge hdf5 pkg-config
+brew install pkg-config
+# Only if building with --features hdf5:
+brew install hdf5
 ```
 
 ## Python Installation
@@ -85,8 +86,18 @@ pip install maturin
 # Clone and build
 git clone https://github.com/tallamjr/evlib.git
 cd evlib
-maturin develop
+maturin develop                    # default minimal build
+maturin develop --features hdf5    # opt-in HDF5 support (Linux/macOS)
 ```
+
+### GPU scatter-add kernels (optional)
+
+The RVT preprocessing pipeline (`evlib.rvt.process_sequence`) can use native GPU scatter-add kernels:
+
+- **CUDA** (NVIDIA, Linux-oriented): build the nvcc kernel and point `EVLIB_CUDA_LIB` at the resulting `librvt_scatter.so`, then call `process_sequence(..., backend="cuda")`.
+- **Metal** (Apple Silicon): build with `CC=clang maturin develop --features metal`, then call `process_sequence(..., backend="metal")`.
+
+Without these, the `polars` (CPU or cudf GPU) and `rust` (CPU) backends are always available.
 
 ## Verification
 

@@ -22,52 +22,57 @@ ps = df['polarity'].to_numpy()
 
 ## Event Filtering
 
-<!-- NOTE: evlib.filtering module not yet available. Use Polars filtering directly: -->
+The `evlib.filtering` module provides ready-made lazy filters. You can also write filters directly as Polars expressions; remember `t` is a Duration column.
 
 ```python
+import evlib
+import evlib.filtering as evf
 import polars as pl
 
-# Load events and use Polars filtering
 events = evlib.load_events("data/slider_depth/events.txt")
 
-# Time window filtering
-filtered_events = events.filter(
-    (pl.col('t') >= 0.0) & (pl.col('t') <= 1.0)
-)
+# Time window filtering (t_start/t_end are in seconds)
+filtered_events = evf.filter_by_time(events, t_start=0.0, t_end=1.0)
 df = filtered_events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 
 # Spatial bounds filtering
-spatial_events = events.filter(
-    (pl.col('x') >= 100) & (pl.col('x') <= 500) &
-    (pl.col('y') >= 100) & (pl.col('y') <= 300)
-)
+spatial_events = evf.filter_by_roi(events, x_min=100, x_max=500, y_min=100, y_max=300)
 df = spatial_events.collect()
-xs, ys, ts, ps = df['x'].to_numpy(), df['y'].to_numpy(), df['t'].to_numpy(), df['polarity'].to_numpy()
 
 # Polarity filtering
-pos_events = events.filter(pl.col('polarity') == 1)  # Positive events only
-neg_events = events.filter(pl.col('polarity') == -1)  # Negative events only
+pos_events = evf.filter_by_polarity(events, polarity=1)   # Positive events only
+neg_events = evf.filter_by_polarity(events, polarity=-1)  # Negative events only
 
-# Convert to numpy arrays if needed
-pos_df = pos_events.collect()
-pos_xs, pos_ys, pos_ts, pos_ps = pos_df['x'].to_numpy(), pos_df['y'].to_numpy(), pos_df['t'].to_numpy(), pos_df['polarity'].to_numpy()
+# Or write the same filters as Polars expressions directly:
+expr_filtered = events.filter(
+    (pl.col('t').dt.total_microseconds() / 1_000_000).is_between(0.0, 1.0)
+    & pl.col('x').is_between(100, 500)
+    & (pl.col('polarity') == 1)
+)
+df = expr_filtered.collect()
 ```
 
 ## Event Representations
 
 ```python
-# Basic event data for custom representations
+import evlib
+import evlib.representations as evr
+
 events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
 
-# Access event data for custom processing
-print(f"Event data available for custom representations: {len(df)} events")
-print(f"Data columns: {df.columns}")
-print(f"Data types: {df.dtypes}")
+# Voxel grid (Zhu et al. 2019 event volume)
+voxel_df = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
+print(f"Voxel grid entries: {len(voxel_df)}")
 
-# Note: Advanced representation functions are under development
-# Use basic data access for custom implementations
+# Event frame (tonic to_frame semantics)
+frame_df = evr.create_event_frame(events, height=480, width=640, n_time_bins=10)
+print(f"Event frame entries: {len(frame_df)}")
+
+# Stacked histogram (RVT-compatible)
+hist_df = evr.create_stacked_histogram(
+    events, height=480, width=640, bins=10, window_duration_ms=50.0
+)
+print(f"Stacked histogram entries: {len(hist_df)}")
 ```
 
 ## Event Visualization
@@ -116,20 +121,15 @@ print(f"Flipped coordinates: x_max={xs_flipped.max()}, x_min={xs_flipped.min()}"
 # or convert to numeric values first
 ```
 
-## Neural Network Inference
+## Neural Network Models
 
-```python
-# Neural network functionality is under development
-# Basic data loading for preprocessing:
-events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()
-print(f"Loaded {len(df)} events ready for manual preprocessing")
-print(f"Event columns: {df.columns}")
+E2VID and RVT models are available in Python via `evlib.models` (requires `pip install evlib[torch]`):
 
-# Note: evlib.representations.create_voxel_grid has known issues
-# For now, use basic data loading and manual preprocessing
-# Neural network models are not currently available
+```python notest
+from evlib.models import E2VID, RVT
 ```
+
+For RVT-identical preprocessing, use `evlib.rvt.process_sequence(...)`, which offers four backends (`polars`, `rust`, `cuda`, `metal`).
 
 ## File Format Support
 
@@ -209,9 +209,6 @@ load_time = time.time() - start
 print(f"Data loading: {load_time:.3f}s for {len(df):,} events")
 print(f"Loading rate: {len(df)/load_time:.0f} events/sec")
 print(f"Event columns: {df.columns}")
-
-# Note: Advanced representations have known issues
-# Use basic data loading for reliable performance testing
 ```
 
 ## Error Handling
