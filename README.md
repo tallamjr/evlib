@@ -46,53 +46,13 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python:
 polarity filters as Polars expressions, so loading and filtering fuse into one
 GPU-collectable query.
 
-### RVT preprocessing backends
-
-`evlib.rvt.process_sequence(...)` reproduces the RVT stacked-histogram
-preprocessing pipeline and offers four interchangeable backends via `backend=`:
-
-- `"polars"`: Polars on the CPU, or on the cudf GPU engine when you pass an
-  `engine=` of `"gpu"` or a `pl.GPUEngine(...)`.
-- `"rust"`: Rust dense scatter-add on the CPU.
-- `"cuda"`: a custom CUDA scatter-add kernel on an NVIDIA GPU. It loads the
-  nvcc-built `librvt_scatter.so` via the `EVLIB_CUDA_LIB` environment variable.
-- `"metal"`: a Metal scatter-add kernel on Apple Silicon. Build it with
-  `CC=clang maturin develop --features metal`.
-
-The underlying native kernels are exposed directly as
-`evlib.representations_rs.stacked_histogram_dense` (CPU),
-`stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
-
-### Performance
-
-evlib is bit-validated against the reference implementations it competes with:
-RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set
-(18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT
-torch bar a single roughly 1e-10 boundary quirk, and the timings are:
-
-- evlib CUDA: 283.6s, slightly ahead of RVT torch-GPU at 286.3s (parity-plus,
-  about 1.01x).
-- evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU at 534.2s.
-- evlib CUDA is 1.88x faster than RVT torch-CPU.
-
-For the standalone representations (20M events, versus tonic NumPy): voxel_grid
-1.35x, event_frame 2.9x, time_surface 2.1x.
-
-A caveat on honesty: the Polars GPU engine is not a free win for single
-operations, and the CUDA-versus-RVT-GPU margin is parity-plus rather than a large
-speedup. The clearest wins are evlib's CPU backends and the standalone
-representations.
-
-Plots: [`benchmarks/out/rvt_final_time.png`](./benchmarks/out/rvt_final_time.png)
-and [`benchmarks/out/tonic_bench_time.png`](./benchmarks/out/tonic_bench_time.png).
-
-**Full documentation:** <https://tallamjr.github.io/evlib/>
-
 <!-- mtoc-start -->
 
 - [Quick Start](#quick-start)
   - [What are Event Cameras?](#what-are-event-cameras)
   - [Basic Usage](#basic-usage)
+  - [RVT preprocessing backends](#rvt-preprocessing-backends)
+  - [Performance](#performance)
 - [Installation](#installation)
 - [Documentation](#documentation)
 - [Examples](#examples)
@@ -177,6 +137,58 @@ hist = evr.create_stacked_histogram(
 
 See the [representations guide](https://tallamjr.github.io/evlib/user-guide/representations/)
 for voxel grids, time surfaces, and mixed density stacks.
+
+### RVT preprocessing backends
+
+`evlib.rvt.process_sequence(...)` reproduces the RVT stacked-histogram
+preprocessing pipeline and offers four interchangeable backends via `backend=`:
+
+- `"polars"`: Polars on the CPU, or on the cudf GPU engine when you pass an
+  `engine=` of `"gpu"` or a `pl.GPUEngine(...)`.
+- `"rust"`: Rust dense scatter-add on the CPU.
+- `"cuda"`: a custom CUDA scatter-add kernel on an NVIDIA GPU. It loads the
+  nvcc-built `librvt_scatter.so` via the `EVLIB_CUDA_LIB` environment variable.
+- `"metal"`: a Metal scatter-add kernel on Apple Silicon. Build it with
+  `CC=clang maturin develop --features metal`.
+
+The underlying native kernels are exposed directly as
+`evlib.representations_rs.stacked_histogram_dense` (CPU),
+`stacked_histogram_dense_cuda`, and `stacked_histogram_dense_metal`.
+
+### Performance
+
+evlib is bit-validated against the reference implementations it competes with:
+RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set
+(18 sequences, RTX 4090), the RVT preprocessing output is bit-identical to RVT
+torch bar a single roughly 1e-10 boundary quirk, and the timings are:
+
+- evlib CUDA: 283.6s, slightly ahead of RVT torch-GPU at 286.3s (parity-plus,
+  about 1.01x).
+- evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU at 534.2s.
+- evlib CUDA is 1.88x faster than RVT torch-CPU.
+
+For the standalone representations (20M events, versus tonic NumPy): voxel_grid
+1.35x, event_frame 2.9x, time_surface 2.1x.
+
+The Polars GPU engine is not a free win for single operations, and the
+CUDA-versus-RVT-GPU margin is parity-plus rather than a large speedup. The biggest
+margins are evlib's CPU backends and the standalone representations.
+
+> [!Note]
+>
+> **State of the GPU and Metal work**: the CUDA backend is the production GPU path and edges out RVT's torch-GPU pipeline. The Metal backend is bit-identical to the CPU kernel on an M2 Pro, but about 3x slower there: the workload is memory-bound and the M2 Pro's CPU cores win. Metal is a portability path (an on-device kernel where torch-CUDA cannot run), not a speed win on M2-class hardware; use `backend="rust"` for the fastest Apple-CPU path.
+
+<p align="center">
+  <img src="./benchmarks/out/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, bit-identical">
+</p>
+
+More plots: the full five-backend chart
+[`rvt_final_time.png`](./benchmarks/out/rvt_final_time.png) (and
+[`rvt_final_memory.png`](./benchmarks/out/rvt_final_memory.png) for peak memory),
+plus [`tonic_bench_time.png`](./benchmarks/out/tonic_bench_time.png) for the
+representations-versus-tonic comparison.
+
+**Full documentation:** <https://tallamjr.github.io/evlib/>
 
 ## Installation
 

@@ -354,7 +354,7 @@ evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. 
 - evlib Rust-CPU: 406.2s, 1.32x faster than RVT torch-CPU (534.2s)
 - evlib CUDA: 1.88x faster than RVT torch-CPU
 
-Standalone representations versus tonic NumPy (20M events): voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. Plots: `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`. The Polars GPU engine is not a free win for single operations, and the CUDA-versus-RVT-GPU margin is parity-plus; the clearest wins are the CPU backends and the standalone representations.
+Standalone representations versus tonic NumPy (20M events): voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. Plots: `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`. The Polars GPU engine is not a free win for single operations, and the CUDA-versus-RVT-GPU margin is parity-plus; the biggest margins are the CPU backends and the standalone representations.
 
 - **Memory Efficiency**: ~23 bytes/event
 

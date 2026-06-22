@@ -7,7 +7,7 @@ Thank you for your interest in contributing to evlib! This guide will help you g
 evlib follows a **"robust over rapid"** philosophy:
 - **Quality over quantity**: Every feature must be thoroughly tested
 - **Real data validation**: No mock data or placeholder implementations
-- **Honest performance**: Claims must be verified with benchmarks
+- **Verified performance**: Claims must be backed by benchmarks
 - **Production ready**: Code must handle edge cases and errors gracefully
 
 ## Development Setup

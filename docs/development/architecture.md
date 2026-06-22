@@ -8,7 +8,7 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python. 
 
 1. **Thin Rust core, Polars everywhere else**: Rust does binary decoding; Python Polars does the processing.
 2. **Lazy and engine-selectable**: loaders return a Polars `LazyFrame`, so the same query runs on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`) where CUDA is available.
-3. **Query layer vs compute layer**: Polars is the query, filter, and transform layer (CPU, the cudf GPU engine, and CUDA unified managed memory for larger-than-VRAM work). The native Rust, CUDA, and Metal scatter-add kernels are the compute layer for the stacked histogram. The honest caveat: Polars-GPU is not a free win for a single transfer-bound operation; the custom scatter-add kernels are where the GPU actually wins.
+3. **Query layer vs compute layer**: Polars is the query, filter, and transform layer (CPU, the cudf GPU engine, and CUDA unified managed memory for larger-than-VRAM work). The native Rust, CUDA, and Metal scatter-add kernels are the compute layer for the stacked histogram. Polars-GPU is not a free win for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins.
 4. **Real data validation**: format readers are tested against real event camera datasets, and the RVT stacked histogram is validated bit-identical against RVT (torch), tonic, OpenEB, and dv_processing.
 5. **No dead weight**: the crate carries only the dependencies the Rust modules actually use.
 

@@ -425,8 +425,8 @@ class TestEventProcessingPipeline:
         # Convert Duration timestamps to seconds (float64)
         ts = filtered_events['t'].dt.total_seconds().to_numpy()
 
-        # Note: Neural network processing is under development
-        # For now, test basic event processing
+        # Models (E2VID, RVT) live in evlib.models; here we test event processing
+        # by building a representation from the filtered events.
         import evlib.representations as evr
         voxel_lazy = evr.create_voxel_grid(
             filtered_events, width=640, height=480, n_time_bins=5

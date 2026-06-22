@@ -10,7 +10,7 @@ The `evlib.representations` module provides Polars-based implementations of comm
 
 Polars is the query, filter and transform layer. It runs on the CPU, on the cudf GPU engine (via `engine="gpu"`), and on CUDA managed memory so a workload larger than VRAM can still execute on the GPU. For the RVT pipeline the stacked-histogram is built by dedicated native scatter-add kernels (Rust, CUDA, Metal), which are the compute layer.
 
-Honest caveat: Polars on the GPU is not a free speed-up for a single transfer-bound operation. The GPU win comes from the custom scatter-add kernels, or from compute-heavy and larger-than-VRAM workloads. On a single transfer-bound representation call the CPU Polars engine is typically the fastest evlib path.
+Polars on the GPU is not a free speed-up for a single transfer-bound operation. The GPU win comes from the custom scatter-add kernels, or from compute-heavy and larger-than-VRAM workloads. On a single transfer-bound representation call the CPU Polars engine is typically the fastest evlib path.
 
 ### Performance
 

@@ -59,6 +59,10 @@ Measured on the gen4_1mpx validation split (18 sequences, single pass), on an RT
 
 evlib CUDA is about 1.01x faster than RVT torch on the GPU, and about 1.88x faster than the RVT torch CPU reference. The evlib output is bit-identical to the RVT torch reference, bar a roughly 1e-10 float-binning boundary quirk that affects 3 of the 18 sequences.
 
+**Metal backend status**
+
+The Metal backend is verified on an Apple M2 Pro: the MSL kernel runs on the actual Metal device and is bit-identical to the CPU kernel (it bins with integer division, so there is no float32 caveat). On that integrated GPU it is about 3x slower than the Rust CPU kernel (281 ms versus 94 ms on a 5.1M-event batch), because the workload is memory-bound and the M2 Pro's CPU cores win. Metal is therefore a portability path, an on-device kernel where the torch-CUDA reference cannot run, rather than a speed win on M2-class hardware. The CUDA result on a discrete RTX 4090 does not transfer to an integrated Apple GPU.
+
 **Bit-identity validation breadth**
 
 The stacked-histogram output has been validated bit-identical against RVT (torch), tonic, OpenEB, and dv_processing.

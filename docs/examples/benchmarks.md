@@ -13,7 +13,7 @@ The RVT stacked-histogram is built by dedicated native scatter-add kernels. `evl
 
 The kernels are exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_cuda` and `stacked_histogram_metal`.
 
-Polars is the query, filter and transform layer (CPU, cudf GPU engine, and CUDA managed memory for workloads larger than VRAM). The native scatter-add kernels are the compute layer. Honest caveat: Polars on the GPU is not a free speed-up for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins, and the CUDA-versus-RVT-GPU result is parity-plus because the shared HDF5 read dominates the largest sequences.
+Polars is the query, filter and transform layer (CPU, cudf GPU engine, and CUDA managed memory for workloads larger than VRAM). The native scatter-add kernels are the compute layer. Polars on the GPU is not a free speed-up for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins, and the CUDA-versus-RVT-GPU result is parity-plus because the shared HDF5 read dominates the largest sequences.
 
 ## RVT preprocessing pipeline
 
