@@ -238,7 +238,7 @@ python examples/stacked_histogram_demo.py
 pytest --nbmake examples/
 ```
 
-Benchmarks and performance scripts live in [`benches/`](./benches).
+Benchmarks live in [`benchmarks/`](./benchmarks): the Python suite (`bench_rvt_dataset.py`, `bench_tonic.py`) at the top level, and the Rust criterion benches under [`benchmarks/rust/`](./benchmarks/rust).
 
 ## Development
 
