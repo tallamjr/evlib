@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 import torch
 from torch.utils.data import Dataset
@@ -18,7 +18,7 @@ class SequenceRandomDataset(Dataset):
         self.sources = sources
         self.L = sequence_length
         # index map: (source_idx, start_window) for each sequence
-        self._index: List[tuple] = []
+        self._index: List[Tuple[int, int]] = []
         for si, src in enumerate(sources):
             n = src.window_count()
             for start in range(0, n, self.L):

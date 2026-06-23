@@ -37,14 +37,15 @@ def test_dataloader_two_workers_covers_all():
     ds = SequenceRandomDataset(
         [PreprocessedH5Source(FIX)], sequence_length=2
     )  # 3 sequences
-    # The PreprocessedH5Source lazy-opens its h5 inside each worker, so this is
-    # only safe under fork (h5py handles cannot be pickled for spawn).
+    # The source holds no live h5 handle after construction (window_count reads
+    # metadata then closes), so it pickles cleanly and each worker opens its own
+    # handle lazily. This runs under the platform-default start method (spawn on
+    # macOS), not a forced fork.
     dl = DataLoader(
         ds,
         batch_size=1,
         num_workers=2,
         collate_fn=custom_collate_random,
-        multiprocessing_context="fork",
     )
     seen = 0
     for batch in dl:

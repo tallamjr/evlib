@@ -38,8 +38,12 @@ class PreprocessedH5Source:
         self.repr_name = repr_name
         self.downsample_by_2 = downsample_by_2
         self.nbins = _nbins_from_repr_name(repr_name)
-        self._h5 = None  # opened lazily inside the worker
+        # Live handles are created lazily and never persist across pickling so
+        # that DataLoader workers (fork or spawn) each open their own h5 file.
+        self._h5 = None
         self._data = None
+        # Cheap, picklable metadata loaded once via _ensure_meta().
+        self._n_windows = None
         self._labels = None
         self._objframe_2_repr = None
         self._repr_2_objframe = None
@@ -57,8 +61,14 @@ class PreprocessedH5Source:
         )
         return self._repr_dir / name
 
-    def _ensure_open(self) -> None:
-        if self._h5 is not None:
+    def _ensure_meta(self) -> None:
+        """Load cheap metadata and labels, holding no persistent h5 handle.
+
+        Opens the h5 only long enough to read ``data.shape`` (validating the
+        channel count and recording the window count), then closes it. The numpy
+        label arrays are picklable, so the source stays picklable under spawn.
+        """
+        if self._n_windows is not None:
             return
         try:
             import hdf5plugin  # noqa: F401  registers the blosc filter
@@ -76,13 +86,15 @@ class PreprocessedH5Source:
                     f"preprocessed sequence missing required file: {p}"
                 )
 
-        self._h5 = h5py.File(str(self._h5_path), "r")
-        self._data = self._h5["data"]
+        with h5py.File(str(self._h5_path), "r") as h5:
+            shape = h5["data"].shape
         expected_c = 2 * self.nbins
-        if self._data.shape[1] != expected_c:
+        if shape[1] != expected_c:
             raise ValueError(
-                f"on-disk channel count {self._data.shape[1]} != 2*nbins {expected_c} at {self._h5_path}"
+                f"on-disk channel count {shape[1]} != 2*nbins {expected_c} at {self._h5_path}"
             )
+        self._n_windows = int(shape[0])
+
         self._objframe_2_repr = np.load(self._repr_dir / "objframe_idx_2_repr_idx.npy")
         npz = np.load(self.seq_dir / "labels_v2" / "labels.npz")
         self._labels = npz["labels"]
@@ -100,12 +112,43 @@ class PreprocessedH5Source:
             )
             self._repr_2_objframe[repr_i] = (lo, hi)
 
+    def _ensure_data(self) -> None:
+        """Open and keep the ``data`` dataset handle for reading.
+
+        Called only from read_windows, so the persistent (fork-unsafe) handle is
+        created in the process that actually reads, post-fork or post-unpickle.
+        """
+        self._ensure_meta()
+        if self._data is not None:
+            return
+        try:
+            import hdf5plugin  # noqa: F401  registers the blosc filter
+        except ImportError:
+            pass
+        import h5py
+
+        self._h5 = h5py.File(str(self._h5_path), "r")
+        self._data = self._h5["data"]
+
+    def __getstate__(self) -> dict:
+        # Drop the live h5/data handles so the source pickles cleanly under
+        # spawn; they are re-opened lazily in the unpickling process.
+        state = self.__dict__.copy()
+        state["_h5"] = None
+        state["_data"] = None
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._h5 = None
+        self._data = None
+
     def window_count(self) -> int:
-        self._ensure_open()
-        return int(self._data.shape[0])
+        self._ensure_meta()
+        return int(self._n_windows)
 
     def read_windows(self, lo: int, hi: int):
-        self._ensure_open()
+        self._ensure_data()
         if lo < 0 or hi > self._data.shape[0] or lo >= hi:
             raise ValueError(
                 f"window range [{lo},{hi}) out of bounds for {self._data.shape[0]} windows"

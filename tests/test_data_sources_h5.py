@@ -1,3 +1,4 @@
+import pickle
 from pathlib import Path
 
 import pytest
@@ -28,3 +29,30 @@ def test_label_alignment():
 def test_missing_dir_raises():
     with pytest.raises(FileNotFoundError):
         PreprocessedH5Source(FIX.parent / "does_not_exist").window_count()
+
+
+def test_no_persistent_handle_after_construction():
+    src = PreprocessedH5Source(FIX)
+    assert src._h5 is None and src._data is None
+    src.window_count()
+    # window_count reads metadata then closes the file: no live handle remains.
+    assert src._h5 is None and src._data is None
+
+
+def test_picklable_after_window_count():
+    src = PreprocessedH5Source(FIX)
+    assert src.window_count() == 6
+    restored = pickle.loads(pickle.dumps(src))
+    # The unpickled source holds no live handle and still reads correctly.
+    assert restored._h5 is None and restored._data is None
+    assert restored.window_count() == 6
+    ev, labels = restored.read_windows(0, 6)
+    assert len(ev) == 6 and len(labels) == 6
+
+
+def test_data_handle_opened_only_on_read():
+    src = PreprocessedH5Source(FIX)
+    src.window_count()
+    assert src._data is None
+    src.read_windows(0, 2)
+    assert src._h5 is not None and src._data is not None
