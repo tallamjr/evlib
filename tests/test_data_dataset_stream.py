@@ -28,6 +28,9 @@ def test_stream_collate_shape():
     batch = custom_collate_stream(slot)
     assert len(batch[DataKey.EV_REPR]) == 2  # T
     assert batch[DataKey.EV_REPR][0].shape[0] == 1  # B == batch_size
+    # The stream path must also carry the per-worker id (0 in-process).
+    assert DataKey.WORKER_ID in batch
+    assert batch[DataKey.WORKER_ID] == 0
 
 
 def test_stream_slot0_exhausts_first_keeps_width_and_alignment():

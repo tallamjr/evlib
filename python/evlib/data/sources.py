@@ -9,10 +9,26 @@ from typing import List, Optional, Protocol, Tuple
 import numpy as np
 import torch
 
+import evlib
 from evlib.data.labels import boxes_to_yolox
 from evlib.rvt.pipeline import _build_index_maps
 
 REPR_NAME = "stacked_histogram_dt50_nbins10"
+
+
+def _import_h5():
+    """Import h5py, first registering the optional blosc filter if available.
+
+    ``hdf5plugin`` is an optional dependency that registers the blosc HDF5
+    filter on import; its absence is the one legitimate optional-import guard.
+    """
+    try:
+        import hdf5plugin  # noqa: F401  registers the blosc filter
+    except ImportError:
+        pass
+    import h5py
+
+    return h5py
 
 
 class ReprSource(Protocol):
@@ -71,11 +87,7 @@ class PreprocessedH5Source:
         """
         if self._n_windows is not None:
             return
-        try:
-            import hdf5plugin  # noqa: F401  registers the blosc filter
-        except ImportError:
-            pass
-        import h5py
+        h5py = _import_h5()
 
         for p in (
             self._h5_path,
@@ -122,11 +134,7 @@ class PreprocessedH5Source:
         self._ensure_meta()
         if self._data is not None:
             return
-        try:
-            import hdf5plugin  # noqa: F401  registers the blosc filter
-        except ImportError:
-            pass
-        import h5py
+        h5py = _import_h5()
 
         self._h5 = h5py.File(str(self._h5_path), "r")
         self._data = self._h5["data"]
@@ -196,6 +204,13 @@ class EvlibStreamSource:
         gpu: Optional[str] = None,
         dataset_group: str = "events",
     ) -> None:
+        parsed_nbins = _nbins_from_repr_name(repr_name)
+        if parsed_nbins != nbins:
+            raise ValueError(
+                f"nbins mismatch: explicit nbins={nbins} disagrees with nbins "
+                f"parsed from repr_name {repr_name!r} (={parsed_nbins}); the "
+                "windows would not match the on-disk labels grid"
+            )
         self.raw_h5 = Path(raw_h5)
         self.label_source = PreprocessedH5Source(seq_dir, repr_name, downsample_by_2)
         self.repr_name = repr_name
@@ -224,8 +239,6 @@ class EvlibStreamSource:
         return len(self._grid)
 
     def read_windows(self, lo: int, hi: int):
-        import evlib
-
         self._ensure_grid()
         if lo < 0 or hi > len(self._grid) or lo >= hi:
             raise ValueError(
@@ -244,11 +257,7 @@ class EvlibStreamSource:
             row_map = np.arange(self.height, dtype=np.int64)
             col_map = np.arange(self.width, dtype=np.int64)
 
-        try:
-            import hdf5plugin  # noqa: F401  registers the blosc filter for the raw h5
-        except ImportError:
-            pass
-        import h5py
+        h5py = _import_h5()
 
         grid = self._grid
         with h5py.File(str(self.raw_h5), "r") as f:
