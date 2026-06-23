@@ -28,3 +28,8 @@ def custom_collate_random(samples: List[SequenceSample]) -> dict:
         DataKey.IS_FIRST_SAMPLE: is_first,
         DataKey.IS_PADDED_MASK: padded,
     }
+
+
+def custom_collate_stream(batch_slot: List[SequenceSample]) -> dict:
+    """A streaming step: a list of batch_size SequenceSamples already slot-aligned."""
+    return custom_collate_random(batch_slot)
