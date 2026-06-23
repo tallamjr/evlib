@@ -56,24 +56,39 @@ class SequenceStreamDataset(IterableDataset):
             for s in slot_sources:
                 yield from _stream_one_source(s, self.L)
 
+        num_slots = self.batch_size
         iters = [slot_iter(s) for s in slots]
-        active = True
-        while active:
-            batch_slot: List[SequenceSample] = []
-            active = False
-            for it in iters:
+        # A pad template: the per-window zero tensors (shaped like a real
+        # ev_repr) and their count. Captured from the first real sample of any
+        # slot so trailing/empty slots can also be padded from step zero.
+        pad_zeros: List[torch.Tensor] | None = None
+
+        while True:
+            batch_slot: List[SequenceSample | None] = [None] * num_slots
+            any_real = False
+            # Pass 1: pull one real sample per slot, fixed by slot index.
+            for j in range(num_slots):
                 try:
-                    batch_slot.append(next(it))
-                    active = True
+                    sample = next(iters[j])
                 except StopIteration:
-                    # pad an exhausted slot with an all-padded chunk to keep batch width
-                    if batch_slot:
-                        ref = batch_slot[0]
-                        zeros = [torch.zeros_like(t) for t in ref.ev_repr]
-                        batch_slot.append(
-                            SequenceSample(
-                                zeros, [None] * len(zeros), False, [True] * len(zeros)
-                            )
-                        )
-            if active:
-                yield batch_slot
+                    continue
+                batch_slot[j] = sample
+                any_real = True
+                if pad_zeros is None:
+                    pad_zeros = [torch.zeros_like(t) for t in sample.ev_repr]
+            if not any_real:
+                # Every stream is exhausted; nothing more to yield.
+                return
+            # Pass 2: fill exhausted/empty slots in place with a padded sample.
+            if pad_zeros is None:
+                raise RuntimeError("pad template unset despite a real sample")
+            n = len(pad_zeros)
+            for j in range(num_slots):
+                if batch_slot[j] is None:
+                    batch_slot[j] = SequenceSample(
+                        [z.clone() for z in pad_zeros],
+                        [None] * n,
+                        is_first_sample=False,
+                        is_padded_mask=[True] * n,
+                    )
+            yield batch_slot
