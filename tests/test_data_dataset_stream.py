@@ -1,5 +1,10 @@
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("h5py")
+pytest.importorskip("hdf5plugin")
+
 from evlib.data.sources import PreprocessedH5Source
 from evlib.data.dataset_stream import SequenceStreamDataset
 from evlib.data.collate import custom_collate_stream

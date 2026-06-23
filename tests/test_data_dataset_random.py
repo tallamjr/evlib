@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
 import torch
 from torch.utils.data import DataLoader
+
+pytest.importorskip("h5py")
+pytest.importorskip("hdf5plugin")
 
 from evlib.data.collate import custom_collate_random
 from evlib.data.dataset_random import SequenceRandomDataset

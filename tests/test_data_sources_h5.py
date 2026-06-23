@@ -4,6 +4,9 @@ from pathlib import Path
 import pytest
 import torch
 
+pytest.importorskip("h5py")
+pytest.importorskip("hdf5plugin")
+
 from evlib.data.sources import PreprocessedH5Source
 
 FIX = Path(__file__).resolve().parent / "data_fixtures" / "mini_seq"

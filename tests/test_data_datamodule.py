@@ -36,6 +36,8 @@ def test_datamodule_available_when_lightning_present():
     reason="pytorch_lightning not installed",
 )
 def test_datamodule_random_train_dataloader_yields_batches():
+    pytest.importorskip("h5py")
+    pytest.importorskip("hdf5plugin")
     source = d.PreprocessedH5Source(FIX)
     dm = d.EventDataModule(
         train_sources=[source],
