@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from evlib.data.labels import boxes_to_yolox
+from evlib.rvt.pipeline import _build_index_maps
 
 REPR_NAME = "stacked_histogram_dt50_nbins10"
 
@@ -166,4 +167,147 @@ class PreprocessedH5Source:
             else:
                 l0, l1 = span
                 labels.append(boxes_to_yolox(self._labels[l0:l1]))
+        return ev, labels
+
+
+class EvlibStreamSource:
+    """Build dense ``[C, H, W]`` uint8 windows on the fly from a raw event h5.
+
+    Reuses ``evlib.rvt``'s window assignment (the same global non-decreasing time
+    correction and searchsorted window slices as
+    ``evlib.rvt.pipeline._process_sequence_rust``) and the Rust
+    ``evlib.representations_rs.stacked_histogram_dense`` densify kernel, instead of
+    reading the precomputed representation h5. The window-end grid and the labels
+    are taken from the same on-disk processed sequence directory (labels are read
+    via ``PreprocessedH5Source``; phase 1 does not synthesise labels).
+    """
+
+    def __init__(
+        self,
+        raw_h5,
+        seq_dir,
+        repr_name: str = REPR_NAME,
+        downsample_by_2: bool = True,
+        nbins: int = 10,
+        count_cutoff: int = 10,
+        delta_t_us: int = 50_000,
+        height: int = 720,
+        width: int = 1280,
+        gpu: Optional[str] = None,
+        dataset_group: str = "events",
+    ) -> None:
+        self.raw_h5 = Path(raw_h5)
+        self.label_source = PreprocessedH5Source(seq_dir, repr_name, downsample_by_2)
+        self.repr_name = repr_name
+        self.downsample_by_2 = downsample_by_2
+        self.nbins = nbins
+        self.count_cutoff = count_cutoff
+        self.delta_t_us = delta_t_us
+        self.height = height
+        self.width = width
+        self.gpu = gpu
+        self.dataset_group = dataset_group
+        self.engine_used = (
+            "cuda" if gpu == "cuda" else "metal" if gpu == "metal" else "rust-cpu"
+        )
+        # The window-end grid is the same one process_sequence wrote next to the
+        # representation h5; loaded lazily so construction is cheap and picklable.
+        self._grid = None
+
+    def _ensure_grid(self) -> None:
+        if self._grid is None:
+            grid_path = self.label_source._repr_dir / "timestamps_us.npy"
+            self._grid = np.load(grid_path).astype(np.int64)
+
+    def window_count(self) -> int:
+        self._ensure_grid()
+        return len(self._grid)
+
+    def read_windows(self, lo: int, hi: int):
+        import evlib
+
+        self._ensure_grid()
+        if lo < 0 or hi > len(self._grid) or lo >= hi:
+            raise ValueError(
+                f"window range [{lo},{hi}) out of bounds for {len(self._grid)} windows"
+            )
+
+        out_h, out_w = (
+            (self.height // 2, self.width // 2)
+            if self.downsample_by_2
+            else (self.height, self.width)
+        )
+        if self.downsample_by_2:
+            row_map = _build_index_maps(self.height, out_h)
+            col_map = _build_index_maps(self.width, out_w)
+        else:
+            row_map = np.arange(self.height, dtype=np.int64)
+            col_map = np.arange(self.width, dtype=np.int64)
+
+        try:
+            import hdf5plugin  # noqa: F401  registers the blosc filter for the raw h5
+        except ImportError:
+            pass
+        import h5py
+
+        grid = self._grid
+        with h5py.File(str(self.raw_h5), "r") as f:
+            grp = f[self.dataset_group]
+            # Read the whole raw uint32 time column and correct it to non-decreasing
+            # in place, exactly as _process_sequence_rust does, so the searchsorted
+            # window slices run over the same global corrected time array.
+            t_ds = grp["t"]
+            n_total = t_ds.shape[0]
+            t_full = np.empty(n_total, dtype=np.uint32)
+            chunk = 16_000_000
+            for c0 in range(0, n_total, chunk):
+                c1 = min(c0 + chunk, n_total)
+                t_full[c0:c1] = t_ds[c0:c1]
+            np.maximum.accumulate(t_full, out=t_full)
+            starts = np.searchsorted(t_full, grid - self.delta_t_us, side="left")
+            ends = np.searchsorted(t_full, grid, side="right")
+
+            ev_lo = int(starts[lo])
+            ev_hi = int(ends[hi - 1])
+            n_windows = hi - lo
+            if ev_hi <= ev_lo:
+                # No events cover any requested window; emit empty dense windows.
+                channels = 2 * self.nbins
+                ev = [
+                    torch.zeros((channels, out_h, out_w), dtype=torch.uint8)
+                    for _ in range(n_windows)
+                ]
+                _, labels = self.label_source.read_windows(lo, hi)
+                return ev, labels
+
+            t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
+            coord_dt = np.int32 if self.gpu else np.int64
+            x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=coord_dt)
+            y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=coord_dt)
+            p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=coord_dt)
+
+        if self.gpu == "cuda":
+            dense_fn = evlib.representations_rs.stacked_histogram_dense_cuda
+        elif self.gpu == "metal":
+            dense_fn = evlib.representations_rs.stacked_histogram_dense_metal
+        else:
+            dense_fn = evlib.representations_rs.stacked_histogram_dense
+        dense = dense_fn(
+            t_batch,
+            x_batch,
+            y_batch,
+            p_batch,
+            np.asarray(grid[lo:hi], dtype=np.int64),
+            self.delta_t_us,
+            self.nbins,
+            self.count_cutoff,
+            row_map,
+            col_map,
+            out_h,
+            out_w,
+        )
+        ev = [
+            torch.from_numpy(np.ascontiguousarray(dense[k])) for k in range(n_windows)
+        ]
+        _, labels = self.label_source.read_windows(lo, hi)
         return ev, labels
