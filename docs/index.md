@@ -346,6 +346,8 @@ evlib.save_events_to_hdf5(x, y, t, p, "output.h5")
 print(f"Successfully saved {len(x)} processed events to HDF5")
 ```
 
+For the full API reference, see the [Core](api/core.md), [Formats](api/formats.md), [Filtering](api/filtering.md), [Representations](api/representations.md), [Processing](api/processing.md), and [Data Loading](api/data.md) pages. The data loading page covers the `evlib.data` PyTorch datasets, sources, and collate functions for building RVT training batches.
+
 ### Performance Benchmarks
 
 evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), RVT preprocessing reproduces RVT torch exactly bar a single roughly 1e-10 boundary quirk:
