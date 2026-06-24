@@ -17,6 +17,12 @@ from tests.hdf5_support import HAS_HDF5, requires_hdf5  # noqa: F401
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "python"))
 
+# The data_fixtures/make_*.py scripts are one-shot fixture generators, not tests.
+# Two of them import h5py at module top level to write the RVT .h5 layout, so
+# collecting them as test modules fails on Windows (where h5py is unavailable).
+# Exclude them from collection on every platform; they are run by hand.
+collect_ignore_glob = ["data_fixtures/make_*.py"]
+
 # Ensure the basetemp parent (tests/.output, configured via --basetemp in
 # pyproject.toml) exists before pytest creates its numbered tmp dirs, so a clean
 # checkout's first run does not fail while creating the nested basetemp path.
