@@ -1,0 +1,44 @@
+"""Collate functions turning SequenceSample lists into model-ready batch dicts."""
+
+from __future__ import annotations
+
+from typing import List
+
+import torch
+
+from evlib.data.sequence import DataKey, SequenceSample
+
+
+def custom_collate_random(samples: List[SequenceSample]) -> dict:
+    if not samples:
+        raise ValueError("empty batch")
+    T = len(samples[0].ev_repr)
+    if any(len(s.ev_repr) != T for s in samples):
+        raise ValueError("all samples in a batch must share the same sequence length T")
+
+    ev_repr = [torch.stack([s.ev_repr[t] for s in samples], dim=0) for t in range(T)]
+    labels = [[s.labels[t] for s in samples] for t in range(T)]
+    is_first = [s.is_first_sample for s in samples]
+    padded = torch.tensor(
+        [[s.is_padded_mask[t] for s in samples] for t in range(T)], dtype=torch.bool
+    )
+    # Collate runs inside the DataLoader worker process, so the worker id read
+    # here lets a streaming recurrent model route per-worker RNN/SSM state.
+    worker_info = torch.utils.data.get_worker_info()
+    worker_id = worker_info.id if worker_info is not None else 0
+    return {
+        DataKey.EV_REPR: ev_repr,
+        DataKey.OBJLABELS_SEQ: labels,
+        DataKey.IS_FIRST_SAMPLE: is_first,
+        DataKey.IS_PADDED_MASK: padded,
+        DataKey.WORKER_ID: worker_id,
+    }
+
+
+def custom_collate_stream(batch_slot: List[SequenceSample]) -> dict:
+    """A streaming step: a list of batch_size SequenceSamples already slot-aligned.
+
+    Delegates to ``custom_collate_random``; the worker id read is identical for
+    both, so the returned dict carries ``DataKey.WORKER_ID`` on this path too.
+    """
+    return custom_collate_random(batch_slot)

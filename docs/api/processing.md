@@ -102,3 +102,5 @@ from evlib.models import E2VID  # requires `pip install evlib[torch]`
 ```
 
 These require PyTorch (`pip install evlib[torch]`). If PyTorch is not installed, `evlib.models` imports with a warning and exposes only `ModelConfig`. See the [representations API](representations.md) and the `python/evlib/models/` source for configuration and usage details.
+
+To turn preprocessed RVT sequences (or raw event h5 files) into model-ready training batches, see the [data loading API](data.md), which documents the `evlib.data` datasets, sources, collate functions, and optional Lightning `EventDataModule`.
