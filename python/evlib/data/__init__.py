@@ -1,5 +1,6 @@
 """PyTorch data loading for event-vision training (sequences + samples)."""
 
+from evlib.data.augment import SequenceAugmentor
 from evlib.data.collate import custom_collate_random, custom_collate_stream
 from evlib.data.dataset_random import SequenceRandomDataset
 from evlib.data.dataset_sample import SampleDataset
@@ -10,6 +11,7 @@ from evlib.data.sources import EvlibStreamSource, PreprocessedH5Source, ReprSour
 
 __all__ = [
     "SequenceSample",
+    "SequenceAugmentor",
     "DataKey",
     "boxes_to_yolox",
     "LABEL_FIELDS",
