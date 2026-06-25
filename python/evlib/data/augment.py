@@ -450,14 +450,42 @@ class SequenceAugmentor:
                 return idx, box
         return None
 
-    # -- public entry point -------------------------------------------------
+    # -- public entry points ------------------------------------------------
 
     def __call__(self, sample: SequenceSample) -> SequenceSample:
+        """Draw fresh params for THIS sample and apply them (RVT random path)."""
         if len(sample.ev_repr) == 0:
             return sample
         sensor_hw = tuple(sample.ev_repr[0].shape[-2:])
         state = self._randomize(sensor_hw)
+        return self._apply(sample, state, sensor_hw)
 
+    def for_source(self, first_sample: SequenceSample) -> "_FrozenAugmentor":
+        """Draw input-independent params ONCE and return a per-chunk applier.
+
+        This mirrors RVT's streaming semantics: ``randomize_augmentation`` runs
+        once per stream/source and the same params (hflip, rotate, zoom-out)
+        apply to every chunk yielded from that source. Zoom-in is label-aware and
+        therefore unsupported in streaming, exactly as RVT asserts; the streaming
+        sampler preset already disables it (``zoom_in_weight=0``). The returned
+        callable applies the single frozen state to any chunk of this source.
+        """
+        sensor_hw = tuple(first_sample.ev_repr[0].shape[-2:])
+        state = self._randomize(sensor_hw)
+        if state.apply_zoom_in:
+            raise ValueError(
+                "for_source() requires zoom-in disabled (use sampler='stream' "
+                "or zoom_in_weight=0); zoom-in is label-aware and cannot be "
+                "frozen once per source"
+            )
+        return _FrozenAugmentor(self, state, sensor_hw)
+
+    def _apply(
+        self,
+        sample: SequenceSample,
+        state: _AugmentationState,
+        sensor_hw: Tuple[int, int],
+    ) -> SequenceSample:
         # The zoom-in window is label-aware: sample it once from the most-recent
         # non-empty frame and reuse it for every window (mirrors RVT).
         zoom_in_window: Optional[Tuple[int, int]] = None
@@ -519,3 +547,27 @@ class SequenceAugmentor:
             is_first_sample=sample.is_first_sample,
             is_padded_mask=list(sample.is_padded_mask),
         )
+
+
+class _FrozenAugmentor:
+    """Applies a single frozen augmentation state to every chunk of one source.
+
+    Returned by ``SequenceAugmentor.for_source``. The state was drawn once from
+    the source's first chunk; calling this on any later chunk reuses that exact
+    state, giving RVT's per-stream (not per-chunk) augmentation semantics.
+    """
+
+    def __init__(
+        self,
+        augmentor: SequenceAugmentor,
+        state: _AugmentationState,
+        sensor_hw: Tuple[int, int],
+    ) -> None:
+        self._augmentor = augmentor
+        self._state = state
+        self._sensor_hw = sensor_hw
+
+    def __call__(self, sample: SequenceSample) -> SequenceSample:
+        if len(sample.ev_repr) == 0:
+            return sample
+        return self._augmentor._apply(sample, self._state, self._sensor_hw)
