@@ -177,6 +177,24 @@ class PreprocessedH5Source:
                 labels.append(boxes_to_yolox(self._labels[l0:l1]))
         return ev, labels
 
+    def read_window_gt(self, repr_idx: int) -> Optional[np.ndarray]:
+        """Return the raw on-disk GT label rows for one repr window, or None.
+
+        Additive eval accessor: unlike ``read_windows`` (which runs the on-disk
+        boxes through ``boxes_to_yolox``, dropping ``t`` and converting to centre
+        coords), this returns the structured ``labels.npz`` rows verbatim for the
+        same ``_repr_2_objframe`` span. The rows keep their on-disk timestamp,
+        top-left ``x, y, w, h``, and ``class_id`` so the Prophesee evaluator can
+        consume them via ``evlib.eval.convert.gt_rows_to_prophesee``. Windows with
+        no object frame return ``None``.
+        """
+        self._ensure_meta()
+        span = self._repr_2_objframe.get(int(repr_idx))
+        if span is None:
+            return None
+        l0, l1 = span
+        return self._labels[l0:l1]
+
 
 class EvlibStreamSource:
     """Build dense ``[C, H, W]`` uint8 windows on the fly from a raw event h5.
