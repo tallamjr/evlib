@@ -213,15 +213,17 @@ by `PreprocessedH5Source` and `EvlibStreamSource`. Output is byte-identical to R
 ```python
 BBOX_DTYPE   # numpy structured dtype: (t, x, y, w, h, class_id, class_confidence, track_id)
 LABEL_NPZ_FIELDS  # tuple of field names drawn from BBOX_DTYPE
-RVT_REPR_DIR_NAME = "stacked_histogram_dt=50_nbins=10"  # on-disk repr directory name (RVT form)
+EVLIB_REPR_DIR_NAME = "stacked_histogram_dt50_nbins10"  # evlib-native form (no = signs)
+RVT_REPR_DIR_NAME = "stacked_histogram_dt=50_nbins=10"  # RVT upstream form (with = signs)
 
 class NoLabelsError(Exception): ...       # raised when all boxes are removed by filters
 ```
 
-Note: `RVT_REPR_DIR_NAME` uses `=` separators to match RVT's on-disk layout. The
-`PreprocessedH5Source` default `repr_name` uses the no-`=` form
-`"stacked_histogram_dt50_nbins10"`; pass `repr_dir_name=RVT_REPR_DIR_NAME` when writing
-with `preprocess_sequence` and the corresponding value when constructing the source.
+`preprocess_sequence` and `write_preprocessed` default to `EVLIB_REPR_DIR_NAME` (no `=`
+signs), which is the form read by the default `PreprocessedH5Source` and
+`EvlibStreamSource`. Pass `repr_dir_name=RVT_REPR_DIR_NAME` only when reproducing RVT's
+upstream on-disk layout exactly (e.g. to verify byte-identity against a reference tree
+produced by `lib/RVT/scripts/genx/preprocess_dataset.py`).
 
 ### Core functions
 
@@ -266,7 +268,7 @@ def write_preprocessed(
     out_dir: Union[str, Path],
     result: ObjframeGridResult,
     *,
-    repr_dir_name: str = RVT_REPR_DIR_NAME,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
 ) -> None:
     """Write the RVT directory tree for one sequence.
 
@@ -283,7 +285,7 @@ def preprocess_sequence(
     split: str = "val",
     height: int = 720,
     width: int = 1280,
-    repr_dir_name: str = RVT_REPR_DIR_NAME,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
 ) -> ObjframeGridResult:
     """End-to-end pipeline: read -> filter -> grid -> write.
 
@@ -295,8 +297,9 @@ def preprocess_sequence(
 ### Typical usage
 
 ```python
-from evlib.data import preprocess_sequence, RVT_REPR_DIR_NAME, PreprocessedH5Source
+from evlib.data import preprocess_sequence, EVLIB_REPR_DIR_NAME, PreprocessedH5Source
 
+# Default repr_dir_name=EVLIB_REPR_DIR_NAME pairs with the default PreprocessedH5Source.
 result = preprocess_sequence(
     "data/gen4/train/seq0/seq0_bbox.npy",
     out_dir="data/gen4/train/seq0/",
@@ -306,10 +309,17 @@ result = preprocess_sequence(
     width=1280,
 )
 
-# The processed sequence is now readable by PreprocessedH5Source:
-source = PreprocessedH5Source(
-    "data/gen4/train/seq0/",
-    repr_name=RVT_REPR_DIR_NAME,
+# The processed sequence is readable by PreprocessedH5Source with no extra config:
+source = PreprocessedH5Source("data/gen4/train/seq0/")
+
+# To reproduce RVT's upstream on-disk layout (= signs in dir name), pass explicitly:
+from evlib.data import RVT_REPR_DIR_NAME
+result = preprocess_sequence(
+    "data/gen4/train/seq0/seq0_bbox.npy",
+    out_dir="data/gen4/train/seq0/",
+    dataset="gen4",
+    split="train",
+    repr_dir_name=RVT_REPR_DIR_NAME,
 )
 ```
 

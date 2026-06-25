@@ -7,6 +7,7 @@ from evlib.data.dataset_sample import SampleDataset
 from evlib.data.dataset_stream import SequenceStreamDataset
 from evlib.data.label_preprocess import (
     BBOX_DTYPE,
+    EVLIB_REPR_DIR_NAME,
     LABEL_NPZ_FIELDS,
     RVT_REPR_DIR_NAME,
     NoLabelsError,
@@ -33,6 +34,7 @@ __all__ = [
     "NoLabelsError",
     "read_raw_bbox",
     "apply_filters",
+    "EVLIB_REPR_DIR_NAME",
     "RVT_REPR_DIR_NAME",
     "ObjframeGridResult",
     "build_objframes_and_grid",

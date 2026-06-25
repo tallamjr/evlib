@@ -11,6 +11,7 @@ import pytest
 
 from evlib.data.label_preprocess import (
     BBOX_DTYPE,
+    EVLIB_REPR_DIR_NAME,
     RVT_REPR_DIR_NAME,
     NoLabelsError,
     ObjframeGridResult,
@@ -451,19 +452,19 @@ def test_grouping_concatenates_boxes_with_int64_offsets():
 # --- write_preprocessed: round-trip ------------------------------------------
 
 
-def test_write_preprocessed_roundtrip_exact_filenames(tmp_path):
+def test_write_preprocessed_default_uses_evlib_repr_dir_name(tmp_path):
+    """Default repr_dir_name is the evlib-native no-= form (EVLIB_REPR_DIR_NAME)."""
     dense = np.arange(0, 350000, 16667, dtype="int64")
     result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
     write_preprocessed(tmp_path, result)
 
+    assert EVLIB_REPR_DIR_NAME == "stacked_histogram_dt50_nbins10"
     labels_npz = tmp_path / "labels_v2" / "labels.npz"
     labels_ts = tmp_path / "labels_v2" / "timestamps_us.npy"
-    repr_dir = tmp_path / "event_representations_v2" / RVT_REPR_DIR_NAME
+    repr_dir = tmp_path / "event_representations_v2" / EVLIB_REPR_DIR_NAME
     repr_idx_file = repr_dir / "objframe_idx_2_repr_idx.npy"
     repr_ts_file = repr_dir / "timestamps_us.npy"
 
-    # Exact RVT on-disk layout, including the ``=`` in the repr dir name.
-    assert RVT_REPR_DIR_NAME == "stacked_histogram_dt=50_nbins=10"
     assert labels_npz.exists()
     assert labels_ts.exists()
     assert repr_idx_file.exists()
@@ -477,6 +478,19 @@ def test_write_preprocessed_roundtrip_exact_filenames(tmp_path):
     assert np.array_equal(np.load(str(labels_ts)), result.frame_timestamps_us)
     assert np.array_equal(np.load(str(repr_idx_file)), result.objframe_idx_2_repr_idx)
     assert np.array_equal(np.load(str(repr_ts_file)), result.ev_repr_timestamps_us_end)
+
+
+def test_write_preprocessed_explicit_rvt_repr_dir_name(tmp_path):
+    """Passing repr_dir_name=RVT_REPR_DIR_NAME produces the = form expected by RVT."""
+    dense = np.arange(0, 250000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    write_preprocessed(tmp_path, result, repr_dir_name=RVT_REPR_DIR_NAME)
+
+    assert RVT_REPR_DIR_NAME == "stacked_histogram_dt=50_nbins=10"
+    repr_dir = tmp_path / "event_representations_v2" / RVT_REPR_DIR_NAME
+    assert repr_dir.is_dir()
+    assert (repr_dir / "objframe_idx_2_repr_idx.npy").exists()
+    assert (repr_dir / "timestamps_us.npy").exists()
 
 
 def test_write_preprocessed_honours_custom_repr_dir_name(tmp_path):
@@ -511,6 +525,7 @@ def test_preprocess_sequence_end_to_end(tmp_path):
     assert result.objframe_idx_2_label_idx.tolist() == [0, 1, 2]
     assert 999 not in result.labels["track_id"].tolist()
     assert (out_dir / "labels_v2" / "labels.npz").exists()
+    # Default repr_dir_name is the evlib-native no-= form.
     assert (
-        out_dir / "event_representations_v2" / RVT_REPR_DIR_NAME / "timestamps_us.npy"
+        out_dir / "event_representations_v2" / EVLIB_REPR_DIR_NAME / "timestamps_us.npy"
     ).exists()

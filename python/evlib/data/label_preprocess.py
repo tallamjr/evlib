@@ -18,11 +18,17 @@ from typing import Union
 import numpy as np
 
 # RVT's on-disk representation directory name carries ``=`` separators
-# (``stacked_histogram_dt=50_nbins=10``), whereas evlib's phase-1 ``REPR_NAME``
-# in ``evlib.data.sources`` uses ``stacked_histogram_dt50_nbins10`` (no ``=``).
-# For byte-identical reproduction of RVT's output tree this writer defaults to
-# the RVT form; reconciling the two naming schemes is a separate concern.
+# (``stacked_histogram_dt=50_nbins=10``).  Pass this constant as
+# ``repr_dir_name`` when reproducing RVT's upstream on-disk layout.
 RVT_REPR_DIR_NAME = "stacked_histogram_dt=50_nbins=10"
+
+# evlib-native form: no ``=`` separators.  This is the default for
+# ``write_preprocessed`` and ``preprocess_sequence`` so that output written by
+# those functions is readable by the default ``PreprocessedH5Source`` and
+# ``EvlibStreamSource`` without any extra configuration.
+# Must match evlib.data.sources.REPR_NAME and evlib.rvt.pipeline.REPR_NAME --
+# kept as a standalone literal to avoid pulling torch into this module.
+EVLIB_REPR_DIR_NAME = "stacked_histogram_dt50_nbins10"
 
 # Verified on-disk schema from the staged real data. The field order is
 # load-bearing: B2/B3 write ``labels.npz`` from arrays of exactly this dtype.
@@ -364,7 +370,7 @@ def write_preprocessed(
     out_dir: Union[str, Path],
     result: ObjframeGridResult,
     *,
-    repr_dir_name: str = RVT_REPR_DIR_NAME,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
 ) -> None:
     """Lay down the RVT directory tree for one sequence.
 
@@ -406,7 +412,7 @@ def preprocess_sequence(
     split: str = "val",
     height: int = 720,
     width: int = 1280,
-    repr_dir_name: str = RVT_REPR_DIR_NAME,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
 ) -> ObjframeGridResult:
     """Read a raw bbox file, filter, align, and write the RVT artifacts.
 
