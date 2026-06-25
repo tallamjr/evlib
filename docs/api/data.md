@@ -169,8 +169,11 @@ sequence is zero-padded (tracked via `is_padded_mask`). Shuffle freely with a
 `DataLoader`, since items carry no cross-item state.
 
 ```python
-def SequenceRandomDataset(sources, sequence_length)
+def SequenceRandomDataset(sources, sequence_length, augmentor=None)
 ```
+
+Pass an optional `augmentor` (see the Augmentation section) to transform each
+sequence; fresh augmentation parameters are drawn per item.
 
 ### `SequenceStreamDataset`
 
