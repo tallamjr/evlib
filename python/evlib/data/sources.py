@@ -39,7 +39,10 @@ class ReprSource(Protocol):
 
 
 def _nbins_from_repr_name(repr_name: str) -> int:
-    m = re.search(r"nbins(\d+)", repr_name)
+    # Accept both the evlib-native form ('nbins10') and the upstream-RVT
+    # on-disk form ('nbins=10', as written by RVT_REPR_DIR_NAME and real
+    # gen4/eTram data).
+    m = re.search(r"nbins=?(\d+)", repr_name)
     if not m:
         raise ValueError(f"cannot parse nbins from repr_name {repr_name!r}")
     return int(m.group(1))

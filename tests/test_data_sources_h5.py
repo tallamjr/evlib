@@ -7,9 +7,17 @@ import torch
 pytest.importorskip("h5py")
 pytest.importorskip("hdf5plugin")
 
-from evlib.data.sources import PreprocessedH5Source
+from evlib.data.sources import PreprocessedH5Source, _nbins_from_repr_name
 
 FIX = Path(__file__).resolve().parent / "data_fixtures" / "mini_seq"
+
+
+def test_nbins_parses_both_repr_name_forms():
+    # evlib-native on-disk form (no '=')
+    assert _nbins_from_repr_name("stacked_histogram_dt50_nbins10") == 10
+    # upstream-RVT on-disk form (with '='), used by RVT_REPR_DIR_NAME and real
+    # gen4/eTram data
+    assert _nbins_from_repr_name("stacked_histogram_dt=50_nbins=10") == 10
 
 
 def test_window_count_and_shape():
