@@ -64,6 +64,19 @@ class SequenceStreamDataset(IterableDataset):
         self.batch_size = batch_size
         # Optional opt-in augmentor: params are drawn ONCE per source and reused
         # across all its chunks (RVT stream semantics); see _stream_one_source.
+        # An augmentor that could ever draw label-aware zoom-in cannot be frozen
+        # per source, so reject it EAGERLY here rather than failing mid-iteration
+        # when for_source() first draws zoom-in. The streaming-safe condition is
+        # the same one for_source enforces (zoom-in disabled), exposed as
+        # stream_safe(); for_source keeps its own guard as a backstop.
+        if augmentor is not None and hasattr(augmentor, "stream_safe"):
+            if not augmentor.stream_safe():
+                raise ValueError(
+                    "SequenceStreamDataset requires a stream-safe augmentor "
+                    "(zoom-in disabled, e.g. sampler='stream' or "
+                    "zoom_in_weight=0); zoom-in is label-aware and cannot be "
+                    "frozen once per source"
+                )
         self.augmentor = augmentor
 
     def __iter__(self) -> Iterator[List[SequenceSample]]:

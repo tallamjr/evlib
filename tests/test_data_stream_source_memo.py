@@ -127,6 +127,31 @@ def test_memoisation_preserves_output(tmp_path):
     assert _windows_equal(second, reference)
 
 
+def test_out_of_bounds_raises_without_building_cache(tmp_path):
+    # An out-of-range read_windows must validate against the cheap grid and
+    # raise BEFORE _ensure_time() does the heavy global-time build, so the
+    # ~2 GB read is never triggered on a misconfigured call. On a fresh source
+    # _t_full stays None after the ValueError.
+    raw_h5 = _make_raw_h5(tmp_path)
+    seq_dir = _make_seq_dir(tmp_path)
+    src = _make_source(raw_h5, seq_dir)
+
+    n_windows = src.window_count()  # 6 for mini_seq
+    assert src._t_full is None
+
+    with pytest.raises(ValueError):
+        src.read_windows(0, n_windows + 1)
+    assert src._t_full is None
+
+    with pytest.raises(ValueError):
+        src.read_windows(-1, 2)
+    assert src._t_full is None
+
+    with pytest.raises(ValueError):
+        src.read_windows(3, 3)
+    assert src._t_full is None
+
+
 def test_pickle_drops_big_array_and_rebuilds(tmp_path):
     raw_h5 = _make_raw_h5(tmp_path)
     seq_dir = _make_seq_dir(tmp_path)

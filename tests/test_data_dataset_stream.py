@@ -5,8 +5,11 @@ import pytest
 pytest.importorskip("h5py")
 pytest.importorskip("hdf5plugin")
 
+import numpy as np
+
 from evlib.data.sources import PreprocessedH5Source
 from evlib.data.dataset_stream import SequenceStreamDataset
+from evlib.data.augment import SequenceAugmentor
 from evlib.data.collate import custom_collate_stream
 from evlib.data.sequence import DataKey
 
@@ -71,6 +74,36 @@ def test_stream_slot0_exhausts_first_keeps_width_and_alignment():
         real_sample = later[1]
         assert real_sample.is_first_sample is False
         assert any(p is False for p in real_sample.is_padded_mask)
+
+
+def test_stream_rejects_random_sampler_augmentor_eagerly():
+    # A sampler='random' augmentor can draw label-aware zoom-in, which cannot be
+    # frozen once per source. Construction must fail EAGERLY (no iteration), not
+    # lazily when for_source() first draws zoom-in mid-iteration.
+    random_aug = SequenceAugmentor(sampler="random", rng=np.random.default_rng(0))
+    assert random_aug.stream_safe() is False
+    with pytest.raises(ValueError):
+        SequenceStreamDataset(
+            [PreprocessedH5Source(FIX)],
+            sequence_length=2,
+            batch_size=1,
+            augmentor=random_aug,
+        )
+
+
+def test_stream_accepts_stream_sampler_augmentor():
+    # A sampler='stream' augmentor disables zoom-in (zoom_in_weight=0) and so is
+    # stream-safe: construction succeeds and iteration yields the chunks.
+    stream_aug = SequenceAugmentor(sampler="stream", rng=np.random.default_rng(0))
+    assert stream_aug.stream_safe() is True
+    ds = SequenceStreamDataset(
+        [PreprocessedH5Source(FIX)],
+        sequence_length=2,
+        batch_size=1,
+        augmentor=stream_aug,
+    )
+    chunks = list(iter(ds))
+    assert len(chunks) == 3  # mini_seq 6 windows / L=2
 
 
 def test_stream_batch_size_exceeds_sources_pads_trailing_slot():

@@ -460,6 +460,17 @@ class SequenceAugmentor:
         state = self._randomize(sensor_hw)
         return self._apply(sample, state, sensor_hw)
 
+    def stream_safe(self) -> bool:
+        """True when this augmentor can be frozen once per source (no zoom-in).
+
+        Zoom-in is label-aware and cannot be frozen once per source, so an
+        augmentor that could ever draw it is unsafe for streaming. The single
+        condition that disables zoom-in is ``zoom_in_weight == 0`` (the
+        ``sampler='stream'`` preset sets exactly this); ``for_source`` enforces
+        the same invariant at draw time as a backstop.
+        """
+        return self.zoom_in_weight == 0
+
     def for_source(self, first_sample: SequenceSample) -> "_FrozenAugmentor":
         """Draw input-independent params ONCE and return a per-chunk applier.
 

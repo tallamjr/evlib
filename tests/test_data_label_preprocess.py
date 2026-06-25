@@ -407,6 +407,42 @@ def test_grid_with_jittered_frame_interior_edges():
     ]
 
 
+def test_grid_single_object_frame_branch():
+    # Exactly ONE selected object frame exercises the single-frame grid branch
+    # (the `len(frame_timestamps_us) == 1` path that appends the frame edge
+    # directly, with no linspace iterations). The 60 Hz backbone ends just after
+    # 100002 so only one unique ts is at/after align_t_us=100000.
+    dense = np.arange(0, 100003, 16667, dtype="int64")
+    # backbone: [0, 16667, 33334, 50001, 66668, 83335, 100002]; median diff
+    # 16667 -> 60 Hz -> base_delta 100002. first ts >= 100000 is 100002 and it
+    # is the last one, so no further frame is accepted: a single frame.
+    assert dense.tolist() == [0, 16667, 33334, 50001, 66668, 83335, 100002]
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+
+    # Exactly one selected frame at 100002.
+    assert result.frame_timestamps_us.tolist() == [100002]
+    # Back-fill range(100002, 0, -50000) = [100002, 50002, 2502]; reversed =
+    # [2502, 50002, 100002]; [1:-1] drops the 0-side and frame edges -> [50002].
+    # No linspace iterations (no frame gaps). The single-frame branch then
+    # appends the frame edge directly -> grid == [50002, 100002].
+    assert result.ev_repr_timestamps_us_end.tolist() == [50002, 100002]
+    assert result.ev_repr_timestamps_us_end.dtype == np.int64
+    # searchsorted([50002, 100002], [100002], side="left") -> [1].
+    assert result.objframe_idx_2_repr_idx.tolist() == [1]
+    assert result.objframe_idx_2_repr_idx.dtype == np.int64
+    # The grid lands exactly on the single frame.
+    assert np.array_equal(
+        result.frame_timestamps_us,
+        result.ev_repr_timestamps_us_end[result.objframe_idx_2_repr_idx],
+    )
+    # Only the single box at t=100002 is grouped (one box per frame here).
+    assert result.objframe_idx_2_label_idx.tolist() == [0]
+    assert result.objframe_idx_2_label_idx.dtype == np.int64
+    assert len(result.labels) == 1
+    assert result.labels["t"].tolist() == [100002]
+    assert result.labels.dtype == BBOX_DTYPE
+
+
 # --- build_objframes_and_grid: grouping --------------------------------------
 
 

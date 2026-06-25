@@ -292,11 +292,14 @@ class EvlibStreamSource:
 
     def read_windows(self, lo: int, hi: int):
         self._ensure_grid()
-        self._ensure_time()
+        # Validate the requested range against the cheap grid BEFORE the heavy
+        # _ensure_time() global-time build (~2 GB on real data), so an out-of-
+        # bounds call raises without triggering the full read.
         if lo < 0 or hi > len(self._grid) or lo >= hi:
             raise ValueError(
                 f"window range [{lo},{hi}) out of bounds for {len(self._grid)} windows"
             )
+        self._ensure_time()
 
         out_h, out_w = (
             (self.height // 2, self.width // 2)

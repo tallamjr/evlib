@@ -13,7 +13,11 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from evlib.data.augment import SequenceAugmentor
+from evlib.data.augment import (
+    SequenceAugmentor,
+    _AugmentationState,
+    _ZoomOutState,
+)
 from evlib.data.sequence import SequenceSample
 
 
@@ -198,9 +202,114 @@ def test_zoom_out_factor2_tensor_and_box_exact():
     assert torch.allclose(out.labels[0], expected_box)
 
 
+def test_zoom_out_forced_params_hand_pinned_box():
+    # FORCE the zoom-out state directly (no RNG discovery): factor 2 with the
+    # shrunk canvas pasted at the KNOWN offset (x0=1, y0=1). Both the tensor and
+    # the box are pinned to independently hand-computed coordinates.
+    window = _arange_window()
+    # top-left box (x=0, y=0, w=2, h=2) -> centre (1.0, 1.0, 2, 2)
+    box = _centre_box(5.0, 1.0, 1.0, 2.0, 2.0)
+    sample = _sample([window.clone()], [box.clone()])
+
+    aug = SequenceAugmentor(
+        prob_hflip=0.0, rotate_prob=0.0, zoom_prob=0.0, rng=np.random.default_rng(0)
+    )
+    state = _AugmentationState(
+        apply_h_flip=False,
+        rotation_active=False,
+        rotation_angle_deg=0.0,
+        apply_zoom_in=False,
+        zoom_in_factor=1.0,
+        zoom_out=_ZoomOutState(active=True, x0=1, y0=1, factor=2.0),
+    )
+    out = aug._apply(sample, state, (4, 4))
+
+    # Tensor: shrink 4x4 -> 2x2 nearest-exact, paste at the FORCED (x0=1, y0=1).
+    from torch.nn.functional import interpolate
+
+    shrunk = interpolate(
+        window.unsqueeze(0).float(), size=(2, 2), mode="nearest-exact"
+    )[0].to(torch.uint8)
+    expected_tensor = torch.zeros_like(window)
+    expected_tensor[:, 1:3, 1:3] = shrunk
+    assert torch.equal(out.ev_repr[0], expected_tensor)
+
+    # Box per RVT zoom_out: scale(1/2) of top-left (0,0,2,2) with clamp to
+    # new_img-1 = 1 gives (0, 0, 1, 1); translate by (x0=1, y0=1) -> (1, 1, 1, 1).
+    # centre cx = 1 + 0.5 = 1.5, cy = 1.5, w = 1, h = 1.
+    expected_box = _centre_box(5.0, 1.5, 1.5, 1.0, 1.0)
+    assert torch.allclose(out.labels[0], expected_box)
+
+
 # ---------------------------------------------------------------------------
 # Zoom in
 # ---------------------------------------------------------------------------
+
+
+def test_zoom_in_forced_params_hand_pinned_box():
+    # FORCE zoom-in factor 2 and a box geometry whose label-aware valid window
+    # COLLAPSES to a single point (x0_valid == x1_valid == 2), so _uniform(2, 2)
+    # returns 2 deterministically: the crop offset is (2, 2) with no RNG draw.
+    window = torch.arange(64, dtype=torch.uint8).reshape(8, 8)
+    window = torch.stack([window, window], dim=0)
+    # top-left box (x=2, y=2, w=4, h=4) -> centre (4.0, 4.0, 4, 4).
+    box = _centre_box(1.0, 4.0, 4.0, 4.0, 4.0)
+    sample = _sample([window.clone()], [box.clone()])
+
+    aug = SequenceAugmentor(
+        prob_hflip=0.0, rotate_prob=0.0, zoom_prob=0.0, rng=np.random.default_rng(0)
+    )
+    state = _AugmentationState(
+        apply_h_flip=False,
+        rotation_active=False,
+        rotation_angle_deg=0.0,
+        apply_zoom_in=True,
+        zoom_in_factor=2.0,
+        zoom_out=_ZoomOutState(active=False, x0=0, y0=0, factor=1.0),
+    )
+    out = aug._apply(sample, state, (8, 8))
+
+    # Tensor: crop window[2:6, 2:6] (4x4) upscaled to 8x8 nearest-exact, with the
+    # FORCED crop offset (x0=2, y0=2).
+    from torch.nn.functional import interpolate
+
+    crop = window[:, 2:6, 2:6].unsqueeze(0).float()
+    expected_tensor = interpolate(crop, size=(8, 8), mode="nearest-exact")[0].to(
+        torch.uint8
+    )
+    assert torch.equal(out.ev_repr[0], expected_tensor)
+
+    # Box per RVT zoom_in: clamp into the crop -> (new_x=0, new_y=0, new_w=3,
+    # new_h=3) after subtracting (z_x0=2, z_y0=2) and clamping x1,y1 to z*1-1=5;
+    # then scale_ by factor 2 with clamp to new_img-1=7 -> (0, 0, 6, 6).
+    # centre cx = 0 + 3 = 3.0, cy = 3.0, w = 6, h = 6.
+    expected_box = _centre_box(1.0, 3.0, 3.0, 6.0, 6.0)
+    assert torch.allclose(out.labels[0], expected_box)
+
+
+def test_zoom_in_factor_exactly_one_is_noop():
+    # A zoom-in factor of exactly 1.0 is a documented no-op: _apply short-circuits
+    # on `state.zoom_in_factor != 1.0`, matching RVT's behaviour, so the tensor
+    # and boxes pass through unchanged.
+    window = _arange_window()
+    box = _centre_box(2.0, 1.5, 1.5, 1.0, 1.0)
+    sample = _sample([window.clone()], [box.clone()])
+
+    aug = SequenceAugmentor(
+        prob_hflip=0.0, rotate_prob=0.0, zoom_prob=0.0, rng=np.random.default_rng(0)
+    )
+    state = _AugmentationState(
+        apply_h_flip=False,
+        rotation_active=False,
+        rotation_angle_deg=0.0,
+        apply_zoom_in=True,
+        zoom_in_factor=1.0,
+        zoom_out=_ZoomOutState(active=False, x0=0, y0=0, factor=1.0),
+    )
+    out = aug._apply(sample, state, (4, 4))
+
+    assert torch.equal(out.ev_repr[0], window)
+    assert torch.allclose(out.labels[0], box)
 
 
 def test_zoom_in_factor2_label_aware_tensor_and_box_exact():
