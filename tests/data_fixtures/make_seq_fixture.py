@@ -37,10 +37,14 @@ def main() -> None:
         ("class_confidence", "<f4"),
     ]
     labels = np.zeros(3, dtype=np.dtype(fields))
-    # objframe 0 -> 1 box ; objframe 1 -> 2 boxes
-    labels[0] = (0, 1, 1, 2, 2, 0, 1.0)
-    labels[1] = (0, 3, 3, 2, 2, 1, 1.0)
-    labels[2] = (0, 5, 1, 1, 1, 0, 1.0)
+    # Boxes are stored at FULL resolution (2x the ds2 representation), matching
+    # the real RVT labels.npz contract: the loader scales them to ds2 space by
+    # 0.5, so the loaded box values are the ds2-space (x,y,w,h) the tests expect.
+    # objframe 0 -> 1 box ; objframe 1 -> 2 boxes (ds2 targets: (1,1,2,2),
+    # (3,3,2,2), (5,1,1,1)).
+    labels[0] = (0, 2, 2, 4, 4, 0, 1.0)
+    labels[1] = (0, 6, 6, 4, 4, 1, 1.0)
+    labels[2] = (0, 10, 2, 2, 2, 0, 1.0)
     objframe_idx_2_label_idx = np.array(
         [0, 1], dtype=np.int64
     )  # frame0 -> [0:1], frame1 -> [1:3]

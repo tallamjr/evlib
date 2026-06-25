@@ -38,6 +38,46 @@ class ReprSource(Protocol):
     ) -> Tuple[List[torch.Tensor], List[Optional[torch.Tensor]]]: ...
 
 
+def _scale_label_rows_to_ds2(rows: np.ndarray, repr_h: int, repr_w: int) -> np.ndarray:
+    """Scale full-resolution label rows to the ds2 representation coordinate space.
+
+    Mirrors upstream RVT's ``ObjectLabels.scale_(1/downsample_factor)``
+    (``RVT/data/genx_utils/labels.py``) for the downsample-by-2 case, where the
+    multiplier is ``0.5`` and the new image bounds equal the ds2 representation
+    ``(repr_w, repr_h)`` the source already reads from the on-disk h5 shape.
+
+    For each box (top-left ``x, y`` with ``w, h``):
+
+        x1 = clamp((x + w) * 0.5, max=repr_w - 1)
+        y1 = clamp((y + h) * 0.5, max=repr_h - 1)
+        x  = x * 0.5 ; y = y * 0.5
+        w  = x1 - x  ; h = y1 - y
+
+    then boxes that collapse to ``w <= 0`` or ``h <= 0`` are dropped
+    (``remove_flat_labels_``). All other fields (``t``, ``class_id``,
+    ``class_confidence``, ``track_id`` when present) carry through unchanged.
+    The returned array is a copy; the input is not mutated.
+    """
+    m = 0.5
+    out = rows.copy()
+    x = out["x"].astype(np.float64)
+    y = out["y"].astype(np.float64)
+    w = out["w"].astype(np.float64)
+    h = out["h"].astype(np.float64)
+    x1 = np.minimum((x + w) * m, repr_w - 1)
+    y1 = np.minimum((y + h) * m, repr_h - 1)
+    new_x = x * m
+    new_y = y * m
+    new_w = x1 - new_x
+    new_h = y1 - new_y
+    out["x"] = new_x.astype(out["x"].dtype)
+    out["y"] = new_y.astype(out["y"].dtype)
+    out["w"] = new_w.astype(out["w"].dtype)
+    out["h"] = new_h.astype(out["h"].dtype)
+    keep = (new_w > 0) & (new_h > 0)
+    return out[keep]
+
+
 def _nbins_from_repr_name(repr_name: str) -> int:
     # Accept both the evlib-native form ('nbins10') and the upstream-RVT
     # on-disk form ('nbins=10', as written by RVT_REPR_DIR_NAME and real
@@ -64,6 +104,8 @@ class PreprocessedH5Source:
         self._data = None
         # Cheap, picklable metadata loaded once via _ensure_meta().
         self._n_windows = None
+        self._repr_h = None
+        self._repr_w = None
         self._labels = None
         self._objframe_2_repr = None
         self._repr_2_objframe = None
@@ -110,6 +152,10 @@ class PreprocessedH5Source:
                 f"on-disk channel count {shape[1]} != 2*nbins {expected_c} at {self._h5_path}"
             )
         self._n_windows = int(shape[0])
+        # The on-disk data shape is [N, C, H, W]; H,W are the representation
+        # bounds used to scale full-resolution labels into ds2 space.
+        self._repr_h = int(shape[2])
+        self._repr_w = int(shape[3])
 
         self._objframe_2_repr = np.load(self._repr_dir / "objframe_idx_2_repr_idx.npy")
         npz = np.load(self.seq_dir / "labels_v2" / "labels.npz")
@@ -159,6 +205,24 @@ class PreprocessedH5Source:
         self._ensure_meta()
         return int(self._n_windows)
 
+    def _label_rows_for_window(self, repr_idx: int) -> Optional[np.ndarray]:
+        """Return the label rows for one repr window, scaled to ds2 when enabled.
+
+        The on-disk ``labels.npz`` stores boxes at FULL sensor resolution. When
+        ``downsample_by_2`` is set the representation is ds2, so the boxes are
+        scaled into ds2 space via ``_scale_label_rows_to_ds2`` (matching RVT's
+        ``scale_(1/downsample_factor)``); otherwise they are returned verbatim.
+        Windows with no object frame return ``None``.
+        """
+        span = self._repr_2_objframe.get(int(repr_idx))
+        if span is None:
+            return None
+        l0, l1 = span
+        rows = self._labels[l0:l1]
+        if self.downsample_by_2:
+            rows = _scale_label_rows_to_ds2(rows, self._repr_h, self._repr_w)
+        return rows
+
     def read_windows(self, lo: int, hi: int):
         self._ensure_data()
         if lo < 0 or hi > self._data.shape[0] or lo >= hi:
@@ -172,12 +236,11 @@ class PreprocessedH5Source:
         ]
         labels: List[Optional[torch.Tensor]] = []
         for repr_i in range(lo, hi):
-            span = self._repr_2_objframe.get(repr_i)
-            if span is None:
+            rows = self._label_rows_for_window(repr_i)
+            if rows is None:
                 labels.append(None)
             else:
-                l0, l1 = span
-                labels.append(boxes_to_yolox(self._labels[l0:l1]))
+                labels.append(boxes_to_yolox(rows))
         return ev, labels
 
     def read_window_gt(self, repr_idx: int) -> Optional[np.ndarray]:
@@ -189,14 +252,13 @@ class PreprocessedH5Source:
         same ``_repr_2_objframe`` span. The rows keep their on-disk timestamp,
         top-left ``x, y, w, h``, and ``class_id`` so the Prophesee evaluator can
         consume them via ``evlib.eval.convert.gt_rows_to_prophesee``. Windows with
-        no object frame return ``None``.
+        no object frame return ``None``. When ``downsample_by_2`` is set, the
+        full-resolution on-disk boxes are scaled into the ds2 representation
+        coordinate space (matching RVT's ``scale_(1/downsample_factor)``) so the
+        GT aligns with model predictions made in ds2 space.
         """
         self._ensure_meta()
-        span = self._repr_2_objframe.get(int(repr_idx))
-        if span is None:
-            return None
-        l0, l1 = span
-        return self._labels[l0:l1]
+        return self._label_rows_for_window(repr_idx)
 
 
 class EvlibStreamSource:

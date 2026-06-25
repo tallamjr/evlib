@@ -42,7 +42,9 @@ def main() -> None:
         ("class_confidence", "<f4"),
     ]
     labels = np.zeros(1, dtype=np.dtype(fields))
-    labels[0] = (0, 1, 1, 2, 2, 0, 1.0)
+    # Stored at FULL resolution (2x ds2); the loader scales by 0.5 so the loaded
+    # box is the ds2-space (1,1,2,2) the tests expect.
+    labels[0] = (0, 2, 2, 4, 4, 0, 1.0)
     objframe_idx_2_label_idx = np.array([0], dtype=np.int64)
     np.savez(
         lab_dir / "labels.npz",
