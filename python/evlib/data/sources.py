@@ -228,11 +228,63 @@ class EvlibStreamSource:
         # The window-end grid is the same one process_sequence wrote next to the
         # representation h5; loaded lazily so construction is cheap and picklable.
         self._grid = None
+        # The corrected global time array and its derived window-start/-end index
+        # arrays are built once per worker (see _ensure_time) and never pickled:
+        # _t_full is ~2 GB on a real gen4 sequence, so re-reading and re-correcting
+        # it on every read_windows call is impractical in a training loop, and
+        # carrying it through pickle would break fork/spawn DataLoader workers.
+        self._t_full = None
+        self._starts = None
+        self._ends = None
 
     def _ensure_grid(self) -> None:
         if self._grid is None:
             grid_path = self.label_source._repr_dir / "timestamps_us.npy"
             self._grid = np.load(grid_path).astype(np.int64)
+
+    def _ensure_time(self) -> None:
+        """Build and cache the corrected global time and window index arrays.
+
+        Reads the whole raw uint32 time column once, corrects it to non-decreasing
+        in place (exactly as ``_process_sequence_rust`` does), then searchsorts the
+        window-start/-end indices over the grid. All three arrays are cached so
+        subsequent ``read_windows`` calls reuse them rather than re-reading ~2 GB.
+        Requires ``_ensure_grid`` to have run, as the index arrays need the grid.
+        """
+        if self._t_full is not None:
+            return
+        self._ensure_grid()
+        h5py = _import_h5()
+        with h5py.File(str(self.raw_h5), "r") as f:
+            t_ds = f[self.dataset_group]["t"]
+            n_total = t_ds.shape[0]
+            t_full = np.empty(n_total, dtype=np.uint32)
+            chunk = 16_000_000
+            for c0 in range(0, n_total, chunk):
+                c1 = min(c0 + chunk, n_total)
+                t_full[c0:c1] = t_ds[c0:c1]
+        np.maximum.accumulate(t_full, out=t_full)
+        self._t_full = t_full
+        self._starts = np.searchsorted(
+            t_full, self._grid - self.delta_t_us, side="left"
+        )
+        self._ends = np.searchsorted(t_full, self._grid, side="right")
+
+    def __getstate__(self) -> dict:
+        # Drop the large corrected-time array and its derived index arrays so the
+        # source pickles cheaply; each spawned/forked worker rebuilds its own via
+        # _ensure_time. label_source and the small _grid carry through intact.
+        state = self.__dict__.copy()
+        state["_t_full"] = None
+        state["_starts"] = None
+        state["_ends"] = None
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._t_full = None
+        self._starts = None
+        self._ends = None
 
     def window_count(self) -> int:
         self._ensure_grid()
@@ -240,10 +292,14 @@ class EvlibStreamSource:
 
     def read_windows(self, lo: int, hi: int):
         self._ensure_grid()
+        # Validate the requested range against the cheap grid BEFORE the heavy
+        # _ensure_time() global-time build (~2 GB on real data), so an out-of-
+        # bounds call raises without triggering the full read.
         if lo < 0 or hi > len(self._grid) or lo >= hi:
             raise ValueError(
                 f"window range [{lo},{hi}) out of bounds for {len(self._grid)} windows"
             )
+        self._ensure_time()
 
         out_h, out_w = (
             (self.height // 2, self.width // 2)
@@ -260,37 +316,26 @@ class EvlibStreamSource:
         h5py = _import_h5()
 
         grid = self._grid
+        # starts/ends/_t_full are built once by _ensure_time and reused here.
+        ev_lo = int(self._starts[lo])
+        ev_hi = int(self._ends[hi - 1])
+        n_windows = hi - lo
+        if ev_hi <= ev_lo:
+            # No events cover any requested window; emit empty dense windows.
+            channels = 2 * self.nbins
+            ev = [
+                torch.zeros((channels, out_h, out_w), dtype=torch.uint8)
+                for _ in range(n_windows)
+            ]
+            _, labels = self.label_source.read_windows(lo, hi)
+            return ev, labels
+
+        t_batch = np.asarray(self._t_full[ev_lo:ev_hi], dtype=np.int64)
+        coord_dt = np.int32 if self.gpu else np.int64
         with h5py.File(str(self.raw_h5), "r") as f:
             grp = f[self.dataset_group]
-            # Read the whole raw uint32 time column and correct it to non-decreasing
-            # in place, exactly as _process_sequence_rust does, so the searchsorted
-            # window slices run over the same global corrected time array.
-            t_ds = grp["t"]
-            n_total = t_ds.shape[0]
-            t_full = np.empty(n_total, dtype=np.uint32)
-            chunk = 16_000_000
-            for c0 in range(0, n_total, chunk):
-                c1 = min(c0 + chunk, n_total)
-                t_full[c0:c1] = t_ds[c0:c1]
-            np.maximum.accumulate(t_full, out=t_full)
-            starts = np.searchsorted(t_full, grid - self.delta_t_us, side="left")
-            ends = np.searchsorted(t_full, grid, side="right")
-
-            ev_lo = int(starts[lo])
-            ev_hi = int(ends[hi - 1])
-            n_windows = hi - lo
-            if ev_hi <= ev_lo:
-                # No events cover any requested window; emit empty dense windows.
-                channels = 2 * self.nbins
-                ev = [
-                    torch.zeros((channels, out_h, out_w), dtype=torch.uint8)
-                    for _ in range(n_windows)
-                ]
-                _, labels = self.label_source.read_windows(lo, hi)
-                return ev, labels
-
-            t_batch = np.asarray(t_full[ev_lo:ev_hi], dtype=np.int64)
-            coord_dt = np.int32 if self.gpu else np.int64
+            # Only the small per-batch x/y/p slices are read per call (cheap); the
+            # global corrected time is already cached in self._t_full.
             x_batch = np.asarray(grp["x"][ev_lo:ev_hi], dtype=coord_dt)
             y_batch = np.asarray(grp["y"][ev_lo:ev_hi], dtype=coord_dt)
             p_batch = np.asarray(grp["p"][ev_lo:ev_hi], dtype=coord_dt)

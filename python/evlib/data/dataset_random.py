@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import torch
 from torch.utils.data import Dataset
@@ -12,11 +12,19 @@ from evlib.data.sources import ReprSource
 
 
 class SequenceRandomDataset(Dataset):
-    def __init__(self, sources: List[ReprSource], sequence_length: int) -> None:
+    def __init__(
+        self,
+        sources: List[ReprSource],
+        sequence_length: int,
+        augmentor: Optional[Callable[[SequenceSample], SequenceSample]] = None,
+    ) -> None:
         if sequence_length < 1:
             raise ValueError("sequence_length must be >= 1")
         self.sources = sources
         self.L = sequence_length
+        # Optional opt-in augmentor: fresh params are drawn PER __getitem__
+        # (RVT random semantics), so a plain augmentor(sample) call is correct.
+        self.augmentor = augmentor
         # index map: (source_idx, start_window) for each sequence
         self._index: List[Tuple[int, int]] = []
         for si, src in enumerate(sources):
@@ -40,6 +48,9 @@ class SequenceRandomDataset(Dataset):
             zero = torch.zeros_like(ev[0])
             ev = ev + [zero.clone() for _ in range(pad)]
             labels = labels + [None] * pad
-        return SequenceSample(
+        sample = SequenceSample(
             ev, labels, is_first_sample=True, is_padded_mask=is_padded
         )
+        if self.augmentor is not None:
+            sample = self.augmentor(sample)
+        return sample

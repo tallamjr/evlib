@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterator, List
+from typing import Callable, Iterator, List, Optional
 
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
@@ -11,9 +11,24 @@ from evlib.data.sequence import SequenceSample
 from evlib.data.sources import ReprSource
 
 
-def _stream_one_source(src: ReprSource, L: int) -> Iterator[SequenceSample]:
+def _stream_one_source(
+    src: ReprSource,
+    L: int,
+    augmentor: Optional[Callable] = None,
+) -> Iterator[SequenceSample]:
+    """Yield this source's ordered chunks, optionally augmenting them.
+
+    RVT stream semantics: augmentation params are drawn ONCE per source and the
+    SAME params apply to every chunk yielded from it. The frozen applier is built
+    from the first chunk via ``augmentor.for_source(first_chunk)`` and reused for
+    all subsequent chunks of this source. The trailing padded chunk (when the
+    source length is not a multiple of L) is real data plus padding, so it is
+    augmented like any other; only the all-padded placeholder samples that
+    ``__iter__`` synthesises for exhausted slots are left untouched.
+    """
     n = src.window_count()
     first = True
+    frozen = None
     for start in range(0, n, L):
         hi = min(start + L, n)
         ev, labels = src.read_windows(start, hi)
@@ -24,19 +39,45 @@ def _stream_one_source(src: ReprSource, L: int) -> Iterator[SequenceSample]:
             zero = torch.zeros_like(ev[0])
             ev = ev + [zero.clone() for _ in range(pad)]
             labels = labels + [None] * pad
-        yield SequenceSample(
+        sample = SequenceSample(
             ev, labels, is_first_sample=first, is_padded_mask=is_padded
         )
+        if augmentor is not None:
+            if frozen is None:
+                # Draw the single per-source param state from the first chunk.
+                frozen = augmentor.for_source(sample)
+            sample = frozen(sample)
+        yield sample
         first = False
 
 
 class SequenceStreamDataset(IterableDataset):
     def __init__(
-        self, sources: List[ReprSource], sequence_length: int, batch_size: int
+        self,
+        sources: List[ReprSource],
+        sequence_length: int,
+        batch_size: int,
+        augmentor: Optional[Callable] = None,
     ) -> None:
         self.sources = sources
         self.L = sequence_length
         self.batch_size = batch_size
+        # Optional opt-in augmentor: params are drawn ONCE per source and reused
+        # across all its chunks (RVT stream semantics); see _stream_one_source.
+        # An augmentor that could ever draw label-aware zoom-in cannot be frozen
+        # per source, so reject it EAGERLY here rather than failing mid-iteration
+        # when for_source() first draws zoom-in. The streaming-safe condition is
+        # the same one for_source enforces (zoom-in disabled), exposed as
+        # stream_safe(); for_source keeps its own guard as a backstop.
+        if augmentor is not None and hasattr(augmentor, "stream_safe"):
+            if not augmentor.stream_safe():
+                raise ValueError(
+                    "SequenceStreamDataset requires a stream-safe augmentor "
+                    "(zoom-in disabled, e.g. sampler='stream' or "
+                    "zoom_in_weight=0); zoom-in is label-aware and cannot be "
+                    "frozen once per source"
+                )
+        self.augmentor = augmentor
 
     def __iter__(self) -> Iterator[List[SequenceSample]]:
         info = get_worker_info()
@@ -54,7 +95,7 @@ class SequenceStreamDataset(IterableDataset):
 
         def slot_iter(slot_sources):
             for s in slot_sources:
-                yield from _stream_one_source(s, self.L)
+                yield from _stream_one_source(s, self.L, self.augmentor)
 
         num_slots = self.batch_size
         iters = [slot_iter(s) for s in slots]

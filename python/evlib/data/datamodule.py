@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Callable, List, Optional
 
 from torch.utils.data import DataLoader
 
@@ -30,6 +30,7 @@ if _HAS_LIGHTNING:
             batch_size: int,
             num_workers: int = 4,
             sampling: str = "random",
+            augmentor: Optional[Callable] = None,
         ) -> None:
             super().__init__()
             self.train_sources = train_sources
@@ -38,17 +39,27 @@ if _HAS_LIGHTNING:
             self.batch_size = batch_size
             self.num_workers = num_workers
             self.sampling = sampling
+            # Augmentation is a TRAIN-only concern (RVT builds the augmentor for
+            # the train split alone); val/test datasets never receive it.
+            self.augmentor = augmentor
 
         def train_dataloader(self) -> DataLoader:
             if self.sampling == "stream":
-                ds = SequenceStreamDataset(self.train_sources, self.L, self.batch_size)
+                ds = SequenceStreamDataset(
+                    self.train_sources,
+                    self.L,
+                    self.batch_size,
+                    augmentor=self.augmentor,
+                )
                 return DataLoader(
                     ds,
                     batch_size=None,
                     num_workers=self.num_workers,
                     collate_fn=custom_collate_stream,
                 )
-            ds = SequenceRandomDataset(self.train_sources, self.L)
+            ds = SequenceRandomDataset(
+                self.train_sources, self.L, augmentor=self.augmentor
+            )
             return DataLoader(
                 ds,
                 batch_size=self.batch_size,

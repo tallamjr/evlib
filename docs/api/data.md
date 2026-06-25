@@ -75,8 +75,87 @@ def EvlibStreamSource(
 )
 ```
 
+**Training-ready memoisation.** `EvlibStreamSource` is now suitable for use inside a
+`DataLoader` training loop. The first call to `read_windows` in each worker runs
+`_ensure_time`, which reads the full raw uint32 time column once, corrects it to
+non-decreasing in place, and `searchsorted`s the window-start/-end index arrays from the
+grid. All three arrays (`_t_full`, `_starts`, `_ends`) are cached on the instance so
+every subsequent `read_windows` call skips the file read and reuses the cached state.
+Because `_t_full` can reach ~2 GB for a Gen4 sequence, the arrays are excluded from
+pickle (`__getstate__` sets them to `None`); each DataLoader worker rebuilds its own copy
+lazily after fork/spawn. Only the small `_grid` array and the `label_source` carry
+through pickle intact.
+
 `PreprocessedH5Source` and `EvlibStreamSource` are interchangeable behind the dataset
 seam: the same dataset works with either.
+
+## Augmentation
+
+`SequenceAugmentor` applies RVT-matched spatial augmentation to a `SequenceSample`,
+transforming both the `[C, H, W]` uint8 event-representation tensors and their aligned
+yolox boxes together. The pipeline mirrors RVT's `RandomSpatialAugmentorGenX`: horizontal
+flip, rotation, zoom-in, and zoom-out, in that order. Padded windows (where
+`is_padded_mask[t]` is `True`) are returned unchanged. Boxes are stored in evlib's yolox
+centre form `[class_id, cx, cy, w, h]`; the augmentor converts to RVT's top-left form
+for each transform and converts back, so the arithmetic is byte-identical.
+
+```python
+class SequenceAugmentor:
+    def __init__(
+        self,
+        *,
+        sampler: str = "random",   # "random" (per-item) or "stream" (per-source)
+        prob_hflip: float = 0.5,
+        rotate_prob: float = 0.0,
+        rotate_min_deg: float = 2.0,
+        rotate_max_deg: float = 6.0,
+        zoom_prob: Optional[float] = None,  # default 0.8 for "random", 0.5 for "stream"
+        zoom_in_weight: int = 8,
+        zoom_out_weight: int = 2,
+        zoom_in_range: Tuple[float, float] = (1.0, 1.5),
+        zoom_out_range: Tuple[float, float] = (1.0, 1.2),
+        rng: Optional[np.random.Generator] = None,
+    ) -> None: ...
+
+    def __call__(self, sample: SequenceSample) -> SequenceSample: ...
+    def for_source(self, first_sample: SequenceSample) -> _FrozenAugmentor: ...
+```
+
+Two entry points reflect RVT's two augmentation semantics.
+
+`__call__` draws fresh parameters for each call, giving independent per-item
+randomisation. This is the right choice for `SequenceRandomDataset`, where every item is
+independent.
+
+`for_source(first_sample)` draws parameters once from the first chunk of a source and
+returns a `_FrozenAugmentor` callable. Every subsequent chunk from that source is
+augmented with the same frozen parameters, matching RVT's streaming semantics where a
+single random state is committed per source, not per chunk. This path requires zoom-in to
+be disabled (`zoom_in_weight=0` or `sampler="stream"`) because zoom-in is label-aware and
+cannot be computed without seeing the whole sequence.
+
+The `"stream"` sampler preset sets `zoom_in_weight=0`, `zoom_prob=0.5`, and
+`zoom_out_range=(1.0, 1.2)`.
+
+### Wiring into datasets and DataModule
+
+Pass `augmentor=` to either dataset class or to `EventDataModule`.
+
+`SequenceRandomDataset` calls `augmentor(sample)` per `__getitem__`, so fresh parameters
+are drawn for every item.
+
+`SequenceStreamDataset` calls `augmentor.for_source(first_chunk)` on the first chunk from
+each source and reuses the frozen result for all remaining chunks of that source.
+
+`EventDataModule` passes the `augmentor` only to the train dataloader. Validation and test
+dataloaders never receive it.
+
+```python
+from evlib.data import SequenceAugmentor, SequenceRandomDataset
+
+augmentor = SequenceAugmentor(sampler="random", prob_hflip=0.5, zoom_prob=0.8)
+dataset = SequenceRandomDataset([source], sequence_length=4, augmentor=augmentor)
+```
 
 ## Datasets
 
@@ -90,8 +169,11 @@ sequence is zero-padded (tracked via `is_padded_mask`). Shuffle freely with a
 `DataLoader`, since items carry no cross-item state.
 
 ```python
-def SequenceRandomDataset(sources, sequence_length)
+def SequenceRandomDataset(sources, sequence_length, augmentor=None)
 ```
+
+Pass an optional `augmentor` (see the Augmentation section) to transform each
+sequence; fresh augmentation parameters are drawn per item.
 
 ### `SequenceStreamDataset`
 
@@ -103,6 +185,41 @@ to reset state at slot boundaries.
 
 Map-style dataset for the single-sample (non-sequential) classification path: each
 item is one window with its label, rather than a sequence.
+
+#### Classification: N-Caltech101
+
+`SampleDataset` drives the classification path end to end with the N-Caltech101
+helpers in `evlib.data.ncaltech`. N-Caltech101 recordings are ATIS binary event
+streams (`.bin`, 5 bytes per event, sensor 240 wide by 180 high). Each recording
+becomes a single classification sample: one full-recording stacked-histogram
+window of shape `[2 * nbins, 180, 240]` (`uint8`, polarity-major channels, default
+`nbins=10` gives 20 channels).
+
+`convert_ncaltech(raw_tree, out_dir)` walks `raw_tree/<class_name>/*.bin`, builds
+the class-to-int label map as `sorted(class_dir_names)` mapped to `0..K-1`, writes
+one `<idx>.npy` per recording plus a parallel `labels.npy`, and returns the
+per-sample paths and integer labels ready to hand straight to `SampleDataset`.
+
+```python
+from torch.utils.data import DataLoader
+from evlib.data import convert_ncaltech, SampleDataset
+
+# raw_tree/airplane/*.bin, raw_tree/camera/*.bin, ...
+sample_paths, labels = convert_ncaltech("raw_tree", "out_dir", nbins=10)
+
+dataset = SampleDataset(sample_paths, labels)
+loader = DataLoader(dataset, batch_size=2, shuffle=True)
+
+inputs, targets = next(iter(loader))
+print(tuple(inputs.shape))  # [B, 2 * nbins, 180, 240], e.g. (2, 20, 180, 240)
+```
+
+The full N-Caltech101 dataset is not bundled with evlib; download it separately and
+point `convert_ncaltech` at the extracted class tree. The lower-level
+`read_atis_bin` (decode one `.bin` to a Polars event frame) and
+`representation_from_events` (build one recording's stacked histogram) are exported
+from `evlib.data` for custom pipelines, along with `NCALTECH_HEIGHT` (180) and
+`NCALTECH_WIDTH` (240).
 
 ## Collate functions
 
@@ -121,6 +238,128 @@ at a time.
 
 `custom_collate_stream` is the streaming-step collate: it takes a list of `batch_size`
 slot-aligned `SequenceSample`s and produces the same dict shape.
+
+## Label preprocessing from raw
+
+`evlib.data.label_preprocess` reproduces RVT's offline label preprocessing pipeline,
+turning a raw Prophesee `*_bbox.npy` structured array into the on-disk artifacts expected
+by `PreprocessedH5Source` and `EvlibStreamSource`. Output is byte-identical to RVT's
+`scripts/genx/preprocess_dataset.py` (verified by a local slow integration gate).
+
+### Constants and types
+
+```python
+BBOX_DTYPE   # numpy structured dtype: (t, x, y, w, h, class_id, class_confidence, track_id)
+LABEL_NPZ_FIELDS  # tuple of field names drawn from BBOX_DTYPE
+EVLIB_REPR_DIR_NAME = "stacked_histogram_dt50_nbins10"  # evlib-native form (no = signs)
+RVT_REPR_DIR_NAME = "stacked_histogram_dt=50_nbins=10"  # RVT upstream form (with = signs)
+
+class NoLabelsError(Exception): ...       # raised when all boxes are removed by filters
+```
+
+`preprocess_sequence` and `write_preprocessed` default to `EVLIB_REPR_DIR_NAME` (no `=`
+signs), which is the form read by the default `PreprocessedH5Source` and
+`EvlibStreamSource`. Pass `repr_dir_name=RVT_REPR_DIR_NAME` only when reproducing RVT's
+upstream on-disk layout exactly (e.g. to verify byte-identity against a reference tree
+produced by `lib/RVT/scripts/genx/preprocess_dataset.py`).
+
+### Core functions
+
+```python
+def read_raw_bbox(path: Union[str, Path]) -> np.ndarray:
+    """Load a raw *_bbox.npy and validate its fields against BBOX_DTYPE."""
+
+def apply_filters(
+    labels: np.ndarray,
+    *,
+    dataset: str = "gen4",
+    split: str,
+    height: int,
+    width: int,
+    apply_psee_bbox_filter: bool = False,
+    apply_faulty_bbox_filter: bool = True,
+) -> np.ndarray:
+    """Run RVT's filter chain in order.
+
+    Steps: (1) gen4 class removal (pedestrian/two-wheeler/car only), (2) crop-to-FOV,
+    (3) size filter (conservative w>=5 h>=5 for gen4, or Prophesee diag/side for gen1),
+    (4) faulty-huge removal (train split only). Raises NoLabelsError if no boxes survive.
+    """
+
+def build_objframes_and_grid(
+    filtered_labels: np.ndarray,
+    *,
+    dataset: str = "gen4",
+    delta_t_us: int = 50000,
+    align_t_us: int = 100000,
+    ts_step_frame_ms: int = 100,
+    ts_step_ev_repr_ms: int = 50,
+    jitter_us: int = 2000,
+) -> ObjframeGridResult:
+    """Select object frames, build the event-repr window-end grid, and align the two.
+
+    Returns an ObjframeGridResult dataclass with fields: labels, objframe_idx_2_label_idx,
+    frame_timestamps_us, ev_repr_timestamps_us_end, objframe_idx_2_repr_idx.
+    """
+
+def write_preprocessed(
+    out_dir: Union[str, Path],
+    result: ObjframeGridResult,
+    *,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
+) -> None:
+    """Write the RVT directory tree for one sequence.
+
+    Produces: labels_v2/labels.npz, labels_v2/timestamps_us.npy,
+    event_representations_v2/<repr_dir_name>/objframe_idx_2_repr_idx.npy,
+    event_representations_v2/<repr_dir_name>/timestamps_us.npy.
+    """
+
+def preprocess_sequence(
+    bbox_path: Union[str, Path],
+    out_dir: Union[str, Path],
+    *,
+    dataset: str = "gen4",
+    split: str = "val",
+    height: int = 720,
+    width: int = 1280,
+    repr_dir_name: str = EVLIB_REPR_DIR_NAME,
+) -> ObjframeGridResult:
+    """End-to-end pipeline: read -> filter -> grid -> write.
+
+    Ties read_raw_bbox -> apply_filters -> build_objframes_and_grid -> write_preprocessed.
+    Supported datasets: "gen4" (1280x720, default) and "gen1" (304x240).
+    """
+```
+
+### Typical usage
+
+```python
+from evlib.data import preprocess_sequence, EVLIB_REPR_DIR_NAME, PreprocessedH5Source
+
+# Default repr_dir_name=EVLIB_REPR_DIR_NAME pairs with the default PreprocessedH5Source.
+result = preprocess_sequence(
+    "data/gen4/train/seq0/seq0_bbox.npy",
+    out_dir="data/gen4/train/seq0/",
+    dataset="gen4",
+    split="train",
+    height=720,
+    width=1280,
+)
+
+# The processed sequence is readable by PreprocessedH5Source with no extra config:
+source = PreprocessedH5Source("data/gen4/train/seq0/")
+
+# To reproduce RVT's upstream on-disk layout (= signs in dir name), pass explicitly:
+from evlib.data import RVT_REPR_DIR_NAME
+result = preprocess_sequence(
+    "data/gen4/train/seq0/seq0_bbox.npy",
+    out_dir="data/gen4/train/seq0/",
+    dataset="gen4",
+    split="train",
+    repr_dir_name=RVT_REPR_DIR_NAME,
+)
+```
 
 ## Lightning DataModule (optional)
 
