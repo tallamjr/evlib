@@ -1,5 +1,12 @@
 """PyTorch data loading for event-vision training (sequences + samples)."""
 
+from evlib.data.ncaltech import (
+    NCALTECH_HEIGHT,
+    NCALTECH_WIDTH,
+    convert_ncaltech,
+    read_atis_bin,
+    representation_from_events,
+)
 from evlib.data.augment import SequenceAugmentor
 from evlib.data.collate import custom_collate_random, custom_collate_stream
 from evlib.data.dataset_random import SequenceRandomDataset
@@ -24,6 +31,11 @@ from evlib.data.sequence import DataKey, SequenceSample
 from evlib.data.sources import EvlibStreamSource, PreprocessedH5Source, ReprSource
 
 __all__ = [
+    "NCALTECH_HEIGHT",
+    "NCALTECH_WIDTH",
+    "convert_ncaltech",
+    "read_atis_bin",
+    "representation_from_events",
     "SequenceSample",
     "SequenceAugmentor",
     "DataKey",

@@ -183,6 +183,41 @@ to reset state at slot boundaries.
 Map-style dataset for the single-sample (non-sequential) classification path: each
 item is one window with its label, rather than a sequence.
 
+#### Classification: N-Caltech101
+
+`SampleDataset` drives the classification path end to end with the N-Caltech101
+helpers in `evlib.data.ncaltech`. N-Caltech101 recordings are ATIS binary event
+streams (`.bin`, 5 bytes per event, sensor 240 wide by 180 high). Each recording
+becomes a single classification sample: one full-recording stacked-histogram
+window of shape `[2 * nbins, 180, 240]` (`uint8`, polarity-major channels, default
+`nbins=10` gives 20 channels).
+
+`convert_ncaltech(raw_tree, out_dir)` walks `raw_tree/<class_name>/*.bin`, builds
+the class-to-int label map as `sorted(class_dir_names)` mapped to `0..K-1`, writes
+one `<idx>.npy` per recording plus a parallel `labels.npy`, and returns the
+per-sample paths and integer labels ready to hand straight to `SampleDataset`.
+
+```python
+from torch.utils.data import DataLoader
+from evlib.data import convert_ncaltech, SampleDataset
+
+# raw_tree/airplane/*.bin, raw_tree/camera/*.bin, ...
+sample_paths, labels = convert_ncaltech("raw_tree", "out_dir", nbins=10)
+
+dataset = SampleDataset(sample_paths, labels)
+loader = DataLoader(dataset, batch_size=2, shuffle=True)
+
+inputs, targets = next(iter(loader))
+print(tuple(inputs.shape))  # [B, 2 * nbins, 180, 240], e.g. (2, 20, 180, 240)
+```
+
+The full N-Caltech101 dataset is not bundled with evlib; download it separately and
+point `convert_ncaltech` at the extracted class tree. The lower-level
+`read_atis_bin` (decode one `.bin` to a Polars event frame) and
+`representation_from_events` (build one recording's stacked histogram) are exported
+from `evlib.data` for custom pipelines, along with `NCALTECH_HEIGHT` (180) and
+`NCALTECH_WIDTH` (240).
+
 ## Collate functions
 
 `custom_collate_random` stacks a list of `SequenceSample`s into a batch dict keyed by
