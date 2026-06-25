@@ -19,6 +19,12 @@ from pathlib import Path
 from evlib.data import PreprocessedH5Source, RVT_REPR_DIR_NAME
 from evlib.eval.rvt_eval import evaluate_rvt_gen4
 from evlib.models.rvt import RVT
+from evlib.models.rvt_backbone import partition_size_from_hw
+
+# Backbone-multiple padded HW for gen4 ds2 (data HW 360x640 padded bottom/right).
+# This is also the HW passed to the evaluator and the basis for the MaxViT
+# partition size, matching the reference's resolution-derived partition.
+GEN4_DS2_PADDED_HW = (384, 640)
 
 
 def main() -> None:
@@ -42,7 +48,21 @@ def main() -> None:
         for d in seq_dirs
     ]
 
-    model = RVT(variant="tiny", num_classes=3, pretrained=True).eval()
+    # The reference RVT uses a resolution-derived, non-square MaxViT partition.
+    # For gen4 ds2 (padded 384x640, partition_split_32=2) this is (6, 10); using
+    # the original square (7, 7) computes attention over the wrong token windows
+    # and collapses recall.
+    partition_size = partition_size_from_hw(GEN4_DS2_PADDED_HW)
+    print(
+        f"using MaxViT partition size {partition_size} for padded HW {GEN4_DS2_PADDED_HW}"
+    )
+
+    model = RVT(
+        variant="tiny",
+        num_classes=3,
+        pretrained=True,
+        partition_size=partition_size,
+    ).eval()
 
     t0 = time.time()
     metrics = evaluate_rvt_gen4(
@@ -51,6 +71,7 @@ def main() -> None:
         sequence_length=args.sequence_length,
         batch_size=args.batch_size,
         device=args.device,
+        padded_hw=GEN4_DS2_PADDED_HW,
     )
     dt = time.time() - t0
 

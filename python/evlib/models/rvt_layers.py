@@ -15,7 +15,6 @@ from enum import Enum
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -36,150 +35,121 @@ def nchw_to_nhwc(x: Tensor) -> Tensor:
     return x.permute(0, 2, 3, 1).contiguous()
 
 
-def window_partition(x: Tensor, window_size: int) -> Tuple[Tensor, int, int]:
-    """Partition input tensor into non-overlapping windows.
+def _as_partition_tuple(partition_size: Union[int, Tuple[int, int]]) -> Tuple[int, int]:
+    """Coerce a scalar or 2-tuple partition size to a ``(h, w)`` tuple."""
+    if isinstance(partition_size, int):
+        return (partition_size, partition_size)
+    partition_size = tuple(partition_size)
+    assert len(partition_size) == 2, (
+        f"partition size must be 2-tuple, got {partition_size}"
+    )
+    return (int(partition_size[0]), int(partition_size[1]))
+
+
+def window_partition(x: Tensor, window_size: Union[int, Tuple[int, int]]) -> Tensor:
+    """Partition input into non-overlapping windows (reference-identical).
+
+    The tuple is the WINDOW SIZE: each window is ``window_size[0] x
+    window_size[1]`` and there are ``H // window_size[0]`` by ``W //
+    window_size[1]`` windows. Mirrors
+    ``ssms_event_cameras/RVT/.../maxvit.window_partition``: divisibility is
+    asserted (no internal padding); the harness pre-pads the input so every
+    stage divides evenly.
 
     Args:
         x: Input tensor of shape (B, H, W, C)
-        window_size: Size of the window
+        window_size: Window size, an int (square) or ``(h, w)`` tuple
 
     Returns:
-        Tuple of (windowed tensor, num_windows_h, num_windows_w)
+        Windowed tensor of shape ``(B * num_windows, win_h * win_w, C)``
     """
+    win_h, win_w = _as_partition_tuple(window_size)
     B, H, W, C = x.shape
+    assert H % win_h == 0, f"height ({H}) must be divisible by window ({win_h})"
+    assert W % win_w == 0, f"width ({W}) must be divisible by window ({win_w})"
 
-    # Pad to make divisible by window_size
-    pad_h = (window_size - H % window_size) % window_size
-    pad_w = (window_size - W % window_size) % window_size
-
-    if pad_h > 0 or pad_w > 0:
-        x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-        H, W = H + pad_h, W + pad_w
-
-    num_windows_h = H // window_size
-    num_windows_w = W // window_size
-
-    # Partition into windows
-    x = x.view(B, num_windows_h, window_size, num_windows_w, window_size, C)
-    x = x.permute(
-        0, 1, 3, 2, 4, 5
-    ).contiguous()  # (B, num_windows_h, num_windows_w, window_size, window_size, C)
-    x = x.view(-1, window_size * window_size, C)  # (B * num_windows, window_size^2, C)
-
-    return x, num_windows_h, num_windows_w
+    x = x.view(B, H // win_h, win_h, W // win_w, win_w, C)
+    # (B, num_windows_h, num_windows_w, win_h, win_w, C) -> flatten spatial dims
+    x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+    x = x.view(-1, win_h * win_w, C)
+    return x
 
 
 def window_reverse(
     x: Tensor,
-    window_size: int,
-    num_windows_h: int,
-    num_windows_w: int,
-    original_h: int,
-    original_w: int,
+    window_size: Union[int, Tuple[int, int]],
+    img_size: Tuple[int, int],
 ) -> Tensor:
-    """Reverse window partitioning.
+    """Reverse window partitioning (reference-identical).
 
     Args:
-        x: Windowed tensor of shape (B * num_windows, window_size^2, C)
-        window_size: Size of the window
-        num_windows_h: Number of windows in height dimension
-        num_windows_w: Number of windows in width dimension
-        original_h: Original height before padding
-        original_w: Original width before padding
+        x: Windowed tensor of shape ``(B * num_windows, win_h * win_w, C)``
+        window_size: Window size used in :func:`window_partition`
+        img_size: The ``(H, W)`` of the tensor that was partitioned
 
     Returns:
-        Tensor of shape (B, original_h, original_w, C)
+        Tensor of shape (B, H, W, C)
     """
-    B = x.shape[0] // (num_windows_h * num_windows_w)
+    win_h, win_w = _as_partition_tuple(window_size)
+    H, W = img_size
     C = x.shape[-1]
 
-    # Reshape back to windows
-    x = x.view(B, num_windows_h, num_windows_w, window_size, window_size, C)
-    x = x.permute(
-        0, 1, 3, 2, 4, 5
-    ).contiguous()  # (B, num_windows_h, window_size, num_windows_w, window_size, C)
-    x = x.view(B, num_windows_h * window_size, num_windows_w * window_size, C)
-
-    # Remove padding if any
-    x = x[:, :original_h, :original_w, :].contiguous()
-
+    x = x.view(-1, H // win_h, W // win_w, win_h, win_w, C)
+    x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+    x = x.view(-1, H, W, C)
     return x
 
 
-def grid_partition(x: Tensor, grid_size: int) -> Tensor:
-    """Partition input tensor into grid for grid attention.
+def grid_partition(x: Tensor, grid_size: Union[int, Tuple[int, int]]) -> Tensor:
+    """Partition input into a grid for grid attention (reference-identical).
+
+    The tuple is the GRID SIZE: there are ``grid_size[0]`` by ``grid_size[1]``
+    windows and each window is ``H // grid_size[0]`` by ``W // grid_size[1]``.
+    Mirrors ``ssms_event_cameras/RVT/.../maxvit.grid_partition``: divisibility is
+    asserted (no internal padding).
 
     Args:
         x: Input tensor of shape (B, H, W, C)
-        grid_size: Size of the grid
+        grid_size: Grid size, an int (square) or ``(h, w)`` tuple
 
     Returns:
-        Grid-partitioned tensor
+        Grid-partitioned tensor of shape
+        ``(B * grid_h * grid_w, (H // grid_h) * (W // grid_w), C)``
     """
+    grid_h, grid_w = _as_partition_tuple(grid_size)
     B, H, W, C = x.shape
+    assert H % grid_h == 0, f"height ({H}) must be divisible by grid ({grid_h})"
+    assert W % grid_w == 0, f"width ({W}) must be divisible by grid ({grid_w})"
 
-    # Pad to make divisible by grid_size
-    pad_h = (grid_size - H % grid_size) % grid_size
-    pad_w = (grid_size - W % grid_size) % grid_size
-
-    if pad_h > 0 or pad_w > 0:
-        x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-        H, W = H + pad_h, W + pad_w
-
-    # Partition into grid
-    x = x.view(B, grid_size, H // grid_size, grid_size, W // grid_size, C)
-    x = x.permute(
-        0, 2, 4, 1, 3, 5
-    ).contiguous()  # (B, H//grid_size, W//grid_size, grid_size, grid_size, C)
-    x = x.view(
-        -1, grid_size * grid_size, C
-    )  # (B * (H//grid_size) * (W//grid_size), grid_size^2, C)
-
+    x = x.view(B, grid_h, H // grid_h, grid_w, W // grid_w, C)
+    # (B, H//grid_h, W//grid_w, grid_h, grid_w, C) -> flatten window spatial dims
+    x = x.permute(0, 2, 4, 1, 3, 5).contiguous()
+    x = x.view(-1, (H // grid_h) * (W // grid_w), C)
     return x
 
 
 def grid_reverse(
-    x: Tensor, grid_size: int, H: int, W: int, original_h: int, original_w: int
+    x: Tensor,
+    grid_size: Union[int, Tuple[int, int]],
+    img_size: Tuple[int, int],
 ) -> Tensor:
-    """Reverse grid partitioning.
+    """Reverse grid partitioning (reference-identical).
 
     Args:
-        x: Grid-partitioned tensor
-        grid_size: Size of the grid
-        H: Padded height
-        W: Padded width
-        original_h: Original height before padding
-        original_w: Original width before padding
+        x: Grid-partitioned tensor from :func:`grid_partition`
+        grid_size: Grid size used in :func:`grid_partition`
+        img_size: The ``(H, W)`` of the tensor that was partitioned
 
     Returns:
-        Tensor of shape (B, original_h, original_w, C)
+        Tensor of shape (B, H, W, C)
     """
-    num_grids_h = H // grid_size
-    num_grids_w = W // grid_size
-    B = x.shape[0] // (num_grids_h * num_grids_w)
+    grid_h, grid_w = _as_partition_tuple(grid_size)
+    H, W = img_size
     C = x.shape[-1]
 
-    # Ensure the tensor can be reshaped correctly
-    expected_elements = B * num_grids_h * num_grids_w * grid_size * grid_size * C
-    actual_elements = x.numel()
-
-    if expected_elements != actual_elements:
-        raise RuntimeError(
-            f"Cannot reshape tensor with {actual_elements} elements to "
-            f"({B}, {num_grids_h}, {num_grids_w}, {grid_size}, {grid_size}, {C}) "
-            f"which requires {expected_elements} elements"
-        )
-
-    # Reshape back from grid
-    x = x.view(B, num_grids_h, num_grids_w, grid_size, grid_size, C)
-    x = x.permute(
-        0, 1, 3, 2, 4, 5
-    ).contiguous()  # (B, num_grids_h, grid_size, num_grids_w, grid_size, C)
-    x = x.view(B, H, W, C)
-
-    # Remove padding if any
-    x = x[:, :original_h, :original_w, :].contiguous()
-
+    x = x.view(-1, H // grid_h, W // grid_w, grid_h, grid_w, C)
+    x = x.permute(0, 3, 1, 4, 2, 5).contiguous()
+    x = x.view(-1, H, W, C)
     return x
 
 
@@ -260,7 +230,7 @@ class PartitionAttention(nn.Module):
         self,
         dim: int,
         partition_type: PartitionType,
-        partition_size: int = 7,
+        partition_size: Union[int, Tuple[int, int]] = 7,
         num_heads: int = 8,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
@@ -273,7 +243,7 @@ class PartitionAttention(nn.Module):
     ):
         super().__init__()
         self.partition_type = partition_type
-        self.partition_size = partition_size
+        self.partition_size = _as_partition_tuple(partition_size)
         self.skip_first_norm = skip_first_norm
 
         if not skip_first_norm:
@@ -310,6 +280,7 @@ class PartitionAttention(nn.Module):
             Output tensor of shape (B, H, W, C)
         """
         B, H, W, C = x.shape
+        img_size = (H, W)
 
         # Store for residual
         shortcut = x
@@ -318,35 +289,16 @@ class PartitionAttention(nn.Module):
         if not self.skip_first_norm:
             x = self.norm1(x)
 
-        # Partition
+        # Partition (reference-identical: input is pre-sized so the partition
+        # divides every stage evenly; no internal padding).
         if self.partition_type == PartitionType.WINDOW:
-            x_partitioned, num_windows_h, num_windows_w = window_partition(
-                x, self.partition_size
-            )
-            # Apply attention
+            x_partitioned = window_partition(x, self.partition_size)
             x_partitioned = self.attn(x_partitioned)
-            # Reverse partition
-            x = window_reverse(
-                x_partitioned, self.partition_size, num_windows_h, num_windows_w, H, W
-            )
+            x = window_reverse(x_partitioned, self.partition_size, img_size)
         else:  # GRID
-            # For grid attention, we use a fixed grid size
-            grid_size = min(self.partition_size, min(H, W))
-            # Pad to ensure dimensions are divisible by grid_size
-            pad_h = (grid_size - H % grid_size) % grid_size
-            pad_w = (grid_size - W % grid_size) % grid_size
-
-            if pad_h > 0 or pad_w > 0:
-                x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-                padded_H, padded_W = H + pad_h, W + pad_w
-            else:
-                padded_H, padded_W = H, W
-
-            x_partitioned = grid_partition(x, grid_size)
-            # Apply attention
+            x_partitioned = grid_partition(x, self.partition_size)
             x_partitioned = self.attn(x_partitioned)
-            # Reverse partition
-            x = grid_reverse(x_partitioned, grid_size, padded_H, padded_W, H, W)
+            x = grid_reverse(x_partitioned, self.partition_size, img_size)
 
         # Residual connection with LayerScale
         if self.ls1 is not None:
@@ -371,8 +323,7 @@ class MaxViTBlock(nn.Module):
         self,
         dim: int,
         num_heads: int = 8,
-        window_size: int = 7,
-        grid_size: int = 7,
+        partition_size: Union[int, Tuple[int, int]] = 7,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         drop: float = 0.0,
@@ -383,10 +334,12 @@ class MaxViTBlock(nn.Module):
     ):
         super().__init__()
 
+        # The reference uses a single resolution-derived partition size for BOTH
+        # the window block (as window size) and the grid block (as grid size).
         self.window_attn = PartitionAttention(
             dim=dim,
             partition_type=PartitionType.WINDOW,
-            partition_size=window_size,
+            partition_size=partition_size,
             num_heads=num_heads,
             mlp_ratio=mlp_ratio,
             qkv_bias=qkv_bias,
@@ -400,7 +353,7 @@ class MaxViTBlock(nn.Module):
         self.grid_attn = PartitionAttention(
             dim=dim,
             partition_type=PartitionType.GRID,
-            partition_size=grid_size,
+            partition_size=partition_size,
             num_heads=num_heads,
             mlp_ratio=mlp_ratio,
             qkv_bias=qkv_bias,

@@ -17,6 +17,29 @@ from torch import Tensor
 from .rvt_layers import MaxViTBlock, DWSConvLSTM2d, get_downsample_layer, nhwc_to_nchw
 
 
+def partition_size_from_hw(
+    padded_hw: Tuple[int, int], partition_split_32: int = 2
+) -> Tuple[int, int]:
+    """Derive the MaxViT partition size from the padded input HW.
+
+    Matches the reference ``modifier.py``: ``multiple_of = 32 *
+    partition_split_32`` and ``partition_size = (H // multiple_of, W //
+    multiple_of)``. The padded HW must be an exact multiple of ``multiple_of``
+    (the eval harness pads the input to satisfy this), and the resulting
+    partition must divide the smallest (stage-4) feature map ``(H // 32, W //
+    32)`` exactly, both of which are asserted here as the reference does.
+    """
+    assert partition_split_32 in (1, 2, 4), f"{partition_split_32=}"
+    multiple_of = 32 * partition_split_32
+    H, W = padded_hw
+    assert H % multiple_of == 0, f"padded H ({H}) must be a multiple of {multiple_of}"
+    assert W % multiple_of == 0, f"padded W ({W}) must be a multiple of {multiple_of}"
+    partition_size = (H // multiple_of, W // multiple_of)
+    assert (H // 32) % partition_size[0] == 0, f"{H=}, {partition_size[0]=}"
+    assert (W // 32) % partition_size[1] == 0, f"{W=}, {partition_size[1]=}"
+    return partition_size
+
+
 @dataclass
 class RVTConfig:
     """Configuration for RVT backbone."""
@@ -36,8 +59,12 @@ class RVTConfig:
 
     # Attention configuration
     num_heads: int = 8
-    window_size: int = 7
-    grid_size: int = 7
+    # MaxViT partition size (h_part, w_part). The reference RVT derives this from
+    # the padded input resolution (gen4 ds2 padded 384x640 -> (6, 10)); see
+    # ``partition_size_from_hw``. A single tuple drives BOTH the window block
+    # (used as window size) and the grid block (used as grid size), matching the
+    # reference. The default (7, 7) preserves the original square behaviour.
+    partition_size: Tuple[int, int] = (7, 7)
     mlp_ratio: float = 4.0
     qkv_bias: bool = True
     drop_rate: float = 0.0
@@ -64,6 +91,23 @@ class RVTConfig:
     def tiny(cls) -> "RVTConfig":
         """Create configuration for RVT-Tiny model."""
         return cls(embed_dim=32)
+
+    def with_partition_for_hw(
+        self, padded_hw: Tuple[int, int], partition_split_32: int = 2
+    ) -> "RVTConfig":
+        """Return a copy whose partition size is derived from the padded HW.
+
+        Mirrors the reference ``dynamically_modify_train_config``: the partition
+        size is ``(H // (32 * partition_split_32), W // (32 * partition_split_32))``
+        with the input pre-padded to a multiple of ``32 * partition_split_32``.
+        For gen4 ds2 (padded 384x640, partition_split_32=2) this gives (6, 10).
+        """
+        from dataclasses import replace
+
+        return replace(
+            self,
+            partition_size=partition_size_from_hw(padded_hw, partition_split_32),
+        )
 
     @classmethod
     def small(cls) -> "RVTConfig":
@@ -120,8 +164,7 @@ class RVTStage(nn.Module):
             block = MaxViTBlock(
                 dim=out_channels,
                 num_heads=config.num_heads,
-                window_size=config.window_size,
-                grid_size=config.grid_size,
+                partition_size=config.partition_size,
                 mlp_ratio=config.mlp_ratio,
                 qkv_bias=config.qkv_bias,
                 drop=config.drop_rate,

@@ -98,8 +98,18 @@ class RVT(BaseModel, nn.Module):
         pretrained: bool = False,
         variant: str = "tiny",
         num_classes: int = 2,
+        partition_size: Optional[Tuple[int, int]] = None,
     ):
-        """Initialize RVT model."""
+        """Initialize RVT model.
+
+        Args:
+            partition_size: MaxViT partition size ``(h_part, w_part)`` for every
+                stage. The reference RVT derives this from the padded input
+                resolution (gen4 ds2 padded 384x640 -> (6, 10)); pass it here so
+                evlib's attention windows match the trained checkpoint. ``None``
+                keeps the square default. Construct it with
+                ``evlib.models.rvt_backbone.partition_size_from_hw(padded_hw)``.
+        """
         # Initialize config
         if config is None:
             if variant == "tiny":
@@ -123,6 +133,7 @@ class RVT(BaseModel, nn.Module):
         self.variant = variant
         self.num_classes = num_classes
         self.temporal_bins = config.temporal_bins
+        self._partition_size = partition_size
 
         # Device management
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -154,6 +165,13 @@ class RVT(BaseModel, nn.Module):
             rvt_config = RVTConfig.base()
 
         rvt_config.input_channels = 2 * self.temporal_bins
+
+        # Override the MaxViT partition size when given (the reference derives a
+        # resolution-dependent, possibly non-square partition; gen4 uses (6, 10)).
+        if self._partition_size is not None:
+            from dataclasses import replace
+
+            rvt_config = replace(rvt_config, partition_size=tuple(self._partition_size))
 
         # Build components
         self.backbone = RVTBackbone(rvt_config).to(self._device)
