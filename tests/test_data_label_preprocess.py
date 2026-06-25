@@ -11,14 +11,20 @@ import pytest
 
 from evlib.data.label_preprocess import (
     BBOX_DTYPE,
+    RVT_REPR_DIR_NAME,
     NoLabelsError,
+    ObjframeGridResult,
     apply_filters,
+    build_objframes_and_grid,
     conservative_size_filter,
     crop_to_fov,
+    get_base_delta_ts_us,
     keep_classes_gen4,
+    preprocess_sequence,
     prophesee_size_filter,
     read_raw_bbox,
     remove_faulty_huge_bbox,
+    write_preprocessed,
 )
 
 GEN4_HEIGHT = 720
@@ -278,3 +284,233 @@ def test_apply_filters_psee_branch_uses_prophesee_size():
             width=GEN4_WIDTH,
             apply_psee_bbox_filter=True,
         )
+
+
+# --- get_base_delta_ts_us: base label cadence --------------------------------
+
+
+def test_base_delta_gen1_fixed_4hz():
+    # gen1 is a fixed 4 Hz cadence regardless of the timestamps.
+    assert get_base_delta_ts_us(np.array([0, 250000], dtype="int64"), "gen1") == 250000
+
+
+def test_base_delta_gen4_60hz():
+    # 60 Hz dense cadence: median diff 16667, base_delta = 6 * 16667 = 100002.
+    unique_ts = np.arange(0, 200001, 16667, dtype="int64")
+    assert get_base_delta_ts_us(unique_ts, "gen4") == 100002
+
+
+def test_base_delta_gen4_30hz():
+    # 30 Hz dense cadence: median diff 33333, base_delta = 3 * 33333 = 99999.
+    unique_ts = np.arange(0, 400001, 33333, dtype="int64")
+    assert get_base_delta_ts_us(unique_ts, "gen4") == 99999
+
+
+def test_base_delta_gen4_rejects_off_cadence():
+    # 100 Hz (median diff 10000) is neither 30 nor 60 Hz -> rejected.
+    unique_ts = np.arange(0, 100001, 10000, dtype="int64")
+    with pytest.raises(ValueError):
+        get_base_delta_ts_us(unique_ts, "gen4")
+
+
+# --- build_objframes_and_grid: frame selection -------------------------------
+
+
+def _one_box_per_ts(timestamps) -> np.ndarray:
+    """One valid box per timestamp, sorted by t, with distinct track_ids."""
+    rows = [
+        (int(ts), 0.0, 0.0, 40.0, 40.0, 2, 0.9, track)
+        for track, ts in enumerate(sorted(timestamps))
+    ]
+    return make_bbox(rows)
+
+
+def test_frame_selection_natural_60hz_cadence():
+    # Dense 60 Hz backbone -> base_delta 100002. align_t_us=100000 picks the
+    # first ts >= 100000 (= 100002), then every ~100002 us afterwards.
+    dense = np.arange(0, 450000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    assert result.frame_timestamps_us.tolist() == [100002, 200004, 300006, 400008]
+    assert result.frame_timestamps_us.dtype == np.int64
+
+
+def test_frame_selection_accepts_jitter_within_tolerance():
+    # Perturb the second selected frame by +1500 us (within the 2000 us jitter).
+    dense = list(np.arange(0, 350000, 16667, dtype="int64"))
+    dense = [201504 if v == 200004 else v for v in dense]
+    timestamps = sorted(set(dense))
+    result = build_objframes_and_grid(_one_box_per_ts(timestamps), dataset="gen4")
+    # 201504 is accepted despite the jitter; cadence resumes from it.
+    assert result.frame_timestamps_us.tolist() == [100002, 201504, 300006]
+
+
+def test_frame_selection_rejects_off_cadence_near_miss():
+    # Extra ts at 202504 is a near-miss (2500 us past a multiple, > tolerance)
+    # and must be rejected; the clean 60 Hz frames are kept.
+    dense = list(np.arange(0, 350000, 16667, dtype="int64"))
+    dense.append(202504)
+    timestamps = sorted(set(dense))
+    result = build_objframes_and_grid(_one_box_per_ts(timestamps), dataset="gen4")
+    assert 202504 not in result.frame_timestamps_us.tolist()
+    assert result.frame_timestamps_us.tolist() == [100002, 200004, 300006]
+
+
+# --- build_objframes_and_grid: window-end grid -------------------------------
+
+
+def test_grid_backfill_linspace_and_dropped_edge():
+    # Clean 60 Hz, frames [100002, 200004, 300006]. base_delta 100002 ->
+    # num_ev_reprs_between = 2 per gap, so each segment has a single interior edge.
+    dense = np.arange(0, 350000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    # Back-fill from 100002 down by 50000, dropping 0 and the frame edge: [50002].
+    # Segment 1: linspace(100002, 200004, 3) = [100002, 150003, 200004], shared
+    # edge 200004 dropped (not last segment) -> [100002, 150003].
+    # Segment 2 (last): linspace(200004, 300006, 3) = [200004, 250005, 300006],
+    # kept whole.
+    assert result.ev_repr_timestamps_us_end.tolist() == [
+        50002,
+        100002,
+        150003,
+        200004,
+        250005,
+        300006,
+    ]
+    assert result.ev_repr_timestamps_us_end.dtype == np.int64
+
+
+def test_grid_lands_exactly_on_frames_via_searchsorted():
+    dense = np.arange(0, 350000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    grid = result.ev_repr_timestamps_us_end
+    repr_idx = result.objframe_idx_2_repr_idx
+    assert repr_idx.tolist() == [1, 3, 5]
+    assert repr_idx.dtype == np.int64
+    # The searchsorted alignment lands the grid exactly on every frame.
+    assert np.array_equal(result.frame_timestamps_us, grid[repr_idx])
+
+
+def test_grid_with_jittered_frame_interior_edges():
+    dense = list(np.arange(0, 350000, 16667, dtype="int64"))
+    dense = [201504 if v == 200004 else v for v in dense]
+    timestamps = sorted(set(dense))
+    result = build_objframes_and_grid(_one_box_per_ts(timestamps), dataset="gen4")
+    # Frames [100002, 201504, 300006]; interior linspace edges shift with jitter.
+    assert result.ev_repr_timestamps_us_end.tolist() == [
+        50002,
+        100002,
+        150753,
+        201504,
+        250755,
+        300006,
+    ]
+
+
+# --- build_objframes_and_grid: grouping --------------------------------------
+
+
+def test_grouping_concatenates_boxes_with_int64_offsets():
+    # Two boxes at frame 100002, one at 200004, three at 300006.
+    rows = []
+    track = 0
+    for ts, count in [(100002, 2), (200004, 1), (300006, 3)]:
+        for _ in range(count):
+            rows.append((ts, 0.0, 0.0, 40.0, 40.0, 2, 0.9, track))
+            track += 1
+    # Include the dense backbone (one box each) so base_delta resolves to 60 Hz.
+    backbone = [
+        int(v)
+        for v in np.arange(0, 350000, 16667)
+        if int(v) not in {100002, 200004, 300006}
+    ]
+    for ts in backbone:
+        rows.append((ts, 0.0, 0.0, 40.0, 40.0, 2, 0.9, track))
+        track += 1
+    rows.sort(key=lambda r: r[0])
+    result = build_objframes_and_grid(make_bbox(rows), dataset="gen4")
+
+    assert result.frame_timestamps_us.tolist() == [100002, 200004, 300006]
+    # Per-frame box counts: 2 (+0 backbone), 1, 3 -> offsets [0, 2, 3].
+    assert result.objframe_idx_2_label_idx.tolist() == [0, 2, 3]
+    assert result.objframe_idx_2_label_idx.dtype == np.int64
+    # Concatenated grouped labels: 2 + 1 + 3 = 6 boxes, all at selected frames.
+    assert len(result.labels) == 6
+    assert result.labels["t"].tolist() == [
+        100002,
+        100002,
+        200004,
+        300006,
+        300006,
+        300006,
+    ]
+    # track_id is carried through the grouping.
+    assert set(result.labels["track_id"].tolist()) == set(range(6))
+    assert result.labels.dtype == BBOX_DTYPE
+
+
+# --- write_preprocessed: round-trip ------------------------------------------
+
+
+def test_write_preprocessed_roundtrip_exact_filenames(tmp_path):
+    dense = np.arange(0, 350000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    write_preprocessed(tmp_path, result)
+
+    labels_npz = tmp_path / "labels_v2" / "labels.npz"
+    labels_ts = tmp_path / "labels_v2" / "timestamps_us.npy"
+    repr_dir = tmp_path / "event_representations_v2" / RVT_REPR_DIR_NAME
+    repr_idx_file = repr_dir / "objframe_idx_2_repr_idx.npy"
+    repr_ts_file = repr_dir / "timestamps_us.npy"
+
+    # Exact RVT on-disk layout, including the ``=`` in the repr dir name.
+    assert RVT_REPR_DIR_NAME == "stacked_histogram_dt=50_nbins=10"
+    assert labels_npz.exists()
+    assert labels_ts.exists()
+    assert repr_idx_file.exists()
+    assert repr_ts_file.exists()
+
+    loaded = np.load(str(labels_npz))
+    assert np.array_equal(loaded["labels"], result.labels)
+    assert np.array_equal(
+        loaded["objframe_idx_2_label_idx"], result.objframe_idx_2_label_idx
+    )
+    assert np.array_equal(np.load(str(labels_ts)), result.frame_timestamps_us)
+    assert np.array_equal(np.load(str(repr_idx_file)), result.objframe_idx_2_repr_idx)
+    assert np.array_equal(np.load(str(repr_ts_file)), result.ev_repr_timestamps_us_end)
+
+
+def test_write_preprocessed_honours_custom_repr_dir_name(tmp_path):
+    dense = np.arange(0, 250000, 16667, dtype="int64")
+    result = build_objframes_and_grid(_one_box_per_ts(dense), dataset="gen4")
+    write_preprocessed(tmp_path, result, repr_dir_name="custom_repr")
+    assert (tmp_path / "event_representations_v2" / "custom_repr").is_dir()
+
+
+# --- preprocess_sequence: end-to-end -----------------------------------------
+
+
+def test_preprocess_sequence_end_to_end(tmp_path):
+    # A raw bbox file with a class-4 box (dropped by filters) plus valid boxes
+    # on a 60 Hz backbone; preprocess_sequence reads, filters, aligns, writes.
+    dense = np.arange(0, 350000, 16667, dtype="int64")
+    rows = [
+        (int(ts), 0.0, 0.0, 40.0, 40.0, 2, 0.9, track) for track, ts in enumerate(dense)
+    ]
+    # A traffic-sign (class 4) box at a frame ts; must be filtered out.
+    rows.append((100002, 0.0, 0.0, 40.0, 40.0, 4, 0.9, 999))
+    rows.sort(key=lambda r: r[0])
+    bbox_path = tmp_path / "seq_bbox.npy"
+    np.save(bbox_path, make_bbox(rows))
+
+    out_dir = tmp_path / "out"
+    result = preprocess_sequence(bbox_path, out_dir, dataset="gen4", split="val")
+
+    assert isinstance(result, ObjframeGridResult)
+    assert result.frame_timestamps_us.tolist() == [100002, 200004, 300006]
+    # The class-4 box was dropped: each selected frame keeps exactly one box.
+    assert result.objframe_idx_2_label_idx.tolist() == [0, 1, 2]
+    assert 999 not in result.labels["track_id"].tolist()
+    assert (out_dir / "labels_v2" / "labels.npz").exists()
+    assert (
+        out_dir / "event_representations_v2" / RVT_REPR_DIR_NAME / "timestamps_us.npy"
+    ).exists()

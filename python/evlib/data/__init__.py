@@ -8,9 +8,15 @@ from evlib.data.dataset_stream import SequenceStreamDataset
 from evlib.data.label_preprocess import (
     BBOX_DTYPE,
     LABEL_NPZ_FIELDS,
+    RVT_REPR_DIR_NAME,
     NoLabelsError,
+    ObjframeGridResult,
     apply_filters,
+    build_objframes_and_grid,
+    get_base_delta_ts_us,
+    preprocess_sequence,
     read_raw_bbox,
+    write_preprocessed,
 )
 from evlib.data.labels import LABEL_FIELDS, boxes_to_yolox
 from evlib.data.sequence import DataKey, SequenceSample
@@ -27,6 +33,12 @@ __all__ = [
     "NoLabelsError",
     "read_raw_bbox",
     "apply_filters",
+    "RVT_REPR_DIR_NAME",
+    "ObjframeGridResult",
+    "build_objframes_and_grid",
+    "get_base_delta_ts_us",
+    "preprocess_sequence",
+    "write_preprocessed",
     "ReprSource",
     "PreprocessedH5Source",
     "EvlibStreamSource",
