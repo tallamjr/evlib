@@ -57,8 +57,11 @@ class RVTConfig:
     stem_patch_size: int = 4
     stem_stride: Optional[int] = None
 
-    # Attention configuration
-    num_heads: int = 8
+    # Attention configuration. The reference RVT fixes ``dim_head`` and derives
+    # the head count per stage as ``dim // dim_head`` (stage dims 32/64/128/256
+    # give 1/2/4/8 heads). A fixed head count would diverge from the trained
+    # checkpoint on every stage except the widest.
+    dim_head: int = 32
     # MaxViT partition size (h_part, w_part). The reference RVT derives this from
     # the padded input resolution (gen4 ds2 padded 384x640 -> (6, 10)); see
     # ``partition_size_from_hw``. A single tuple drives BOTH the window block
@@ -163,7 +166,7 @@ class RVTStage(nn.Module):
 
             block = MaxViTBlock(
                 dim=out_channels,
-                num_heads=config.num_heads,
+                dim_head=config.dim_head,
                 partition_size=config.partition_size,
                 mlp_ratio=config.mlp_ratio,
                 qkv_bias=config.qkv_bias,

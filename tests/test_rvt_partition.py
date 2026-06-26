@@ -7,8 +7,11 @@ the reference semantics exactly:
 
 - ``window_partition`` treats the tuple as the WINDOW SIZE: each window is
   ``h_part x w_part`` and there are ``H // h_part`` by ``W // w_part`` windows.
-- ``grid_partition`` treats the tuple as the GRID SIZE: there are ``h_part`` by
-  ``w_part`` windows and each window is ``H // h_part`` by ``W // w_part``.
+- ``grid_partition`` treats the tuple as the GRID-WINDOW SIZE the same way: each
+  attention window is ``h_part x w_part`` tokens sampled on a stride-``(H //
+  h_part, W // w_part)`` lattice, and there are ``(H // h_part) * (W // w_part)``
+  windows. (The earlier convention that flattened ``(H // h_part) * (W //
+  w_part)`` into the token axis scrambled the grid tokens versus the reference.)
 
 Both must reconstruct the input exactly under their reverse op, and the evlib
 output must equal the reference implementation's output element-for-element.
@@ -42,6 +45,7 @@ try:
         window_reverse as ref_window_reverse,
         grid_partition as ref_grid_partition,
         grid_reverse as ref_grid_reverse,
+        SelfAttentionCl as RefSelfAttentionCl,
     )
 
     _HAVE_REF = True
@@ -98,14 +102,18 @@ def test_window_partition_matches_reference():
 
 @requires_reference
 def test_grid_partition_matches_reference():
-    """evlib grid_partition output equals the reference element-for-element."""
+    """evlib grid_partition output equals the reference element-for-element.
+
+    The grid attention window is ``h_part x w_part`` tokens, so the token axis
+    has length ``h_part * w_part`` (not ``win_h * win_w``); comparing on that
+    common view catches the scrambled-token regression.
+    """
     x = _input()
     ours = grid_partition(x, PARTITION)
     ref = ref_grid_partition(x, PARTITION)
-    win_h = H // PARTITION[0]
-    win_w = W // PARTITION[1]
     assert torch.equal(
-        ours.reshape(-1, win_h * win_w, C), ref.reshape(-1, win_h * win_w, C)
+        ours.reshape(-1, PARTITION[0] * PARTITION[1], C),
+        ref.reshape(-1, PARTITION[0] * PARTITION[1], C),
     )
 
 
@@ -129,3 +137,49 @@ def test_grid_reverse_matches_reference():
     our_parts = grid_partition(x, PARTITION)
     our_back = grid_reverse(our_parts, PARTITION, (H, W))
     assert torch.equal(our_back, ref_back)
+
+
+def test_attention_derives_heads_from_dim_head():
+    """evlib Attention derives num_heads = dim // dim_head (reference behaviour).
+
+    The reference fixes dim_head=32, so a 64-wide stage uses 2 heads and a
+    256-wide stage uses 8. A fixed head count would diverge from the trained
+    weights on every stage except the widest.
+    """
+    from evlib.models.rvt_layers import Attention
+
+    for dim, expected_heads in ((32, 1), (64, 2), (128, 4), (256, 8)):
+        attn = Attention(dim, dim_head=32)
+        assert attn.num_heads == expected_heads, (dim, attn.num_heads)
+
+
+@requires_reference
+@pytest.mark.parametrize("dim", [32, 64, 128, 256])
+def test_attention_matches_reference_self_attention(dim: int):
+    """evlib Attention equals the reference SelfAttentionCl for a multi-head stage.
+
+    Catches the qkv head/channel split-order regression: the reference reads the
+    qkv projection as (num_heads, dim_head * 3) and only then splits q/k/v, which
+    differs from a (3, num_heads, dim_head) split whenever num_heads > 1.
+    """
+    from evlib.models.rvt_layers import Attention
+
+    torch.manual_seed(0)
+    ours = Attention(dim, dim_head=32)
+    ref = RefSelfAttentionCl(dim, dim_head=32, bias=True)
+    # share weights
+    ref.qkv.weight.data.copy_(ours.qkv.weight.data)
+    ref.qkv.bias.data.copy_(ours.qkv.bias.data)
+    ref.proj.weight.data.copy_(ours.proj.weight.data)
+    ref.proj.bias.data.copy_(ours.proj.bias.data)
+    ours.eval()
+    ref.eval()
+
+    x = torch.randn(4, 60, dim)  # (B*windows, tokens, C)
+    with torch.no_grad():
+        out_ours = ours(x)
+        out_ref = ref(x)
+    assert torch.allclose(out_ours, out_ref, atol=1e-6), (
+        dim,
+        (out_ours - out_ref).abs().max().item(),
+    )

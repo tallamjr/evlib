@@ -103,10 +103,11 @@ def window_reverse(
 def grid_partition(x: Tensor, grid_size: Union[int, Tuple[int, int]]) -> Tensor:
     """Partition input into a grid for grid attention (reference-identical).
 
-    The tuple is the GRID SIZE: there are ``grid_size[0]`` by ``grid_size[1]``
-    windows and each window is ``H // grid_size[0]`` by ``W // grid_size[1]``.
-    Mirrors ``ssms_event_cameras/RVT/.../maxvit.grid_partition``: divisibility is
-    asserted (no internal padding).
+    Mirrors ``ssms_event_cameras/RVT/.../maxvit.grid_partition``: the tuple is
+    the GRID-WINDOW size, so each attention window is ``grid_size[0] x
+    grid_size[1]`` tokens sampled on a stride-``(H // grid_h, W // grid_w)``
+    lattice, and there are ``(H // grid_h) * (W // grid_w)`` such windows.
+    Divisibility is asserted (no internal padding).
 
     Args:
         x: Input tensor of shape (B, H, W, C)
@@ -114,7 +115,7 @@ def grid_partition(x: Tensor, grid_size: Union[int, Tuple[int, int]]) -> Tensor:
 
     Returns:
         Grid-partitioned tensor of shape
-        ``(B * grid_h * grid_w, (H // grid_h) * (W // grid_w), C)``
+        ``(B * (H // grid_h) * (W // grid_w), grid_h * grid_w, C)``
     """
     grid_h, grid_w = _as_partition_tuple(grid_size)
     B, H, W, C = x.shape
@@ -122,9 +123,11 @@ def grid_partition(x: Tensor, grid_size: Union[int, Tuple[int, int]]) -> Tensor:
     assert W % grid_w == 0, f"width ({W}) must be divisible by grid ({grid_w})"
 
     x = x.view(B, grid_h, H // grid_h, grid_w, W // grid_w, C)
-    # (B, H//grid_h, W//grid_w, grid_h, grid_w, C) -> flatten window spatial dims
+    # -> (B, H//grid_h, W//grid_w, grid_h, grid_w, C); the trailing (grid_h,
+    # grid_w) are the attention-window tokens, the leading spatial dims index
+    # the windows. This matches the reference's (-1, grid_h, grid_w, C).
     x = x.permute(0, 2, 4, 1, 3, 5).contiguous()
-    x = x.view(-1, (H // grid_h) * (W // grid_w), C)
+    x = x.view(-1, grid_h * grid_w, C)
     return x
 
 
@@ -154,20 +157,30 @@ def grid_reverse(
 
 
 class Attention(nn.Module):
-    """Multi-head attention module for MaxViT."""
+    """Multi-head attention module for MaxViT.
+
+    The reference RVT (``SelfAttentionCl``) fixes ``dim_head`` and derives
+    ``num_heads = dim // dim_head`` per stage (so a 32-wide stage has 1 head, a
+    256-wide stage has 8). A fixed ``num_heads`` across stages would change the
+    head grouping for every stage except the widest and diverge from the trained
+    checkpoint, so this module is parametrised by ``dim_head`` to match.
+    """
 
     def __init__(
         self,
         dim: int,
-        num_heads: int = 8,
+        dim_head: int = 32,
         qkv_bias: bool = True,
         qk_scale: Optional[float] = None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ):
         super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
+        assert dim % dim_head == 0, (
+            f"dim ({dim}) must be a multiple of dim_head ({dim_head})"
+        )
+        self.num_heads = dim // dim_head
+        head_dim = dim_head
         self.scale = qk_scale or head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -177,12 +190,17 @@ class Attention(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
-        qkv = (
+        head_dim = C // self.num_heads
+        # Reference ``SelfAttentionCl`` layout: the qkv projection is read as
+        # (num_heads, dim_head * 3) and only then split into q/k/v. This differs
+        # from a (3, num_heads, dim_head) split whenever num_heads > 1, so it must
+        # match the reference to reproduce the trained weights.
+        q, k, v = (
             self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
-            .permute(2, 0, 3, 1, 4)
-        )
-        q, k, v = qkv[0], qkv[1], qkv[2]  # (B, num_heads, N, head_dim)
+            .view(B, N, self.num_heads, head_dim * 3)
+            .transpose(1, 2)
+            .chunk(3, dim=3)
+        )  # each (B, num_heads, N, head_dim)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
@@ -231,7 +249,7 @@ class PartitionAttention(nn.Module):
         dim: int,
         partition_type: PartitionType,
         partition_size: Union[int, Tuple[int, int]] = 7,
-        num_heads: int = 8,
+        dim_head: int = 32,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         drop: float = 0.0,
@@ -250,7 +268,7 @@ class PartitionAttention(nn.Module):
             self.norm1 = norm_layer(dim)
         self.attn = Attention(
             dim,
-            num_heads=num_heads,
+            dim_head=dim_head,
             qkv_bias=qkv_bias,
             attn_drop=attn_drop,
             proj_drop=drop,
@@ -322,7 +340,7 @@ class MaxViTBlock(nn.Module):
     def __init__(
         self,
         dim: int,
-        num_heads: int = 8,
+        dim_head: int = 32,
         partition_size: Union[int, Tuple[int, int]] = 7,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
@@ -340,7 +358,7 @@ class MaxViTBlock(nn.Module):
             dim=dim,
             partition_type=PartitionType.WINDOW,
             partition_size=partition_size,
-            num_heads=num_heads,
+            dim_head=dim_head,
             mlp_ratio=mlp_ratio,
             qkv_bias=qkv_bias,
             drop=drop,
@@ -354,7 +372,7 @@ class MaxViTBlock(nn.Module):
             dim=dim,
             partition_type=PartitionType.GRID,
             partition_size=partition_size,
-            num_heads=num_heads,
+            dim_head=dim_head,
             mlp_ratio=mlp_ratio,
             qkv_bias=qkv_bias,
             drop=drop,
