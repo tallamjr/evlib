@@ -180,12 +180,57 @@ def test_weights_actually_populated_from_checkpoint():
     head_key = "head.cls_preds.0.weight"
 
     for key in (backbone_key, head_key):
-        assert torch.allclose(loaded_state[key], converted[key]), (
+        # Compare on CPU: on a CUDA box the model params may live on cuda
+        # while the checkpoint tensors were loaded with map_location="cpu",
+        # so an in-place device-agnostic comparison is required.
+        assert torch.allclose(loaded_state[key].cpu(), converted[key].cpu()), (
             f"{key} was not populated from the checkpoint"
         )
 
     # Sanity: the freshly-loaded weights differ from the random init of a
     # separate un-pretrained model, confirming the load changed something.
     assert not torch.allclose(
-        loaded_state[backbone_key], reference.state_dict()[backbone_key]
+        loaded_state[backbone_key].cpu(),
+        reference.state_dict()[backbone_key].cpu(),
     ), "pretrained weights equal random init; load had no effect"
+
+
+def test_pretrained_load_raises_on_torch_load_failure(monkeypatch):
+    """A pretrained-load failure must RAISE, not fall back to random weights.
+
+    Repo policy forbids silently continuing with randomly initialised weights
+    when the caller explicitly asked for ``pretrained=True``: a downstream eval
+    would then report a meaningless mAP. Simulate a corrupt/unreadable
+    checkpoint by making ``torch.load`` raise, and assert the constructor
+    propagates a clear ``RuntimeError`` rather than returning a random model.
+    """
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated corrupt checkpoint")
+
+    monkeypatch.setattr("evlib.models.rvt.torch.load", _boom)
+
+    with pytest.raises(RuntimeError, match="failed to load pretrained weights"):
+        RVT(variant="tiny", num_classes=3, pretrained=True)
+
+
+def test_pretrained_load_raises_when_no_weights_found(monkeypatch):
+    """Requesting ``pretrained=True`` with no checkpoint present must RAISE.
+
+    The "no weights file found" branch previously printed a warning and left
+    the model randomly initialised. When pretrained weights were explicitly
+    requested that is the same dangerous silent fallback and must raise a
+    ``FileNotFoundError`` naming the directory searched.
+    """
+    # Make every candidate checkpoint path appear absent.
+    real_exists = Path.exists
+
+    def _fake_exists(self):
+        if self.suffix == ".ckpt":
+            return False
+        return real_exists(self)
+
+    monkeypatch.setattr(Path, "exists", _fake_exists)
+
+    with pytest.raises(FileNotFoundError, match="No pretrained weights"):
+        RVT(variant="tiny", num_classes=3, pretrained=True)
