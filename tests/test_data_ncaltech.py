@@ -12,6 +12,8 @@ with::
 so the expected decodes below are computed by hand.
 """
 
+import re
+
 import numpy as np
 import polars as pl
 import pytest
@@ -148,7 +150,7 @@ def test_malformed_length_raises(tmp_path):
     path = tmp_path / "bad.bin"
     path.write_bytes(bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]))  # 6 bytes
 
-    with pytest.raises(ValueError, match=str(path)):
+    with pytest.raises(ValueError, match=re.escape(str(path))):
         read_atis_bin(path)
 
 
