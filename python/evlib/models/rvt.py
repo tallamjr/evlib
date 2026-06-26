@@ -98,8 +98,18 @@ class RVT(BaseModel, nn.Module):
         pretrained: bool = False,
         variant: str = "tiny",
         num_classes: int = 2,
+        partition_size: Optional[Tuple[int, int]] = None,
     ):
-        """Initialize RVT model."""
+        """Initialize RVT model.
+
+        Args:
+            partition_size: MaxViT partition size ``(h_part, w_part)`` for every
+                stage. The reference RVT derives this from the padded input
+                resolution (gen4 ds2 padded 384x640 -> (6, 10)); pass it here so
+                evlib's attention windows match the trained checkpoint. ``None``
+                keeps the square default. Construct it with
+                ``evlib.models.rvt_backbone.partition_size_from_hw(padded_hw)``.
+        """
         # Initialize config
         if config is None:
             if variant == "tiny":
@@ -123,6 +133,7 @@ class RVT(BaseModel, nn.Module):
         self.variant = variant
         self.num_classes = num_classes
         self.temporal_bins = config.temporal_bins
+        self._partition_size = partition_size
 
         # Device management
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -154,6 +165,13 @@ class RVT(BaseModel, nn.Module):
             rvt_config = RVTConfig.base()
 
         rvt_config.input_channels = 2 * self.temporal_bins
+
+        # Override the MaxViT partition size when given (the reference derives a
+        # resolution-dependent, possibly non-square partition; gen4 uses (6, 10)).
+        if self._partition_size is not None:
+            from dataclasses import replace
+
+            rvt_config = replace(rvt_config, partition_size=tuple(self._partition_size))
 
         # Build components
         self.backbone = RVTBackbone(rvt_config).to(self._device)
@@ -195,10 +213,14 @@ class RVT(BaseModel, nn.Module):
                 break
 
         if checkpoint_file is None:
-            print(f"Warning: No pretrained weights found for RVT-{self.variant}")
-            print(f"Looked in: {weights_dir}")
-            print("Using randomly initialized weights.")
-            return
+            # ``_load_pretrained_weights`` is only ever called when the caller
+            # requested ``pretrained=True``. Silently falling back to random
+            # weights would let a downstream eval report a meaningless mAP, so
+            # raise instead (repo policy forbids error suppression).
+            raise FileNotFoundError(
+                f"No pretrained weights found for RVT-{self.variant}; "
+                f"looked in: {weights_dir}"
+            )
 
         print(f"Loading pretrained weights from {checkpoint_file.name}")
 
@@ -253,51 +275,13 @@ class RVT(BaseModel, nn.Module):
                 for key in sorted(unexpected_keys):
                     print(f"  - {key}")
 
-            return  # Skip the old loading logic
-
-            for old_key, value in state_dict.items():
-                # Remove 'mdl.' prefix from PyTorch Lightning
-                if key.startswith("mdl."):
-                    new_key = key[4:]  # Remove 'mdl.'
-                else:
-                    new_key = key
-
-                # Map backbone keys
-                if new_key.startswith("backbone."):
-                    new_key = new_key.replace("backbone.", "backbone.")
-                # Map FPN keys
-                elif new_key.startswith("fpn."):
-                    new_key = new_key.replace("fpn.", "fpn.")
-                # Map head keys
-                elif new_key.startswith("yolox_head."):
-                    new_key = new_key.replace("yolox_head.", "head.")
-
-                model_state_dict[new_key] = value
-
-            # Load weights with flexible matching
-            missing_keys, unexpected_keys = self.load_state_dict(
-                model_state_dict, strict=False
-            )
-
-            loaded_keys = len(model_state_dict) - len(unexpected_keys)
-            total_keys = len(self.state_dict())
-
-            print(
-                f"✓ Loaded {loaded_keys}/{total_keys} parameters from pretrained checkpoint"
-            )
-
-            if missing_keys:
-                print(f"Missing keys: {len(missing_keys)}")
-                if len(missing_keys) <= 10:
-                    for key in missing_keys[:10]:
-                        print(f"  - {key}")
-
-            if unexpected_keys:
-                print(f"Unexpected keys: {len(unexpected_keys)}")
-
         except Exception as e:
-            print(f"Error loading pretrained weights: {e}")
-            print("Using randomly initialized weights.")
+            # Do not swallow the failure and continue with random weights: the
+            # caller explicitly requested pretrained weights, so surface a clear
+            # error rather than producing a silently-wrong model.
+            raise RuntimeError(
+                f"failed to load pretrained weights from {checkpoint_file}: {e}"
+            ) from e
 
     def _convert_checkpoint_key(self, checkpoint_key: str) -> Optional[str]:
         """Convert checkpoint key naming to our model naming convention.
