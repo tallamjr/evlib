@@ -32,6 +32,14 @@ CHECKPOINT_PATH = (
     / "rvt-t.ckpt"
 )
 
+# rvt-t.ckpt (71 MB) is intentionally gitignored, so it is present locally but
+# absent on CI runners. Skip the whole module when it is missing, matching how
+# the repo gates its other local-only-data suites, rather than erroring.
+pytestmark = pytest.mark.skipif(
+    not CHECKPOINT_PATH.exists(),
+    reason="rvt-t.ckpt is gitignored (local-only); skipping weight-load checks",
+)
+
 # Keys in the raw Lightning checkpoint that are intentionally not model
 # parameters (optimiser state, training bookkeeping, etc.). The loader returns
 # ``None`` for these via ``_convert_checkpoint_key``. Enumerated explicitly so a
