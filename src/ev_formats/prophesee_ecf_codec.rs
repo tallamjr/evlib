@@ -6,7 +6,9 @@ https://github.com/prophesee-ai/hdf5_ecf (see `lib/hdf5_ecf/ecf_codec.cpp`).
 
 A chunk is laid out as:
 
-    [u32 header] [timestamp section] [coordinate section]
+```text
+[u32 header] [timestamp section] [coordinate section]
+```
 
 The header packs the event count in bits 2-31, the `ys_xs_and_ps_packed` flag
 in bit 1 and the `xs_and_ps_packed` flag in bit 0. The decoder always reads the
