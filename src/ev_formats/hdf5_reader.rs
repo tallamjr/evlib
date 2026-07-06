@@ -134,12 +134,6 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
                     Ok(decoded_events) => {
                         let event_count = decoded_events.len();
 
-                        // For the first chunk, detect timestamp units (silently)
-                        if chunk_idx == 0 && !decoded_events.is_empty() {
-                            // Prophesee ECF timestamps are in nanoseconds
-                            // No need to log this for every file
-                        }
-
                         // Convert PropheseeEvent to Event
                         for ecf_event in decoded_events {
                             // Validate coordinates - Prophesee Gen4 cameras are 1280x720
@@ -148,10 +142,10 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
                                 continue;
                             }
 
-                            // Prophesee ECF timestamps are in nanoseconds
+                            // Prophesee ECF timestamps are in microseconds
                             // Convert to seconds for consistency with evlib Event format
                             all_events.push(Event {
-                                t: ecf_event.t as f64 / 1_000_000_000.0, // Convert nanoseconds to seconds
+                                t: ecf_event.t as f64 / 1_000_000.0, // Convert microseconds to seconds
                                 x: ecf_event.x,
                                 y: ecf_event.y,
                                 polarity: if ecf_event.p > 0 { 1 } else { -1 },
