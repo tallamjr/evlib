@@ -2,33 +2,28 @@
 Native Rust implementation of Prophesee ECF (Event Compression Format) codec.
 
 This is a faithful port of the official Prophesee ECF codec from:
-https://github.com/prophesee-ai/hdf5_ecf
+https://github.com/prophesee-ai/hdf5_ecf (see `lib/hdf5_ecf/ecf_codec.cpp`).
 
-The implementation follows the same algorithmic structure and provides
-identical compression/decompression functionality while being purely
-written in Rust for seamless integration with evlib.
+A chunk is laid out as:
+
+    [u32 header] [timestamp section] [coordinate section]
+
+The header packs the event count in bits 2-31, the `ys_xs_and_ps_packed` flag
+in bit 1 and the `xs_and_ps_packed` flag in bit 0. The decoder always reads the
+timestamp section first (an absolute origin followed by a nibble run-length
+delta stream) and only then the coordinate section, whose layout depends on the
+two packing flags. Getting this order wrong misaligns the byte cursor and
+produces garbage coordinates and timestamps, so the ordering below mirrors the
+reference decoder exactly.
 */
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{self, Cursor, Read, Write};
-
-#[cfg(unix)]
-use tracing::{debug, warn};
-
-#[cfg(not(unix))]
-macro_rules! debug {
-    ($($args:tt)*) => {};
-}
-
-#[cfg(not(unix))]
-macro_rules! warn {
-    ($($args:tt)*) => {
-        eprintln!("[WARN] {}", format!($($args)*))
-    };
-}
+use std::io;
 
 /// Maximum number of events that can be processed in one chunk (official ECF specification)
 const MAX_BUFFER_SIZE: usize = 65535;
+
+/// Decoded X, Y and polarity columns plus the number of bytes consumed.
+type PackedColumns = (Vec<u16>, Vec<u16>, Vec<i16>, usize);
 
 /// Event structure matching Prophesee's EventCD
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,27 +35,50 @@ pub struct PropheseeEvent {
     pub t: i64,
 }
 
-/// Encoding mode flags (from original implementation)
-#[derive(Debug, Clone, Copy)]
-pub struct EncodingMode {
-    pub use_delta_timestamps: bool,
-    pub use_packed_coordinates: bool,
-    pub use_masked_x: bool,
-    pub use_run_length: bool,
+fn unexpected_eof(what: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("ECF chunk truncated while reading {}", what),
+    )
 }
 
-impl Default for EncodingMode {
-    fn default() -> Self {
-        Self {
-            use_delta_timestamps: true,
-            use_packed_coordinates: true,
-            use_masked_x: false,
-            use_run_length: false,
-        }
+#[inline]
+fn rd_u8(data: &[u8], pos: usize) -> io::Result<u8> {
+    data.get(pos).copied().ok_or_else(|| unexpected_eof("byte"))
+}
+
+#[inline]
+fn rd_u16(data: &[u8], pos: usize) -> io::Result<u16> {
+    if pos + 2 > data.len() {
+        return Err(unexpected_eof("u16"));
     }
+    Ok(u16::from_le_bytes([data[pos], data[pos + 1]]))
 }
 
-/// Native Rust ECF Decoder - port of official Prophesee implementation
+#[inline]
+fn rd_u32(data: &[u8], pos: usize) -> io::Result<u32> {
+    if pos + 4 > data.len() {
+        return Err(unexpected_eof("u32"));
+    }
+    Ok(u32::from_le_bytes([
+        data[pos],
+        data[pos + 1],
+        data[pos + 2],
+        data[pos + 3],
+    ]))
+}
+
+#[inline]
+fn rd_u64(data: &[u8], pos: usize) -> io::Result<u64> {
+    if pos + 8 > data.len() {
+        return Err(unexpected_eof("u64"));
+    }
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&data[pos..pos + 8]);
+    Ok(u64::from_le_bytes(buf))
+}
+
+/// Native Rust ECF Decoder: faithful port of the official Prophesee decoder.
 pub struct PropheseeECFDecoder {
     debug: bool,
 }
@@ -76,691 +94,305 @@ impl PropheseeECFDecoder {
         Self { debug: false }
     }
 
-    pub fn with_debug(mut self, _debug: bool) -> Self {
-        // Debug output disabled for production use
-        self.debug = false;
+    pub fn with_debug(mut self, debug: bool) -> Self {
+        self.debug = debug;
         self
     }
 
-    /// Decode ECF compressed data (main entry point)
+    /// Decode ECF compressed data (main entry point).
     pub fn decode(&self, compressed_data: &[u8]) -> io::Result<Vec<PropheseeEvent>> {
         if compressed_data.is_empty() {
             return Ok(Vec::new());
         }
+        if compressed_data.len() < 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ECF chunk too small for header",
+            ));
+        }
 
-        let mut cursor = Cursor::new(compressed_data);
+        let header = rd_u32(compressed_data, 0)?;
+        let num_events = (header >> 2) as usize;
+        let ys_xs_and_ps_packed = (header >> 1) & 1 != 0;
+        let xs_and_ps_packed = header & 1 != 0;
 
-        // Remove verbose debug output for production use
-
-        // Read header to determine encoding mode
-        let header = self.read_header(&mut cursor)?;
-
-        // Reduced debug output
-
-        if header.num_events == 0 {
+        if num_events == 0 {
             return Ok(Vec::new());
         }
-
-        if header.num_events > MAX_BUFFER_SIZE {
+        if num_events > MAX_BUFFER_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "Too many events: {} (max {})",
-                    header.num_events, MAX_BUFFER_SIZE
-                ),
+                format!("Too many events: {} (max {})", num_events, MAX_BUFFER_SIZE),
             ));
         }
 
-        // Decode based on header flags
-        if self.debug {
-            debug!(
-                use_delta_timestamps = header.use_delta_timestamps,
-                num_events = header.num_events,
-                "ECF header"
-            );
-        }
+        // The chunk body starts after the 4-byte header.
+        let body = &compressed_data[4..];
+        let mut pos = 0usize;
 
-        if header.use_delta_timestamps {
-            self.decode_with_delta_timestamps(&mut cursor, &header)
+        // Timestamps are decoded first, exactly as in the reference decoder.
+        let (timestamps, consumed) = Self::decode_ts(&body[pos..], num_events)?;
+        pos += consumed;
+
+        // Coordinate section, dispatched on the header packing flags.
+        let (x_coords, y_coords, polarities) = if ys_xs_and_ps_packed {
+            let (xs, ys, ps, _consumed) =
+                Self::decode_ys_xs_and_ps_packed(&body[pos..], num_events)?;
+            (xs, ys, ps)
         } else {
-            if self.debug {
-                debug!("Using raw events decoding (no delta timestamps)");
+            let (ys, consumed_y) = Self::decode_ys(&body[pos..], num_events)?;
+            pos += consumed_y;
+            if xs_and_ps_packed {
+                let (xs, ps, _consumed) = Self::decode_xs_and_ps_packed(&body[pos..], num_events)?;
+                (xs, ys, ps)
+            } else {
+                let (xs, consumed_x) = Self::decode_xs_masked(&body[pos..], num_events)?;
+                pos += consumed_x;
+                let (ps, _consumed_p) = Self::decode_ps(&body[pos..], num_events)?;
+                (xs, ys, ps)
             }
-            self.decode_raw_events(&mut cursor, &header)
-        }
-    }
-
-    /// Read and parse the chunk header
-    fn read_header(&self, cursor: &mut Cursor<&[u8]>) -> io::Result<ChunkHeader> {
-        if cursor.get_ref().len() < 4 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Chunk too small for ECF header",
-            ));
-        }
-
-        // Try bit-packed header format first (standard ECF)
-        let header_word = cursor.read_u32::<LittleEndian>()?;
-
-        // Extract fields from bit-packed header (official ECF format)
-        // According to official implementation: upper 30 bits = num_events, lower 2 bits = flags
-        let num_events_bitpacked = (header_word >> 2) as usize; // Bits 2-31: Number of events
-        let encoding_flags = header_word & 0x3; // Lower 2 bits: encoding style flags
-
-        // Decode encoding flags (this determines the packing strategy)
-        let use_delta_timestamps = true; // ECF typically uses delta timestamps
-        let ys_xs_and_ps_packed = (encoding_flags & 0x2) != 0; // Bit 1: ys_xs_and_ps_packed
-        let xs_and_ps_packed = (encoding_flags & 0x1) != 0; // Bit 0: xs_and_ps_packed
-
-        // Check if bit-packed interpretation gives reasonable values (official ECF max: 65535)
-        if num_events_bitpacked > 0 && num_events_bitpacked <= 65535 {
-            if self.debug {
-                debug!(
-                    num_events = num_events_bitpacked,
-                    delta_ts = use_delta_timestamps,
-                    ys_xs_ps_packed = ys_xs_and_ps_packed,
-                    xs_ps_packed = xs_and_ps_packed,
-                    "Using bit-packed ECF header"
-                );
-            }
-
-            return Ok(ChunkHeader {
-                num_events: num_events_bitpacked,
-                use_delta_timestamps,
-                ys_xs_and_ps_packed,
-                xs_and_ps_packed,
-            });
-        }
-
-        // If bit-packed doesn't work, try Prophesee format
-        // Reset cursor and check for Prophesee format signature
-        cursor.set_position(0);
-
-        if cursor.get_ref().len() < 12 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Chunk too small for Prophesee ECF header",
-            ));
-        }
-
-        let format_id = cursor.read_u32::<LittleEndian>()?;
-        let num_events_prophesee = cursor.read_u32::<LittleEndian>()? as usize;
-        let flags = cursor.read_u32::<LittleEndian>()?;
-
-        // Check for Prophesee format signature
-        if format_id == 0x00010002 && flags == 0x00000000 && num_events_prophesee <= 100000 {
-            debug!(format_id = %format!("0x{:08X}", format_id), num_events = num_events_prophesee, flags = %format!("0x{:08X}", flags), "Using Prophesee ECF header");
-
-            return Ok(ChunkHeader {
-                num_events: num_events_prophesee,
-                use_delta_timestamps: true, // Prophesee typically uses delta encoding
-                ys_xs_and_ps_packed: true,  // Prophesee uses packed coordinates
-                xs_and_ps_packed: false,
-            });
-        }
-
-        // Neither format worked
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "Unrecognized ECF header format. Header word: 0x{:08X}, potential Prophesee ID: 0x{:08X}",
-                header_word, format_id
-            ),
-        ))
-    }
-
-    /// Decode events with delta timestamp encoding (main compression mode)
-    fn decode_with_delta_timestamps(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        header: &ChunkHeader,
-    ) -> io::Result<Vec<PropheseeEvent>> {
-        // Check if we have enough data for basic structure
-        let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
-        if remaining_bytes < 9 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "Not enough data for ECF structure: {} bytes remaining",
-                    remaining_bytes
-                ),
-            ));
-        }
-
-        // Read base timestamp
-        let base_timestamp = cursor.read_i64::<LittleEndian>()?;
-
-        // Base timestamp loaded
-
-        // Sanity check for base timestamp - it should be a reasonable microsecond timestamp
-        if !(0..=1_000_000_000_000_000).contains(&base_timestamp) {
-            // Base timestamp validation
-        }
-
-        // Decode based on Prophesee encoding mode flags
-        let (x_coords, y_coords, polarities) = if header.ys_xs_and_ps_packed {
-            // All coordinates and polarity are packed together
-            self.decode_ys_xs_and_ps_packed(cursor, header.num_events)?
-        } else if header.xs_and_ps_packed {
-            // Only X coordinates and polarity are packed, Y is separate
-            self.decode_xs_and_ps_packed(cursor, header.num_events)?
-        } else {
-            // Use masked X coordinates (standard mode)
-            self.decode_coordinates_with_masked_x(cursor, header.num_events)?
         };
 
-        // Decode timestamps after coordinates
-        let timestamps = self.decode_timestamp_deltas(cursor, header.num_events, base_timestamp)?;
-
-        // Combine into events
-        let mut events = Vec::with_capacity(header.num_events);
-        for i in 0..header.num_events {
-            events.push(PropheseeEvent {
+        let events = (0..num_events)
+            .map(|i| PropheseeEvent {
                 x: x_coords[i],
                 y: y_coords[i],
                 p: polarities[i],
                 t: timestamps[i],
-            });
-        }
+            })
+            .collect();
 
         Ok(events)
     }
 
-    /// Extract bits from byte array (bit manipulation helper)
-    #[allow(dead_code)]
-    fn extract_bits(&self, data: &[u8], start_bit: usize, num_bits: usize) -> u32 {
-        let mut result = 0u32;
-
-        // Limit num_bits to prevent overflow
-        let safe_num_bits = num_bits.min(32);
-
-        for bit_idx in 0..safe_num_bits {
-            let abs_bit = start_bit + bit_idx;
-            let byte_idx = abs_bit / 8;
-            let bit_in_byte = abs_bit % 8;
-
-            if byte_idx < data.len() && bit_idx < 32 {
-                let bit_value = (data[byte_idx] >> bit_in_byte) & 1;
-                result |= (bit_value as u32) << bit_idx;
-            }
-        }
-
-        result
-    }
-
-    /// Decode delta-compressed timestamps (matching Prophesee ECF format)
-    fn decode_timestamp_deltas(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        num_events: usize,
-        base_timestamp: i64,
-    ) -> io::Result<Vec<i64>> {
+    /// Decode the timestamp section: an 8-byte absolute origin followed by a
+    /// nibble-based run-length delta stream. Returns the timestamps and the
+    /// number of bytes consumed.
+    fn decode_ts(data: &[u8], num_events: usize) -> io::Result<(Vec<i64>, usize)> {
+        let t0 = rd_u64(data, 0)?;
         let mut timestamps = Vec::with_capacity(num_events);
+        let mut cur_t = t0;
+        let mut pos = 8usize;
+        let mut i = 0usize;
 
-        // Read delta bit width first
-        let delta_bits = cursor.read_u8()?;
+        while i < num_events {
+            let v = rd_u8(data, pos)?;
+            let t = v >> 4;
+            let mut c = (v & 0x0f) as usize;
 
-        if self.debug {
-            debug!(delta_bits, base_timestamp, "ECF timestamp encoding");
-        }
-
-        if delta_bits == 0 {
-            // All timestamps are identical to base timestamp
-            for _ in 0..num_events {
-                timestamps.push(base_timestamp);
-            }
-            return Ok(timestamps);
-        } else if delta_bits == 1 {
-            // 1-bit deltas: read packed bits
-            let num_bytes = num_events.div_ceil(8);
-            let mut bit_data = vec![0u8; num_bytes];
-            cursor.read_exact(&mut bit_data)?;
-
-            let mut current_timestamp = base_timestamp;
-            for event_idx in 0..num_events {
-                let byte_idx = event_idx / 8;
-                let bit_idx = event_idx % 8;
-                let delta = if bit_data[byte_idx] & (1 << bit_idx) != 0 {
-                    1
-                } else {
-                    0
-                };
-                current_timestamp += delta;
-                timestamps.push(current_timestamp);
-            }
-            return Ok(timestamps);
-        }
-
-        // Handle other delta bit widths properly
-        match delta_bits {
-            8 => {
-                // 8-bit deltas
-                let mut current_timestamp = base_timestamp;
-                for _ in 0..num_events {
-                    let delta = cursor.read_u8()? as i64;
-                    current_timestamp += delta;
-                    timestamps.push(current_timestamp);
+            if t != 0x0f {
+                cur_t = cur_t.wrapping_add(t as u64);
+                if c == 0x0f {
+                    // Extended repeat count: two following bytes, little-endian.
+                    let c0 = rd_u8(data, pos + 1)? as usize;
+                    let c1 = rd_u8(data, pos + 2)? as usize;
+                    c = (c1 << 8) | c0;
+                    pos += 2;
                 }
-                return Ok(timestamps);
-            }
-            16 => {
-                // 16-bit deltas
-                let mut current_timestamp = base_timestamp;
-                for _ in 0..num_events {
-                    let delta = cursor.read_u16::<LittleEndian>()? as i64;
-                    current_timestamp += delta;
-                    timestamps.push(current_timestamp);
-                }
-                return Ok(timestamps);
-            }
-            32 => {
-                // 32-bit deltas
-                let mut current_timestamp = base_timestamp;
-                for _ in 0..num_events {
-                    let delta = cursor.read_u32::<LittleEndian>()? as i64;
-                    current_timestamp += delta;
-                    timestamps.push(current_timestamp);
-                }
-                return Ok(timestamps);
-            }
-            64 => {
-                // 64-bit deltas (full timestamps)
-                for _ in 0..num_events {
-                    let timestamp = cursor.read_i64::<LittleEndian>()?;
-                    timestamps.push(timestamp);
-                }
-                return Ok(timestamps);
-            }
-            _ => {
-                // Unknown delta_bits, try the old fallback logic
-                if self.debug {
-                    warn!("Unknown delta_bits value in ECF decoder: {}", delta_bits);
-                }
-            }
-        }
-
-        // Old fallback logic for unknown delta_bits
-        let mut current_timestamp = base_timestamp;
-        let mut events_decoded = 0;
-
-        while events_decoded < num_events {
-            // Check if we have at least one byte for timestamp data
-            let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
-            if remaining_bytes < 1 {
-                if self.debug {
-                    warn!("ECF: No more timestamp data, using sequential fallback. Remaining events: {}", num_events - events_decoded);
-                }
-                // Fill remaining with sequential timestamps
-                for i in events_decoded..num_events {
-                    timestamps.push(current_timestamp + (i - events_decoded) as i64);
-                }
-                break;
-            }
-
-            let ts_byte = cursor.read_u8()?;
-            let delta = (ts_byte >> 4) as i64; // Upper 4 bits: timestamp delta
-            let mut count = (ts_byte & 0x0F) as usize; // Lower 4 bits: repeat count
-
-            // Processing timestamp delta
-
-            if delta != 15 {
-                // Standard case: delta is 0-14, apply to current timestamp
-                current_timestamp += delta;
-
-                // Handle extended count for large repeat values
-                if count == 15 {
-                    // Read extended count (up to 2 bytes)
-                    if cursor.get_ref().len() - cursor.position() as usize >= 1 {
-                        let count_byte1 = cursor.read_u8()? as usize;
-                        count = count_byte1;
-
-                        if cursor.get_ref().len() - cursor.position() as usize >= 1 {
-                            let count_byte2 = cursor.read_u8()? as usize;
-                            count = (count_byte2 << 8) | count_byte1;
-                        }
-
-                        // Extended count processed
+                for _ in 0..c {
+                    if i < num_events {
+                        timestamps.push(cur_t as i64);
+                        i += 1;
                     }
                 }
-
-                // Add timestamps with this delta
-                for _ in 0..count {
-                    if events_decoded < num_events {
-                        timestamps.push(current_timestamp);
-                        events_decoded += 1;
-                    }
-                }
+                pos += 1;
             } else {
-                // Large delta case: delta == 15 means read multi-byte delta
-                let mut large_delta = count as i64; // Start with lower 4 bits
-                let mut shift_bits = 4;
-
-                // Keep reading bytes while delta field is 0xF (15)
+                // Multi-nibble large delta: accumulate nibbles from consecutive
+                // 0xF-prefixed bytes until a non-0xF byte terminates the run. The
+                // terminating byte is left in place to be re-read as a normal
+                // (delta, count) entry by the next loop iteration.
+                let mut dt: u64 = 0;
+                let mut shift = 0u32;
+                let mut cur_c = c;
                 loop {
-                    if (cursor.get_ref().len() - cursor.position() as usize) < 1 {
-                        break;
-                    }
-
-                    let next_byte = cursor.read_u8()?;
-                    let next_delta = (next_byte >> 4) as i64;
-                    let next_count = (next_byte & 0x0F) as i64;
-
-                    large_delta |= next_count << shift_bits;
-                    shift_bits += 4;
-
-                    if next_delta != 15 {
-                        // Final byte in large delta sequence
-                        current_timestamp += large_delta;
-
-                        // Apply the final delta and count
-                        current_timestamp += next_delta;
-                        for _ in 0..next_count {
-                            if events_decoded < num_events {
-                                timestamps.push(current_timestamp);
-                                events_decoded += 1;
-                            }
-                        }
+                    dt |= (cur_c as u64) << (4 * shift);
+                    shift += 1;
+                    pos += 1;
+                    let nv = rd_u8(data, pos)?;
+                    let nt = nv >> 4;
+                    cur_c = (nv & 0x0f) as usize;
+                    if nt != 0x0f {
                         break;
                     }
                 }
-
-                // Large delta processed
+                cur_t = cur_t.wrapping_add(dt);
             }
         }
 
-        // Fill any missing timestamps with sequential values
-        while timestamps.len() < num_events {
-            timestamps.push(current_timestamp + (timestamps.len() as i64));
-        }
-
-        Ok(timestamps)
+        Ok((timestamps, pos))
     }
 
-    /// Decode coordinates with masked X coordinates (standard Prophesee mode)
-    fn decode_coordinates_with_masked_x(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        num_events: usize,
-    ) -> io::Result<(Vec<u16>, Vec<u16>, Vec<i16>)> {
-        // First decode Y coordinates
-        let y_coords = self.decode_ys(cursor, num_events)?;
+    /// Decode run-length encoded Y coordinates.
+    fn decode_ys(data: &[u8], num_events: usize) -> io::Result<(Vec<u16>, usize)> {
+        let mut ys = vec![0u16; num_events];
+        let mut pos = 0usize;
+        let mut i = 0usize;
 
-        // Then decode masked X coordinates
-        let x_coords = self.decode_xs_masked(cursor, num_events)?;
-
-        // Finally decode polarities
-        let polarities = self.decode_ps(cursor, num_events)?;
-
-        Ok((x_coords, y_coords, polarities))
-    }
-
-    /// Decode Y coordinates (Prophesee format)
-    fn decode_ys(&self, cursor: &mut Cursor<&[u8]>, num_events: usize) -> io::Result<Vec<u16>> {
-        let mut y_coords = Vec::with_capacity(num_events);
-
-        // For now, assume uncompressed Y coordinates (2 bytes each)
-        for _ in 0..num_events {
-            let y = cursor.read_u16::<LittleEndian>()?;
-            y_coords.push(y);
-        }
-
-        Ok(y_coords)
-    }
-
-    /// Decode masked X coordinates (Prophesee format)
-    fn decode_xs_masked(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        num_events: usize,
-    ) -> io::Result<Vec<u16>> {
-        // For raw uncompressed format, just read X coordinates directly
-        let mut x_coords = Vec::with_capacity(num_events);
-
-        for _ in 0..num_events {
-            let x = cursor.read_u16::<LittleEndian>()?;
-            x_coords.push(x);
-        }
-
-        Ok(x_coords)
-    }
-
-    /// Decode compressed X coordinates with masking (Prophesee ECF format)
-    /// TODO: This will be used when implementing compressed ECF format support
-    #[allow(dead_code)]
-    fn decode_xs_masked_compressed(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        num_events: usize,
-    ) -> io::Result<Vec<u16>> {
-        let mut x_coords = Vec::with_capacity(num_events + 5); // Extra space for masking
-        let mut events_decoded = 0;
-
-        while events_decoded < num_events {
-            let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
-            if remaining_bytes < 2 {
-                break;
+        while i < num_events {
+            let v = rd_u16(data, pos)?;
+            pos += 2;
+            let y = v >> 5;
+            let mut c = (v & 0b11111) as usize;
+            if c == 0b11111 {
+                c = rd_u16(data, pos)? as usize;
+                pos += 2;
             }
-
-            let packed_value = cursor.read_u16::<LittleEndian>()?;
-            let base_x = packed_value >> 5; // Upper 11 bits: base X coordinate
-            let mask = packed_value & 0x1F; // Lower 5 bits: mask for nearby coordinates
-
-            // Add the base X coordinate
-            if events_decoded < num_events {
-                x_coords.push(base_x);
-                events_decoded += 1;
+            for _ in 0..c {
+                if i < num_events {
+                    ys[i] = y;
+                }
+                i += 1;
             }
+        }
 
-            // Add masked coordinates (up to 5 additional)
-            for bit_idx in 0..5 {
-                if (mask & (1 << (4 - bit_idx))) != 0 && events_decoded < num_events {
-                    x_coords.push(base_x + bit_idx + 1);
-                    events_decoded += 1;
+        Ok((ys, pos))
+    }
+
+    /// Decode run-length encoded polarities.
+    fn decode_ps(data: &[u8], num_events: usize) -> io::Result<(Vec<i16>, usize)> {
+        let mut ps = vec![0i16; num_events];
+        let mut pos = 0usize;
+        let mut i = 0usize;
+
+        while i < num_events {
+            let v = rd_u8(data, pos)?;
+            pos += 1;
+            let p_bit = v >> 7;
+            let mut c = (v & 0b1111111) as usize;
+            if c == 0b1111111 {
+                let c0 = rd_u8(data, pos)? as usize;
+                let c1 = rd_u8(data, pos + 1)? as usize;
+                c = (c1 << 8) | c0;
+                pos += 2;
+            }
+            let polarity: i16 = if p_bit != 0 { 1 } else { -1 };
+            for _ in 0..c {
+                if i < num_events {
+                    ps[i] = polarity;
+                }
+                i += 1;
+            }
+        }
+
+        Ok((ps, pos))
+    }
+
+    /// Decode X coordinates in the masked layout, where each 16-bit word stores a
+    /// base X (11 bits) plus a 5-bit mask selecting nearby follow-on coordinates.
+    fn decode_xs_masked(data: &[u8], num_events: usize) -> io::Result<(Vec<u16>, usize)> {
+        // Allow a few extra slots so the last group can overshoot without a
+        // bounds check, matching the reference which over-allocates by 5.
+        let mut xs = vec![0u16; num_events + 5];
+        let mut pos = 0usize;
+        let mut i = 0usize;
+
+        while i < num_events {
+            let v = rd_u16(data, pos)?;
+            pos += 2;
+            let x = v >> 5;
+            let mask = v & 0b11111;
+
+            if i < xs.len() {
+                xs[i] = x;
+            }
+            i += 1;
+
+            for j in 0..5u16 {
+                if (mask & (1 << (4 - j))) != 0 {
+                    if i < xs.len() {
+                        xs[i] = x + j + 1;
+                    }
+                    i += 1;
                 }
             }
         }
 
-        // Ensure we have exactly num_events coordinates
-        x_coords.truncate(num_events);
-        while x_coords.len() < num_events {
-            x_coords.push(0);
-        }
-
-        Ok(x_coords)
+        xs.truncate(num_events);
+        Ok((xs, pos))
     }
 
-    /// Decode polarities (Prophesee format)
-    fn decode_ps(&self, cursor: &mut Cursor<&[u8]>, num_events: usize) -> io::Result<Vec<i16>> {
-        let mut polarities = Vec::with_capacity(num_events);
-
-        // For now, assume uncompressed polarities (2 bytes each)
-        for _ in 0..num_events {
-            let p = cursor.read_i16::<LittleEndian>()?;
-            polarities.push(p);
-        }
-
-        Ok(polarities)
-    }
-
-    /// Decode packed X and polarity coordinates
+    /// Decode X coordinates and polarity packed four events into three 16-bit
+    /// words (12 bits per event: 11-bit X plus 1-bit polarity).
     fn decode_xs_and_ps_packed(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
+        data: &[u8],
         num_events: usize,
-    ) -> io::Result<(Vec<u16>, Vec<u16>, Vec<i16>)> {
-        // For packed X/P mode, Y coordinates are decoded separately first
-        let y_coords = self.decode_ys(cursor, num_events)?;
+    ) -> io::Result<(Vec<u16>, Vec<i16>, usize)> {
+        let mut xs = vec![0u16; num_events];
+        let mut ps = vec![0i16; num_events];
+        let mut pos = 0usize;
+        let mut i = 0usize;
 
-        // Then decode packed X and polarity data
-        let mut x_coords = Vec::with_capacity(num_events);
-        let mut polarities = Vec::with_capacity(num_events);
-
-        // Read packed X and polarity data
-        for _ in 0..num_events {
-            let packed = cursor.read_u16::<LittleEndian>()?;
-            let x = packed >> 1; // Upper 15 bits: X coordinate
-            let p = if (packed & 1) != 0 { 1 } else { -1 }; // Lower 1 bit: polarity
-
-            x_coords.push(x);
-            polarities.push(p);
-        }
-
-        Ok((x_coords, y_coords, polarities))
-    }
-
-    /// Decode fully packed coordinates and polarity (Prophesee format)
-    /// Processes 4 events at a time in 3 x 32-bit words (12 bytes)
-    fn decode_ys_xs_and_ps_packed(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        num_events: usize,
-    ) -> io::Result<(Vec<u16>, Vec<u16>, Vec<i16>)> {
-        let mut x_coords = Vec::with_capacity(num_events);
-        let mut y_coords = Vec::with_capacity(num_events);
-        let mut polarities = Vec::with_capacity(num_events);
-
-        // Decoding packed events
-
-        let mut events_decoded = 0;
-
-        while events_decoded < num_events {
-            // Check if we have enough data for 3 x 32-bit words (12 bytes)
-            let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
-            if remaining_bytes < 12 {
-                if self.debug {
-                    debug!(
-                        remaining_bytes,
-                        "ECF: Not enough data for packed group - need 12 bytes"
-                    );
-                }
-                break;
-            }
-
-            // Read 3 x 32-bit words
-            let word0 = cursor.read_u32::<LittleEndian>()?;
-            let word1 = cursor.read_u32::<LittleEndian>()?;
-            let word2 = cursor.read_u32::<LittleEndian>()?;
-
-            // Extract 4 packed events from the 3 words
+        while i < num_events {
+            let a = rd_u16(data, pos)?;
+            let b = rd_u16(data, pos + 2)?;
+            let c = rd_u16(data, pos + 4)?;
             let vs = [
-                word0 >> 8,                               // Event 0: upper 24 bits of word0
-                (word0 & 0xFF) | ((word1 >> 16) << 8), // Event 1: lower 8 bits of word0 + upper 16 bits of word1
-                (word1 & 0xFFFF) | ((word2 >> 24) << 16), // Event 2: lower 16 bits of word1 + upper 8 bits of word2
-                word2 & 0xFFFFFF,                         // Event 3: lower 24 bits of word2
+                a >> 4,
+                (a & 0b1111) | ((b >> 8) << 4),
+                (b & 0b11111111) | ((c >> 12) << 8),
+                c & 0b111111111111,
             ];
 
-            // Process up to 4 events (or remaining events if less than 4)
-            let events_in_group = (num_events - events_decoded).min(4);
-
-            for packed_event in vs.iter().take(events_in_group) {
-                let packed_event = *packed_event;
-
-                // Extract fields from packed event (23 bits total per event).
-                // The 11-bit x/y fields are the actual sensor coordinates and are
-                // used directly, matching the OpenEB hdf5_ecf reference
-                // (ecf_codec.cpp:199-200), which performs no rescaling.
-                let y_raw = ((packed_event >> 12) & 0x7FF) as u16; // Bits 12-22: Y coordinate (11 bits)
-                let x_raw = ((packed_event >> 1) & 0x7FF) as u16; // Bits 1-11: X coordinate (11 bits)
-                let p = if (packed_event & 1) != 0 { 1 } else { -1 }; // Bit 0: polarity (1 bit)
-
-                x_coords.push(x_raw);
-                y_coords.push(y_raw);
-                polarities.push(p);
-
-                // Event decoded successfully
-
-                events_decoded += 1;
+            for (j, &packed) in vs.iter().enumerate() {
+                let idx = i + j;
+                if idx < num_events {
+                    xs[idx] = packed >> 1;
+                    ps[idx] = if packed & 1 != 0 { 1 } else { -1 };
+                }
             }
+
+            pos += 6;
+            i += 4;
         }
 
-        // Fill any missing events with zeros (shouldn't happen with correct data)
-        while x_coords.len() < num_events {
-            x_coords.push(0);
-            y_coords.push(0);
-            polarities.push(0);
-        }
-
-        // All events decoded
-
-        Ok((x_coords, y_coords, polarities))
+        Ok((xs, ps, pos))
     }
 
-    /// Decode raw events (no compression, for small event sets)
-    fn decode_raw_events(
-        &self,
-        cursor: &mut Cursor<&[u8]>,
-        header: &ChunkHeader,
-    ) -> io::Result<Vec<PropheseeEvent>> {
-        let mut events = Vec::with_capacity(header.num_events);
+    /// Decode fully packed coordinates and polarity: four events span three
+    /// 32-bit words, each event holding an 11-bit Y, an 11-bit X and a 1-bit
+    /// polarity. The 11-bit fields are the raw sensor coordinates (no rescaling),
+    /// matching the OpenEB reference (ecf_codec.cpp:199-201).
+    fn decode_ys_xs_and_ps_packed(data: &[u8], num_events: usize) -> io::Result<PackedColumns> {
+        let mut xs = vec![0u16; num_events];
+        let mut ys = vec![0u16; num_events];
+        let mut ps = vec![0i16; num_events];
+        let mut pos = 0usize;
+        let mut i = 0usize;
 
-        // Read events in raw format: x, y, p, t for each event
-        for i in 0..header.num_events {
-            if cursor.position() + 14 > cursor.get_ref().len() as u64 {
-                break;
-            }
-            let x = cursor.read_u16::<LittleEndian>()?;
-            let y = cursor.read_u16::<LittleEndian>()?;
-            let p = cursor.read_i16::<LittleEndian>()?;
-            let t = cursor.read_i64::<LittleEndian>()?;
+        while i < num_events {
+            let word0 = rd_u32(data, pos)?;
+            let word1 = rd_u32(data, pos + 4)?;
+            let word2 = rd_u32(data, pos + 8)?;
 
-            if i < 3 {
-                debug!(event_index = i, x, y, p, t, "Raw event");
-            }
+            let vs = [
+                word0 >> 8,
+                (word0 & 0xff) | ((word1 >> 16) << 8),
+                (word1 & 0xffff) | ((word2 >> 24) << 16),
+                word2 & 0xffffff,
+            ];
 
-            // Validate event values based on official ECF specification
-            // Coordinates: ECF supports 16-bit coordinates (0-65535), but typical cameras are much smaller
-            if x > 10000 || y > 10000 {
-                // Generous bound for large sensors
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "Invalid coordinates in raw event {}: x={}, y={} (outside reasonable sensor range)",
-                        i, x, y
-                    ),
-                ));
+            for (j, &packed) in vs.iter().enumerate() {
+                let idx = i + j;
+                if idx < num_events {
+                    ys[idx] = ((packed >> 12) & 0x7ff) as u16;
+                    xs[idx] = ((packed >> 1) & 0x7ff) as u16;
+                    ps[idx] = if packed & 1 != 0 { 1 } else { -1 };
+                }
             }
 
-            // Polarity: should be small integer values (typically -1, 0, 1)
-            if p.abs() > 100 {
-                // Catch obvious garbage while allowing some flexibility
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "Invalid polarity in raw event {}: p={} (outside expected range)",
-                        i, p
-                    ),
-                ));
-            }
-
-            // Timestamps: should be positive and reasonable (64-bit unsigned in official spec)
-            if !(0..=1_000_000_000_000_000_000).contains(&t) {
-                // 10^18 - very large but not garbage
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "Invalid timestamp in raw event {}: t={} (outside reasonable range)",
-                        i, t
-                    ),
-                ));
-            }
-
-            events.push(PropheseeEvent { x, y, p, t });
+            pos += 12;
+            i += 4;
         }
 
-        Ok(events)
+        Ok((xs, ys, ps, pos))
     }
 }
 
-/// Chunk header structure (matching Prophesee ECF format)
-#[derive(Debug)]
-struct ChunkHeader {
-    num_events: usize,
-    use_delta_timestamps: bool,
-    ys_xs_and_ps_packed: bool,
-    xs_and_ps_packed: bool,
-}
-
-/// Native Rust ECF Encoder - port of official Prophesee implementation
+/// Native Rust ECF Encoder: faithful port of the official Prophesee encoder.
+///
+/// The encoder always selects the fully packed `ys_xs_and_ps_packed` mode, which
+/// is a valid ECF encoding the reference decoder (and this decoder) reads back
+/// exactly. It exists mainly to round-trip synthetic data in tests.
 pub struct PropheseeECFEncoder {
     debug: bool,
 }
@@ -781,12 +413,11 @@ impl PropheseeECFEncoder {
         self
     }
 
-    /// Encode events using ECF compression
+    /// Encode events using ECF compression (fully packed mode).
     pub fn encode(&self, events: &[PropheseeEvent]) -> io::Result<Vec<u8>> {
         if events.is_empty() {
             return Ok(Vec::new());
         }
-
         if events.len() > MAX_BUFFER_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -798,206 +429,93 @@ impl PropheseeECFEncoder {
             ));
         }
 
-        // Analyze events to determine optimal encoding mode
-        let mode = self.analyze_encoding_mode(events);
-
         let mut output = Vec::new();
-        let mut cursor = Cursor::new(&mut output);
 
-        // Write header
-        self.write_header(&mut cursor, events.len(), &mode)?;
+        // Header: count in bits 2-31, ys_xs_and_ps_packed flag in bit 1.
+        let header = ((events.len() as u32) << 2) | 0x2;
+        output.extend_from_slice(&header.to_le_bytes());
 
-        // Encode based on selected mode
-        if mode.use_delta_timestamps {
-            self.encode_with_delta_timestamps(&mut cursor, events, &mode)?;
-        } else {
-            self.encode_raw_events(&mut cursor, events)?;
-        }
+        Self::encode_ts(&mut output, events);
+        Self::encode_ys_xs_and_ps_packed(&mut output, events);
 
         Ok(output)
     }
 
-    /// Analyze events to determine optimal encoding strategy
-    fn analyze_encoding_mode(&self, events: &[PropheseeEvent]) -> EncodingMode {
-        // Always use delta encoding as it's the standard Prophesee ECF mode
-        let use_delta = true;
-        let use_packed = true; // Generally beneficial
+    /// Encode the timestamp section (origin plus nibble run-length delta stream).
+    fn encode_ts(output: &mut Vec<u8>, events: &[PropheseeEvent]) {
+        let count = events.len();
+        let t0 = events[0].t as u64;
+        output.extend_from_slice(&t0.to_le_bytes());
 
-        // Analyze coordinate ranges to determine if packing is beneficial
-        let max_x = events.iter().map(|e| e.x).max().unwrap_or(0);
-        let max_y = events.iter().map(|e| e.y).max().unwrap_or(0);
+        let mut cur_t = t0;
+        let mut i = 0usize;
+        while i < count {
+            let ti = events[i].t as u64;
 
-        EncodingMode {
-            use_delta_timestamps: use_delta,
-            use_packed_coordinates: use_packed && max_x < 4096 && max_y < 4096,
-            use_masked_x: false,   // Simplified for now
-            use_run_length: false, // Simplified for now
-        }
-    }
-
-    /// Write chunk header
-    ///
-    /// Layout matches the official Prophesee ECF header (and the evlib decoder
-    /// `read_header`): bits 2-31 hold the event count, bit 1 is the
-    /// `ys_xs_and_ps_packed` flag and bit 0 is the `xs_and_ps_packed` flag.
-    /// There is no separate delta-timestamps flag bit; the decoder always
-    /// treats this bit-packed header as delta-timestamp encoded.
-    fn write_header(
-        &self,
-        cursor: &mut Cursor<&mut Vec<u8>>,
-        num_events: usize,
-        _mode: &EncodingMode,
-    ) -> io::Result<()> {
-        // Bits 2-31: number of events.
-        // Bit 1: ys_xs_and_ps_packed flag = false (raw coordinate layout).
-        // Bit 0: xs_and_ps_packed flag = false (raw coordinate layout).
-        // Both packing flags stay clear because `encode_raw_coordinates`
-        // emits the unpacked Y / X / P blocks the decoder reads when neither
-        // flag is set.
-        let header = (num_events as u32) << 2;
-
-        cursor.write_u32::<LittleEndian>(header)?;
-        Ok(())
-    }
-
-    /// Encode with delta timestamps (main compression mode)
-    fn encode_with_delta_timestamps(
-        &self,
-        cursor: &mut Cursor<&mut Vec<u8>>,
-        events: &[PropheseeEvent],
-        _mode: &EncodingMode,
-    ) -> io::Result<()> {
-        // Write base timestamp
-        let base_timestamp = events[0].t;
-        cursor.write_i64::<LittleEndian>(base_timestamp)?;
-
-        // Encode coordinates - for now, always use raw coordinates to match header flags
-        self.encode_raw_coordinates(cursor, events)?;
-
-        // Encode timestamp deltas
-        self.encode_timestamp_deltas(cursor, events, base_timestamp)?;
-
-        Ok(())
-    }
-
-    /// Encode coordinates in raw format (blocked layout to match decoder expectations)
-    fn encode_raw_coordinates(
-        &self,
-        cursor: &mut Cursor<&mut Vec<u8>>,
-        events: &[PropheseeEvent],
-    ) -> io::Result<()> {
-        // Write all Y coordinates first
-        for event in events {
-            cursor.write_u16::<LittleEndian>(event.y)?;
-        }
-
-        // Then write all X coordinates
-        for event in events {
-            cursor.write_u16::<LittleEndian>(event.x)?;
-        }
-
-        // Finally write all polarities
-        for event in events {
-            cursor.write_i16::<LittleEndian>(event.p)?;
-        }
-
-        Ok(())
-    }
-
-    /// Encode timestamp deltas
-    fn encode_timestamp_deltas(
-        &self,
-        cursor: &mut Cursor<&mut Vec<u8>>,
-        events: &[PropheseeEvent],
-        base_timestamp: i64,
-    ) -> io::Result<()> {
-        // Analyze deltas to determine optimal bit width
-        let mut max_delta = 0i64;
-        let mut prev_timestamp = base_timestamp;
-
-        for event in events {
-            let delta = event.t - prev_timestamp;
-            max_delta = max_delta.max(delta);
-            prev_timestamp = event.t;
-        }
-
-        // Choose delta bit width
-        let delta_bits = if max_delta == 0 {
-            0 // All timestamps are identical - no deltas needed
-        } else if max_delta <= 1 {
-            1 // All deltas are 0 or 1
-        } else if max_delta <= 255 {
-            8
-        } else if max_delta <= 65535 {
-            16
-        } else {
-            32
-        };
-
-        cursor.write_u8(delta_bits)?;
-
-        // Encode deltas
-        if delta_bits > 0 {
-            let mut prev_timestamp = base_timestamp;
-            match delta_bits {
-                1 => {
-                    // 1-bit deltas: pack into bits
-                    let num_bytes = events.len().div_ceil(8);
-                    let mut bit_data = vec![0u8; num_bytes];
-
-                    for (event_idx, event) in events.iter().enumerate() {
-                        let delta = event.t - prev_timestamp;
-                        if delta == 1 {
-                            let byte_idx = event_idx / 8;
-                            let bit_idx = event_idx % 8;
-                            bit_data[byte_idx] |= 1 << bit_idx;
-                        }
-                        prev_timestamp = event.t;
-                    }
-                    cursor.write_all(&bit_data)?;
+            if ti >= cur_t + 0b1111 {
+                let mut dt = ti - cur_t;
+                while dt > 0 {
+                    output.push(0b1111_0000 | ((dt & 0b1111) as u8));
+                    dt >>= 4;
                 }
-                8 => {
-                    for event in events {
-                        let delta = event.t - prev_timestamp;
-                        cursor.write_u8(delta as u8)?;
-                        prev_timestamp = event.t;
-                    }
-                }
-                16 => {
-                    for event in events {
-                        let delta = event.t - prev_timestamp;
-                        cursor.write_u16::<LittleEndian>(delta as u16)?;
-                        prev_timestamp = event.t;
-                    }
-                }
-                32 => {
-                    for event in events {
-                        let delta = event.t - prev_timestamp;
-                        cursor.write_u32::<LittleEndian>(delta as u32)?;
-                        prev_timestamp = event.t;
-                    }
-                }
-                _ => unreachable!(),
+                cur_t = ti;
             }
-        }
-        // For 0 delta_bits, we don't write any delta data
 
-        Ok(())
+            let t: u8 = if ti < cur_t {
+                0
+            } else {
+                let d = (ti - cur_t) as u8;
+                cur_t = ti;
+                d
+            };
+
+            let mut c = 1usize;
+            while c < count - i {
+                if events[i + c].t as u64 != cur_t {
+                    break;
+                }
+                c += 1;
+            }
+
+            if c >= 0b1111 {
+                output.push((t << 4) | 0b1111);
+                output.push((c & 0xff) as u8);
+                output.push(((c >> 8) & 0xff) as u8);
+            } else {
+                output.push((t << 4) | (c as u8));
+            }
+
+            i += c;
+        }
     }
 
-    /// Encode raw events (uncompressed)
-    fn encode_raw_events(
-        &self,
-        cursor: &mut Cursor<&mut Vec<u8>>,
-        events: &[PropheseeEvent],
-    ) -> io::Result<()> {
-        for event in events {
-            cursor.write_u16::<LittleEndian>(event.x)?;
-            cursor.write_u16::<LittleEndian>(event.y)?;
-            cursor.write_i16::<LittleEndian>(event.p)?;
-            cursor.write_i64::<LittleEndian>(event.t)?;
+    /// Encode fully packed coordinates and polarity.
+    fn encode_ys_xs_and_ps_packed(output: &mut Vec<u8>, events: &[PropheseeEvent]) {
+        let count = events.len();
+        let mut i = 0usize;
+        while i < count {
+            let mut vs = [0u32; 4];
+            for (j, slot) in vs.iter_mut().enumerate() {
+                let idx = i + j;
+                if idx < count {
+                    let e = &events[idx];
+                    let x = e.x as u32 & 0x7ff;
+                    let y = e.y as u32 & 0x7ff;
+                    let p_bit = if e.p > 0 { 1u32 } else { 0 };
+                    *slot = (y << 12) | (x << 1) | p_bit;
+                }
+            }
+
+            let word0 = (vs[0] << 8) | (vs[1] & 0xff);
+            let word1 = ((vs[1] >> 8) << 16) | (vs[2] & 0xffff);
+            let word2 = ((vs[2] >> 16) << 24) | (vs[3] & 0xffffff);
+
+            output.extend_from_slice(&word0.to_le_bytes());
+            output.extend_from_slice(&word1.to_le_bytes());
+            output.extend_from_slice(&word2.to_le_bytes());
+
+            i += 4;
         }
-        Ok(())
     }
 }
 
@@ -1019,98 +537,159 @@ mod tests {
                 y: 151,
                 p: -1,
                 t: 1000,
-            }, // Same timestamp to test 0-bit encoding
+            },
             PropheseeEvent {
                 x: 102,
                 y: 152,
                 p: 1,
                 t: 1000,
-            }, // Same timestamp to test 0-bit encoding
+            },
         ];
 
-        let encoder = PropheseeECFEncoder::new().with_debug(true);
-        let decoder = PropheseeECFDecoder::new().with_debug(true);
+        let encoder = PropheseeECFEncoder::new();
+        let decoder = PropheseeECFDecoder::new();
 
-        // Encode
         let compressed = encoder.encode(&events).unwrap();
-        debug!(
-            events = events.len(),
-            bytes = compressed.len(),
-            "Compressed events"
-        );
-
-        // Debug: Print the compressed data
-        debug!(bytes = ?&compressed[..compressed.len().min(64)], "Compressed bytes");
-
-        // Decode
         let decoded = decoder.decode(&compressed).unwrap();
 
-        // Verify
         assert_eq!(events.len(), decoded.len());
-        for (i, (original, decoded)) in events.iter().zip(decoded.iter()).enumerate() {
-            debug!(event_index = i, original = ?original, decoded = ?decoded, "Event comparison");
+        for (original, decoded) in events.iter().zip(decoded.iter()) {
             assert_eq!(*original, *decoded);
         }
     }
 
     #[test]
     fn test_1_bit_delta_encoding() {
-        // Test case specifically for 1-bit delta encoding (deltas are 0 or 1)
         let events = vec![
             PropheseeEvent {
                 x: 100,
                 y: 150,
                 p: 1,
                 t: 1000000,
-            }, // Base timestamp: 1000000 us
+            },
             PropheseeEvent {
                 x: 101,
                 y: 151,
                 p: -1,
                 t: 1000000,
-            }, // Delta: 0
+            },
             PropheseeEvent {
                 x: 102,
                 y: 152,
                 p: 1,
                 t: 1000001,
-            }, // Delta: 1
+            },
             PropheseeEvent {
                 x: 103,
                 y: 153,
                 p: -1,
                 t: 1000001,
-            }, // Delta: 0
+            },
             PropheseeEvent {
                 x: 104,
                 y: 154,
                 p: 1,
                 t: 1000002,
-            }, // Delta: 1
+            },
         ];
 
-        let encoder = PropheseeECFEncoder::new().with_debug(true);
-        let decoder = PropheseeECFDecoder::new().with_debug(true);
+        let encoder = PropheseeECFEncoder::new();
+        let decoder = PropheseeECFDecoder::new();
 
-        // Encode
         let compressed = encoder.encode(&events).unwrap();
-        debug!(
-            events = events.len(),
-            bytes = compressed.len(),
-            "1-bit encoding: Compressed events"
-        );
-
-        // Debug: Print the compressed data
-        debug!(bytes = ?compressed, "Compressed bytes");
-
-        // Decode
         let decoded = decoder.decode(&compressed).unwrap();
 
-        // Verify
         assert_eq!(events.len(), decoded.len());
-        for (i, (original, decoded)) in events.iter().zip(decoded.iter()).enumerate() {
-            debug!(event_index = i, original = ?original, decoded = ?decoded, "Event comparison");
+        for (original, decoded) in events.iter().zip(decoded.iter()) {
             assert_eq!(*original, *decoded);
+        }
+    }
+
+    #[test]
+    fn test_large_delta_and_run_length_timestamps() {
+        // A jump larger than 15 forces the multi-nibble large-delta path, and
+        // long runs of equal timestamps exercise the run-length count. This is a
+        // regression guard for the timestamp section being decoded before the
+        // coordinate section.
+        let mut events = Vec::new();
+        for i in 0..12u16 {
+            events.push(PropheseeEvent {
+                x: 200 + i,
+                y: 300 + i,
+                p: if i % 2 == 0 { 1 } else { -1 },
+                t: 1000,
+            });
+        }
+        // Large jump then more events.
+        for i in 0..8u16 {
+            events.push(PropheseeEvent {
+                x: 400 + i,
+                y: 100 + i,
+                p: if i % 2 == 0 { 1 } else { -1 },
+                t: 5_000_000 + i as i64,
+            });
+        }
+
+        let encoder = PropheseeECFEncoder::new();
+        let decoder = PropheseeECFDecoder::new();
+
+        let compressed = encoder.encode(&events).unwrap();
+        let decoded = decoder.decode(&compressed).unwrap();
+
+        assert_eq!(events.len(), decoded.len());
+        for (original, decoded) in events.iter().zip(decoded.iter()) {
+            assert_eq!(*original, *decoded);
+        }
+    }
+
+    #[test]
+    fn test_decode_hand_built_reference_chunk() {
+        // Build a fully packed chunk BY HAND in the exact reference byte layout
+        // (header, then timestamp section, then coordinate words), independent of
+        // our encoder, so it pins the decoder to the reference format. The events
+        // carry distinct timestamps so a decoder that reads coordinates before
+        // timestamps (the historical bug) cannot pass.
+        let events = [
+            (100u16, 200u16, 1i16, 1000i64),
+            (101, 201, -1, 1000),
+            (102, 202, 1, 1005),
+            (103, 203, -1, 1005),
+        ];
+
+        let mut chunk = Vec::new();
+        // Header: count in bits 2-31, bit 1 = ys_xs_and_ps_packed.
+        chunk.extend_from_slice(&(((events.len() as u32) << 2) | 0x2).to_le_bytes());
+        // Timestamp origin.
+        chunk.extend_from_slice(&1000u64.to_le_bytes());
+        // Timestamp RLE: (delta 0, count 2) then (delta 5, count 2).
+        chunk.push((0 << 4) | 2);
+        chunk.push((5 << 4) | 2);
+        // Packed coordinate words.
+        let vs: Vec<u32> = events
+            .iter()
+            .map(|&(x, y, p, _)| {
+                let p_bit = if p > 0 { 1u32 } else { 0 };
+                ((y as u32) << 12) | ((x as u32) << 1) | p_bit
+            })
+            .collect();
+        let word0 = (vs[0] << 8) | (vs[1] & 0xff);
+        let word1 = ((vs[1] >> 8) << 16) | (vs[2] & 0xffff);
+        let word2 = ((vs[2] >> 16) << 24) | (vs[3] & 0xffffff);
+        chunk.extend_from_slice(&word0.to_le_bytes());
+        chunk.extend_from_slice(&word1.to_le_bytes());
+        chunk.extend_from_slice(&word2.to_le_bytes());
+
+        let decoder = PropheseeECFDecoder::new();
+        let decoded = decoder
+            .decode(&chunk)
+            .expect("hand-built chunk should decode");
+
+        assert_eq!(decoded.len(), events.len());
+        for (i, &(x, y, p, t)) in events.iter().enumerate() {
+            assert_eq!(decoded[i].x, x, "event {i}: x");
+            assert_eq!(decoded[i].y, y, "event {i}: y");
+            assert_eq!(decoded[i].p, p, "event {i}: polarity");
+            assert_eq!(decoded[i].t, t, "event {i}: timestamp");
         }
     }
 }

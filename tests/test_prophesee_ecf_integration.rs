@@ -79,14 +79,15 @@ fn test_prophesee_ecf_packed_coordinates_are_not_rescaled() {
     let mut chunk = Vec::new();
     // Header: bits 2-31 = event count, bit 1 = ys_xs_and_ps_packed.
     chunk.extend_from_slice(&(((events.len() as u32) << 2) | 0x2).to_le_bytes());
-    // Base timestamp (i64).
-    chunk.extend_from_slice(&1_000i64.to_le_bytes());
-    // Packed coordinate words.
+    // Timestamp section comes first: an 8-byte origin followed by a nibble
+    // run-length stream. A single (delta 0, count = num_events) byte assigns
+    // every event the origin timestamp.
+    chunk.extend_from_slice(&1_000u64.to_le_bytes());
+    chunk.push((0 << 4) | (events.len() as u8));
+    // Coordinate section: the packed words.
     chunk.extend_from_slice(&word0.to_le_bytes());
     chunk.extend_from_slice(&word1.to_le_bytes());
     chunk.extend_from_slice(&word2.to_le_bytes());
-    // Timestamp section: delta_bits = 0 -> every timestamp equals the base.
-    chunk.push(0u8);
 
     let decoder = PropheseeECFDecoder::new();
     let decoded = decoder.decode(&chunk).expect("packed chunk should decode");
@@ -352,6 +353,65 @@ fn test_ecf_codec_detection() {
     println!("✓ ECF codec detection working correctly");
     println!("  - Detected Prophesee HDF5 format with CD/events compound dataset");
     println!("  - This will trigger ECF codec fallback mechanism");
+}
+
+/// Regression test for the ECF partial-decode bug.
+///
+/// The native ECF decoder used to read the coordinate section before the
+/// timestamp section and used an invented timestamp scheme. That misaligned the
+/// byte cursor, so most decoded coordinates fell outside the sensor and were
+/// discarded by the reader's `x > 1280 || y > 720` guard, leaving only ~37% of
+/// the events with a badly compressed timespan. This test decodes the whole file
+/// and asserts every event in the `CD/events` dataset is recovered, with all
+/// coordinates inside the 1280x720 sensor. It runs only when the (gitignored)
+/// sample file is present.
+#[cfg(feature = "hdf5")]
+#[test]
+fn test_prophesee_ecf_decodes_every_event() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
+        eprintln!(
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
+        );
+        return;
+    }
+
+    use hdf5_metno::File as H5File;
+
+    // Ground-truth event count straight from the dataset metadata.
+    let expected_events = {
+        let file = H5File::open(PROPHESEE_TEST_FILE).expect("open Prophesee file");
+        let events_dataset = file
+            .group("CD")
+            .expect("CD group")
+            .dataset("events")
+            .expect("events dataset");
+        events_dataset.shape()[0]
+    };
+
+    // Full decode, no filters.
+    let config = LoadConfig::new();
+    let events =
+        load_events_with_config(PROPHESEE_TEST_FILE, &config).expect("full ECF decode should work");
+
+    assert_eq!(
+        events.height(),
+        expected_events,
+        "decoder must recover every event: got {} of {}",
+        events.height(),
+        expected_events
+    );
+
+    let rows = dataframe_to_rows(&events);
+    for event in &rows {
+        assert!(
+            event.x < 1280 && event.y < 720,
+            "coordinate outside 1280x720 sensor: ({}, {})",
+            event.x,
+            event.y
+        );
+    }
 }
 
 #[test]
