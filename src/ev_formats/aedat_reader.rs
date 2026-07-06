@@ -268,18 +268,17 @@ impl AedatReader {
         }
         // Check if data could be 6-byte aligned events
         // Very basic heuristic - check if we have reasonable coordinate values
-        for chunk in buffer.chunks_exact(6) {
-            if chunk.len() == 6 {
-                // Try to parse as 16-bit address + 32-bit timestamp
-                let address = u16::from_le_bytes([chunk[0], chunk[1]]);
-                let _timestamp = u32::from_le_bytes([chunk[2], chunk[3], chunk[4], chunk[5]]);
-                // Extract coordinates from address (assuming 9-bit x, 9-bit y)
-                let x = (address >> 1) & 0x1FF;
-                let y = (address >> 10) & 0x1FF;
-                // Check if coordinates are reasonable
-                if x < 1024 && y < 1024 {
-                    return true;
-                }
+        let (chunks, _remainder) = buffer.as_chunks::<6>();
+        for chunk in chunks {
+            // Try to parse as 16-bit address + 32-bit timestamp
+            let address = u16::from_le_bytes([chunk[0], chunk[1]]);
+            let _timestamp = u32::from_le_bytes([chunk[2], chunk[3], chunk[4], chunk[5]]);
+            // Extract coordinates from address (assuming 9-bit x, 9-bit y)
+            let x = (address >> 1) & 0x1FF;
+            let y = (address >> 10) & 0x1FF;
+            // Check if coordinates are reasonable
+            if x < 1024 && y < 1024 {
+                return true;
             }
         }
         false

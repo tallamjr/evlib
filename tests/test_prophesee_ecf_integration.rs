@@ -83,7 +83,8 @@ fn test_prophesee_ecf_packed_coordinates_are_not_rescaled() {
     // run-length stream. A single (delta 0, count = num_events) byte assigns
     // every event the origin timestamp.
     chunk.extend_from_slice(&1_000u64.to_le_bytes());
-    chunk.push((0 << 4) | (events.len() as u8));
+    // RLE nibble packed as (delta << 4) | count: delta 0, count = num events.
+    chunk.push(events.len() as u8);
     // Coordinate section: the packed words.
     chunk.extend_from_slice(&word0.to_le_bytes());
     chunk.extend_from_slice(&word1.to_le_bytes());

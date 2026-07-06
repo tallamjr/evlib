@@ -661,9 +661,10 @@ mod tests {
         chunk.extend_from_slice(&(((events.len() as u32) << 2) | 0x2).to_le_bytes());
         // Timestamp origin.
         chunk.extend_from_slice(&1000u64.to_le_bytes());
-        // Timestamp RLE: (delta 0, count 2) then (delta 5, count 2).
-        chunk.push((0 << 4) | 2);
-        chunk.push((5 << 4) | 2);
+        // Timestamp RLE nibbles, packed as (delta << 4) | count:
+        // (delta 0, count 2) then (delta 5, count 2).
+        chunk.push(0x02);
+        chunk.push(0x52);
         // Packed coordinate words.
         let vs: Vec<u32> = events
             .iter()
