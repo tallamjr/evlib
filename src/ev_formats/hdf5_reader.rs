@@ -148,7 +148,10 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
                                 t: ecf_event.t as f64 / 1_000_000.0, // Convert microseconds to seconds
                                 x: ecf_event.x,
                                 y: ecf_event.y,
-                                polarity: if ecf_event.p > 0 { 1 } else { -1 },
+                                // Store 0/1 like every other reader: build_polars_dataframe's
+                                // HDF5 branch converts 0/1 to -1/1 (mod.rs); storing -1/1 here
+                                // made that conversion map -1 to +1, destroying OFF events.
+                                polarity: if ecf_event.p > 0 { 1 } else { 0 },
                             });
                         }
 
