@@ -2,6 +2,7 @@
 
 import pickle
 import shutil
+import types
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ pytest.importorskip("hdf5plugin")
 
 import h5py  # noqa: E402
 
+from evlib.data import sources as sources_module  # noqa: E402
 from evlib.data.sources import EvlibStreamSource  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "data_fixtures" / "mini_seq"
@@ -97,6 +99,11 @@ def test_global_time_built_once_across_calls(tmp_path, monkeypatch):
     seq_dir = _make_seq_dir(tmp_path)
     src = _make_source(raw_h5, seq_dir)
 
+    # np.maximum is a ufunc; newer numpy makes its attributes read-only, so we
+    # cannot monkeypatch np.maximum.accumulate directly. Swap the module-level
+    # np.maximum for a counting wrapper instead: sources.py calls
+    # np.maximum.accumulate(...), so replacing what "np.maximum" resolves to
+    # is an equivalent, patchable seam.
     calls = {"n": 0}
     real_accumulate = np.maximum.accumulate
 
@@ -104,7 +111,8 @@ def test_global_time_built_once_across_calls(tmp_path, monkeypatch):
         calls["n"] += 1
         return real_accumulate(*args, **kwargs)
 
-    monkeypatch.setattr(np.maximum, "accumulate", counting_accumulate)
+    fake_maximum = types.SimpleNamespace(accumulate=counting_accumulate)
+    monkeypatch.setattr(sources_module.np, "maximum", fake_maximum)
 
     src.read_windows(0, 6)
     src.read_windows(0, 6)
