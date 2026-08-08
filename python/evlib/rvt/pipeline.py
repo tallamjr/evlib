@@ -318,7 +318,7 @@ def process_sequence(
             np.asarray(ev_repr_timestamps_us, dtype=np.int64),
         )
         _write_labels(
-            labels_npy, split, dataset, repr_dir, out_dir, ev_repr_timestamps_us
+            labels_npy, split, dataset, out_dir, ev_repr_timestamps_us, height, width
         )
         return out_h5
 
@@ -352,7 +352,9 @@ def process_sequence(
         np.asarray(ev_repr_timestamps_us, dtype=np.int64),
     )
 
-    _write_labels(labels_npy, split, dataset, repr_dir, out_dir, ev_repr_timestamps_us)
+    _write_labels(
+        labels_npy, split, dataset, out_dir, ev_repr_timestamps_us, height, width
+    )
     return out_h5
 
 
@@ -360,38 +362,49 @@ def _write_labels(
     labels_npy: Optional[Path],
     split: str,
     dataset: str,
-    repr_dir: Path,
     out_dir: Path,
     ev_repr_timestamps_us: np.ndarray,
+    height: int,
+    width: int,
 ) -> None:
+    """Write the RVT label artifacts (labels_v2/, objframe_idx_2_repr_idx.npy).
+
+    Uses the byte-identity-tested machinery in evlib.data.label_preprocess. Raises
+    when the label-derived representation grid disagrees with the grid the
+    pipeline actually rendered, instead of writing inconsistent indices.
+    """
     if labels_npy is None:
         return
-    try:
-        from evlib.rvt.labels import build_timeline  # deferred module; optional
-    except ImportError:
-        return
-    tl = build_timeline(labels_npy, split=split, dataset=dataset)
-    np.save(
-        str(repr_dir / "objframe_idx_2_repr_idx.npy"),
-        tl.objframe_idx_2_repr_idx,
+    from evlib.data.label_preprocess import (
+        apply_filters,
+        build_objframes_and_grid,
+        read_raw_bbox,
+        write_preprocessed,
     )
-    labels_dir = out_dir / "labels_v2"
-    labels_dir.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        str(labels_dir / "labels.npz"),
-        labels=tl.labels_v2,
-        objframe_idx_2_label_idx=tl.objframe_idx_2_label_idx,
+
+    raw = read_raw_bbox(labels_npy)
+    filtered = apply_filters(
+        raw, dataset=dataset, split=split, height=height, width=width
     )
-    np.save(str(labels_dir / "timestamps_us.npy"), tl.frame_timestamps_us)
+    result = build_objframes_and_grid(filtered, dataset=dataset)
+    if not np.array_equal(
+        np.asarray(result.ev_repr_timestamps_us_end, dtype=np.int64),
+        np.asarray(ev_repr_timestamps_us, dtype=np.int64),
+    ):
+        raise ValueError(
+            "label-derived representation grid does not match the pipeline grid; "
+            "the labels file and the rendered representations are inconsistent"
+        )
+    write_preprocessed(out_dir, result, repr_dir_name=REPR_NAME)
 
 
 def main(argv: Optional[list] = None) -> int:
     """CLI entry point: preprocess one raw event sequence into the RVT layout.
 
     Requires one of --grid-npy (a precomputed ev_repr_timestamps_us .npy) or
-    --labels-npy. If only --labels-npy is given and evlib.rvt.labels is importable,
-    the grid is derived from it; the labels file is also passed through to
-    process_sequence, which guards its own (deferred) label handling.
+    --labels-npy. If only --labels-npy is given, the grid is derived from it via
+    evlib.data.label_preprocess; the labels file is also passed through to
+    process_sequence, which writes the label artifacts.
     """
     import argparse
 
@@ -414,8 +427,8 @@ def main(argv: Optional[list] = None) -> int:
         "--labels-npy",
         type=Path,
         default=None,
-        help="Optional labels .npy; used to derive the grid when evlib.rvt.labels "
-        "is available, and passed through to process_sequence.",
+        help="Optional labels .npy; used to derive the grid when --grid-npy is "
+        "absent, and passed through to process_sequence.",
     )
     parser.add_argument("--split", default="val")
     parser.add_argument("--no-downsample", action="store_true")
@@ -428,17 +441,22 @@ def main(argv: Optional[list] = None) -> int:
     grid = None
     if args.grid_npy is not None:
         grid = np.load(args.grid_npy)
-    elif args.labels_npy is not None:
-        try:
-            from evlib.rvt.labels import build_timeline  # deferred module; optional
-        except ImportError:
-            build_timeline = None
-        if build_timeline is not None:
-            tl = build_timeline(args.labels_npy, split=args.split, dataset=args.dataset)
-            grid = np.asarray(tl.frame_timestamps_us, dtype=np.int64)
+    else:
+        from evlib.data.label_preprocess import (
+            apply_filters,
+            build_objframes_and_grid,
+            read_raw_bbox,
+        )
 
-    if grid is None:
-        raise SystemExit("one of --grid-npy or --labels-npy is required")
+        filtered = apply_filters(
+            read_raw_bbox(args.labels_npy),
+            dataset=args.dataset,
+            split=args.split,
+            height=args.height,
+            width=args.width,
+        )
+        result = build_objframes_and_grid(filtered, dataset=args.dataset)
+        grid = np.asarray(result.ev_repr_timestamps_us_end, dtype=np.int64)
 
     process_sequence(
         args.in_h5,
