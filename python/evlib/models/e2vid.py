@@ -406,19 +406,21 @@ class E2VID(BaseModel):
             use_upsample_conv=True,  # Better quality, avoids checkerboard artifacts
         ).to(self._device)
 
-    def _load_pretrained_weights(self):
-        """Load pretrained weights."""
+    def _load_pretrained_weights(self, weights_dir: Optional[Path] = None):
+        """Load pretrained weights, raising on failure (repo policy forbids
+        silently continuing with random weights when the caller asked for
+        pretrained ones; mirrors RVT._load_pretrained_weights)."""
 
-        # Look for weights in the models/weights directory
-        weights_dir = Path(__file__).parent / "weights"
-        weight_files = list(weights_dir.glob("*.pth*"))
+        if weights_dir is None:
+            weights_dir = Path(__file__).parent / "weights"
+        weight_files = sorted(weights_dir.glob("*.pth*"))
 
         if not weight_files:
-            print("Warning: No pretrained weights found in models/weights/")
-            print("Using randomly initialized weights.")
-            return
+            raise FileNotFoundError(
+                f"no pretrained E2VID weights (*.pth*) found in {weights_dir}"
+            )
 
-        # Use the first weight file found
+        # sorted() above makes the choice deterministic when several files exist
         weight_file = weight_files[0]
         print(f"Loading pretrained weights from {weight_file.name}")
 
@@ -554,8 +556,11 @@ class E2VID(BaseModel):
                 )
 
         except Exception as e:
-            print(f"Error loading pretrained weights: {e}")
-            print("Using randomly initialized weights.")
+            # Do not swallow the failure and continue with random weights: the
+            # caller explicitly requested pretrained weights (same policy as RVT).
+            raise RuntimeError(
+                f"failed to load pretrained E2VID weights from {weight_file}: {e}"
+            ) from e
 
     def events_to_voxel_grid(
         self,
