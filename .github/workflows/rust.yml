@@ -82,6 +82,13 @@ jobs:
       - name: Compile all test targets (rot gate)
         run: cargo clippy --all-targets -- -D warnings
 
+      # macOS Homebrew ships hdf5 2.x, which the pinned hdf5-metno 0.10.1
+      # binding does not support (see lib/ ledger note), so the hdf5-gated
+      # rot gate and test run below are ubuntu-only. Linux hdf5-dev is 1.10.x.
+      - name: Compile all test targets, hdf5 feature (rot gate, ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo clippy --features hdf5 --all-targets -- -D warnings
+
       # Link libpython explicitly so the extension-module test binaries can be
       # built and run, then execute the full Rust test suite. Real-data tests
       # early-return when their (gitignored) sample files are absent in CI.
@@ -98,3 +105,22 @@ jobs:
           export LD_LIBRARY_PATH="${PY_LIBDIR}:${LD_LIBRARY_PATH:-}"
           export DYLD_LIBRARY_PATH="${PY_LIBDIR}:${DYLD_LIBRARY_PATH:-}"
           cargo test --features python --release -- --nocapture
+
+      # Same libpython linkage, plus the hdf5 feature so the ECF-codec and
+      # Prophesee HDF5 reader tests (including the ECF partial-decode
+      # regression test from PR #58) actually run in CI instead of only
+      # compiling.
+      - name: Run Rust tests, hdf5 feature (ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          PYTHON_BIN="$(python -c 'import sys; print(sys.executable)')"
+          PY_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          PY_LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          echo "Python: ${PYTHON_BIN} (${PY_VERSION}), libdir: ${PY_LIBDIR}"
+          export RUSTFLAGS="-L ${PY_LIBDIR} -l python${PY_VERSION}"
+          export RUSTDOCFLAGS="-L ${PY_LIBDIR}"
+          export LIBRARY_PATH="${PY_LIBDIR}:${LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="${PY_LIBDIR}:${LD_LIBRARY_PATH:-}"
+          export DYLD_LIBRARY_PATH="${PY_LIBDIR}:${DYLD_LIBRARY_PATH:-}"
+          cargo test --features python,hdf5 --release -- --nocapture

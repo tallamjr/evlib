@@ -112,8 +112,7 @@ fn is_running_in_ci() -> bool {
         || env::var("JENKINS_URL").is_ok()
 }
 
-const PROPHESEE_TEST_FILE: &str =
-    "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5";
+const PROPHESEE_TEST_FILE: &str = "data/prophesee/samples/hdf5/pedestrians.hdf5";
 
 #[test]
 fn test_prophesee_file_exists() {
@@ -340,7 +339,7 @@ fn test_ecf_codec_detection() {
 
     // Check that we detect this as a Prophesee format file
     let cd_group = file.group("CD").expect("Should have CD group");
-    let events_dataset = cd_group
+    let _events_dataset = cd_group
         .dataset("events")
         .expect("Should have events dataset");
 

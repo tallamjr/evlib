@@ -53,7 +53,6 @@ jobs:
         uses: ./.github/actions/setup-dependencies
         with:
           python-version: ${{ matrix.python-version }}
-          enable-gstreamer: "true"
           os: ${{ matrix.os }}
 
       - name: Set up Rust
@@ -100,7 +99,7 @@ jobs:
       - name: Run tests
         run: |
           # Run pytest directly from venv instead of 'uv run' which creates isolated env
-          pytest -v tests/ -m "not slow and not integration"
+          pytest -v tests/ -m "not slow"
           pytest --nbmake examples/*.ipynb -v --no-cov
         shell: bash
 
@@ -112,7 +111,7 @@ jobs:
 
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-        run: pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
+        run: pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow"
         shell: bash
 
       - name: Upload coverage to Codecov
@@ -123,13 +122,13 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
-  # Local-only slow/integration lane, made explicit and manually runnable.
-  # Several of these tests (notably the RVT bit-identity acceptance suite)
-  # require gitignored datasets that are absent on hosted runners, so they
-  # will mostly skip here. This job exists to make the lane visible and to
+  # Local-only slow lane, made explicit and manually runnable. Several of
+  # these tests (notably the RVT bit-identity acceptance suite) require
+  # gitignored datasets that are absent on hosted runners, so they will
+  # mostly skip here. This job exists to make the lane visible and to
   # provide a runnable target on a self-hosted runner with the datasets.
   slow-integration:
-    name: Slow + integration (manual)
+    name: Slow (manual)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -144,7 +143,6 @@ jobs:
         uses: ./.github/actions/setup-dependencies
         with:
           python-version: "3.12"
-          enable-gstreamer: "true"
           os: ubuntu-latest
 
       - name: Set up Rust
@@ -161,6 +159,6 @@ jobs:
         run: uv pip install .[all]
         shell: bash
 
-      - name: Run slow and integration tests
-        run: pytest -v tests/ -m "slow or integration" --run-slow --run-integration
+      - name: Run slow tests
+        run: pytest -v tests/ -m "slow" --run-slow
         shell: bash

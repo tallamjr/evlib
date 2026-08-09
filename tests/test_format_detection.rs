@@ -12,9 +12,8 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
-const PROPHESEE_HDF5_FILE: &str =
-    "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5";
+const SLIDER_DEPTH_DIR: &str = "data/slider_depth";
+const PROPHESEE_HDF5_FILE: &str = "data/prophesee/samples/hdf5/pedestrians.hdf5";
 
 /// Helper function to check if a test data file exists
 fn check_data_file_exists(path: &str) -> bool {
