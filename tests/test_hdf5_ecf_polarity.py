@@ -42,6 +42,7 @@ def test_ecf_hdf5_load_has_both_polarities_real_data():
         if "hdf5" in str(exc).lower() or "HDF5" in str(exc):
             pytest.skip(f"extension built without hdf5 feature: {exc}")
         raise
-    assert set(polarities) == {-1, 1}, (
-        f"expected both polarities in an ECF HDF5 load, got {sorted(polarities)}"
-    )
+    assert set(polarities) == {
+        -1,
+        1,
+    }, f"expected both polarities in an ECF HDF5 load, got {sorted(polarities)}"
