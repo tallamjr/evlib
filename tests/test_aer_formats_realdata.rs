@@ -42,8 +42,8 @@ fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
         .collect()
 }
 
-const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
-const ETRAM_HDF5_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/eTram/h5/val_2";
+const SLIDER_DEPTH_DIR: &str = "data/slider_depth";
+const ETRAM_HDF5_DIR: &str = "data/eTram/h5/val_2";
 
 /// Helper function to check if a test data file exists
 fn check_data_file_exists(path: &str) -> bool {

@@ -112,8 +112,7 @@ fn is_running_in_ci() -> bool {
         || env::var("JENKINS_URL").is_ok()
 }
 
-const PROPHESEE_TEST_FILE: &str =
-    "/Users/tallam/github/tallamjr/origin/evlib/data/prophesee/samples/hdf5/pedestrians.hdf5";
+const PROPHESEE_TEST_FILE: &str = "data/prophesee/samples/hdf5/pedestrians.hdf5";
 
 #[test]
 fn test_prophesee_file_exists() {

@@ -16,7 +16,7 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-const SLIDER_DEPTH_DIR: &str = "/Users/tallam/github/tallamjr/origin/evlib/data/slider_depth";
+const SLIDER_DEPTH_DIR: &str = "data/slider_depth";
 
 /// Lightweight synthetic event fixture used by the file-builder helpers.
 ///
