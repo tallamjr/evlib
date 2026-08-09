@@ -777,12 +777,12 @@ cargo test --release
 cargo test --test test_format_detection
 ```
 
-### Local-only slow and integration gates
+### Local-only slow gate
 
-The `slow` and `integration` markered suites, including the RVT bit-identity acceptance test, are local-only gates. They depend on large gitignored datasets and are not run on hosted CI. Run them locally with:
+The `slow` markered suite, including the RVT bit-identity acceptance test, is a local-only gate. It depends on large gitignored datasets and is not run on hosted CI. Run it locally with:
 
 ```bash
-.venv/bin/pytest -m "slow or integration" --run-slow --run-integration
+.venv/bin/pytest -m "slow" --run-slow
 ```
 
 ### RVT backends under test

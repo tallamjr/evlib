@@ -61,13 +61,6 @@ jobs:
           cache-targets: true
           cache-all-crates: true
 
-      # hdf5-metno's build script links against the system HDF5 library via
-      # pkg-config. The ubuntu-only hdf5-gated clippy/test runs below need
-      # this present even though the default-feature build steps do not.
-      - name: Install hdf5 dependencies (ubuntu, hdf5 feature)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev pkg-config
-
       - name: Check formatting
         run: cargo fmt --all -- --check
 
