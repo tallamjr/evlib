@@ -151,8 +151,22 @@ jobs:
             export CARGO_BUILD_TARGET="x86_64-apple-darwin"
           fi
 
+          # hdf5-static compiles HDF5 (and blosc) from source and links it into
+          # the wheel statically, so no system HDF5 is needed at install time.
+          # setup-dependencies (macOS) exports HDF5_DIR/HDF5_ROOT pointing at
+          # brew's hdf5 for the plain `hdf5` (dynamic) feature; unset both here
+          # so hdf5-metno-sys's build script takes the from-source static path
+          # instead of discovering that dynamic install.
+          unset HDF5_DIR
+          unset HDF5_ROOT
+          # Pin the native macOS ar/ranlib: a GNU ar earlier on PATH (e.g. from
+          # a Homebrew binutils install) produces archives the Apple linker
+          # cannot read, breaking the static HDF5 link.
+          export AR=/usr/bin/ar
+          export RANLIB=/usr/bin/ranlib
+
           # extension-module is required so the distributed wheel does not link libpython directly.
-          maturin build --release --features python,polars,arrow,extension-module --interpreter python${{ matrix.python-version }} --out dist
+          maturin build --release --features python,polars,arrow,extension-module,hdf5-static --interpreter python${{ matrix.python-version }} --out dist
 
       - name: Build wheels (Windows)
         if: matrix.platform == 'windows'
@@ -198,52 +212,25 @@ jobs:
         with:
           key: build-wheels-linux-${{ matrix.python-version }}
 
-      - name: Create HDF5 setup script
-        run: |
-          cat > setup-hdf5.sh << 'EOF'
-          #!/bin/bash
-          set -e
-          echo "=== Installing system dependencies ==="
-          yum install -y openssl-devel pkgconfig cmake3 wget tar make gcc-c++ zlib-devel
-
-          echo "=== Building HDF5 ==="
-          cd /tmp
-          wget -q https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_1.14.4.3.tar.gz
-          tar -xzf hdf5_1.14.4.3.tar.gz
-          cd hdf5-hdf5_1.14.4.3
-
-          ./configure \
-            --prefix=/usr/local/hdf5 \
-            --enable-build-mode=production \
-            --with-szlib \
-            --enable-shared \
-            --disable-static \
-            --disable-fortran \
-            --disable-cxx \
-            CFLAGS="-O2 -fPIC"
-
-          make -j $(nproc) && make install
-
-          echo "/usr/local/hdf5/lib" > /etc/ld.so.conf.d/hdf5.conf
-          ldconfig
-
-          # Make pkg-config file available
-          mkdir -p /usr/local/lib/pkgconfig
-          if [ -f "/usr/local/hdf5/lib/pkgconfig/hdf5.pc" ]; then
-            cp /usr/local/hdf5/lib/pkgconfig/hdf5.pc /usr/local/lib/pkgconfig/
-          fi
-
-          echo "=== HDF5 setup complete ==="
-          EOF
-          chmod +x setup-hdf5.sh
-
       - name: Build wheels with maturin-action
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --features python,polars,arrow,extension-module --interpreter python${{ matrix.python-version }}
+          # hdf5-static compiles HDF5 (and blosc) from source inside the
+          # manylinux container and links it statically, so the resulting
+          # wheel needs no system HDF5 at install time. before-script-linux
+          # installs the cmake/make/gcc-c++ prerequisites hdf5-metno-src's
+          # build script needs to drive that from-source build; the
+          # manylinux2014 image (CentOS 7 based) ships neither cmake nor a
+          # `cmake` binary by default (only the "cmake3"-named package is in
+          # its yum repos), so install cmake3 and symlink it to `cmake` since
+          # the cmake crate looks for that name on PATH.
+          args: --release --features python,polars,arrow,extension-module,hdf5-static --interpreter python${{ matrix.python-version }}
           rust-toolchain: nightly
           manylinux: 2014
+          before-script-linux: |
+            yum install -y cmake3 gcc-c++ make
+            ln -sf /usr/bin/cmake3 /usr/local/bin/cmake
 
       - name: Upload Linux wheels as artifacts
         uses: actions/upload-artifact@v4

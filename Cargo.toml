@@ -20,6 +20,10 @@ exclude         = [
     "tests/**/*",
     "*.png",
     "*.mp4",
+    # Local [patch.crates-io] source for the macOS hdf5-static build only;
+    # cargo strips [patch] sections from the published manifest, so
+    # downstream consumers never see it and don't need the vendored files.
+    "vendor/**/*",
 ]
 
 [lib]
@@ -139,3 +143,24 @@ zero-copy      = ["arrow"]  # Alias for clarity
 # requires a compatible system HDF5 install. On Windows the underlying deps
 # aren't available, so this feature compiles to no-op stubs there.
 hdf5           = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]
+# Statically-linked HDF5 (Unix-only), for distributable wheels: compiles HDF5
+# (and blosc, via blosc-all's vendored blosc-src) from source instead of
+# discovering a system install, so the resulting .so/.dylib has no libhdf5
+# runtime dependency. Do not set HDF5_DIR when building with this feature, or
+# hdf5-metno-sys falls back to system discovery instead of the static build.
+# `zlib` is required: without it the compiled-from-source HDF5 has no deflate
+# filter built in, so reading any gzip-compressed dataset (the common case for
+# real-world files, e.g. DSEC-style flat-layout HDF5) fails at read time with
+# "can't open directory (.../lib/plugin)" instead of decompressing inline.
+hdf5-static    = ["hdf5", "hdf5-metno/static", "hdf5-metno/zlib"]
+
+# Vendored patch for the `hdf5-static` build: on macOS, rustc's rlib archive
+# writer bundles a static native lib's raw archive members (including that
+# lib's own __.SYMDEF index) into the rlib without recomputing a single
+# combined index, so the final link fails with "ld: multiple SYMDEF member
+# files found in an archive". The vendored copy requests the `-bundle`
+# modifier on macOS so libhdf5.a stays external and is linked once, at final
+# link time, instead of being embedded in every intermediate rlib. Upstream:
+# https://github.com/metno/hdf5-rust (version pinned to match crates.io 0.10.1).
+[patch.crates-io]
+hdf5-metno-sys = { path = "vendor/hdf5-metno-sys-0.10.1-static-fix" }
