@@ -43,7 +43,7 @@ fn dataframe_to_rows(df: &polars::prelude::DataFrame) -> Vec<EventRow> {
 }
 
 const SLIDER_DEPTH_DIR: &str = "data/slider_depth";
-const ETRAM_HDF5_DIR: &str = "data/eTram/h5/val_2";
+const ETRAM_HDF5_DIR: &str = "tests/data/eTram/h5/val_2";
 
 /// Helper function to check if a test data file exists
 fn check_data_file_exists(path: &str) -> bool {
@@ -66,7 +66,7 @@ fn get_test_files() -> Vec<String> {
     }
 
     // HDF5 file - tracked Prophesee sample
-    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
+    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_011_td.h5");
     if check_data_file_exists(&etram_hdf5) {
         files.push(etram_hdf5);
     }
@@ -118,7 +118,7 @@ fn test_format_detection_text_files() {
 
 #[test]
 fn test_format_detection_hdf5_files() {
-    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
+    let etram_hdf5 = format!("{ETRAM_HDF5_DIR}/val_night_011_td.h5");
     if !check_data_file_exists(&etram_hdf5) {
         println!("Skipping HDF5 detection test - file not found: {etram_hdf5}");
         return;
@@ -482,7 +482,7 @@ fn test_load_with_polarity_filtering() {
 #[cfg(feature = "hdf5")]
 #[test]
 fn test_hdf5_file_loading() {
-    let hdf5_file = format!("{ETRAM_HDF5_DIR}/val_night_007_td.h5");
+    let hdf5_file = format!("{ETRAM_HDF5_DIR}/val_night_011_td.h5");
 
     if !check_data_file_exists(&hdf5_file) {
         println!("Skipping test: {hdf5_file} not found");
