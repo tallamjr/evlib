@@ -339,7 +339,7 @@ fn test_ecf_codec_detection() {
 
     // Check that we detect this as a Prophesee format file
     let cd_group = file.group("CD").expect("Should have CD group");
-    let events_dataset = cd_group
+    let _events_dataset = cd_group
         .dataset("events")
         .expect("Should have events dataset");
 
