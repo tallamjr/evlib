@@ -1,0 +1,5 @@
+# vendor/ holds a third-party crate (see vendor/*/PROVENANCE.md) vendored
+# verbatim apart from one deliberate build.rs hunk. Excluding it from `cargo
+# fmt` keeps that diff a single hunk against upstream instead of a full
+# rustfmt pass, so it stays auditable against crates.io.
+ignore = ["vendor"]
