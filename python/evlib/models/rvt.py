@@ -451,6 +451,11 @@ class RVT(BaseModel, nn.Module):
         xs = xs.long()
         ys = ys.long()
         ps = ps.long()
+        # evlib.load_events yields -1/1 polarity; the reference histogram layout
+        # needs 0/1 (channel = t_idx + p * temporal_bins). (ps > 0) is total over
+        # both encodings: -1 -> 0, 0 -> 0, 1 -> 1. Without this, the {0,1} valid
+        # mask below silently dropped every OFF event.
+        ps = (ps > 0).long()
         # Keep timestamps as microsecond integers to match reference precision
         ts_int = (ts * 1e6).long()
 
