@@ -68,10 +68,7 @@ impl Default for H5F_close_degree_t {
     }
 }
 
-#[cfg_attr(
-    feature = "1.10.0",
-    deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t")
-)]
+#[cfg_attr(feature = "1.10.0", deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct H5F_info1_t {
@@ -85,10 +82,7 @@ impl Default for H5F_info1_t {
     }
 }
 
-#[cfg_attr(
-    feature = "1.10.0",
-    deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t")
-)]
+#[cfg_attr(feature = "1.10.0", deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct H5F_info1_t__sohm {
@@ -158,10 +152,7 @@ extern "C" {
     #[cfg(feature = "1.12.0")]
     pub fn H5Fis_accessible(container_name: *const c_char, fapl_id: hid_t) -> htri_t;
     pub fn H5Fcreate(
-        filename: *const c_char,
-        flags: c_uint,
-        create_plist: hid_t,
-        access_plist: hid_t,
+        filename: *const c_char, flags: c_uint, create_plist: hid_t, access_plist: hid_t,
     ) -> hid_t;
     pub fn H5Fopen(filename: *const c_char, flags: c_uint, access_plist: hid_t) -> hid_t;
     pub fn H5Freopen(file_id: hid_t) -> hid_t;
@@ -176,10 +167,7 @@ extern "C" {
     pub fn H5Fget_fileno(file_id: hid_t, fileno: *mut c_ulong) -> herr_t;
     pub fn H5Fget_obj_count(file_id: hid_t, types: c_uint) -> ssize_t;
     pub fn H5Fget_obj_ids(
-        file_id: hid_t,
-        types: c_uint,
-        max_objs: size_t,
-        obj_id_list: *mut hid_t,
+        file_id: hid_t, types: c_uint, max_objs: size_t, obj_id_list: *mut hid_t,
     ) -> ssize_t;
     pub fn H5Fget_vfd_handle(file_id: hid_t, fapl: hid_t, file_handle: *mut *mut c_void) -> herr_t;
     pub fn H5Fmount(loc: hid_t, name: *const c_char, child: hid_t, plist: hid_t) -> herr_t;
@@ -193,11 +181,8 @@ extern "C" {
     pub fn H5Fset_mdc_config(file_id: hid_t, config_ptr: *const H5AC_cache_config_t) -> herr_t;
     pub fn H5Fget_mdc_hit_rate(file_id: hid_t, hit_rate_ptr: *mut c_double) -> herr_t;
     pub fn H5Fget_mdc_size(
-        file_id: hid_t,
-        max_size_ptr: *mut size_t,
-        min_clean_size_ptr: *mut size_t,
-        cur_size_ptr: *mut size_t,
-        cur_num_entries_ptr: *mut c_int,
+        file_id: hid_t, max_size_ptr: *mut size_t, min_clean_size_ptr: *mut size_t,
+        cur_size_ptr: *mut size_t, cur_num_entries_ptr: *mut c_int,
     ) -> herr_t;
     pub fn H5Freset_mdc_hit_rate_stats(file_id: hid_t) -> herr_t;
     pub fn H5Fget_name(obj_id: hid_t, name: *mut c_char, size: size_t) -> ssize_t;
@@ -327,16 +312,12 @@ mod hdf5_1_10_0 {
     extern "C" {
         pub fn H5Fstart_swmr_write(file_id: hid_t) -> herr_t;
         pub fn H5Fget_metadata_read_retry_info(
-            file_id: hid_t,
-            info: *mut H5F_retry_info_t,
+            file_id: hid_t, info: *mut H5F_retry_info_t,
         ) -> herr_t;
         pub fn H5Fstart_mdc_logging(file_id: hid_t) -> herr_t;
         pub fn H5Fstop_mdc_logging(file_id: hid_t) -> herr_t;
         pub fn H5Fget_free_sections(
-            file_id: hid_t,
-            type_: H5F_mem_t,
-            nsects: size_t,
-            sect_info: *mut H5F_sect_info_t,
+            file_id: hid_t, type_: H5F_mem_t, nsects: size_t, sect_info: *mut H5F_sect_info_t,
         ) -> ssize_t;
         pub fn H5Fformat_convert(fid: hid_t) -> herr_t;
         pub fn H5Fget_info2(obj_id: hid_t, finfo: *mut H5F_info2_t) -> herr_t;
@@ -374,18 +355,12 @@ mod hdf5_1_10_1 {
 
     extern "C" {
         pub fn H5Fget_mdc_image_info(
-            file_id: hid_t,
-            image_addr: *mut haddr_t,
-            image_size: *mut hsize_t,
+            file_id: hid_t, image_addr: *mut haddr_t, image_size: *mut hsize_t,
         ) -> herr_t;
         pub fn H5Freset_page_buffering_stats(file_id: hid_t) -> herr_t;
         pub fn H5Fget_page_buffering_stats(
-            file_id: hid_t,
-            accesses: *mut c_uint,
-            hits: *mut c_uint,
-            misses: *mut c_uint,
-            evictions: *mut c_uint,
-            bypasses: *mut c_uint,
+            file_id: hid_t, accesses: *mut c_uint, hits: *mut c_uint, misses: *mut c_uint,
+            evictions: *mut c_uint, bypasses: *mut c_uint,
         ) -> herr_t;
     }
 }
@@ -402,44 +377,23 @@ extern "C" {
 #[cfg(feature = "1.14.0")]
 extern "C" {
     pub fn H5Fclose_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        file_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, file_id: hid_t,
         es_id: hid_t,
     ) -> herr_t;
     pub fn H5Fcreate_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        filename: *const c_char,
-        flags: c_uint,
-        fcpl_id: hid_t,
-        fapl_id: hid_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint,
+        filename: *const c_char, flags: c_uint, fcpl_id: hid_t, fapl_id: hid_t, es_id: hid_t,
     ) -> hid_t;
     pub fn H5Fflush_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        object_id: hid_t,
-        scope: H5F_scope_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, object_id: hid_t,
+        scope: H5F_scope_t, es_id: hid_t,
     ) -> herr_t;
     pub fn H5Fopen_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        filename: *const c_char,
-        flags: c_uint,
-        access_plit: hid_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint,
+        filename: *const c_char, flags: c_uint, access_plit: hid_t, es_id: hid_t,
     ) -> hid_t;
     pub fn H5reopen_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        file_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, file_id: hid_t,
         es_id: hid_t,
     ) -> hid_t;
 }

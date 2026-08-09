@@ -153,20 +153,11 @@ pub type H5D_gather_func_t = Option<
 
 extern "C" {
     pub fn H5Dcreate2(
-        loc_id: hid_t,
-        name: *const c_char,
-        type_id: hid_t,
-        space_id: hid_t,
-        lcpl_id: hid_t,
-        dcpl_id: hid_t,
-        dapl_id: hid_t,
+        loc_id: hid_t, name: *const c_char, type_id: hid_t, space_id: hid_t, lcpl_id: hid_t,
+        dcpl_id: hid_t, dapl_id: hid_t,
     ) -> hid_t;
     pub fn H5Dcreate_anon(
-        file_id: hid_t,
-        type_id: hid_t,
-        space_id: hid_t,
-        plist_id: hid_t,
-        dapl_id: hid_t,
+        file_id: hid_t, type_id: hid_t, space_id: hid_t, plist_id: hid_t, dapl_id: hid_t,
     ) -> hid_t;
     pub fn H5Dopen2(file_id: hid_t, name: *const c_char, dapl_id: hid_t) -> hid_t;
     pub fn H5Dclose(dset_id: hid_t) -> herr_t;
@@ -178,61 +169,33 @@ extern "C" {
     pub fn H5Dget_storage_size(dset_id: hid_t) -> hsize_t;
     pub fn H5Dget_offset(dset_id: hid_t) -> haddr_t;
     pub fn H5Dread(
-        dset_id: hid_t,
-        mem_type_id: hid_t,
-        mem_space_id: hid_t,
-        file_space_id: hid_t,
-        plist_id: hid_t,
-        buf: *mut c_void,
+        dset_id: hid_t, mem_type_id: hid_t, mem_space_id: hid_t, file_space_id: hid_t,
+        plist_id: hid_t, buf: *mut c_void,
     ) -> herr_t;
     pub fn H5Dwrite(
-        dset_id: hid_t,
-        mem_type_id: hid_t,
-        mem_space_id: hid_t,
-        file_space_id: hid_t,
-        plist_id: hid_t,
-        buf: *const c_void,
+        dset_id: hid_t, mem_type_id: hid_t, mem_space_id: hid_t, file_space_id: hid_t,
+        plist_id: hid_t, buf: *const c_void,
     ) -> herr_t;
     pub fn H5Diterate(
-        buf: *mut c_void,
-        type_id: hid_t,
-        space_id: hid_t,
-        op: H5D_operator_t,
+        buf: *mut c_void, type_id: hid_t, space_id: hid_t, op: H5D_operator_t,
         operator_data: *mut c_void,
     ) -> herr_t;
-    #[cfg_attr(
-        feature = "1.12.0",
-        deprecated(note = "deprecated in HDF5 1.12.0, use H5Treclaim")
-    )]
+    #[cfg_attr(feature = "1.12.0", deprecated(note = "deprecated in HDF5 1.12.0, use H5Treclaim"))]
     pub fn H5Dvlen_reclaim(
-        type_id: hid_t,
-        space_id: hid_t,
-        plist_id: hid_t,
-        buf: *mut c_void,
+        type_id: hid_t, space_id: hid_t, plist_id: hid_t, buf: *mut c_void,
     ) -> herr_t;
     pub fn H5Dvlen_get_buf_size(
-        dataset_id: hid_t,
-        type_id: hid_t,
-        space_id: hid_t,
-        size: *mut hsize_t,
+        dataset_id: hid_t, type_id: hid_t, space_id: hid_t, size: *mut hsize_t,
     ) -> herr_t;
     pub fn H5Dfill(
-        fill: *const c_void,
-        fill_type: hid_t,
-        buf: *mut c_void,
-        buf_type: hid_t,
-        space: hid_t,
+        fill: *const c_void, fill_type: hid_t, buf: *mut c_void, buf_type: hid_t, space: hid_t,
     ) -> herr_t;
     pub fn H5Dset_extent(dset_id: hid_t, size: *const hsize_t) -> herr_t;
     pub fn H5Ddebug(dset_id: hid_t) -> herr_t;
 
     #[deprecated(note = "deprecated in HDF5 1.8.0, use H5Dcreate2")]
     pub fn H5Dcreate1(
-        file_id: hid_t,
-        name: *const c_char,
-        type_id: hid_t,
-        space_id: hid_t,
-        dcpl_id: hid_t,
+        file_id: hid_t, name: *const c_char, type_id: hid_t, space_id: hid_t, dcpl_id: hid_t,
     ) -> hid_t;
     #[deprecated(note = "deprecated in HDF5 1.8.0, use H5Dopen2")]
     pub fn H5Dopen1(file_id: hid_t, name: *const c_char) -> hid_t;
@@ -241,20 +204,12 @@ extern "C" {
 #[cfg(feature = "1.8.11")]
 extern "C" {
     pub fn H5Dscatter(
-        op: H5D_scatter_func_t,
-        op_data: *mut c_void,
-        type_id: hid_t,
-        dst_space_id: hid_t,
+        op: H5D_scatter_func_t, op_data: *mut c_void, type_id: hid_t, dst_space_id: hid_t,
         dst_buf: *mut c_void,
     ) -> herr_t;
     pub fn H5Dgather(
-        src_space_id: hid_t,
-        src_buf: *const c_void,
-        type_id: hid_t,
-        dst_buf_size: size_t,
-        dst_buf: *mut c_void,
-        op: H5D_gather_func_t,
-        op_data: *mut c_void,
+        src_space_id: hid_t, src_buf: *const c_void, type_id: hid_t, dst_buf_size: size_t,
+        dst_buf: *mut c_void, op: H5D_gather_func_t, op_data: *mut c_void,
     ) -> herr_t;
 }
 
@@ -311,18 +266,10 @@ pub use self::hdf5_1_10_0::*;
 #[cfg(feature = "1.10.3")]
 extern "C" {
     pub fn H5Dread_chunk(
-        dset_id: hid_t,
-        dxpl_id: hid_t,
-        offset: *const hsize_t,
-        filters: *mut u32,
-        buf: *mut c_void,
+        dset_id: hid_t, dxpl_id: hid_t, offset: *const hsize_t, filters: *mut u32, buf: *mut c_void,
     ) -> herr_t;
     pub fn H5Dwrite_chunk(
-        dset_id: hid_t,
-        dxpl_id: hid_t,
-        filters: u32,
-        offset: *const hsize_t,
-        data_size: size_t,
+        dset_id: hid_t, dxpl_id: hid_t, filters: u32, offset: *const hsize_t, data_size: size_t,
         buf: *const c_void,
     ) -> herr_t;
 }
@@ -330,19 +277,11 @@ extern "C" {
 #[cfg(feature = "1.10.5")]
 extern "C" {
     pub fn H5Dget_chunk_info(
-        dset_id: hid_t,
-        fspace_id: hid_t,
-        index: hsize_t,
-        offset: *mut hsize_t,
-        filter_mask: *mut c_uint,
-        addr: *mut haddr_t,
-        size: *mut hsize_t,
+        dset_id: hid_t, fspace_id: hid_t, index: hsize_t, offset: *mut hsize_t,
+        filter_mask: *mut c_uint, addr: *mut haddr_t, size: *mut hsize_t,
     ) -> herr_t;
     pub fn H5Dget_chunk_info_by_coord(
-        dset_id: hid_t,
-        offset: *const hsize_t,
-        filter_mask: *mut c_uint,
-        addr: *mut haddr_t,
+        dset_id: hid_t, offset: *const hsize_t, filter_mask: *mut c_uint, addr: *mut haddr_t,
         size: *mut hsize_t,
     ) -> herr_t;
     pub fn H5Dget_num_chunks(dset_id: hid_t, fspace_id: hid_t, nchunks: *mut hsize_t) -> herr_t;
@@ -362,77 +301,37 @@ pub type H5D_chunk_iter_op_t = Option<
 #[cfg(feature = "1.14.0")]
 extern "C" {
     pub fn H5Dchunk_iter(
-        dset_id: hid_t,
-        dxpl: hid_t,
-        cb: H5D_chunk_iter_op_t,
-        op_data: *mut c_void,
+        dset_id: hid_t, dxpl: hid_t, cb: H5D_chunk_iter_op_t, op_data: *mut c_void,
     ) -> herr_t;
     pub fn H5Dclose_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        dset_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
         es_id: hid_t,
     ) -> herr_t;
     pub fn H5Dcreate_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        loc_id: hid_t,
-        name: *const c_char,
-        type_id: hid_t,
-        space_id: hid_t,
-        lcpl_id: hid_t,
-        dcpl_id: hid_t,
-        dapl_id: hid_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+        name: *const c_char, type_id: hid_t, space_id: hid_t, lcpl_id: hid_t, dcpl_id: hid_t,
+        dapl_id: hid_t, es_id: hid_t,
     ) -> hid_t;
     pub fn H5Dget_space_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        dset_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
         es_id: hid_t,
     ) -> hid_t;
     pub fn H5Dopen_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        loc_id: hid_t,
-        name: *const c_char,
-        dapl_id: hid_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+        name: *const c_char, dapl_id: hid_t, es_id: hid_t,
     ) -> hid_t;
     pub fn H5Dread_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        dset_id: hid_t,
-        mem_type_id: hid_t,
-        mem_space_id: hid_t,
-        file_space_id: hid_t,
-        dxpl_id: hid_t,
-        buf: *mut c_void,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
+        mem_type_id: hid_t, mem_space_id: hid_t, file_space_id: hid_t, dxpl_id: hid_t,
+        buf: *mut c_void, es_id: hid_t,
     ) -> herr_t;
     pub fn H5Dset_extent_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        dset_id: hid_t,
-        size: *mut c_ulong,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
+        size: *mut c_ulong, es_id: hid_t,
     ) -> herr_t;
     pub fn H5Dwrite_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        dset_id: hid_t,
-        mem_type_id: hid_t,
-        mem_space_id: hid_t,
-        file_space_id: hid_t,
-        dxpl_id: hid_t,
-        buf: *const c_void,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
+        mem_type_id: hid_t, mem_space_id: hid_t, file_space_id: hid_t, dxpl_id: hid_t,
+        buf: *const c_void, es_id: hid_t,
     ) -> herr_t;
 }

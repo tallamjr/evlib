@@ -63,9 +63,7 @@ extern "C" {
     pub fn H5Idec_ref(id: hid_t) -> c_int;
     pub fn H5Iget_ref(id: hid_t) -> c_int;
     pub fn H5Iregister_type(
-        hash_size: size_t,
-        reserved: c_uint,
-        free_func: H5I_free_t,
+        hash_size: size_t, reserved: c_uint, free_func: H5I_free_t,
     ) -> H5I_type_t;
     pub fn H5Iclear_type(type_: H5I_type_t, force: hbool_t) -> herr_t;
     pub fn H5Idestroy_type(type_: H5I_type_t) -> herr_t;
@@ -92,9 +90,7 @@ pub type H5I_future_discard_func_t =
 #[cfg(feature = "1.14.0")]
 extern "C" {
     pub fn H5Iregister_future(
-        type_: H5I_type_t,
-        object: *const c_void,
-        realize_cb: H5I_future_realize_func_t,
+        type_: H5I_type_t, object: *const c_void, realize_cb: H5I_future_realize_func_t,
         discard_cb: H5I_future_discard_func_t,
     ) -> hid_t;
 }

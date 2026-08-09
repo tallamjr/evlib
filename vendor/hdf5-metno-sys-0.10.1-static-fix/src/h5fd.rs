@@ -335,49 +335,29 @@ extern "C" {
     pub fn H5FDregister(cls: *const H5FD_class_t) -> hid_t;
     pub fn H5FDunregister(driver_id: hid_t) -> herr_t;
     pub fn H5FDopen(
-        name: *const c_char,
-        flags: c_uint,
-        fapl_id: hid_t,
-        maxaddr: haddr_t,
+        name: *const c_char, flags: c_uint, fapl_id: hid_t, maxaddr: haddr_t,
     ) -> *mut H5FD_t;
     pub fn H5FDclose(file: *mut H5FD_t) -> herr_t;
     pub fn H5FDcmp(f1: *const H5FD_t, f2: *const H5FD_t) -> c_int;
     pub fn H5FDquery(f: *const H5FD_t, flags: *mut c_ulong) -> c_int;
     pub fn H5FDalloc(
-        file: *mut H5FD_t,
-        type_: H5FD_mem_t,
-        dxpl_id: hid_t,
-        size: hsize_t,
+        file: *mut H5FD_t, type_: H5FD_mem_t, dxpl_id: hid_t, size: hsize_t,
     ) -> haddr_t;
     pub fn H5FDfree(
-        file: *mut H5FD_t,
-        type_: H5FD_mem_t,
-        dxpl_id: hid_t,
-        addr: haddr_t,
-        size: hsize_t,
+        file: *mut H5FD_t, type_: H5FD_mem_t, dxpl_id: hid_t, addr: haddr_t, size: hsize_t,
     ) -> herr_t;
     pub fn H5FDget_eoa(file: *mut H5FD_t, type_: H5FD_mem_t) -> haddr_t;
     pub fn H5FDset_eoa(file: *mut H5FD_t, type_: H5FD_mem_t, eoa: haddr_t) -> herr_t;
     pub fn H5FDget_eof(file: *mut H5FD_t) -> haddr_t;
     pub fn H5FDget_vfd_handle(
-        file: *mut H5FD_t,
-        fapl: hid_t,
-        file_handle: *mut *mut c_void,
+        file: *mut H5FD_t, fapl: hid_t, file_handle: *mut *mut c_void,
     ) -> herr_t;
     pub fn H5FDread(
-        file: *mut H5FD_t,
-        type_: H5FD_mem_t,
-        dxpl_id: hid_t,
-        addr: haddr_t,
-        size: size_t,
+        file: *mut H5FD_t, type_: H5FD_mem_t, dxpl_id: hid_t, addr: haddr_t, size: size_t,
         buf: *mut c_void,
     ) -> herr_t;
     pub fn H5FDwrite(
-        file: *mut H5FD_t,
-        type_: H5FD_mem_t,
-        dxpl_id: hid_t,
-        addr: haddr_t,
-        size: size_t,
+        file: *mut H5FD_t, type_: H5FD_mem_t, dxpl_id: hid_t, addr: haddr_t, size: size_t,
         buf: *const c_void,
     ) -> herr_t;
     pub fn H5FDflush(file: *mut H5FD_t, dxpl_id: hid_t, closing: c_uint) -> herr_t;
@@ -481,12 +461,10 @@ pub mod splitter {
     extern "C" {
         pub fn H5FD_splitter_init() -> hid_t;
         pub fn H5Pget_fapl_splitter(
-            fapl_id: hid_t,
-            config_ptr: *mut H5FD_splitter_vfg_config_t,
+            fapl_id: hid_t, config_ptr: *mut H5FD_splitter_vfg_config_t,
         ) -> herr_t;
         pub fn H5Pset_fapl_splitter(
-            fapl_id: hid_t,
-            config_ptr: *mut H5FD_splitter_vfg_config_t,
+            fapl_id: hid_t, config_ptr: *mut H5FD_splitter_vfg_config_t,
         ) -> herr_t;
     }
 }
@@ -502,11 +480,7 @@ type H5FD_perform_init_func_t = Option<extern "C" fn() -> hid_t>;
 #[cfg(feature = "1.14.0")]
 extern "C" {
     pub fn H5FDctl(
-        file: *mut H5FD_t,
-        op_cod: u64,
-        flags: u64,
-        input: *const c_void,
-        output: *mut *mut c_void,
+        file: *mut H5FD_t, op_cod: u64, flags: u64, input: *const c_void, output: *mut *mut c_void,
     ) -> herr_t;
     pub fn H5FDdelete(name: *const c_char, fapl_id: hid_t) -> herr_t;
     pub fn H5FDis_driver_registered_by_name(driver_name: *const c_char) -> htri_t;

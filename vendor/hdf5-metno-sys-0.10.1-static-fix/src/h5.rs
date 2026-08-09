@@ -71,17 +71,11 @@ extern "C" {
     pub fn H5dont_atexit() -> herr_t;
     pub fn H5garbage_collect() -> herr_t;
     pub fn H5set_free_list_limits(
-        reg_global_lim: c_int,
-        reg_list_lim: c_int,
-        arr_global_lim: c_int,
-        arr_list_lim: c_int,
-        blk_global_lim: c_int,
-        blk_list_lim: c_int,
+        reg_global_lim: c_int, reg_list_lim: c_int, arr_global_lim: c_int, arr_list_lim: c_int,
+        blk_global_lim: c_int, blk_list_lim: c_int,
     ) -> herr_t;
     pub fn H5get_libversion(
-        majnum: *mut c_uint,
-        minnum: *mut c_uint,
-        relnum: *mut c_uint,
+        majnum: *mut c_uint, minnum: *mut c_uint, relnum: *mut c_uint,
     ) -> herr_t;
     pub fn H5check_version(majnum: c_uint, minnum: c_uint, relnum: c_uint) -> herr_t;
 }
@@ -118,10 +112,7 @@ pub struct H5_alloc_stats_t {
 extern "C" {
     pub fn H5get_alloc_stats(stats: *mut H5_alloc_stats_t) -> herr_t;
     pub fn H5get_free_list_sizes(
-        reg_size: *mut size_t,
-        arr_size: *mut size_t,
-        blk_size: *mut size_t,
-        fac_size: *mut size_t,
+        reg_size: *mut size_t, arr_size: *mut size_t, blk_size: *mut size_t, fac_size: *mut size_t,
     ) -> herr_t;
 }
 

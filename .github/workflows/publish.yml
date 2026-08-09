@@ -218,19 +218,20 @@ jobs:
           command: build
           # hdf5-static compiles HDF5 (and blosc) from source inside the
           # manylinux container and links it statically, so the resulting
-          # wheel needs no system HDF5 at install time. before-script-linux
-          # installs the cmake/make/gcc-c++ prerequisites hdf5-metno-src's
-          # build script needs to drive that from-source build; the
-          # manylinux2014 image (CentOS 7 based) ships neither cmake nor a
-          # `cmake` binary by default (only the "cmake3"-named package is in
-          # its yum repos), so install cmake3 and symlink it to `cmake` since
-          # the cmake crate looks for that name on PATH.
+          # wheel needs no system HDF5 at install time. The manylinux2014
+          # image already ships a modern cmake (via pipx) plus a devtoolset
+          # gcc/g++/make on PATH, which is what hdf5-metno-src's build script
+          # needs to drive that from-source build, so no extra install step
+          # is required here. (An earlier version of this step installed the
+          # yum "cmake3" package and symlinked it over that pipx cmake: do
+          # not reintroduce that - cmake3 depends on archived EPEL 7 repos
+          # and is CMake 3.17.5, below the `cmake_minimum_required(VERSION
+          # 3.18)` that hdf5-metno-src 0.9.5's vendored HDF5 declares, so it
+          # would silently downgrade the toolchain the build actually needs.)
           args: --release --features python,polars,arrow,extension-module,hdf5-static --interpreter python${{ matrix.python-version }}
           rust-toolchain: nightly
           manylinux: 2014
-          before-script-linux: |
-            yum install -y cmake3 gcc-c++ make
-            ln -sf /usr/bin/cmake3 /usr/local/bin/cmake
+          before-script-linux: cmake --version
 
       - name: Upload Linux wheels as artifacts
         uses: actions/upload-artifact@v4

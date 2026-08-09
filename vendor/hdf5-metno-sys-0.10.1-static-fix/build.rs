@@ -26,35 +26,21 @@ pub struct Version {
 
 impl Version {
     pub const fn new(major: u8, minor: u8, micro: u8) -> Self {
-        Self {
-            major,
-            minor,
-            micro,
-        }
+        Self { major, minor, micro }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         let re = Regex::new(r"^(1)\.(8|10|12|14)\.(\d\d?)(_|.\d+)?((-|.)(patch)?\d+)?$").ok()?;
         let captures = re.captures(s)?;
         Some(Self {
-            major: captures
-                .get(1)
-                .and_then(|c| c.as_str().parse::<u8>().ok())?,
-            minor: captures
-                .get(2)
-                .and_then(|c| c.as_str().parse::<u8>().ok())?,
-            micro: captures
-                .get(3)
-                .and_then(|c| c.as_str().parse::<u8>().ok())?,
+            major: captures.get(1).and_then(|c| c.as_str().parse::<u8>().ok())?,
+            minor: captures.get(2).and_then(|c| c.as_str().parse::<u8>().ok())?,
+            micro: captures.get(3).and_then(|c| c.as_str().parse::<u8>().ok())?,
         })
     }
 
     pub fn is_valid(self) -> bool {
-        self >= Self {
-            major: 1,
-            minor: 8,
-            micro: 4,
-        }
+        self >= Self { major: 1, minor: 8, micro: 4 }
     }
 }
 
@@ -136,13 +122,7 @@ fn get_runtime_version_single<P: AsRef<Path>>(path: P) -> Result<Version, Box<dy
 
 fn validate_runtime_version(config: &Config) {
     println!("Looking for HDF5 library binary...");
-    let libfiles = &[
-        "libhdf5.dylib",
-        "libhdf5.so",
-        "hdf5.dll",
-        "libhdf5-0.dll",
-        "libhdf5-310.dll",
-    ];
+    let libfiles = &["libhdf5.dylib", "libhdf5.so", "hdf5.dll", "libhdf5-0.dll", "libhdf5-310.dll"];
     let mut link_paths = config.link_paths.clone();
     if cfg!(all(unix, not(target_os = "macos"))) {
         if let Some(ldv) = run_command("ld", &["--verbose"]) {
@@ -242,11 +222,7 @@ impl Header {
             };
         }
 
-        assert!(
-            hdr.version.is_valid(),
-            "Invalid H5_VERSION in the header: {:?}",
-            hdr.version
-        );
+        assert!(hdr.version.is_valid(), "Invalid H5_VERSION in the header: {:?}", hdr.version);
 
         hdr
     }
@@ -333,10 +309,7 @@ mod unix {
             return;
         }
         for (inc_dir, lib_dir) in &[
-            (
-                "/usr/include/hdf5/serial",
-                "/usr/lib/x86_64-linux-gnu/hdf5/serial",
-            ),
+            ("/usr/include/hdf5/serial", "/usr/lib/x86_64-linux-gnu/hdf5/serial"),
             ("/usr/include", "/usr/lib/x86_64-linux-gnu"),
             ("/usr/include", "/usr/lib64"),
         ] {
@@ -479,10 +452,7 @@ mod windows {
         let root = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(KEY)?;
         let mut installed = Vec::new();
         for key in root.enum_keys().filter_map(Result::ok) {
-            let app = root
-                .open_subkey(key)
-                .ok()
-                .and_then(|v| v.decode::<App>().ok());
+            let app = root.open_subkey(key).ok().and_then(|v| v.decode::<App>().ok());
             if let Some(app) = app {
                 installed.push(app);
             }
@@ -536,12 +506,7 @@ mod windows {
     pub fn validate_env_path(config: &LibrarySearcher) {
         if let Some(ref inc_dir) = config.inc_dir {
             let var_path = env::var("PATH").unwrap_or_else(|_| Default::default());
-            let bin_dir = inc_dir
-                .parent()
-                .unwrap()
-                .join("bin")
-                .canonicalize()
-                .unwrap();
+            let bin_dir = inc_dir.parent().unwrap().join("bin").canonicalize().unwrap();
             for path in env::split_paths(&var_path) {
                 if let Ok(path) = path.canonicalize() {
                     if path == bin_dir {
@@ -633,11 +598,7 @@ impl LibrarySearcher {
 
     pub fn finalize(self) -> Config {
         if let Some(ref inc_dir) = self.inc_dir {
-            assert!(
-                is_inc_dir(inc_dir),
-                "Invalid HDF5 headers directory: {:?}",
-                inc_dir
-            );
+            assert!(is_inc_dir(inc_dir), "Invalid HDF5 headers directory: {:?}", inc_dir);
             let mut link_paths = self.link_paths;
             if link_paths.is_empty() {
                 if let Some(root_dir) = inc_dir.parent() {
@@ -649,11 +610,7 @@ impl LibrarySearcher {
             if let Some(version) = self.version {
                 assert_eq!(header.version, version, "HDF5 header version mismatch",);
             }
-            let config = Config {
-                inc_dir: inc_dir.clone(),
-                link_paths,
-                header,
-            };
+            let config = Config { inc_dir: inc_dir.clone(), link_paths, header };
             // Don't check version if pkg-config finds the library and this is a windows target.
             // We trust the pkg-config provided path, to avoid updating dll names every time
             // the package updates.
@@ -698,10 +655,7 @@ impl Config {
 
     pub fn emit_cfg_flags(&self) {
         let version = self.header.version;
-        assert!(
-            version >= Version::new(1, 8, 4),
-            "required HDF5 version: >=1.8.4"
-        );
+        assert!(version >= Version::new(1, 8, 4), "required HDF5 version: >=1.8.4");
 
         for v in known_hdf5_versions() {
             println!(
@@ -710,14 +664,8 @@ impl Config {
             );
         }
         for v in known_hdf5_versions().into_iter().filter(|&v| version >= v) {
-            println!(
-                "cargo::rustc-cfg=feature=\"{}.{}.{}\"",
-                v.major, v.minor, v.micro
-            );
-            println!(
-                "cargo::metadata=version_{}_{}_{}=1",
-                v.major, v.minor, v.micro
-            );
+            println!("cargo::rustc-cfg=feature=\"{}.{}.{}\"", v.major, v.minor, v.micro);
+            println!("cargo::metadata=version_{}_{}_{}=1", v.major, v.minor, v.micro);
         }
 
         println!("cargo::rustc-check-cfg=cfg(have_stdbool_h)");
@@ -754,11 +702,7 @@ impl Config {
     fn check_against_features_required(&self) {
         let h = &self.header;
         for (flag, feature, native) in [
-            (
-                !h.have_no_deprecated,
-                "deprecated",
-                "HDF5_ENABLE_DEPRECATED_SYMBOLS",
-            ),
+            (!h.have_no_deprecated, "deprecated", "HDF5_ENABLE_DEPRECATED_SYMBOLS"),
             (h.have_threadsafe, "threadsafe", "HDF5_ENABLE_THREADSAFE"),
             (h.have_filter_deflate, "zlib", "HDF5_ENABLE_Z_LIB_SUPPORT"),
         ] {
@@ -789,21 +733,8 @@ fn main() {
 fn get_build_and_emit() {
     println!("cargo::rerun-if-changed=build.rs");
 
-    // evlib patch: on macOS, rustc's rlib archive writer appends a bundled
-    // static lib's raw members (including that lib's own __.SYMDEF index)
-    // without recomputing a single combined index, so a downstream rlib ends
-    // up with two __.SYMDEF entries and both ld and ld_classic refuse to
-    // link it ("ld: multiple SYMDEF member files found in an archive"). The
-    // upstream crate always uses the default `static` (bundled) modifier;
-    // requesting `-bundle` here keeps libhdf5.a external (linked once, at
-    // final link time, via the -L path below) instead of embedding it, which
-    // avoids the double index entirely. Linux is unaffected (bundling works
-    // there), so only macOS is patched.
-    let static_modifier = if cfg!(target_os = "macos") {
-        "static:-bundle"
-    } else {
-        "static"
-    };
+    // evlib patch (see PROVENANCE.md): on macOS, rustc's rlib archive writer appends a bundled static lib's raw members (including that lib's own __.SYMDEF index) without recomputing a single combined index, so the final link fails with "ld: multiple SYMDEF member files found in an archive". Requesting the `-bundle` modifier here keeps libhdf5.a external and linked once, at final link time, instead of being embedded in every intermediate rlib. Linux is unaffected, so only macOS is patched.
+    let static_modifier = if cfg!(target_os = "macos") { "static:-bundle" } else { "static" };
 
     if feature_enabled("ZLIB") {
         let zlib_lib = env::var("DEP_HDF5SRC_ZLIB").unwrap();
@@ -827,11 +758,7 @@ fn get_build_and_emit() {
     println!("cargo::rustc-link-lib={}={}", static_modifier, &hdf5_lib);
 
     let header = Header::parse(&hdf5_incdir);
-    let config = Config {
-        header,
-        inc_dir: "".into(),
-        link_paths: Vec::new(),
-    };
+    let config = Config { header, inc_dir: "".into(), link_paths: Vec::new() };
     config.emit_cfg_flags();
     write_hdf5_version(header.version);
 }

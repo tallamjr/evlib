@@ -9,7 +9,11 @@ readme = "README.md"
 authors = [
   { name = "Tarek Allam", email = "t.allam.jr@gmail.com" },
 ]
-license = { file = "LICENSE.md" }
+license = "MIT"
+# LICENSE.md covers evlib itself. third-party-licenses/* covers HDF5, blosc
+# and zlib, which the hdf5-static Cargo feature (macOS/manylinux wheel
+# builds) links in statically from source - see third-party-licenses/README.md.
+license-files = ["LICENSE.md", "third-party-licenses/*"]
 requires-python = ">=3.11"
 classifiers = [
   "Environment :: Console",

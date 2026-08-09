@@ -58,8 +58,7 @@ extern "C" {
     pub fn H5VLregister_connector(cls: *const H5VL_class_t, vipl_id: hid_t) -> hid_t;
     pub fn H5VLregister_connector_by_name(name: *const c_char, vipl_id: hid_t) -> hid_t;
     pub fn H5VLregister_connector_by_value(
-        connector_value: H5VL_class_value_t,
-        vipl_id: hid_t,
+        connector_value: H5VL_class_value_t, vipl_id: hid_t,
     ) -> hid_t;
     pub fn H5VLunregister_connector(vol_id: hid_t) -> herr_t;
 }
@@ -86,10 +85,7 @@ pub enum H5VL_subclass_t {
 #[cfg(feature = "1.12.1")]
 extern "C" {
     pub fn H5VLquery_optional(
-        obj_id: hid_t,
-        subcls: H5VL_subclass_t,
-        opt_type: c_int,
-        supported: *mut hbool_t,
+        obj_id: hid_t, subcls: H5VL_subclass_t, opt_type: c_int, supported: *mut hbool_t,
     ) -> herr_t;
 }
 
@@ -1855,8 +1851,7 @@ mod v1_14_0 {
     impl Debug for H5VL_loc_params_t {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let mut s = f.debug_struct("H5VL_lov_params_t");
-            s.field("obj_type", &self.obj_type)
-                .field("type", &self.type_);
+            s.field("obj_type", &self.obj_type).field("type", &self.type_);
             unsafe {
                 match self.type_ {
                     H5VL_loc_type_t::H5VL_OBJECT_BY_SELF => {}
@@ -1884,99 +1879,53 @@ mod v1_14_0 {
 
     extern "C" {
         pub fn H5VLattr_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            attr_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
-            es_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, attr_id: hid_t,
+            args: *mut H5VL_optional_args_t, dxpl_id: hid_t, es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLdataset_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            dset_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
-            es_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, dset_id: hid_t,
+            args: *mut H5VL_optional_args_t, dxpl_id: hid_t, es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLdatatype_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            type_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
-            es_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, type_id: hid_t,
+            args: *mut H5VL_optional_args_t, dxpl_id: hid_t, es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLfile_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            file_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
-            es_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, file_id: hid_t,
+            args: *mut H5VL_optional_args_t, dxpl_id: hid_t, es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLfind_opt_operation(
-            subcls: H5VL_subclass_t,
-            op_name: *const c_char,
-            op_val: *mut c_int,
+            subcls: H5VL_subclass_t, op_name: *const c_char, op_val: *mut c_int,
         ) -> herr_t;
         pub fn H5VLgroup_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            group_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
-            es_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, group_id: hid_t,
+            args: *mut H5VL_optional_args_t, dxpl_id: hid_t, es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLlink_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            loc_id: hid_t,
-            name: *const c_char,
-            lapl_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+            name: *const c_char, lapl_id: hid_t, args: *mut H5VL_optional_args_t, dxpl_id: hid_t,
             es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLobject_optional_op(
-            app_file: *const c_char,
-            app_func: *const c_char,
-            app_line: c_uint,
-            loc_id: hid_t,
-            name: *const c_char,
-            lapl_id: hid_t,
-            args: *mut H5VL_optional_args_t,
-            dxpl_id: hid_t,
+            app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+            name: *const c_char, lapl_id: hid_t, args: *mut H5VL_optional_args_t, dxpl_id: hid_t,
             es_id: hid_t,
         ) -> herr_t;
         pub fn H5VLregister_opt_operation(
-            subcls: H5VL_subclass_t,
-            op_name: *const c_char,
-            op_val: *mut c_int,
+            subcls: H5VL_subclass_t, op_name: *const c_char, op_val: *mut c_int,
         ) -> herr_t;
         pub fn H5VLrequest_optional_op(
-            req: *mut c_void,
-            connector_id: hid_t,
-            args: *mut H5VL_optional_args_t,
+            req: *mut c_void, connector_id: hid_t, args: *mut H5VL_optional_args_t,
         ) -> herr_t;
         pub fn H5VLunregister_opt_operation(
-            subcls: H5VL_subclass_t,
-            op_name: *const c_char,
+            subcls: H5VL_subclass_t, op_name: *const c_char,
         ) -> herr_t;
     }
 
     extern "C" {
         pub fn H5VLfinish_lib_state() -> herr_t;
         pub fn H5VLintrospect_get_cap_flags(
-            info: *const c_void,
-            connector_id: hid_t,
-            cap_flags: *mut c_uint,
+            info: *const c_void, connector_id: hid_t, cap_flags: *mut c_uint,
         ) -> herr_t;
         pub fn H5VLstart_lib_state() -> herr_t;
     }

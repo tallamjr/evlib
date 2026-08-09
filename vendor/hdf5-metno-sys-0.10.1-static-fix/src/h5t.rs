@@ -259,11 +259,7 @@ extern "C" {
     pub fn H5Tequal(type1_id: hid_t, type2_id: hid_t) -> htri_t;
     pub fn H5Tlock(type_id: hid_t) -> herr_t;
     pub fn H5Tcommit2(
-        loc_id: hid_t,
-        name: *const c_char,
-        type_id: hid_t,
-        lcpl_id: hid_t,
-        tcpl_id: hid_t,
+        loc_id: hid_t, name: *const c_char, type_id: hid_t, lcpl_id: hid_t, tcpl_id: hid_t,
         tapl_id: hid_t,
     ) -> herr_t;
     pub fn H5Topen2(loc_id: hid_t, name: *const c_char, tapl_id: hid_t) -> hid_t;
@@ -273,19 +269,13 @@ extern "C" {
     pub fn H5Tencode(obj_id: hid_t, buf: *mut c_void, nalloc: *mut size_t) -> herr_t;
     pub fn H5Tdecode(buf: *const c_void) -> hid_t;
     pub fn H5Tinsert(
-        parent_id: hid_t,
-        name: *const c_char,
-        offset: size_t,
-        member_id: hid_t,
+        parent_id: hid_t, name: *const c_char, offset: size_t, member_id: hid_t,
     ) -> herr_t;
     pub fn H5Tpack(type_id: hid_t) -> herr_t;
     pub fn H5Tenum_create(base_id: hid_t) -> hid_t;
     pub fn H5Tenum_insert(type_: hid_t, name: *const c_char, value: *const c_void) -> herr_t;
     pub fn H5Tenum_nameof(
-        type_: hid_t,
-        value: *const c_void,
-        name: *mut c_char,
-        size: size_t,
+        type_: hid_t, value: *const c_void, name: *mut c_char, size: size_t,
     ) -> herr_t;
     pub fn H5Tenum_valueof(type_: hid_t, name: *const c_char, value: *mut c_void) -> herr_t;
     pub fn H5Tvlen_create(base_id: hid_t) -> hid_t;
@@ -304,12 +294,8 @@ extern "C" {
     pub fn H5Tget_pad(type_id: hid_t, lsb: *mut H5T_pad_t, msb: *mut H5T_pad_t) -> herr_t;
     pub fn H5Tget_sign(type_id: hid_t) -> H5T_sign_t;
     pub fn H5Tget_fields(
-        type_id: hid_t,
-        spos: *mut size_t,
-        epos: *mut size_t,
-        esize: *mut size_t,
-        mpos: *mut size_t,
-        msize: *mut size_t,
+        type_id: hid_t, spos: *mut size_t, epos: *mut size_t, esize: *mut size_t,
+        mpos: *mut size_t, msize: *mut size_t,
     ) -> herr_t;
     pub fn H5Tget_ebias(type_id: hid_t) -> size_t;
     pub fn H5Tget_norm(type_id: hid_t) -> H5T_norm_t;
@@ -332,12 +318,7 @@ extern "C" {
     pub fn H5Tset_pad(type_id: hid_t, lsb: H5T_pad_t, msb: H5T_pad_t) -> herr_t;
     pub fn H5Tset_sign(type_id: hid_t, sign: H5T_sign_t) -> herr_t;
     pub fn H5Tset_fields(
-        type_id: hid_t,
-        spos: size_t,
-        epos: size_t,
-        esize: size_t,
-        mpos: size_t,
-        msize: size_t,
+        type_id: hid_t, spos: size_t, epos: size_t, esize: size_t, mpos: size_t, msize: size_t,
     ) -> herr_t;
     pub fn H5Tset_ebias(type_id: hid_t, ebias: size_t) -> herr_t;
     pub fn H5Tset_norm(type_id: hid_t, norm: H5T_norm_t) -> herr_t;
@@ -345,27 +326,15 @@ extern "C" {
     pub fn H5Tset_cset(type_id: hid_t, cset: H5T_cset_t) -> herr_t;
     pub fn H5Tset_strpad(type_id: hid_t, strpad: H5T_str_t) -> herr_t;
     pub fn H5Tregister(
-        pers: H5T_pers_t,
-        name: *const c_char,
-        src_id: hid_t,
-        dst_id: hid_t,
-        func: H5T_conv_t,
+        pers: H5T_pers_t, name: *const c_char, src_id: hid_t, dst_id: hid_t, func: H5T_conv_t,
     ) -> herr_t;
     pub fn H5Tunregister(
-        pers: H5T_pers_t,
-        name: *const c_char,
-        src_id: hid_t,
-        dst_id: hid_t,
-        func: H5T_conv_t,
+        pers: H5T_pers_t, name: *const c_char, src_id: hid_t, dst_id: hid_t, func: H5T_conv_t,
     ) -> herr_t;
     pub fn H5Tfind(src_id: hid_t, dst_id: hid_t, pcdata: *mut *mut H5T_cdata_t) -> H5T_conv_t;
     pub fn H5Tcompiler_conv(src_id: hid_t, dst_id: hid_t) -> htri_t;
     pub fn H5Tconvert(
-        src_id: hid_t,
-        dst_id: hid_t,
-        nelmts: size_t,
-        buf: *mut c_void,
-        background: *mut c_void,
+        src_id: hid_t, dst_id: hid_t, nelmts: size_t, buf: *mut c_void, background: *mut c_void,
         plist_id: hid_t,
     ) -> herr_t;
     #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tcommit2")]
@@ -374,10 +343,7 @@ extern "C" {
     pub fn H5Topen1(loc_id: hid_t, name: *const c_char) -> hid_t;
     #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tarray_create2")]
     pub fn H5Tarray_create1(
-        base_id: hid_t,
-        ndims: c_int,
-        dim: *const hsize_t,
-        perm: *const c_int,
+        base_id: hid_t, ndims: c_int, dim: *const hsize_t, perm: *const c_int,
     ) -> hid_t;
     #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tget_array_dims2")]
     pub fn H5Tget_array_dims1(type_id: hid_t, dims: *mut hsize_t, perm: *mut c_int) -> c_int;
@@ -588,31 +554,16 @@ extern "C" {
 #[cfg(feature = "1.14.0")]
 extern "C" {
     pub fn H5Tclose_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        type_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, type_id: hid_t,
         es_id: hid_t,
     ) -> herr_t;
     pub fn H5Tcommit_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        loc_id: hid_t,
-        name: *const c_char,
-        type_id: hid_t,
-        lcpl_id: hid_t,
-        tcpl_id: hid_t,
-        tapl_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+        name: *const c_char, type_id: hid_t, lcpl_id: hid_t, tcpl_id: hid_t, tapl_id: hid_t,
         es_id: hid_t,
     ) -> herr_t;
     pub fn H5Topen_async(
-        app_file: *const c_char,
-        app_func: *const c_char,
-        app_line: c_uint,
-        loc_id: hid_t,
-        name: *const c_char,
-        tapl_id: hid_t,
-        es_id: hid_t,
+        app_file: *const c_char, app_func: *const c_char, app_line: c_uint, loc_id: hid_t,
+        name: *const c_char, tapl_id: hid_t, es_id: hid_t,
     ) -> hid_t;
 }

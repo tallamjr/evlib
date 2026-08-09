@@ -90,11 +90,7 @@ mod tests {
         let _lock = LOCK.lock();
         let (mut major, mut minor, mut micro) = (0, 0, 0);
         unsafe { H5get_libversion(&mut major, &mut minor, &mut micro) };
-        let runtime_version = Version {
-            major: major as _,
-            minor: minor as _,
-            micro: micro as _,
-        };
+        let runtime_version = Version { major: major as _, minor: minor as _, micro: micro as _ };
 
         assert_eq!(runtime_version, HDF5_VERSION);
     }

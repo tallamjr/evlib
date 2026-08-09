@@ -62,9 +62,7 @@ extern "C" {
 
 extern "C" {
     pub fn H5EScancel(
-        es_id: hid_t,
-        num_not_canceled: *mut size_t,
-        err_occured: *mut hbool_t,
+        es_id: hid_t, num_not_canceled: *mut size_t, err_occured: *mut hbool_t,
     ) -> herr_t;
     pub fn H5ESclose(es_id: hid_t) -> herr_t;
     pub fn H5EScreate() -> hid_t;
@@ -72,27 +70,18 @@ extern "C" {
     pub fn H5ESget_count(es_id: hid_t, count: *mut size_t) -> herr_t;
     pub fn H5ESget_err_count(es_id: hid_t, num_errs: *mut size_t) -> herr_t;
     pub fn H5ESget_err_info(
-        es_id: hid_t,
-        num_err_info: size_t,
-        err_info: *mut H5ES_err_info_t,
+        es_id: hid_t, num_err_info: size_t, err_info: *mut H5ES_err_info_t,
         err_cleared: *mut size_t,
     ) -> herr_t;
     pub fn H5ESget_err_status(es_id: hid_t, err_occured: *mut hbool_t) -> herr_t;
     pub fn H5ESget_op_counter(es_id: hid_t, counter: *mut u64) -> herr_t;
     pub fn H5ESregister_complete_func(
-        es_id: hid_t,
-        func: H5ES_event_complete_func_t,
-        ctx: *mut c_void,
+        es_id: hid_t, func: H5ES_event_complete_func_t, ctx: *mut c_void,
     ) -> herr_t;
     pub fn H5ESregister_insert_func(
-        es_id: hid_t,
-        func: H5ES_event_insert_func_t,
-        ctx: *mut c_void,
+        es_id: hid_t, func: H5ES_event_insert_func_t, ctx: *mut c_void,
     ) -> herr_t;
     pub fn H5ESwait(
-        es_id: hid_t,
-        timeout: u64,
-        num_in_progress: *mut size_t,
-        err_occured: *mut hbool_t,
+        es_id: hid_t, timeout: u64, num_in_progress: *mut size_t, err_occured: *mut hbool_t,
     ) -> herr_t;
 }
