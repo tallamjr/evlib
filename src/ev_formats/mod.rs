@@ -997,54 +997,22 @@ pub mod python {
         Ok((data_dict.into_pyobject(py)?.into(), schema_dict.into()))
     }
 
-    /// Load events from a file with filtering support (using Polars backend)
+    /// Load events from a file and return the full decoded frame.
     ///
-    /// Automatically detects the format based on file extension
-    ///
-    /// Args:
-    ///     path: Path to the event file
-    ///     t_start: Start time filter (inclusive)
-    ///     t_end: End time filter (inclusive)
-    ///     min_x, max_x, min_y, max_y: Spatial bounds filters
-    ///     polarity: Polarity filter (1 for positive, -1 for negative, None for both)
-    ///     sort: Sort events by timestamp after loading
-    ///     x_col, y_col, t_col, p_col: Custom column indices for text files
-    ///     header_lines: Number of header lines to skip in text files
-    ///
-    /// Returns:
-    ///     Python dictionary with event data for Polars LazyFrame creation
-    ///
+    /// Row filters are deliberately not exposed here: they were broken three
+    /// independent ways (one-sided bounds ignored, seconds compared against
+    /// microsecond values, HDF5/AEDAT paths ignoring them entirely; 2026-08-08
+    /// review, R3). Use evlib.load_events, which applies filters as Polars
+    /// expressions on the returned LazyFrame.
     #[pyfunction]
     #[pyo3(
-        signature = (
-            path,
-            t_start=None,
-            t_end=None,
-            min_x=None,
-            max_x=None,
-            min_y=None,
-            max_y=None,
-            polarity=None,
-            sort=false,
-            x_col=None,
-            y_col=None,
-            t_col=None,
-            p_col=None,
-            header_lines=0
-        ),
+        signature = (path, sort=false, x_col=None, y_col=None, t_col=None, p_col=None, header_lines=0),
         name = "load_events"
     )]
     #[allow(clippy::too_many_arguments)]
     pub fn load_events_py(
         py: Python<'_>,
         path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
         sort: bool,
         x_col: Option<usize>,
         y_col: Option<usize>,
@@ -1052,13 +1020,7 @@ pub mod python {
         p_col: Option<usize>,
         header_lines: usize,
     ) -> PyResult<PyObject> {
-        // Convert i8 polarity filter to bool
-        let polarity_bool = polarity.map(|p| p > 0);
-
         let config = LoadConfig::new()
-            .with_time_window(t_start, t_end)
-            .with_spatial_bounds(min_x, max_x, min_y, max_y)
-            .with_polarity(polarity_bool)
             .with_sorting(sort)
             .with_custom_columns(t_col, x_col, y_col, p_col)
             .with_header_lines(header_lines);
