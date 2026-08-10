@@ -255,7 +255,7 @@ def events_to_voxel_grid(
     a copy of https://github.com/uzh-rpg/rpg_e2vid.
 
     Args:
-        xs, ys: Integer pixel coordinates.
+        xs, ys: Integer pixel coordinates. Must lie inside the sensor.
         ts: Timestamps in seconds.
         ps: Polarities; zeros are treated as -1.
         num_bins: Number of temporal bins.
@@ -263,13 +263,21 @@ def events_to_voxel_grid(
 
     Returns:
         Voxel grid of shape (num_bins, height, width).
+
+    Raises:
+        ValueError: If any coordinate falls outside the sensor.
     """
     voxel_grid = np.zeros((num_bins, height, width), dtype=np.float32).ravel()
     if len(ts) == 0:
         return voxel_grid.reshape(num_bins, height, width)
 
-    xs = np.clip(xs.astype(np.int64), 0, width - 1)
-    ys = np.clip(ys.astype(np.int64), 0, height - 1)
+    xs = xs.astype(np.int64)
+    ys = ys.astype(np.int64)
+    if xs.min() < 0 or xs.max() >= width or ys.min() < 0 or ys.max() >= height:
+        raise ValueError(
+            f"Event coordinates fall outside the {width}x{height} sensor: "
+            f"x in [{xs.min()}, {xs.max()}], y in [{ys.min()}, {ys.max()}]"
+        )
     polarities = np.where(ps == 0, -1.0, ps).astype(np.float32)
 
     t_min, t_max = float(np.amin(ts)), float(np.amax(ts))
@@ -425,8 +433,6 @@ class E2VIDRecurrent(BaseModel):
         head_weight = state_dict["head.conv2d.weight"]
         self.num_bins = int(head_weight.shape[1])
         self.base_num_channels = int(head_weight.shape[0])
-        self.config.num_bins = self.num_bins
-        self.config.base_channels = self.base_num_channels
         self.num_encoders = sum(
             1 for key in state_dict if key.endswith(".conv.conv2d.weight")
         )
