@@ -11,47 +11,17 @@ our Rust ECF codec to decode Prophesee files without external dependencies.
 use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
 use crate::ev_formats::streaming::Event;
 use crate::ev_formats::{python, EventFormat, TimestampUnit};
-use hdf5_metno::{Dataset, File as H5File, Group, Result as H5Result};
+use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use polars::prelude::DataFrame;
-use pyo3::prelude::*;
 use std::io;
 
 #[cfg(unix)]
-use tracing::{error, info, warn};
+use tracing::info;
 
 #[cfg(not(unix))]
 macro_rules! info {
     ($($args:tt)*) => {};
-}
-
-#[cfg(not(unix))]
-macro_rules! warn {
-    ($($args:tt)*) => {
-        eprintln!("[WARN] {}", format!($($args)*))
-    };
-}
-
-#[cfg(not(unix))]
-macro_rules! error {
-    ($($args:tt)*) => {
-        eprintln!("[ERROR] {}", format!($($args)*))
-    };
-}
-
-/// Read raw chunk data from an HDF5 dataset
-/// This bypasses the HDF5 filter pipeline to get compressed chunks directly
-pub fn read_raw_chunks(_file_path: &str, _dataset_path: &str) -> io::Result<Vec<Vec<u8>>> {
-    // This is a placeholder function showing the intended structure
-
-    // Parse HDF5 structure to find chunk locations
-    // This is a simplified version - full implementation would parse B-trees
-    let chunks = vec![];
-
-    // TODO: Implement HDF5 B-tree parsing to locate chunks
-    // For now, return empty to show the structure
-
-    Ok(chunks)
 }
 
 /// Read Prophesee HDF5 file using our native ECF decoder
@@ -98,11 +68,10 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
     // Attempt to decode chunks
     let num_chunks = total_events.div_ceil(chunk_size);
 
-    // Process all chunks
+    // Process all chunks. Any chunk that fails to read, extract or decode
+    // aborts the whole load (2026-08-08 review, R8): a partially decoded
+    // file is silent corruption, not a usable result.
     let mut chunks_processed = 0;
-    let mut chunks_failed_extraction = 0;
-    let mut chunks_failed_decoding = 0;
-    let mut chunks_failed_reading = 0;
 
     info!(
         total_events = total_events,
@@ -112,132 +81,77 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
     );
 
     for chunk_idx in 0..num_chunks {
-        match read_compressed_chunk(&events_dataset, chunk_idx) {
-            Ok(compressed_data) => {
-                // The compressed_data contains HDF5 chunk headers + ECF payload
-                // Extract the ECF payload for decoding
+        let compressed_data = read_compressed_chunk(&events_dataset, chunk_idx).map_err(|e| {
+            hdf5_metno::Error::Internal(format!(
+                "Failed to read HDF5 chunk {chunk_idx} with native ECF decoder. \
+                 This may require HDF5 1.10.5+ or specific build options. Error: {e}"
+            ))
+        })?;
 
-                let ecf_payload = match extract_ecf_payload_from_chunk(&compressed_data) {
-                    Ok(payload) => payload,
-                    Err(e) => {
-                        chunks_failed_extraction += 1;
-                        warn!(
-                            "Failed to extract ECF payload from chunk {}: {}",
-                            chunk_idx, e
-                        );
-                        continue; // Skip this chunk and move to the next one
-                    }
-                };
+        // The compressed_data contains HDF5 chunk headers + ECF payload;
+        // extract the ECF payload for decoding.
+        let ecf_payload = extract_ecf_payload_from_chunk(&compressed_data).map_err(|e| {
+            hdf5_metno::Error::Internal(format!(
+                "Failed to extract ECF payload from chunk {chunk_idx}: {e}"
+            ))
+        })?;
 
-                // Decode with our ECF codec
-                match decoder.decode(&ecf_payload) {
-                    Ok(decoded_events) => {
-                        let event_count = decoded_events.len();
+        let decoded_events = decoder.decode(&ecf_payload).map_err(|e| {
+            hdf5_metno::Error::Internal(format!("Failed to decode ECF chunk {chunk_idx}: {e}"))
+        })?;
+        let event_count = decoded_events.len();
 
-                        // Convert PropheseeEvent to Event
-                        for ecf_event in decoded_events {
-                            // Validate coordinates - Prophesee Gen4 cameras are 1280x720
-                            // Skip events with clearly invalid coordinates
-                            if ecf_event.x > 1280 || ecf_event.y > 720 {
-                                continue;
-                            }
-
-                            // Prophesee ECF timestamps are integer microseconds; stored
-                            // losslessly in f64 and declared Microseconds at the
-                            // build_polars_dataframe call site (2026-08-08 review, R4).
-                            all_events.push(Event {
-                                t: ecf_event.t as f64,
-                                x: ecf_event.x,
-                                y: ecf_event.y,
-                                // Store 0/1 like every other reader: build_polars_dataframe's
-                                // HDF5 branch converts 0/1 to -1/1 (mod.rs); storing -1/1 here
-                                // made that conversion map -1 to +1, destroying OFF events.
-                                polarity: if ecf_event.p > 0 { 1 } else { 0 },
-                            });
-                        }
-
-                        chunks_processed += 1;
-
-                        info!(
-                            chunk_idx = chunk_idx,
-                            events_in_chunk = event_count,
-                            total_events_so_far = all_events.len(),
-                            "Successfully processed ECF chunk"
-                        );
-                    }
-                    Err(e) => {
-                        chunks_failed_decoding += 1;
-                        warn!("Failed to decode ECF chunk {}: {}", chunk_idx, e);
-                        continue;
-                    }
-                }
+        // Convert PropheseeEvent to Event
+        for ecf_event in decoded_events {
+            // Validate coordinates - Prophesee Gen4 cameras are 1280x720
+            // Skip events with clearly invalid coordinates
+            if ecf_event.x > 1280 || ecf_event.y > 720 {
+                continue;
             }
-            Err(e) => {
-                chunks_failed_reading += 1;
-                // For the first chunk failure, return a helpful error
-                if chunk_idx == 0 {
-                    return Err(hdf5_metno::Error::Internal(format!(
-                        "Failed to read HDF5 chunks with native ECF decoder. \
-                         This may require HDF5 1.10.5+ or specific build options. \
-                         Error: {}",
-                        e
-                    )));
-                }
-                // For subsequent chunks, continue processing
-                warn!("Failed to read compressed chunk {}: {}", chunk_idx, e);
-            }
+
+            // Prophesee ECF timestamps are integer microseconds; stored
+            // losslessly in f64 and declared Microseconds at the
+            // build_polars_dataframe call site (2026-08-08 review, R4).
+            all_events.push(Event {
+                t: ecf_event.t as f64,
+                x: ecf_event.x,
+                y: ecf_event.y,
+                // Store 0/1 like every other reader: build_polars_dataframe's
+                // HDF5 branch converts 0/1 to -1/1 (mod.rs); storing -1/1 here
+                // made that conversion map -1 to +1, destroying OFF events.
+                polarity: if ecf_event.p > 0 { 1 } else { 0 },
+            });
         }
 
-        // Progress reporting for large files
-        if num_chunks > 10 && chunk_idx % (num_chunks / 10) == 0 {
-            let _progress = (chunk_idx as f64 / num_chunks as f64) * 100.0;
-        }
-    }
+        chunks_processed += 1;
 
-    if all_events.is_empty() {
-        Err(hdf5_metno::Error::Internal(
-            "No valid ECF event data found in HDF5 file".to_string(),
-        ))
-    } else {
-        // Validate that we loaded a reasonable proportion of the expected events
-        let loaded_ratio = all_events.len() as f64 / total_events as f64;
-
-        // Check for incomplete ECF decoding (first chunk only)
-        if loaded_ratio < 0.1 && all_events.len() == 16384 {
-            warn!(
-                "ECF decoding incomplete: only loaded {} of {} events ({:.2}%). \
-                 Successfully decoded first chunk but failed on subsequent chunks. \
-                 This indicates a bug in the ECF chunk iteration logic.",
-                all_events.len(),
-                total_events,
-                loaded_ratio * 100.0
-            );
-            // Continue for now to allow debugging, but this should be fixed
-            // return Err(...) once the chunk iteration is working
-        } else if loaded_ratio < 0.5 {
-            // Loaded less than 50% - warn but continue
-            warn!(
-                "Partial ECF data loaded: {} of {} events ({:.1}%)",
-                all_events.len(),
-                total_events,
-                loaded_ratio * 100.0
-            );
-        }
-
-        // Log success message with chunk processing statistics
         info!(
-            events = all_events.len(),
-            total = total_events,
-            ratio = format!("{:.2}%", loaded_ratio * 100.0),
-            chunks_total = num_chunks,
-            chunks_successful = chunks_processed,
-            chunks_failed_reading = chunks_failed_reading,
-            chunks_failed_extraction = chunks_failed_extraction,
-            chunks_failed_decoding = chunks_failed_decoding,
-            "Native Rust ECF decoder completed with chunk statistics"
+            chunk_idx = chunk_idx,
+            events_in_chunk = event_count,
+            total_events_so_far = all_events.len(),
+            "Successfully processed ECF chunk"
         );
-        Ok(all_events)
     }
+
+    // A decoded count short of the dataset's declared length is silent
+    // truncation (coordinate filtering above never drops in-range events
+    // from real captures) and must error rather than warn.
+    if all_events.len() != total_events {
+        return Err(hdf5_metno::Error::Internal(format!(
+            "ECF decode incomplete: decoded {} of {} events",
+            all_events.len(),
+            total_events
+        )));
+    }
+
+    info!(
+        events = all_events.len(),
+        total = total_events,
+        chunks_total = num_chunks,
+        chunks_successful = chunks_processed,
+        "Native Rust ECF decoder completed"
+    );
+    Ok(all_events)
 }
 
 /// Get filter IDs from a dataset
@@ -393,25 +307,6 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
     }
 
     Ok(compressed_data)
-}
-
-/// Complete end-to-end implementation structure for native ECF support
-pub mod native_ecf {
-
-    /// This shows what a complete implementation would look like
-    pub fn full_implementation_outline() {
-        // 1. Parse HDF5 file structure
-        // 2. Locate B-tree nodes containing chunk addresses
-        // 3. Read compressed chunks directly from file
-        // 4. Pass chunks to our ECF decoder
-        // 5. Return decoded events
-
-        // The implementation would:
-        // - Use our own HDF5 parser for chunk locations
-        // - Read raw bytes from the file
-        // - Decode with our ECF codec
-        // - No external dependencies needed!
-    }
 }
 
 /// Extract ECF payload from HDF5 chunk data
@@ -644,55 +539,21 @@ pub fn load_events_from_hdf5(
                 return Ok(DataFrame::empty());
             }
 
-            // This is a Prophesee HDF5 format - try native Rust ECF decoder first
-            info!("Attempting native Rust ECF decoder for {}", path);
-            match read_prophesee_hdf5_native(path) {
-                Ok(events) => {
-                    info!("Native ECF decoder succeeded with {} events", events.len());
-                    return python::build_polars_dataframe(
-                        &events,
-                        EventFormat::HDF5,
-                        TimestampUnit::Microseconds,
-                    )
-                    .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
-                }
-                Err(e) => {
-                    warn!("Native ECF decoder failed: {}", e);
-                    // Native ECF decoder failed, will try Python fallback
-                }
-            }
-
-            // Try Python fallback for ECF decoding
-            info!("Trying Python fallback for ECF decoding");
-            match call_python_prophesee_fallback(path) {
-                Ok(events) => {
-                    info!(events = events.height(), "Python fallback loaded events");
-                    return Ok(events);
-                }
-                Err(e) => {
-                    error!("Python fallback failed: {}", e);
-                    // Try Rust ECF decoder as final fallback
-                    match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
-                        Ok(events) => {
-                            return python::build_polars_dataframe(
-                                &events,
-                                EventFormat::HDF5,
-                                TimestampUnit::Microseconds,
-                            )
-                            .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
-                        }
-                        Err(decoder_err) => {
-                            warn!(
-                                "Rust ECF decoder also failed: {}. Original error: {}",
-                                decoder_err, e
-                            );
-                        }
-                    }
-                }
-            }
-
-            // If all attempts failed, return error
-            return Err("Failed to decode Prophesee HDF5 file with all available decoders".into());
+            // This is a Prophesee HDF5 format: decode with the native Rust ECF
+            // decoder. There is no fallback: the Python fallback imported a
+            // module that has never existed under python/evlib, and the old
+            // Rust fallback re-ran this same decoder that had just failed
+            // (2026-08-08 review, R8). A decode failure now propagates with
+            // its specific error instead of a generic "all decoders failed".
+            info!("Decoding Prophesee ECF HDF5 file {}", path);
+            let events = read_prophesee_hdf5_native(path)
+                .map_err(|e| format!("Native ECF decode failed for {path}: {e}"))?;
+            return python::build_polars_dataframe(
+                &events,
+                EventFormat::HDF5,
+                TimestampUnit::Microseconds,
+            )
+            .map_err(|e| format!("DataFrame conversion failed: {e}").into());
         }
     }
 
@@ -705,30 +566,49 @@ pub fn load_events_from_hdf5(
             file.dataset("y"),
             file.dataset("p"),
         ) {
-            // Read all data at once (for smaller files)
-            let t_arr: Vec<f64> = t_dataset.read_raw()?.to_vec();
             let x_arr: Vec<u16> = x_dataset.read_raw()?.to_vec();
             let y_arr: Vec<u16> = y_dataset.read_raw()?.to_vec();
             let p_arr: Vec<i8> = p_dataset.read_raw()?.to_vec();
 
-            // Convert to Event structs
-            let events: Vec<Event> = t_arr
-                .iter()
-                .zip(x_arr.iter().zip(y_arr.iter().zip(p_arr.iter())))
-                .map(|(&t, (&x, (&y, &p)))| Event {
-                    t,
-                    x,
-                    y,
-                    polarity: p,
-                })
-                .collect();
+            // read_raw::<f64>() would silently convert an integer-typed t
+            // dataset to f64 through HDF5's implicit type conversion, so
+            // an integer dataset must be routed through the microsecond
+            // path explicitly rather than mislabelled as seconds.
+            let t_descriptor = t_dataset.dtype()?.to_descriptor()?;
+            let (events, unit) = match t_descriptor {
+                hdf5_metno::types::TypeDescriptor::Integer(_)
+                | hdf5_metno::types::TypeDescriptor::Unsigned(_) => {
+                    let t_arr: Vec<i64> = t_dataset.read_raw()?.to_vec();
+                    let events: Vec<Event> = t_arr
+                        .iter()
+                        .zip(x_arr.iter().zip(y_arr.iter().zip(p_arr.iter())))
+                        .map(|(&t, (&x, (&y, &p)))| Event {
+                            t: t as f64, // Integer microseconds
+                            x,
+                            y,
+                            polarity: p,
+                        })
+                        .collect();
+                    (events, TimestampUnit::Microseconds)
+                }
+                _ => {
+                    let t_arr: Vec<f64> = t_dataset.read_raw()?.to_vec();
+                    let events: Vec<Event> = t_arr
+                        .iter()
+                        .zip(x_arr.iter().zip(y_arr.iter().zip(p_arr.iter())))
+                        .map(|(&t, (&x, (&y, &p)))| Event {
+                            t,
+                            x,
+                            y,
+                            polarity: p,
+                        })
+                        .collect();
+                    (events, TimestampUnit::Seconds)
+                }
+            };
 
-            return python::build_polars_dataframe(
-                &events,
-                EventFormat::HDF5,
-                TimestampUnit::Seconds,
-            )
-            .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+            return python::build_polars_dataframe(&events, EventFormat::HDF5, unit)
+                .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
         }
     }
 
@@ -802,97 +682,4 @@ pub fn load_events_from_hdf5(
         path
     )
     .into())
-}
-
-fn call_python_prophesee_fallback(path: &str) -> Result<DataFrame, Box<dyn std::error::Error>> {
-    Python::with_gil(|py| {
-        // Import the Python fallback module
-        let hdf5_prophesee = match py.import("evlib.hdf5_prophesee") {
-            Ok(module) => module,
-            Err(e) => {
-                return Err(format!("Failed to import evlib.hdf5_prophesee module: {}", e).into())
-            }
-        };
-
-        // Call the Python function to load events
-        let result = match hdf5_prophesee.call_method1("load_hdf5_prophesee", (path,)) {
-            Ok(result) => result,
-            Err(e) => return Err(format!("Python fallback failed to load events: {}", e).into()),
-        };
-
-        // Extract the dictionary result
-        let result_dict = match result.downcast::<pyo3::types::PyDict>() {
-            Ok(dict) => dict,
-            Err(e) => return Err(format!("Result is not a dictionary: {}", e).into()),
-        };
-
-        // Extract arrays from the dictionary
-        let x_arr = result_dict
-            .get_item("x")
-            .map_err(|e| format!("Failed to get x item: {}", e))?
-            .ok_or_else(|| "Missing x array".to_string())?
-            .extract::<Vec<u16>>()
-            .map_err(|e| format!("Failed to extract x array: {}", e))?;
-
-        let y_arr = result_dict
-            .get_item("y")
-            .map_err(|e| format!("Failed to get y item: {}", e))?
-            .ok_or_else(|| "Missing y array".to_string())?
-            .extract::<Vec<u16>>()
-            .map_err(|e| format!("Failed to extract y array: {}", e))?;
-
-        let t_arr = result_dict
-            .get_item("t")
-            .map_err(|e| format!("Failed to get timestamp item: {}", e))?
-            .ok_or_else(|| "Missing timestamp array".to_string())?
-            .extract::<Vec<f64>>()
-            .map_err(|e| format!("Failed to extract timestamp array: {}", e))?;
-
-        let p_arr = result_dict
-            .get_item("p")
-            .map_err(|e| format!("Failed to get polarity item: {}", e))?
-            .ok_or_else(|| "Missing polarity array".to_string())?
-            .extract::<Vec<i8>>()
-            .map_err(|e| format!("Failed to extract polarity array: {}", e))?;
-
-        // Convert to Event structs
-        let events: Vec<Event> = t_arr
-            .iter()
-            .zip(x_arr.iter().zip(y_arr.iter().zip(p_arr.iter())))
-            .map(|(&t, (&x, (&y, &p)))| Event {
-                t,
-                x,
-                y,
-                polarity: p,
-            })
-            .collect();
-
-        // Convert to DataFrame
-        python::build_polars_dataframe(&events, EventFormat::HDF5, TimestampUnit::Seconds)
-            .map_err(|e| format!("DataFrame conversion failed: {}", e).into())
-    })
-}
-
-fn try_rust_ecf_decoder(
-    _cd_group: &Group,
-    _events_dataset: &Dataset,
-    total_events: usize,
-) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
-    info!(events = total_events, "Attempting native Rust ECF decode");
-
-    // Use our integrated HDF5 + ECF reader
-    // Get the file path from the dataset
-    let file = _events_dataset.file()?;
-    let filename = file.filename();
-
-    match read_prophesee_hdf5_native(&filename) {
-        Ok(events) => {
-            info!(
-                events = events.len(),
-                "Native Rust ECF decoder successfully loaded events"
-            );
-            Ok(events)
-        }
-        Err(e) => Err(format!("Native ECF decoding failed: {}", e).into()),
-    }
 }
