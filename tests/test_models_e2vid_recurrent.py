@@ -1,16 +1,22 @@
 """E2VIDRecurrent must load the bundled recurrent checkpoint completely."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
 
-import evlib.models.e2vid as e2vid_mod
+from evlib.models.e2vid_recurrent import E2VIDRecurrent
+
+# e2vid-lite.pth (bundled under python/evlib/models/weights/) is gitignored, so
+# it is present locally but absent on CI runners. Skip the whole module when
+# missing, matching tests/test_rvt_weight_load.py for the rvt-t.ckpt case.
+pytestmark = pytest.mark.skipif(
+    not E2VIDRecurrent.weights_path().exists(),
+    reason="e2vid-lite.pth is gitignored (local-only); skipping weight-load checks",
+)
 
 
 def _weights_path():
-    return Path(e2vid_mod.__file__).parent / "weights" / "e2vid-lite.pth"
+    return E2VIDRecurrent.weights_path()
 
 
 def _random_events(count, height, width, seed):
@@ -24,8 +30,6 @@ def _random_events(count, height, width, seed):
 
 
 def test_checkpoint_loads_strict():
-    from evlib.models import E2VIDRecurrent
-
     model = E2VIDRecurrent(pretrained=True)
     ckpt = torch.load(_weights_path(), map_location="cpu", weights_only=True)
     state = ckpt.get("state_dict", ckpt)
@@ -35,8 +39,6 @@ def test_checkpoint_loads_strict():
 
 
 def test_reconstruct_carries_state():
-    from evlib.models import E2VIDRecurrent
-
     model = E2VIDRecurrent(pretrained=True)
     events = _random_events(5000, height=48, width=64, seed=7)
     frame1, state = model.reconstruct(events, height=48, width=64, state=None)
@@ -47,8 +49,6 @@ def test_reconstruct_carries_state():
 
 
 def test_reconstruct_returns_float32_in_unit_range():
-    from evlib.models import E2VIDRecurrent
-
     model = E2VIDRecurrent(pretrained=True)
     events = _random_events(5000, height=48, width=64, seed=11)
     frame, _ = model.reconstruct(events, height=48, width=64)
@@ -57,8 +57,6 @@ def test_reconstruct_returns_float32_in_unit_range():
 
 
 def test_state_holds_one_hidden_cell_pair_per_encoder():
-    from evlib.models import E2VIDRecurrent
-
     model = E2VIDRecurrent(pretrained=True)
     events = _random_events(5000, height=48, width=64, seed=13)
     _, state = model.reconstruct(events, height=48, width=64)
@@ -71,8 +69,6 @@ def test_state_holds_one_hidden_cell_pair_per_encoder():
 
 
 def test_architecture_is_read_from_the_checkpoint():
-    from evlib.models import E2VIDRecurrent
-
     ckpt = torch.load(_weights_path(), map_location="cpu", weights_only=True)
     state = ckpt.get("state_dict", ckpt)
     head_weight = state["unetrecurrent.head.conv2d.weight"]
@@ -86,8 +82,6 @@ def test_architecture_is_read_from_the_checkpoint():
 
 
 def test_out_of_range_coordinates_raise():
-    from evlib.models import E2VIDRecurrent
-
     model = E2VIDRecurrent(pretrained=True)
     events = (
         np.array([0, 64], dtype=np.int64),
