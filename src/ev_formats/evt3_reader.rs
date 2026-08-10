@@ -751,7 +751,7 @@ impl Evt3Reader {
                                         if decoder_state.has_y && decoder_state.has_timestamp {
                                             let x = x_event.x;
                                             let y = decoder_state.current_y;
-                                            let timestamp = decoder_state.current_timestamp as f64;
+                                            let timestamp = decoder_state.current_timestamp;
                                             let polarity = x_event.polarity;
                                             // Validate coordinates if configured
                                             if self.config.validate_coordinates {
@@ -775,7 +775,12 @@ impl Evt3Reader {
                                                 }
                                             }
                                             // Add event directly to DataFrame builder
-                                            builder.add_event(x, y, timestamp, polarity);
+                                            builder.add_event_microseconds(
+                                                x,
+                                                y,
+                                                timestamp as i64,
+                                                polarity,
+                                            );
                                             // Check max events limit
                                             if let Some(max_events) = self.config.max_events {
                                                 if builder.len() >= max_events {
@@ -809,8 +814,7 @@ impl Evt3Reader {
                                             {
                                                 let x = decoder_state.vect_base_x + bit;
                                                 let y = decoder_state.current_y;
-                                                let timestamp =
-                                                    decoder_state.current_timestamp as f64;
+                                                let timestamp = decoder_state.current_timestamp;
                                                 let polarity = decoder_state.vect_base_polarity;
                                                 // Validate coordinates if configured
                                                 if self.config.validate_coordinates {
@@ -827,7 +831,12 @@ impl Evt3Reader {
                                                     }
                                                 }
                                                 // Add event directly to DataFrame builder
-                                                builder.add_event(x, y, timestamp, polarity);
+                                                builder.add_event_microseconds(
+                                                    x,
+                                                    y,
+                                                    timestamp as i64,
+                                                    polarity,
+                                                );
                                                 // Check max events limit
                                                 if let Some(max_events) = self.config.max_events {
                                                     if builder.len() >= max_events {
@@ -858,8 +867,7 @@ impl Evt3Reader {
                                             {
                                                 let x = decoder_state.vect_base_x + bit as u16;
                                                 let y = decoder_state.current_y;
-                                                let timestamp =
-                                                    decoder_state.current_timestamp as f64;
+                                                let timestamp = decoder_state.current_timestamp;
                                                 let polarity = decoder_state.vect_base_polarity;
                                                 // Validate coordinates if configured
                                                 if self.config.validate_coordinates {
@@ -876,7 +884,12 @@ impl Evt3Reader {
                                                     }
                                                 }
                                                 // Add event directly to DataFrame builder
-                                                builder.add_event(x, y, timestamp, polarity);
+                                                builder.add_event_microseconds(
+                                                    x,
+                                                    y,
+                                                    timestamp as i64,
+                                                    polarity,
+                                                );
                                                 // Check max events limit
                                                 if let Some(max_events) = self.config.max_events {
                                                     if builder.len() >= max_events {

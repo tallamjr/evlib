@@ -4,7 +4,9 @@ use crate::ev_formats::EventFormat;
 /// This is a minimal event representation used primarily for streaming and benchmark operations
 #[derive(Debug, Clone, Copy)]
 pub struct Event {
-    /// Timestamp in seconds
+    /// Timestamp value; its unit is not fixed here. Each site that builds a
+    /// DataFrame from `Event`s declares the unit explicitly via `TimestampUnit`
+    /// (2026-08-08 review, R4).
     pub t: f64,
     /// X coordinate (column)
     pub x: u16,
@@ -341,20 +343,13 @@ impl PolarsEventStreamer {
         }
     }
 
-    /// Convert timestamp to microseconds for Polars Duration type
+    /// Convert a seconds timestamp to microseconds for the Polars Duration type.
     ///
-    /// Reuses the existing timestamp conversion logic to ensure consistency
+    /// `PolarsEventStreamer` is benchmark-only (its callers feed seconds, e.g.
+    /// `benchmarks/rust/streaming_performance.rs`); there is no magnitude
+    /// guessing here (2026-08-08 review, R4).
     pub fn convert_timestamp(&self, timestamp: f64) -> i64 {
-        if timestamp >= 1_000_000_000.0 {
-            // Likely nanoseconds, convert to microseconds
-            (timestamp / 1_000.0) as i64
-        } else if timestamp >= 1_000.0 {
-            // Likely already in microseconds
-            timestamp as i64
-        } else {
-            // Likely in seconds, convert to microseconds
-            (timestamp * 1_000_000.0) as i64
-        }
+        (timestamp * 1_000_000.0) as i64
     }
 }
 
@@ -483,12 +478,9 @@ mod tests {
     fn test_timestamp_conversion() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
 
-        // Test seconds to microseconds conversion
+        // Seconds to microseconds conversion only: PolarsEventStreamer's callers
+        // always feed seconds (2026-08-08 review, R4).
         assert_eq!(streamer.convert_timestamp(1.0), 1_000_000);
         assert_eq!(streamer.convert_timestamp(0.001), 1_000);
-
-        // Test microseconds passthrough
-        assert_eq!(streamer.convert_timestamp(1_000_000.0), 1_000_000);
-        assert_eq!(streamer.convert_timestamp(2_000_000.0), 2_000_000);
     }
 }

@@ -116,6 +116,33 @@ fn test_read_prophesee_hdf5_native_preserves_both_polarities() {
     );
 }
 
+/// R4 regression: ECF timestamps are integer microseconds and must round trip
+/// exactly. The old path divided to seconds and re-multiplied through the
+/// magnitude heuristic; float truncation turned 249 us into 248 us, and any
+/// value at or above 1e9 us (a 16.7 minute recording) was divided by 1000.
+#[test]
+fn test_native_ecf_timestamps_round_trip_exactly() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let ts: [i64; 4] = [249, 251, 489, 1_500_000_000];
+    let source_events: Vec<PropheseeEvent> = ts
+        .iter()
+        .enumerate()
+        .map(|(i, &t)| PropheseeEvent {
+            x: 10 + i as u16,
+            y: 20,
+            p: 1,
+            t,
+        })
+        .collect();
+    let payload = PropheseeECFEncoder::new().encode(&source_events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("exact_ts.h5");
+    write_synthetic_ecf_hdf5(path.to_str().unwrap(), ts.len(), ECF_FILTER_ID, &payload);
+    let events = read_prophesee_hdf5_native(path.to_str().unwrap()).unwrap();
+    let got: Vec<i64> = events.iter().map(|e| e.t as i64).collect();
+    assert_eq!(got, ts.to_vec(), "microsecond round trip must be exact");
+}
+
 /// Write a minimal Prophesee-style HDF5 file: group "CD", chunked 1-D compound dataset
 /// "events" (x: u16, y: u16, p: i16, t: i64, matching `PropheseeEvent`'s repr(C) layout),
 /// a single chunk covering the whole dataset, with the ECF filter (id 36559) registered as

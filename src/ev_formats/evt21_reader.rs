@@ -641,7 +641,6 @@ impl Evt21Reader {
                                                     let y = vectorized_event.y;
                                                     let full_timestamp = current_time_base
                                                         + vectorized_event.timestamp as u64;
-                                                    let timestamp = full_timestamp as f64;
                                                     let polarity = vectorized_event.polarity;
                                                     // Validate coordinates if configured
                                                     if self.config.validate_coordinates {
@@ -658,7 +657,12 @@ impl Evt21Reader {
                                                         }
                                                     }
                                                     // Add event directly to DataFrame builder
-                                                    builder.add_event(x, y, timestamp, polarity);
+                                                    builder.add_event_microseconds(
+                                                        x,
+                                                        y,
+                                                        full_timestamp as i64,
+                                                        polarity,
+                                                    );
                                                     // Check max events limit
                                                     if let Some(max_events) = self.config.max_events
                                                     {

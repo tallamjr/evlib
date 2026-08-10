@@ -10,7 +10,7 @@ our Rust ECF codec to decode Prophesee files without external dependencies.
 
 use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
 use crate::ev_formats::streaming::Event;
-use crate::ev_formats::{python, EventFormat};
+use crate::ev_formats::{python, EventFormat, TimestampUnit};
 use hdf5_metno::{Dataset, File as H5File, Group, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use polars::prelude::DataFrame;
@@ -142,10 +142,11 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
                                 continue;
                             }
 
-                            // Prophesee ECF timestamps are in microseconds
-                            // Convert to seconds for consistency with evlib Event format
+                            // Prophesee ECF timestamps are integer microseconds; stored
+                            // losslessly in f64 and declared Microseconds at the
+                            // build_polars_dataframe call site (2026-08-08 review, R4).
                             all_events.push(Event {
-                                t: ecf_event.t as f64 / 1_000_000.0, // Convert microseconds to seconds
+                                t: ecf_event.t as f64,
                                 x: ecf_event.x,
                                 y: ecf_event.y,
                                 // Store 0/1 like every other reader: build_polars_dataframe's
@@ -603,13 +604,14 @@ pub fn load_events_from_hdf5(
                     let y_chunk: Vec<u16> = y_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
                     let p_chunk: Vec<i8> = p_dataset.read_slice_1d(start_idx..end_idx)?.to_vec();
 
-                    // Convert chunk to events
+                    // Convert chunk to events; t_chunk holds integer microseconds,
+                    // declared Microseconds at the build_polars_dataframe call below.
                     for i in 0..chunk_len {
                         events.push(Event {
-                            t: t_chunk[i] as f64 / 1_000_000.0, // Convert i64 microseconds to seconds
-                            x: x_chunk[i],                      // Already u16
-                            y: y_chunk[i],                      // Already u16
-                            polarity: p_chunk[i],               // Keep as i8: 1 or -1
+                            t: t_chunk[i] as f64, // Integer microseconds
+                            x: x_chunk[i],        // Already u16
+                            y: y_chunk[i],        // Already u16
+                            polarity: p_chunk[i], // Keep as i8: 1 or -1
                         });
                     }
 
@@ -622,8 +624,12 @@ pub fn load_events_from_hdf5(
                     }
                 }
 
-                return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                    .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+                return python::build_polars_dataframe(
+                    &events,
+                    EventFormat::HDF5,
+                    TimestampUnit::Microseconds,
+                )
+                .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
             }
         }
     }
@@ -643,8 +649,12 @@ pub fn load_events_from_hdf5(
             match read_prophesee_hdf5_native(path) {
                 Ok(events) => {
                     info!("Native ECF decoder succeeded with {} events", events.len());
-                    return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                        .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+                    return python::build_polars_dataframe(
+                        &events,
+                        EventFormat::HDF5,
+                        TimestampUnit::Microseconds,
+                    )
+                    .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
                 }
                 Err(e) => {
                     warn!("Native ECF decoder failed: {}", e);
@@ -664,8 +674,12 @@ pub fn load_events_from_hdf5(
                     // Try Rust ECF decoder as final fallback
                     match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                         Ok(events) => {
-                            return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                                .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+                            return python::build_polars_dataframe(
+                                &events,
+                                EventFormat::HDF5,
+                                TimestampUnit::Microseconds,
+                            )
+                            .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
                         }
                         Err(decoder_err) => {
                             warn!(
@@ -709,8 +723,12 @@ pub fn load_events_from_hdf5(
                 })
                 .collect();
 
-            return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+            return python::build_polars_dataframe(
+                &events,
+                EventFormat::HDF5,
+                TimestampUnit::Seconds,
+            )
+            .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
         }
     }
 
@@ -738,15 +756,19 @@ pub fn load_events_from_hdf5(
                         .iter()
                         .zip(x_arr.iter().zip(y_arr.iter().zip(p_arr.iter())))
                         .map(|(&t, (&x, (&y, &p)))| Event {
-                            t: t as f64 / 1_000_000.0, // Convert microseconds to seconds
+                            t: t as f64, // Integer microseconds
                             x,
                             y,
                             polarity: p,
                         })
                         .collect();
 
-                    return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                        .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+                    return python::build_polars_dataframe(
+                        &events,
+                        EventFormat::HDF5,
+                        TimestampUnit::Microseconds,
+                    )
+                    .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
                 } else {
                     // Try f64 (seconds) as fallback
                     let t_arr: Vec<f64> = t_dataset.read_raw()?.to_vec();
@@ -762,8 +784,12 @@ pub fn load_events_from_hdf5(
                         })
                         .collect();
 
-                    return python::build_polars_dataframe(&events, EventFormat::HDF5)
-                        .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
+                    return python::build_polars_dataframe(
+                        &events,
+                        EventFormat::HDF5,
+                        TimestampUnit::Seconds,
+                    )
+                    .map_err(|e| format!("DataFrame conversion failed: {}", e).into());
                 }
             }
         } else {
@@ -842,7 +868,7 @@ fn call_python_prophesee_fallback(path: &str) -> Result<DataFrame, Box<dyn std::
             .collect();
 
         // Convert to DataFrame
-        python::build_polars_dataframe(&events, EventFormat::HDF5)
+        python::build_polars_dataframe(&events, EventFormat::HDF5, TimestampUnit::Seconds)
             .map_err(|e| format!("DataFrame conversion failed: {}", e).into())
     })
 }
