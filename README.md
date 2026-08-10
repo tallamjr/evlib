@@ -206,7 +206,9 @@ representations-versus-tonic comparison.
 ## Installation
 
 ```bash
-# Basic install
+# Basic install: macOS and Linux wheels statically link HDF5, so HDF5 files
+# (including Prophesee ECF-compressed data) read through the Rust path with
+# no system HDF5 install and no hdf5plugin needed.
 pip install evlib
 
 # With PyTorch integration
@@ -220,8 +222,9 @@ git clone https://github.com/tallamjr/evlib.git
 cd evlib
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -e ".[dev]"
-maturin develop                    # default minimal build
-maturin develop --features hdf5    # opt-in HDF5 support (Linux/macOS)
+maturin develop                           # default minimal build, no HDF5
+maturin develop --features hdf5-static    # HDF5 built from source, no system HDF5 needed
+maturin develop --features hdf5           # HDF5 dynamically linked against a system install
 ```
 
 > [!Warning]
@@ -230,31 +233,46 @@ maturin develop --features hdf5    # opt-in HDF5 support (Linux/macOS)
 > binding (`hdf5-metno-sys 0.10.1`) only supports HDF5 1.8/1.10/1.12/1.14 and
 > panics on a 2.x header with `Invalid H5_VERSION: "2.1.1"`. Homebrew now ships
 > 2.x, and even its `hdf5@1.14` formula currently resolves to 2.1.1, so there is
-> no Homebrew-based fix. To build the feature, point `HDF5_DIR` at a genuine
-> 1.8-1.14 install from another source, for example conda-forge:
+> no Homebrew-based fix.
+>
+> Prefer `--features hdf5-static` (shown above) instead: it builds HDF5 from
+> source, so no system HDF5 install is needed at all, and it is what the
+> release wheels use. On macOS it relies on a vendored patch to
+> `hdf5-metno-sys` shipped in this repository (see
+> `vendor/hdf5-metno-sys-0.10.1-static-fix/PROVENANCE.md`), so it works for
+> builds from this repository but not for plain crates.io consumers of the
+> `evlib` crate.
+>
+> If you do need the dynamic `--features hdf5` build, point `HDF5_DIR` at a
+> genuine 1.8-1.14 install from another source, for example conda-forge:
 >
 > ```bash
 > conda install -c conda-forge "hdf5=1.14"
 > HDF5_DIR="$CONDA_PREFIX" maturin develop --features hdf5
 > ```
 >
-> The default build (no `--features hdf5`) is unaffected: read HDF5 via `h5py`,
-> or use the EVT2/EVT3 readers (which need no HDF5 feature). On Windows, HDF5 is
-> always read through `h5py`.
+> Without either HDF5 feature, HDF5 files can still be read via `h5py`, or via
+> the EVT2/EVT3 readers (which need no HDF5 feature). On Windows, neither HDF5
+> feature is available; HDF5 is always read through `h5py` there.
 
 Distributable wheels are built with the opt-in `extension-module` feature, e.g.
-`maturin build --release --features python,polars,arrow,extension-module`. That
-feature is deliberately off by default so `cargo test` and `maturin develop`
-build and run without linking errors.
+`maturin build --release --features python,polars,arrow,extension-module,hdf5-static`
+on macOS/Linux (Windows wheels omit `hdf5-static`, since HDF5 support is not
+available on Windows). The `extension-module` feature is deliberately off by
+default so `cargo test` and `maturin develop` build and run without linking
+errors.
 
 GPU scatter-add kernels are opt-in features. For the CUDA backend, build the
 nvcc kernel and point `EVLIB_CUDA_LIB` at the resulting `librvt_scatter.so`. For
 the Metal backend on Apple Silicon, build with
 `CC=clang maturin develop --features metal`.
 
-HDF5 is opt-in on Linux/macOS and unavailable on Windows; use `h5py` directly
-for HDF5 I/O on Windows. Full details and platform-specific notes live in
-the [installation guide](https://tallamjr.github.io/evlib/getting-started/installation/).
+Since 0.13.1, the published macOS and Linux wheels include statically linked
+HDF5 support out of the box; source builds opt in with `--features hdf5` or
+`--features hdf5-static` (see above). HDF5 support is unavailable on Windows
+in all cases; use `h5py` directly for HDF5 I/O there. Full details and
+platform-specific notes live in the
+[installation guide](https://tallamjr.github.io/evlib/getting-started/installation/).
 
 ## Documentation
 

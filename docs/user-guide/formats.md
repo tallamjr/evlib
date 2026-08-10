@@ -9,13 +9,13 @@ This guide covers all supported event data formats in evlib, including format sp
 | Format | Extension | Status | Use Case |
 |--------|-----------|--------|----------|
 | **Text** | `.txt`, `.csv` | Production | Human-readable, debugging |
-| **HDF5** | `.h5`, `.hdf5` | Production (opt-in `--features hdf5`, Unix only) | Large datasets, fast I/O |
+| **HDF5** | `.h5`, `.hdf5` | Production (included in macOS/Linux wheels since 0.13.1) | Large datasets, fast I/O |
 | **EVT2** | `.raw` | Production (matches OpenEB exactly) | Prophesee cameras (Gen 1-3) |
 | **EVT3** | `.raw`, `.evt3` | Production | Prophesee cameras (Gen 4+) |
 | **AEDAT** | `.aedat`, `.aedat4` | Production | iniVation cameras |
 | **AER** | `.aer` | Production | Address Event Representation |
 
-HDF5 is opt-in via `--features hdf5` on Linux and macOS; the other formats work without it. On Windows, use `h5py` directly for HDF5 I/O.
+Since 0.13.1, the macOS and Linux PyPI wheels statically link HDF5, so HDF5 reading (including Prophesee ECF-compressed data) works out of the box with `pip install evlib`; no system HDF5 or `hdf5plugin` needed. Source builds opt in with `--features hdf5-static` (built from source, no system HDF5) or `--features hdf5` (dynamic, needs a system install); the other formats work without either feature. On Windows, HDF5 support is not available in the native reader; use `h5py` directly for HDF5 I/O there.
 
 ## Format Specifications
 
@@ -106,9 +106,9 @@ print(f"Successfully saved {len(xs)} events to {output_path}")
 - Cross-platform binary format
 
 **Disadvantages:**
-- Requires HDF5 libraries
+- Not available on Windows via the native reader (use `h5py` there)
 - Not human-readable
-- Slightly more complex setup
+- Source builds need `--features hdf5-static` or `--features hdf5` (the PyPI wheel already includes it)
 
 ### EVT2 Format (.raw)
 
@@ -526,6 +526,6 @@ See the [Contributing Guide](../development/contributing.md) for detailed instru
 
 ## Summary
 
-evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. All formats are production ready, and EVT2 decode matches the OpenEB reference exactly. The HDF5 format is recommended for performance-critical applications and large datasets, and is opt-in via `--features hdf5` on Linux and macOS.
+evlib provides robust support for multiple event data formats, with automatic format detection and conversion capabilities. All formats are production ready, and EVT2 decode matches the OpenEB reference exactly. The HDF5 format is recommended for performance-critical applications and large datasets; it is included by default in the macOS and Linux wheels, with `--features hdf5-static` and `--features hdf5` available for source builds.
 
 For questions or issues with specific formats, please check the [Testing Documentation](../development/testing.md) or file an issue on GitHub.

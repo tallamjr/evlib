@@ -49,7 +49,7 @@ GPU acceleration note: the CUDA scatter-add backend is Linux-oriented (NVIDIA) a
 
 #### HDF5 Support
 
-**What's affected**: Native Rust HDF5 read and write functions (including `save_events_to_hdf5()`) are not available on Windows. HDF5 is opt-in via `--features hdf5` on Linux and macOS; it is not supported on Windows.
+**What's affected**: Native Rust HDF5 read and write functions (including `save_events_to_hdf5()`) are not available on Windows. On Linux and macOS, the PyPI wheels include statically linked HDF5 support since 0.13.1, and source builds can opt in with `--features hdf5-static` (built from source, no system HDF5 needed) or `--features hdf5` (dynamically linked against a system install); none of this is available on Windows.
 
 **Why**: HDF5 system libraries are complex to build on Windows with the MSVC toolchain.
 
