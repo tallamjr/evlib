@@ -16,7 +16,7 @@ evlib follows a **"robust over rapid"** philosophy:
 
 - **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Rust**: nightly toolchain (pinned in `rust-toolchain.toml`; install via [rustup.rs](https://rustup.rs/))
-- **System dependencies**: pkg-config, cmake; HDF5 only when building `--features hdf5`
+- **System dependencies**: pkg-config, cmake; a system HDF5 install is only needed when building `--features hdf5` (dynamic linking). Use `--features hdf5-static` instead to build HDF5 from source with no system HDF5 needed.
 
 ### Installation
 

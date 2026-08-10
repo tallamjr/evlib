@@ -176,7 +176,8 @@ extension-module = ["pyo3/extension-module"]
 polars           = ["dep:polars"]
 arrow            = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
 zero-copy        = ["arrow"]                       # alias for clarity
-hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only
+hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only, dynamic link
+hdf5-static      = ["hdf5", "hdf5-metno/static", "hdf5-metno/zlib"]  # Unix only, builds HDF5 from source
 cuda             = ["dep:libloading"]              # runtime-loaded CUDA scatter-add kernel
 metal            = ["dep:metal", "dep:objc"]       # Metal scatter-add kernel, macOS target only
 ```
@@ -184,7 +185,7 @@ metal            = ["dep:metal", "dep:objc"]       # Metal scatter-add kernel, m
 Key points:
 
 - `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,arrow,extension-module`.
-- `hdf5` is opt-in and Unix only. On Windows the underlying HDF5 dependencies are not available, so the feature compiles to no-op stubs there and Python `h5py` is used instead.
+- `hdf5` and `hdf5-static` are opt-in and Unix only. `hdf5` links dynamically against a system HDF5 install; `hdf5-static` builds HDF5 from source instead, so no system HDF5 is needed. Release wheels for macOS and Linux are built with `hdf5-static`, so `pip install evlib` already includes statically linked HDF5 (and ECF) support on those platforms since 0.13.1. On Windows neither feature's underlying HDF5 dependencies are available, so they compile to no-op stubs there and Python `h5py` is used instead.
 - `zero-copy` is an alias for `arrow`.
 - `cuda` enables the custom CUDA scatter-add backend. It pulls in `libloading` so the `nvcc`-built `librvt_scatter.so` can be loaded at runtime; there is no link-time CUDA dependency. Set `EVLIB_CUDA_LIB` to point at the built library.
 - `metal` enables the Metal/MSL scatter-add backend on Apple Silicon. It pulls in `metal` and `objc` and is restricted to the macOS target. Build with `CC=clang`.
@@ -194,9 +195,10 @@ GPU acceleration comes from two complementary places: cudf-polars at the Python 
 ### Common commands
 
 ```bash
-maturin develop                 # default minimal build (polars + python + arrow)
-maturin develop --features hdf5 # opt-in HDF5 (Linux/macOS)
-maturin develop --release       # release build for performance work
+maturin develop                        # default minimal build (polars + python + arrow), no HDF5
+maturin develop --features hdf5-static # HDF5 built from source, no system HDF5 needed (Linux/macOS)
+maturin develop --features hdf5        # HDF5 dynamically linked against a system install (Linux/macOS)
+maturin develop --release              # release build for performance work
 cargo test                      # Rust tests (no special flags needed)
 pytest                          # Python tests
 ```

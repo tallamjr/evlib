@@ -27,7 +27,7 @@ designed for scalable data processing with real-world event camera datasets.
 
 ## Core Features
 
-- **Universal Format Support**: Load data from AEDAT, EVT2/3, AER, text, and H5 formats (HDF5/H5 is opt-in via `--features hdf5`, available on Linux and macOS only, not Windows; use `h5py` directly for HDF5 I/O on Windows). EVT2 decode is byte-identical to OpenEB (there is an OpenEB conformance gate).
+- **Universal Format Support**: Load data from AEDAT, EVT2/3, AER, text, and H5 formats. Since 0.13.1, `pip install evlib` on macOS and Linux includes HDF5 support (including Prophesee ECF) statically linked into the wheel, no system HDF5 or `hdf5plugin` needed; Windows wheels have no HDF5, use `h5py` directly there. Building from source, HDF5 is opt-in via `--features hdf5` (dynamic, needs a system HDF5 install) or `--features hdf5-static` (built from source, no system HDF5 needed), both Linux/macOS only. EVT2 decode is byte-identical to OpenEB (there is an OpenEB conformance gate).
 - **Automatic Format Detection**: No need to specify format types manually
 - **Polars DataFrame Integration**: High-performance lazy DataFrame operations; `load_events` returns a `LazyFrame` that collects on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`)
 - **Event Filtering**: Comprehensive filtering with temporal, spatial, and polarity options
