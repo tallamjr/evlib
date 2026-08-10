@@ -5,24 +5,26 @@
 - **Python**: ≥ 3.11 (supported: 3.11, 3.12, 3.13; 3.12 recommended)
 - **Operating System**: Linux, macOS, or Windows
 
-HDF5 is **opt-in**: EVT2/3, AEDAT, AER and text formats all work without it. You only need HDF5 system libraries if you build the Rust HDF5 reader with `--features hdf5` (Linux and macOS only). On Windows, use `h5py` directly for HDF5 I/O.
+Since 0.13.1, the PyPI wheels for macOS and Linux statically link HDF5, so `pip install evlib` reads HDF5 files (including Prophesee ECF-compressed data) through the Rust path with no system HDF5 install and no `hdf5plugin` needed. Windows wheels do not include HDF5; use `h5py` directly for HDF5 I/O there.
+
+When building from source, HDF5 support is **opt-in**: EVT2/3, AEDAT, AER and text formats all work without it. Two Cargo features add HDF5 support on Linux and macOS: `--features hdf5-static` builds HDF5 from source, so no system HDF5 install is needed (this is what the release wheels use); `--features hdf5` links dynamically against a system HDF5 install instead. Windows source builds have neither feature available.
 
 ## System Dependencies
 
-`pkg-config` is the only system dependency for a default build. HDF5 system libraries are needed only for an opt-in `--features hdf5` build.
+`pkg-config` is the only system dependency for a default build. System HDF5 libraries are needed only for a dynamically linked `--features hdf5` build; a `--features hdf5-static` build needs no system HDF5.
 
 ### Ubuntu/Debian
 ```bash
 sudo apt update
 sudo apt install pkg-config
-# Only if building with --features hdf5:
+# Only if building with --features hdf5 (dynamic linking):
 sudo apt install libhdf5-dev
 ```
 
 ### macOS
 ```bash
 brew install pkg-config
-# Only if building with --features hdf5:
+# Only if building with --features hdf5 (dynamic linking):
 brew install hdf5
 ```
 
@@ -86,9 +88,12 @@ pip install maturin
 # Clone and build
 git clone https://github.com/tallamjr/evlib.git
 cd evlib
-maturin develop                    # default minimal build
-maturin develop --features hdf5    # opt-in HDF5 support (Linux/macOS)
+maturin develop                           # default minimal build, no HDF5
+maturin develop --features hdf5-static    # HDF5 built from source, no system HDF5 needed
+maturin develop --features hdf5           # HDF5 dynamically linked against a system install
 ```
+
+See the [main README](https://github.com/tallamjr/evlib#installation) for the Homebrew HDF5 2.x incompatibility warning and the conda-forge workaround for the dynamic `--features hdf5` build.
 
 ### GPU scatter-add kernels (optional)
 
@@ -122,7 +127,9 @@ print(f"Loaded {len(df)} events successfully!")
 #### HDF5 Library Not Found
 ```bash
 # Error: HDF5 library not found
-# Solution: Install system HDF5 libraries (see above)
+# Only relevant when building from source with the dynamic --features hdf5.
+# Solution: install system HDF5 libraries (see above), or build with
+# --features hdf5-static instead, which needs no system HDF5.
 ```
 
 #### Import Error
@@ -145,18 +152,14 @@ For optimal performance:
 
 1. **Use Python 3.12**: Latest Python version with performance improvements
 2. **Install NumPy optimized builds**: Use conda or optimized pip installations
-3. **HDF5 optimization**: Ensure HDF5 is compiled with compression support
+3. **HDF5 optimization**: if building from source with `--features hdf5`, ensure the system HDF5 install is compiled with compression support
 
 ### Docker Installation
 
+The PyPI wheel already includes statically linked HDF5, so no system HDF5 packages are needed:
+
 ```dockerfile
 FROM python:3.12-slim
-
-RUN apt-get update && apt-get install -y \
-    libhdf5-dev \
-    pkg-config \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install evlib[all]
 ```

@@ -6,11 +6,13 @@ This guide explains evlib's comprehensive support for Prophesee HDF5 files with 
 
 ECF is Prophesee's proprietary compression format used in their HDF5 files. evlib provides multiple approaches to handle ECF files, from using the official codec to fallback implementations.
 
+Since evlib 0.13.1, the default `pip install evlib` on macOS and Linux already reads ECF-compressed HDF5 files: the native Rust ECF decoder ships statically linked into the wheel, so no ECF plugin, `hdf5plugin`, or source build is required. The options below remain useful if you build evlib from source or prefer reading ECF files directly through `h5py`.
+
 ## Quick Start
 
-### Option 1: Official ECF Plugin (Recommended)
+### Option 1: Official ECF Plugin (h5py alternative)
 
-Install the official Prophesee ECF codec for the best performance and compatibility:
+To read ECF files directly with `h5py` instead of evlib's built-in decoder, install the official Prophesee ECF codec:
 
 ```bash
 # Ubuntu/Debian
@@ -98,7 +100,7 @@ evlib includes a complete Rust implementation of the ECF codec:
 
 ### Python Fallback
 
-A pure-Python ECF decoder (`python/evlib/ecf_decoder.py`) is **not present** in the current build. The Rust ECF decoder (`src/ev_formats/prophesee_ecf_codec.rs`) is the built-in fallback. If the Rust HDF5 feature is unavailable, the recommended approach is to install the official ECF plugin and use `h5py` with `hdf5plugin` (see Installation Guide below).
+A pure-Python ECF decoder (`python/evlib/ecf_decoder.py`) is **not present** in the current build. The Rust ECF decoder (`src/ev_formats/prophesee_ecf_codec.rs`) is the built-in path, and it ships by default in the macOS and Linux PyPI wheels since 0.13.1 (statically linked HDF5, no plugin needed). On Windows, or when building from source without the `hdf5`/`hdf5-static` feature, the recommended approach is to install the official ECF plugin and use `h5py` with `hdf5plugin` (see Installation Guide below).
 
 ## Installation Guide
 
