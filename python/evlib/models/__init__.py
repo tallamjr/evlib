@@ -29,8 +29,9 @@ if _config_available:
 if _torch_available:
     try:
         from .e2vid import E2VID
+        from .e2vid_recurrent import E2VIDRecurrent
 
-        __all__.append("E2VID")
+        __all__.extend(["E2VID", "E2VIDRecurrent"])
     except ImportError as e:
         print(f"Warning: Could not import E2VID model: {e}")
 
