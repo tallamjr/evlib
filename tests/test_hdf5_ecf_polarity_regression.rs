@@ -217,6 +217,77 @@ fn test_native_ecf_errors_on_event_count_shortfall() {
     );
 }
 
+fn set_geometry_attr(path: &str, geometry: &str) {
+    use hdf5_metno::types::VarLenAscii;
+    let file = hdf5_metno::File::open_rw(path).unwrap();
+    file.new_attr::<VarLenAscii>()
+        .create("geometry")
+        .unwrap()
+        .write_scalar(&VarLenAscii::from_ascii(geometry).unwrap())
+        .unwrap();
+}
+
+/// R9: without a geometry attribute nothing is filtered; events beyond the
+/// old hardcoded 1280x720 guard load intact (larger sensors are valid).
+#[test]
+fn test_native_ecf_keeps_large_sensor_coordinates_without_geometry() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let events = vec![
+        PropheseeEvent {
+            x: 1500,
+            y: 800,
+            p: 1,
+            t: 1_000_000,
+        },
+        PropheseeEvent {
+            x: 2000,
+            y: 1000,
+            p: -1,
+            t: 1_000_001,
+        },
+    ];
+    let payload = PropheseeECFEncoder::new().encode(&events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("large_sensor.h5");
+    write_synthetic_ecf_hdf5(path.to_str().unwrap(), 2, 2, ECF_FILTER_ID, &[&payload]);
+    let got = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect("large sensor coordinates are valid when no geometry is declared");
+    assert_eq!(got.len(), 2);
+    assert_eq!((got[0].x, got[0].y), (1500, 800));
+}
+
+/// R9: with a declared geometry, an out of bounds decoded coordinate means the
+/// payload was misparsed; that is corruption and must be a hard error.
+#[test]
+fn test_native_ecf_errors_on_out_of_geometry_coordinate() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let events = vec![
+        PropheseeEvent {
+            x: 100,
+            y: 100,
+            p: 1,
+            t: 1_000_000,
+        },
+        PropheseeEvent {
+            x: 1290,
+            y: 100,
+            p: 1,
+            t: 1_000_001,
+        }, // >= 1280
+    ];
+    let payload = PropheseeECFEncoder::new().encode(&events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("oob.h5");
+    write_synthetic_ecf_hdf5(path.to_str().unwrap(), 2, 2, ECF_FILTER_ID, &[&payload]);
+    set_geometry_attr(path.to_str().unwrap(), "1280x720");
+    let err = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect_err("out of geometry coordinate must be a hard error");
+    assert!(
+        err.to_string().contains("1280x720"),
+        "error should cite the declared geometry, got: {err}"
+    );
+}
+
 /// Write a minimal Prophesee-style HDF5 file: group "CD", chunked 1-D compound dataset
 /// "events" (x: u16, y: u16, p: i16, t: i64, matching `PropheseeEvent`'s repr(C) layout),
 /// chunked in `chunk_len`-event chunks, with the ECF filter (id 36559) registered as

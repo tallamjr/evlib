@@ -24,9 +24,25 @@ macro_rules! info {
     ($($args:tt)*) => {};
 }
 
+/// Sensor geometry from the file level "geometry" attribute ("WIDTHxHEIGHT"),
+/// written by Prophesee's HDF5 tooling. None when absent or unparseable, in
+/// which case no coordinate validation is applied.
+fn read_sensor_geometry(file: &H5File) -> Option<(u16, u16)> {
+    use hdf5_metno::types::{VarLenAscii, VarLenUnicode};
+    let attr = file.attr("geometry").ok()?;
+    let text = attr
+        .read_scalar::<VarLenAscii>()
+        .map(|s| s.to_string())
+        .or_else(|_| attr.read_scalar::<VarLenUnicode>().map(|s| s.to_string()))
+        .ok()?;
+    let (w, h) = text.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+}
+
 /// Read Prophesee HDF5 file using our native ECF decoder
 pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
     let file = H5File::open(path)?;
+    let sensor_geometry = read_sensor_geometry(&file);
 
     // Check for Prophesee format
     let cd_group = file.group("CD")?;
@@ -103,10 +119,17 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
 
         // Convert PropheseeEvent to Event
         for ecf_event in decoded_events {
-            // Validate coordinates - Prophesee Gen4 cameras are 1280x720
-            // Skip events with clearly invalid coordinates
-            if ecf_event.x > 1280 || ecf_event.y > 720 {
-                continue;
+            // Validate against the sensor geometry declared by
+            // the file, if any. An out of range coordinate from
+            // a chunk that "decoded" means the ECF payload was
+            // misparsed, so it is corruption, not noise.
+            if let Some((width, height)) = sensor_geometry {
+                if ecf_event.x >= width || ecf_event.y >= height {
+                    return Err(hdf5_metno::Error::Internal(format!(
+                        "Decoded event ({}, {}) outside declared sensor geometry {width}x{height} in chunk {chunk_idx}",
+                        ecf_event.x, ecf_event.y
+                    )));
+                }
             }
 
             // Prophesee ECF timestamps are integer microseconds; stored

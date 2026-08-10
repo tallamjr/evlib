@@ -360,11 +360,12 @@ fn test_ecf_codec_detection() {
 /// The native ECF decoder used to read the coordinate section before the
 /// timestamp section and used an invented timestamp scheme. That misaligned the
 /// byte cursor, so most decoded coordinates fell outside the sensor and were
-/// discarded by the reader's `x > 1280 || y > 720` guard, leaving only ~37% of
-/// the events with a badly compressed timespan. This test decodes the whole file
-/// and asserts every event in the `CD/events` dataset is recovered, with all
-/// coordinates inside the 1280x720 sensor. It runs only when the (gitignored)
-/// sample file is present.
+/// discarded by the reader's geometry-derived coordinate check (2026-08-08
+/// review, R9), leaving only ~37% of the events with a badly compressed
+/// timespan. This test decodes the whole file and asserts every event in the
+/// `CD/events` dataset is recovered, with all coordinates inside the 1280x720
+/// sensor declared by the file's geometry attribute. It runs only when the
+/// (gitignored) sample file is present.
 #[cfg(feature = "hdf5")]
 #[test]
 fn test_prophesee_ecf_decodes_every_event() {
