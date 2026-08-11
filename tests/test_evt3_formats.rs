@@ -274,7 +274,6 @@ mod evt3_tests {
             max_events: Some(100),
             sensor_resolution: Some((640, 480)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
 
         let reader = Evt3Reader::with_config(config);
@@ -412,7 +411,6 @@ mod evt3_tests {
             max_events: Some(100),
             sensor_resolution: Some((100, 100)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
 
         let reader = Evt3Reader::with_config(config);
@@ -428,7 +426,6 @@ mod evt3_tests {
             max_events: Some(100),
             sensor_resolution: Some((100, 100)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
 
         let reader_no_validation = Evt3Reader::with_config(config_no_validation);
@@ -489,7 +486,6 @@ mod evt3_tests {
             max_events: Some(100),
             sensor_resolution: Some((640, 480)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
         let reader = Evt3Reader::with_config(config);
         let (df, _) = reader.read_file(&file_path).unwrap();
@@ -527,6 +523,5 @@ mod evt3_tests {
         assert_eq!(config.max_events, None);
         assert_eq!(config.sensor_resolution, None);
         assert_eq!(config.chunk_size, 1_000_000);
-        assert_eq!(config.polarity_encoding, None);
     }
 }

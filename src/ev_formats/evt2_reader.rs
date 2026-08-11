@@ -17,7 +17,7 @@ use crate::ev_formats::EventFormat;
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt2.html
 /// - OpenEB standalone samples
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+use crate::ev_formats::LoadConfig;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -237,7 +237,6 @@ pub enum Evt2Error {
         max_y: u16,
     },
     TimestampError(String),
-    PolarityError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for Evt2Error {
@@ -264,7 +263,6 @@ impl std::fmt::Display for Evt2Error {
                 )
             }
             Evt2Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
-            Evt2Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
         }
     }
 }
@@ -273,7 +271,6 @@ impl std::error::Error for Evt2Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Evt2Error::Io(e) => Some(e),
-            Evt2Error::PolarityError(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -298,8 +295,6 @@ pub struct Evt2Config {
     pub sensor_resolution: Option<(u16, u16)>,
     /// Chunk size for reading binary data
     pub chunk_size: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
 }
 
 impl Default for Evt2Config {
@@ -310,7 +305,6 @@ impl Default for Evt2Config {
             max_events: None,
             sensor_resolution: None,
             chunk_size: 1_000_000, // 1M events per chunk
-            polarity_encoding: None,
         }
     }
 }
@@ -335,7 +329,6 @@ pub struct Evt2Metadata {
 /// EVT2 reader implementation
 pub struct Evt2Reader {
     config: Evt2Config,
-    polarity_handler: Option<PolarityHandler>,
 }
 
 impl Evt2Reader {
@@ -343,21 +336,12 @@ impl Evt2Reader {
     pub fn new() -> Self {
         Self {
             config: Evt2Config::default(),
-            polarity_handler: None,
         }
     }
 
     /// Create new EVT2 reader with custom configuration
     pub fn with_config(config: Evt2Config) -> Self {
-        let polarity_handler = config
-            .polarity_encoding
-            .as_ref()
-            .map(|_encoding| PolarityHandler::new());
-
-        Self {
-            config,
-            polarity_handler,
-        }
+        Self { config }
     }
 
     /// Read EVT2 file and return events with metadata
@@ -374,12 +358,6 @@ impl Evt2Reader {
 
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-
-        // Apply polarity encoding if configured
-        if let Some(ref _handler) = self.polarity_handler {
-            // For now, we'll skip polarity conversion as the implementation needs adjustment
-            // The events already use the standard -1/1 encoding
-        }
 
         let final_metadata = Evt2Metadata {
             file_size,

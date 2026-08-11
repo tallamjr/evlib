@@ -85,7 +85,6 @@ mod evt2_tests {
             max_events: Some(10000), // Limit to 10k events for testing
             sensor_resolution: Some((640, 480)),
             chunk_size: 100000,
-            polarity_encoding: None,
         };
 
         let reader = Evt2Reader::with_config(config);
@@ -199,7 +198,6 @@ mod evt2_tests {
             max_events: Some(1000),
             sensor_resolution: Some((640, 480)),
             chunk_size: 10000,
-            polarity_encoding: None,
         };
 
         let reader = Evt2Reader::with_config(config);
@@ -219,7 +217,6 @@ mod evt2_tests {
             max_events: Some(1000),
             sensor_resolution: Some((640, 480)),
             chunk_size: 10000,
-            polarity_encoding: None,
         };
 
         let reader_skip = Evt2Reader::with_config(config_skip);
@@ -243,7 +240,6 @@ mod evt2_tests {
             max_events: Some(100000), // 100k events
             sensor_resolution: Some((640, 480)),
             chunk_size: 100000,
-            polarity_encoding: None,
         };
 
         let reader = Evt2Reader::with_config(config);
@@ -288,7 +284,6 @@ mod evt2_tests {
             max_events: Some(max_events),
             sensor_resolution: Some((640, 480)),
             chunk_size: 1_000_000,
-            polarity_encoding: None,
         };
 
         // Test with small chunks
@@ -298,7 +293,6 @@ mod evt2_tests {
             max_events: Some(max_events),
             sensor_resolution: Some((640, 480)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
 
         let reader_large = Evt2Reader::with_config(config_large);
@@ -434,7 +428,6 @@ mod evt2_tests {
             max_events: Some(50000),
             sensor_resolution: Some((640, 480)),
             chunk_size: 50000,
-            polarity_encoding: None,
         };
 
         let reader = Evt2Reader::with_config(config);

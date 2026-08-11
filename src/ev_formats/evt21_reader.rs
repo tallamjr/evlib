@@ -24,7 +24,7 @@
 use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
 use crate::ev_formats::streaming::Event;
 use crate::ev_formats::EventFormat;
-use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+use crate::ev_formats::LoadConfig;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -238,7 +238,6 @@ pub enum Evt21Error {
         max_y: u16,
     },
     TimestampError(String),
-    PolarityError(Box<dyn std::error::Error + Send + Sync>),
     VectorizedDecodingError(String),
 }
 impl std::fmt::Display for Evt21Error {
@@ -265,7 +264,6 @@ impl std::fmt::Display for Evt21Error {
                 )
             }
             Evt21Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
-            Evt21Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
             Evt21Error::VectorizedDecodingError(msg) => {
                 write!(f, "Vectorized decoding error: {msg}")
             }
@@ -276,7 +274,6 @@ impl std::error::Error for Evt21Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Evt21Error::Io(e) => Some(e),
-            Evt21Error::PolarityError(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -299,8 +296,6 @@ pub struct Evt21Config {
     pub sensor_resolution: Option<(u16, u16)>,
     /// Chunk size for reading binary data (in number of 64-bit words)
     pub chunk_size: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
     /// Whether to decode vectorized events (if false, only individual events)
     pub decode_vectorized: bool,
 }
@@ -312,7 +307,6 @@ impl Default for Evt21Config {
             max_events: None,
             sensor_resolution: None,
             chunk_size: 500_000, // 500K 64-bit words per chunk
-            polarity_encoding: None,
             decode_vectorized: true,
         }
     }
@@ -336,26 +330,17 @@ pub struct Evt21Metadata {
 /// EVT2.1 reader implementation
 pub struct Evt21Reader {
     config: Evt21Config,
-    polarity_handler: Option<PolarityHandler>,
 }
 impl Evt21Reader {
     /// Create new EVT2.1 reader with default configuration
     pub fn new() -> Self {
         Self {
             config: Evt21Config::default(),
-            polarity_handler: None,
         }
     }
     /// Create new EVT2.1 reader with custom configuration
     pub fn with_config(config: Evt21Config) -> Self {
-        let polarity_handler = config
-            .polarity_encoding
-            .as_ref()
-            .map(|_encoding| PolarityHandler::new());
-        Self {
-            config,
-            polarity_handler,
-        }
+        Self { config }
     }
     /// Read EVT2.1 file and return events with metadata
     pub fn read_file<P: AsRef<Path>>(
@@ -369,11 +354,6 @@ impl Evt21Reader {
         let (metadata, header_size) = self.parse_header(&mut file)?;
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-        // Apply polarity encoding if configured
-        if let Some(ref _handler) = self.polarity_handler {
-            // For now, we'll skip polarity conversion as the implementation needs adjustment
-            // The events already use the standard -1/1 encoding
-        }
         let final_metadata = Evt21Metadata {
             file_size,
             header_size,

@@ -40,25 +40,11 @@ pub use evt21_reader::{Evt21Config, Evt21Error, Evt21Metadata, Evt21Reader};
 pub mod evt3_reader;
 pub use evt3_reader::{Evt3Config, Evt3Error, Evt3Metadata, Evt3Reader};
 
-// EVNT TCP live-stream reader
-pub mod evnt_tcp_reader;
-pub use evnt_tcp_reader::{EvntEvent, EvntTcpReader, EvntTcpReaderError};
-
-// Polarity encoding handler module
-pub mod polarity_handler;
-pub use polarity_handler::{
-    PolarityConfig, PolarityEncoding, PolarityError, PolarityHandler, PolarityStats,
-};
-
 // Streaming module for large file processing
 pub mod streaming;
 pub use streaming::{
     estimate_memory_usage, should_use_streaming, Event, PolarsEventStreamer, StreamingConfig,
 };
-
-// ECF (Event Compression Format) codec for Prophesee HDF5 files
-pub mod ecf_codec;
-pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
 
 // Prophesee ECF codec implementation
 pub mod prophesee_ecf_codec;
@@ -123,8 +109,6 @@ pub struct LoadConfig {
     pub p_col: Option<usize>,
     /// Number of header lines to skip (for text files)
     pub header_lines: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
 }
 
 impl LoadConfig {
@@ -164,12 +148,6 @@ impl LoadConfig {
     /// Enable sorting by timestamp
     pub fn with_sorting(mut self, sort: bool) -> Self {
         self.sort = sort;
-        self
-    }
-
-    /// Set polarity encoding configuration
-    pub fn with_polarity_encoding(mut self, encoding: PolarityEncoding) -> Self {
-        self.polarity_encoding = Some(encoding);
         self
     }
 
@@ -458,7 +436,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt2Reader::with_config(evt2_config);
             let events = reader
@@ -474,7 +451,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 500_000,
-                polarity_encoding: config.polarity_encoding,
                 decode_vectorized: true,
             };
             let reader = Evt21Reader::with_config(evt21_config);
@@ -491,7 +467,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt3Reader::with_config(evt3_config);
             let events = reader
@@ -1608,5 +1583,19 @@ pub mod python {
             let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
             Ok(tuple.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Event;
+
+    // Relocated from the deleted tests/test_polarity_conversion.rs (S2 dead-weight sweep):
+    // the only assertion in that file with a live subject.
+    #[test]
+    fn event_struct_is_16_bytes() {
+        // { t: f64, x: u16, y: u16, polarity: i8 } packs to 16 bytes (8 + 2 + 2 + 1
+        // padded to the f64 alignment). Assert this hasn't changed.
+        assert_eq!(std::mem::size_of::<Event>(), 16);
     }
 }
