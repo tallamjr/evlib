@@ -79,12 +79,6 @@ fn _evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add top-level detect_format function (wrapper around formats.detect_format)
     m.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, m)?)?;
 
-    // Add top-level arrow functions
-    m.add_function(wrap_pyfunction!(
-        ev_formats::python::load_events_to_pyarrow,
-        m
-    )?)?;
-
     // Add top-level save functions (wrappers around formats functions)
     #[cfg(all(unix, feature = "hdf5"))]
     m.add_function(wrap_pyfunction!(
@@ -147,16 +141,6 @@ fn _evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add ECF testing function
     formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::test_prophesee_ecf_decode_py,
-        &formats_submodule
-    )?)?;
-
-    // Add Apache Arrow integration functions
-    formats_submodule.add_function(wrap_pyfunction!(
-        ev_formats::python::load_events_to_pyarrow,
-        &formats_submodule
-    )?)?;
-    formats_submodule.add_function(wrap_pyfunction!(
-        ev_formats::python::pyarrow_to_events_py,
         &formats_submodule
     )?)?;
 

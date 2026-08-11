@@ -66,7 +66,6 @@ fn evt3_first_millisecond_round_trips_exactly() {
         max_events: None,
         sensor_resolution: Some((640, 480)),
         chunk_size: 1000,
-        polarity_encoding: None,
     })
     .read_file(&path)
     .unwrap();

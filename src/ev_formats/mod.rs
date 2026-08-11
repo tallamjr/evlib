@@ -6,8 +6,6 @@
 use hdf5_metno::File as H5File;
 use polars::prelude::*;
 use pyo3::prelude::*;
-use pyo3_arrow::PyRecordBatch;
-// memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
 
@@ -41,32 +39,21 @@ pub use evt21_reader::{Evt21Config, Evt21Error, Evt21Metadata, Evt21Reader};
 pub mod evt3_reader;
 pub use evt3_reader::{Evt3Config, Evt3Error, Evt3Metadata, Evt3Reader};
 
-// EVNT TCP live-stream reader
-pub mod evnt_tcp_reader;
-pub use evnt_tcp_reader::{EvntEvent, EvntTcpReader, EvntTcpReaderError};
-
-// Polarity encoding handler module
-pub mod polarity_handler;
-pub use polarity_handler::{
-    PolarityConfig, PolarityEncoding, PolarityError, PolarityHandler, PolarityStats,
-};
-
-// Streaming module for large file processing
-pub mod streaming;
-pub use streaming::{
-    estimate_memory_usage, should_use_streaming, Event, PolarsEventStreamer, StreamingConfig,
-};
-
-// Apache Arrow integration for zero-copy data transfer
-pub mod arrow_builder;
-pub use arrow_builder::{
-    arrow_to_events, create_event_arrow_schema, ArrowBuilderError, ArrowEventBuilder,
-    ArrowEventStreamer,
-};
-
-// ECF (Event Compression Format) codec for Prophesee HDF5 files
-pub mod ecf_codec;
-pub use ecf_codec::{ECFDecoder, ECFEncoder, EventCD};
+/// Simple Event structure for streaming operations
+/// This is a minimal event representation used primarily for streaming and benchmark operations
+#[derive(Debug, Clone, Copy)]
+pub struct Event {
+    /// Timestamp value; its unit is not fixed here. Each site that builds a
+    /// DataFrame from `Event`s declares the unit explicitly via `TimestampUnit`
+    /// (2026-08-08 review, R4).
+    pub t: f64,
+    /// X coordinate (column)
+    pub x: u16,
+    /// Y coordinate (row)
+    pub y: u16,
+    /// Polarity (+1 or -1, stored as i8)
+    pub polarity: i8,
+}
 
 // Prophesee ECF codec implementation
 pub mod prophesee_ecf_codec;
@@ -82,10 +69,7 @@ pub use hdf5_reader::load_events_from_hdf5;
 
 // DataFrame construction utilities for direct event processing
 pub mod dataframe_builder;
-pub use dataframe_builder::{
-    calculate_optimal_chunk_size, create_empty_events_dataframe, EventDataFrameBuilder,
-    EventDataFrameStreamer,
-};
+pub use dataframe_builder::{create_empty_events_dataframe, EventDataFrameBuilder};
 
 // Python bindings for DataFrame-based operations (defined inline below)
 
@@ -121,8 +105,6 @@ pub struct LoadConfig {
     pub polarity: Option<bool>,
     /// Sort events by timestamp after loading
     pub sort: bool,
-    /// Chunk size for memory management (not used for filtering, but affects performance)
-    pub chunk_size: Option<usize>,
     /// Custom column index for x coordinate (0-based, for text files)
     pub x_col: Option<usize>,
     /// Custom column index for y coordinate (0-based, for text files)
@@ -133,8 +115,6 @@ pub struct LoadConfig {
     pub p_col: Option<usize>,
     /// Number of header lines to skip (for text files)
     pub header_lines: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
 }
 
 impl LoadConfig {
@@ -174,12 +154,6 @@ impl LoadConfig {
     /// Enable sorting by timestamp
     pub fn with_sorting(mut self, sort: bool) -> Self {
         self.sort = sort;
-        self
-    }
-
-    /// Set polarity encoding configuration
-    pub fn with_polarity_encoding(mut self, encoding: PolarityEncoding) -> Self {
-        self.polarity_encoding = Some(encoding);
         self
     }
 
@@ -468,7 +442,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt2Reader::with_config(evt2_config);
             let events = reader
@@ -484,7 +457,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 500_000,
-                polarity_encoding: config.polarity_encoding,
                 decode_vectorized: true,
             };
             let reader = Evt21Reader::with_config(evt21_config);
@@ -501,7 +473,6 @@ pub fn load_events_with_config(
                 max_events: None,
                 sensor_resolution: detection_result.metadata.sensor_resolution,
                 chunk_size: 1_000_000,
-                polarity_encoding: config.polarity_encoding,
             };
             let reader = Evt3Reader::with_config(evt3_config);
             let events = reader
@@ -524,245 +495,6 @@ pub fn load_events_with_config(
     }
 }
 
-/// Load events to Apache Arrow RecordBatch with automatic format detection
-///
-/// This function provides zero-copy data transfer to Arrow format, enabling
-/// efficient interoperability with PyArrow, DuckDB, and other Arrow ecosystem tools.
-///
-/// # Arguments
-/// * `path` - Path to the event file
-/// * `config` - Configuration with filtering options
-///
-/// # Returns
-/// Result containing an Arrow RecordBatch with event data
-pub fn load_events_to_arrow(
-    path: &str,
-    config: &LoadConfig,
-) -> Result<arrow::record_batch::RecordBatch, Box<dyn std::error::Error>> {
-    use crate::ev_formats::arrow_builder::{ArrowEventBuilder, ArrowEventStreamer};
-    use crate::ev_formats::streaming::should_use_streaming;
-
-    // Use format detector to determine the file format
-    let detection_result = format_detector::detect_event_format(path)?;
-
-    // Load events using existing pipeline
-    let events = load_events_with_config(path, config)?;
-
-    // Convert DataFrame to Event iterator for Arrow construction
-    // Note: This conversion is for compatibility with Arrow integration
-    // For large datasets, consider direct DataFrame->Arrow conversion
-    let event_iter = dataframe_to_event_iterator(&events)?;
-    let events_vec: Vec<Event> = event_iter.collect();
-
-    // Check if we should use streaming based on event count
-    let event_count = events_vec.len();
-    let default_threshold = 5_000_000; // 5M events
-    let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
-
-    if should_use_streaming(event_count, Some(streaming_threshold)) {
-        // Use streaming for large datasets
-        let chunk_size =
-            crate::ev_formats::streaming::PolarsEventStreamer::calculate_optimal_chunk_size(
-                event_count,
-                512,
-            );
-        let streamer = ArrowEventStreamer::new(chunk_size, detection_result.format);
-        streamer
-            .stream_to_arrow(events_vec.into_iter())
-            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
-    } else {
-        // Direct construction for smaller datasets
-        ArrowEventBuilder::from_events_zero_copy(&events_vec, detection_result.format)
-            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
-    }
-}
-
-/// Convert DataFrame to Event iterator for Arrow integration
-/// This is a helper function for compatibility with Arrow builder
-fn dataframe_to_event_iterator(
-    df: &DataFrame,
-) -> Result<impl Iterator<Item = Event>, Box<dyn std::error::Error>> {
-    use crate::ev_formats::streaming::Event;
-
-    let t_series = df
-        .column("t")
-        .map_err(|e| format!("Missing timestamp column: {}", e))?;
-    let x_series = df
-        .column("x")
-        .map_err(|e| format!("Missing x column: {}", e))?;
-    let y_series = df
-        .column("y")
-        .map_err(|e| format!("Missing y column: {}", e))?;
-    let polarity_series = df
-        .column("polarity")
-        .map_err(|e| format!("Missing polarity column: {}", e))?;
-
-    // Convert to vectors for iterator creation
-    let timestamps: Vec<f64> = t_series.f64()?.into_no_null_iter().collect();
-    let x_coords: Vec<u16> = x_series
-        .i16()?
-        .into_no_null_iter()
-        .map(|v| v as u16)
-        .collect();
-    let y_coords: Vec<u16> = y_series
-        .i16()?
-        .into_no_null_iter()
-        .map(|v| v as u16)
-        .collect();
-    let polarities: Vec<i8> = polarity_series.i8()?.into_no_null_iter().collect();
-
-    // Create iterator of Event structs
-    let events: Vec<Event> = timestamps
-        .into_iter()
-        .zip(x_coords)
-        .zip(y_coords)
-        .zip(polarities)
-        .map(|(((t, x), y), polarity)| Event { t, x, y, polarity })
-        .collect();
-
-    Ok(events.into_iter())
-}
-
-/// Struct for iterating through a text file of events line by line
-/// without loading everything into memory at once
-pub struct EventFileIterator {
-    reader: BufReader<File>,
-}
-
-impl EventFileIterator {
-    /// Create a new iterator from a text file path
-    pub fn new(path: &str) -> IoResult<Self> {
-        let file = File::open(path)?;
-        Ok(EventFileIterator {
-            reader: BufReader::new(file),
-        })
-    }
-}
-
-impl Iterator for EventFileIterator {
-    type Item = IoResult<Event>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut line = String::new();
-
-        // Read the next line
-        match self.reader.read_line(&mut line) {
-            Ok(0) => None, // EOF
-            Ok(_) => {
-                // Skip empty lines and comments
-                if line.trim().is_empty() || line.starts_with('#') {
-                    return self.next();
-                }
-
-                // Parse the line
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() < 4 {
-                    return self.next(); // Not enough fields
-                }
-
-                // Parse values
-                let t = match parts[0].parse::<f64>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let x = match parts[1].parse::<u16>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let y = match parts[2].parse::<u16>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let p = match parts[3].parse::<i8>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                // Create and return event
-                Some(Ok(Event {
-                    t,
-                    x,
-                    y,
-                    polarity: if p > 0 { 1 } else { -1 },
-                }))
-            }
-            Err(e) => Some(Err(e)),
-        }
-    }
-}
-
-// Window-based event iterator that returns chunks of events based on time windows
-pub struct TimeWindowIter<'a> {
-    events: &'a Vec<Event>,
-    window_duration: f64,
-    current_idx: usize,
-    start_time: f64,
-    end_time: f64,
-}
-
-impl<'a> TimeWindowIter<'a> {
-    /// Create a new iterator that returns time-windowed chunks of events
-    ///
-    /// # Arguments
-    /// * `events` - Event array to iterate over
-    /// * `window_duration` - Duration of each time window in seconds
-    pub fn new(events: &'a Vec<Event>, window_duration: f64) -> Self {
-        let start_time = if !events.is_empty() { events[0].t } else { 0.0 };
-
-        let end_time = start_time + window_duration;
-
-        TimeWindowIter {
-            events,
-            window_duration,
-            current_idx: 0,
-            start_time,
-            end_time,
-        }
-    }
-}
-
-impl Iterator for TimeWindowIter<'_> {
-    type Item = Vec<Event>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current_idx >= self.events.len() {
-            return None;
-        }
-
-        let mut window = Vec::new();
-        let mut idx = self.current_idx;
-
-        // Collect events within current time window
-        while idx < self.events.len() && self.events[idx].t < self.end_time {
-            window.push(self.events[idx]);
-            idx += 1;
-        }
-
-        // Update state for next iteration
-        self.current_idx = idx;
-        self.start_time = self.end_time;
-        self.end_time += self.window_duration;
-
-        // Only return Some if we found events in this window
-        if window.is_empty() {
-            self.next()
-        } else {
-            Some(window)
-        }
-    }
-}
-
 /// Python bindings for the formats module
 pub mod python {
     use super::*;
@@ -770,122 +502,27 @@ pub mod python {
     use polars::prelude::IntoLazy;
     use std::io::Write;
 
-    // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
-    // in build_polars_dataframe() for better performance
-
-    /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency.
+    /// Build a Polars DataFrame from decoded events.
     ///
-    /// `unit` declares what `Event.t` holds for every event in `events`; there is no
-    /// magnitude-based guessing (2026-08-08 review, R4). Callers pass the unit their
-    /// reader actually produced.
+    /// `unit` declares what `Event.t` holds for every event in `events`; there
+    /// is no magnitude-based guessing (2026-08-08 review, R4). Construction is
+    /// delegated to `EventDataFrameBuilder`, the single implementation of the
+    /// schema and polarity-conversion tail (S2 builder unification; the old
+    /// duplicated copies were the R6-class divergence source).
     pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
         unit: TimestampUnit,
     ) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
-        use polars::prelude::*;
-
-        let len = events.len();
-
-        if len == 0 {
-            // Create empty DataFrame with proper schema
-            let empty_x = Series::new("x".into(), Vec::<i16>::new());
-            let empty_y = Series::new("y".into(), Vec::<i16>::new());
-            let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
-                .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-            let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
-
-            return DataFrame::new(vec![
-                empty_x.into(),
-                empty_y.into(),
-                empty_timestamp.into(),
-                empty_polarity.into(),
-            ]);
-        }
-
-        // Use optimal data types for memory efficiency
-        // x, y: Int16 (sufficient for coordinates, saves 50% memory vs Int32)
-        // timestamp: Int64 (required for microsecond precision)
-        // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
-        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
-        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
-        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
-
-        // Single iteration with direct population - zero intermediate copies
-        // Store polarity as raw bool first, convert vectorized later
+        let mut builder = EventDataFrameBuilder::new(format, events.len());
         for event in events {
-            x_builder.append_value(event.x as i16);
-            y_builder.append_value(event.y as i16);
-            timestamp_builder.append_value(match unit {
+            let timestamp_us = match unit {
                 TimestampUnit::Seconds => (event.t * 1_000_000.0) as i64,
                 TimestampUnit::Microseconds => event.t as i64,
-            });
-            // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(event.polarity);
+            };
+            builder.push_raw(event.x, event.y, timestamp_us, event.polarity);
         }
-
-        // Build Series from builders
-        let x_series = x_builder.finish().into_series();
-        let y_series = y_builder.finish().into_series();
-        let polarity_series_raw = polarity_builder.finish().into_series();
-
-        // Convert timestamp to Duration type
-        let timestamp_series = timestamp_builder
-            .finish()
-            .into_series()
-            .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-
-        // Create initial DataFrame with raw polarity
-        let df = DataFrame::new(vec![
-            x_series.into(),
-            y_series.into(),
-            timestamp_series.into(),
-            polarity_series_raw.into(),
-        ])?;
-
-        // VECTORIZED polarity conversion (much faster than per-event)
-        let df = match format {
-            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family: Convert 0/1 to -1/1 using vectorized operations
-                df.lazy()
-                    .with_column(
-                        when(col("polarity").eq(lit(0)))
-                            .then(lit(-1i8))
-                            .otherwise(lit(1i8))
-                            .alias("polarity")
-                            .cast(DataType::Int8),
-                    )
-                    .collect()?
-            }
-            #[cfg(not(windows))]
-            EventFormat::HDF5 => {
-                // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
-                df.lazy()
-                    .with_column(
-                        when(col("polarity").eq(lit(0)))
-                            .then(lit(-1i8))
-                            .otherwise(lit(1i8))
-                            .alias("polarity")
-                            .cast(DataType::Int8),
-                    )
-                    .collect()?
-            }
-            #[cfg(windows)]
-            EventFormat::HDF5 => {
-                return Err(PolarsError::ComputeError(
-                    "HDF5 support is disabled on Windows due to build complexity.".into(),
-                ));
-            }
-            _ => {
-                // Text and other formats: Keep 0/1 encoding as-is, but ensure Int8 type
-                df.lazy()
-                    .with_column(col("polarity").cast(DataType::Int8))
-                    .collect()?
-            }
-        };
-
-        Ok(df)
+        builder.build()
     }
 
     /// Convert Polars DataFrame to Python dictionary for LazyFrame creation
@@ -1273,140 +910,6 @@ pub mod python {
                 e
             ))),
         }
-    }
-
-    /// Load events as PyArrow Table for zero-copy data transfer
-    ///
-    /// This function provides direct PyArrow Table creation, enabling efficient
-    /// zero-copy data transfer to Python and integration with PyArrow ecosystem.
-    ///
-    /// Args:
-    ///     path: Path to the event file
-    ///     t_start: Start time filter (inclusive)
-    ///     t_end: End time filter (inclusive)
-    ///     min_x, max_x, min_y, max_y: Spatial bounds filters
-    ///     polarity: Polarity filter (1 for positive, -1 for negative, None for both)
-    ///     sort: Sort events by timestamp after loading
-    ///     x_col, y_col, t_col, p_col: Custom column indices for text files
-    ///     header_lines: Number of header lines to skip in text files
-    ///
-    /// Returns:
-    ///     PyArrow Table with event data
-    #[pyfunction]
-    #[pyo3(
-        signature = (
-            path,
-            t_start=None,
-            t_end=None,
-            min_x=None,
-            max_x=None,
-            min_y=None,
-            max_y=None,
-            polarity=None,
-            sort=false,
-            x_col=None,
-            y_col=None,
-            t_col=None,
-            p_col=None,
-            header_lines=0
-        ),
-        name = "load_events_to_arrow"
-    )]
-    #[allow(clippy::too_many_arguments)]
-    pub fn load_events_to_pyarrow(
-        py: Python<'_>,
-        path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
-        sort: bool,
-        x_col: Option<usize>,
-        y_col: Option<usize>,
-        t_col: Option<usize>,
-        p_col: Option<usize>,
-        header_lines: usize,
-    ) -> PyResult<PyObject> {
-        // Convert i8 polarity filter to bool
-        let polarity_bool = polarity.map(|p| p > 0);
-
-        let config = LoadConfig::new()
-            .with_time_window(t_start, t_end)
-            .with_spatial_bounds(min_x, max_x, min_y, max_y)
-            .with_polarity(polarity_bool)
-            .with_sorting(sort)
-            .with_custom_columns(t_col, x_col, y_col, p_col)
-            .with_header_lines(header_lines);
-
-        // Load events to Arrow RecordBatch using existing Rust implementation
-        let record_batch = load_events_to_arrow(path, &config).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                "Failed to load events to Arrow: {}",
-                e
-            ))
-        })?;
-
-        // Convert Rust Arrow RecordBatch to Python using pyo3-arrow
-        let py_record_batch = PyRecordBatch::new(record_batch);
-
-        // Convert to PyArrow object using pyo3-arrow's to_pyarrow method
-        py_record_batch.to_pyarrow(py).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to convert to PyArrow: {}",
-                e
-            ))
-        })
-    }
-
-    /// Convert PyArrow RecordBatch to events
-    ///
-    /// Args:
-    ///     record_batch: PyArrow RecordBatch to convert
-    ///
-    /// Returns:
-    ///     Dictionary with event arrays for Polars LazyFrame creation
-    #[pyfunction]
-    #[pyo3(name = "pyarrow_to_events")]
-    pub fn pyarrow_to_events_py(py: Python<'_>, record_batch: PyRecordBatch) -> PyResult<PyObject> {
-        use crate::ev_formats::arrow_builder::arrow_to_events;
-
-        // Extract the underlying Arrow RecordBatch from PyRecordBatch
-        // PyRecordBatch automatically converts from Python Arrow object
-        let arrow_batch = record_batch.as_ref();
-
-        // Convert Arrow RecordBatch to Events vector using our existing function
-        let events = arrow_to_events(arrow_batch).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to convert Arrow to events: {}",
-                e
-            ))
-        })?;
-
-        // Convert events to Python dict format for compatibility
-        let mut data_dict: std::collections::HashMap<String, PyObject> =
-            std::collections::HashMap::new();
-
-        let mut x_vec = Vec::with_capacity(events.len());
-        let mut y_vec = Vec::with_capacity(events.len());
-        let mut t_vec = Vec::with_capacity(events.len());
-        let mut p_vec = Vec::with_capacity(events.len());
-
-        for event in events {
-            x_vec.push(event.x as i64);
-            y_vec.push(event.y as i64);
-            t_vec.push(event.t);
-            p_vec.push(event.polarity as i64);
-        }
-
-        data_dict.insert("x".to_string(), x_vec.into_pyobject(py)?.into());
-        data_dict.insert("y".to_string(), y_vec.into_pyobject(py)?.into());
-        data_dict.insert("t".to_string(), t_vec.into_pyobject(py)?.into());
-        data_dict.insert("polarity".to_string(), p_vec.into_pyobject(py)?.into());
-
-        Ok(data_dict.into_pyobject(py)?.into())
     }
 
     // ============================================================================
@@ -1851,5 +1354,19 @@ pub mod python {
             let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
             Ok(tuple.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Event;
+
+    // Relocated from the deleted tests/test_polarity_conversion.rs (S2 dead-weight sweep):
+    // the only assertion in that file with a live subject.
+    #[test]
+    fn event_struct_is_16_bytes() {
+        // { t: f64, x: u16, y: u16, polarity: i8 } packs to 16 bytes (8 + 2 + 2 + 1
+        // padded to the f64 alignment). Assert this hasn't changed.
+        assert_eq!(std::mem::size_of::<Event>(), 16);
     }
 }

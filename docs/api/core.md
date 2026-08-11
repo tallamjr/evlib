@@ -67,6 +67,5 @@ seconds = df.select(
 
 - `evlib.detect_format(path)` and `evlib.get_format_description(...)`: automatic format detection.
 - `evlib.save_events_to_text(...)` and `evlib.save_events_to_hdf5(...)`: writing events back out (HDF5 save uses the Rust `hdf5` feature on Linux/macOS, falling back to `h5py` elsewhere).
-- `evlib.formats.load_events_to_arrow(path)`: zero-copy Apache Arrow access for the same data.
 
 See the [formats reference](formats.md) for the full list of supported input formats, and the [processing reference](processing.md) for filtering and representations.

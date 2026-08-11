@@ -82,7 +82,6 @@ evlib includes a complete Rust implementation of the ECF codec:
 
 **Key Files:**
 - `src/ev_formats/prophesee_ecf_codec.rs` - Main decoder/encoder
-- `src/ev_formats/ecf_codec.rs` - Core structures and utilities
 - `src/ev_formats/hdf5_reader.rs` - HDF5 integration
 
 **Features:**

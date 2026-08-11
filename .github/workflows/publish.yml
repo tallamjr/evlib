@@ -166,7 +166,7 @@ jobs:
           export RANLIB=/usr/bin/ranlib
 
           # extension-module is required so the distributed wheel does not link libpython directly.
-          maturin build --release --features python,polars,arrow,extension-module,hdf5-static --interpreter python${{ matrix.python-version }} --out dist
+          maturin build --release --features python,polars,extension-module,hdf5-static --interpreter python${{ matrix.python-version }} --out dist
 
       - name: Build wheels (Windows)
         if: matrix.platform == 'windows'
@@ -228,7 +228,7 @@ jobs:
           # and is CMake 3.17.5, below the `cmake_minimum_required(VERSION
           # 3.18)` that hdf5-metno-src 0.9.5's vendored HDF5 declares, so it
           # would silently downgrade the toolchain the build actually needs.)
-          args: --release --features python,polars,arrow,extension-module,hdf5-static --interpreter python${{ matrix.python-version }}
+          args: --release --features python,polars,extension-module,hdf5-static --interpreter python${{ matrix.python-version }}
           rust-toolchain: nightly
           manylinux: 2014
           before-script-linux: cmake --version

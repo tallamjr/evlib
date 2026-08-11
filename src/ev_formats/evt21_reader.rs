@@ -22,9 +22,8 @@
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt21.html
 /// - OpenEB standalone samples
 use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
-use crate::ev_formats::streaming::Event;
 use crate::ev_formats::EventFormat;
-use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+use crate::ev_formats::LoadConfig;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -238,7 +237,6 @@ pub enum Evt21Error {
         max_y: u16,
     },
     TimestampError(String),
-    PolarityError(Box<dyn std::error::Error + Send + Sync>),
     VectorizedDecodingError(String),
 }
 impl std::fmt::Display for Evt21Error {
@@ -265,7 +263,6 @@ impl std::fmt::Display for Evt21Error {
                 )
             }
             Evt21Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
-            Evt21Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
             Evt21Error::VectorizedDecodingError(msg) => {
                 write!(f, "Vectorized decoding error: {msg}")
             }
@@ -276,7 +273,6 @@ impl std::error::Error for Evt21Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Evt21Error::Io(e) => Some(e),
-            Evt21Error::PolarityError(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -299,8 +295,6 @@ pub struct Evt21Config {
     pub sensor_resolution: Option<(u16, u16)>,
     /// Chunk size for reading binary data (in number of 64-bit words)
     pub chunk_size: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
     /// Whether to decode vectorized events (if false, only individual events)
     pub decode_vectorized: bool,
 }
@@ -312,7 +306,6 @@ impl Default for Evt21Config {
             max_events: None,
             sensor_resolution: None,
             chunk_size: 500_000, // 500K 64-bit words per chunk
-            polarity_encoding: None,
             decode_vectorized: true,
         }
     }
@@ -336,26 +329,17 @@ pub struct Evt21Metadata {
 /// EVT2.1 reader implementation
 pub struct Evt21Reader {
     config: Evt21Config,
-    polarity_handler: Option<PolarityHandler>,
 }
 impl Evt21Reader {
     /// Create new EVT2.1 reader with default configuration
     pub fn new() -> Self {
         Self {
             config: Evt21Config::default(),
-            polarity_handler: None,
         }
     }
     /// Create new EVT2.1 reader with custom configuration
     pub fn with_config(config: Evt21Config) -> Self {
-        let polarity_handler = config
-            .polarity_encoding
-            .as_ref()
-            .map(|_encoding| PolarityHandler::new());
-        Self {
-            config,
-            polarity_handler,
-        }
+        Self { config }
     }
     /// Read EVT2.1 file and return events with metadata
     pub fn read_file<P: AsRef<Path>>(
@@ -369,11 +353,6 @@ impl Evt21Reader {
         let (metadata, header_size) = self.parse_header(&mut file)?;
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-        // Apply polarity encoding if configured
-        if let Some(ref _handler) = self.polarity_handler {
-            // For now, we'll skip polarity conversion as the implementation needs adjustment
-            // The events already use the standard -1/1 encoding
-        }
         let final_metadata = Evt21Metadata {
             file_size,
             header_size,
@@ -704,50 +683,6 @@ impl Evt21Reader {
             })
         }
     }
-    /// Decode a vectorized event into individual events
-    /// Used primarily for testing and standalone event processing
-    pub fn decode_vectorized_event(
-        &self,
-        vectorized_event: &VectorizedEvent,
-        current_time_base: u64,
-        metadata: &Evt21Metadata,
-    ) -> Result<Vec<Event>, Evt21Error> {
-        let mut events = Vec::new();
-        // Iterate through the 32-bit validity mask
-        for bit_index in 0..32 {
-            if (vectorized_event.validity_mask >> bit_index) & 1 != 0 {
-                let x = vectorized_event.x_base + bit_index as u16;
-                let y = vectorized_event.y;
-                let full_timestamp = current_time_base + vectorized_event.timestamp as u64;
-                let timestamp = full_timestamp as f64 / 1_000_000.0; // Convert to seconds
-                let polarity = if vectorized_event.polarity { 1 } else { -1 };
-                // Validate coordinates if configured
-                if self.config.validate_coordinates {
-                    if let Some((max_x, max_y)) = metadata.sensor_resolution {
-                        if x >= max_x || y >= max_y {
-                            if self.config.skip_invalid_events {
-                                continue;
-                            } else {
-                                return Err(Evt21Error::CoordinateOutOfBounds {
-                                    x,
-                                    y,
-                                    max_x,
-                                    max_y,
-                                });
-                            }
-                        }
-                    }
-                }
-                events.push(Event {
-                    t: timestamp,
-                    x,
-                    y,
-                    polarity,
-                });
-            }
-        }
-        Ok(events)
-    }
 }
 impl Default for Evt21Reader {
     fn default() -> Self {
@@ -853,83 +788,5 @@ mod tests {
         assert_eq!(config.max_events, None);
         assert_eq!(config.chunk_size, 500_000);
         assert!(config.decode_vectorized);
-    }
-    #[test]
-    fn test_decode_vectorized_event() {
-        let reader = Evt21Reader::new();
-        let metadata = Evt21Metadata {
-            sensor_resolution: Some((1280, 720)),
-            ..Default::default()
-        };
-        let vectorized_event = VectorizedEvent {
-            x_base: 100,
-            y: 200,
-            timestamp: 30,
-            polarity: true,
-            validity_mask: 0x0000000F, // First 4 bits set
-        };
-        let events = reader
-            .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
-            .unwrap();
-        assert_eq!(events.len(), 4); // 4 bits set in validity mask
-                                     // Check first event
-        assert_eq!(events[0].x, 100);
-        assert_eq!(events[0].y, 200);
-        assert_eq!(events[0].polarity, 1);
-        assert_eq!(events[0].t, 1.000030); // (1000000 + 30) / 1_000_000.0
-                                           // Check last event
-        assert_eq!(events[3].x, 103);
-        assert_eq!(events[3].y, 200);
-        assert_eq!(events[3].polarity, 1);
-    }
-    #[test]
-    fn test_coordinate_validation() {
-        let config = Evt21Config {
-            validate_coordinates: true,
-            skip_invalid_events: false,
-            ..Default::default()
-        };
-        let reader = Evt21Reader::with_config(config);
-        let metadata = Evt21Metadata {
-            sensor_resolution: Some((100, 100)),
-            ..Default::default()
-        };
-        let vectorized_event = VectorizedEvent {
-            x_base: 98,
-            y: 200, // Out of bounds
-            timestamp: 30,
-            polarity: true,
-            validity_mask: 0x00000001,
-        };
-        let result = reader.decode_vectorized_event(&vectorized_event, 1000000, &metadata);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            Evt21Error::CoordinateOutOfBounds { .. }
-        ));
-    }
-    #[test]
-    fn test_coordinate_validation_with_skip() {
-        let config = Evt21Config {
-            validate_coordinates: true,
-            skip_invalid_events: true,
-            ..Default::default()
-        };
-        let reader = Evt21Reader::with_config(config);
-        let metadata = Evt21Metadata {
-            sensor_resolution: Some((100, 100)),
-            ..Default::default()
-        };
-        let vectorized_event = VectorizedEvent {
-            x_base: 98,
-            y: 200, // Out of bounds
-            timestamp: 30,
-            polarity: true,
-            validity_mask: 0x00000001,
-        };
-        let events = reader
-            .decode_vectorized_event(&vectorized_event, 1000000, &metadata)
-            .unwrap();
-        assert_eq!(events.len(), 0); // Event should be skipped
     }
 }

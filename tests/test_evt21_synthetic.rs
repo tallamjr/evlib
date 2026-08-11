@@ -5,7 +5,7 @@
 //! code shifted by 10, stretching every timestamp roughly 16x and breaking
 //! rollover detection (2026-08-08 review, R5).
 
-use evlib::ev_formats::evt21_reader::{Evt21Config, Evt21Reader};
+use evlib::ev_formats::evt21_reader::{Evt21Config, Evt21Error, Evt21Reader};
 use std::fs::File;
 use std::io::Write;
 use tempfile::TempDir;
@@ -70,4 +70,46 @@ fn evt21_timestamps_use_six_bit_shift_and_survive_rollover() {
         got.windows(2).all(|w| w[0] <= w[1]),
         "stream must be monotonic across the TIME_HIGH rollover"
     );
+}
+
+// Replacement coverage for the deleted `decode_vectorized_event` unit tests
+// (2026-08-10 review): the vectorised event below has x_base = 1270 with
+// validity bits 0 and 10 set, producing pixels x = 1270 (in bounds, the
+// synthetic header declares width 1280) and x = 1280 (out of bounds).
+
+#[test]
+fn evt21_coordinate_validation_errors_when_out_of_bounds() {
+    let words = [th_word(0), evt_pos_word(5, 1270, 50, 0b100_0000_0001)];
+    let (_dir, path) = write_evt21(&words);
+    let config = Evt21Config {
+        validate_coordinates: true,
+        skip_invalid_events: false,
+        ..Default::default()
+    };
+    let result = Evt21Reader::with_config(config).read_file(&path);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        Evt21Error::CoordinateOutOfBounds {
+            x: 1280,
+            y: 50,
+            max_x: 1280,
+            max_y: 720
+        }
+    ));
+}
+
+#[test]
+fn evt21_coordinate_validation_skips_out_of_bounds_when_configured() {
+    let words = [th_word(0), evt_pos_word(5, 1270, 50, 0b100_0000_0001)];
+    let (_dir, path) = write_evt21(&words);
+    let config = Evt21Config {
+        validate_coordinates: true,
+        skip_invalid_events: true,
+        ..Default::default()
+    };
+    let (df, _) = Evt21Reader::with_config(config).read_file(&path).unwrap();
+    assert_eq!(df.height(), 1);
+    let x = df.column("x").unwrap().i16().unwrap();
+    assert_eq!(x.get(0).unwrap(), 1270);
 }

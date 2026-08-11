@@ -127,7 +127,7 @@ jobs:
   # gitignored datasets that are absent on hosted runners, so they will
   # mostly skip here. This job exists to make the lane visible and to
   # provide a runnable target on a self-hosted runner with the datasets.
-  slow-integration:
+  slow:
     name: Slow (manual)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -137,7 +137,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: slow-integration-ubuntu-latest
+          key: slow-ubuntu-latest
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-dependencies

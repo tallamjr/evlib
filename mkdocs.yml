@@ -126,8 +126,6 @@ nav:
   - Development:
       - Contributing: development/contributing.md
       - Architecture: development/architecture.md
-      - Zero-Copy Architecture: development/zero-copy-architecture.md
-      - Arrow Integration: development/arrow-integration.md
       - DuckDB Integration: development/duckdb-integration.md
       - Testing: development/testing.md
       - Release Notes: development/releases.md

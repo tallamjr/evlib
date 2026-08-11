@@ -1,6 +1,4 @@
-use crate::ev_formats::dataframe_builder::{
-    calculate_optimal_chunk_size, EventDataFrameBuilder, EventDataFrameStreamer,
-};
+use crate::ev_formats::dataframe_builder::EventDataFrameBuilder;
 use crate::ev_formats::EventFormat;
 /// EVT2 binary event reader for Prophesee event camera data
 ///
@@ -17,7 +15,7 @@ use crate::ev_formats::EventFormat;
 /// - https://docs.prophesee.ai/stable/data/encoding_formats/evt2.html
 /// - OpenEB standalone samples
 // Removed: use crate::{Event, Events}; - legacy types no longer exist
-use crate::ev_formats::{polarity_handler::PolarityHandler, LoadConfig, PolarityEncoding};
+use crate::ev_formats::LoadConfig;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -237,7 +235,6 @@ pub enum Evt2Error {
         max_y: u16,
     },
     TimestampError(String),
-    PolarityError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for Evt2Error {
@@ -264,7 +261,6 @@ impl std::fmt::Display for Evt2Error {
                 )
             }
             Evt2Error::TimestampError(msg) => write!(f, "Timestamp error: {msg}"),
-            Evt2Error::PolarityError(e) => write!(f, "Polarity error: {e}"),
         }
     }
 }
@@ -273,7 +269,6 @@ impl std::error::Error for Evt2Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Evt2Error::Io(e) => Some(e),
-            Evt2Error::PolarityError(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -298,8 +293,6 @@ pub struct Evt2Config {
     pub sensor_resolution: Option<(u16, u16)>,
     /// Chunk size for reading binary data
     pub chunk_size: usize,
-    /// Polarity encoding configuration
-    pub polarity_encoding: Option<PolarityEncoding>,
 }
 
 impl Default for Evt2Config {
@@ -310,7 +303,6 @@ impl Default for Evt2Config {
             max_events: None,
             sensor_resolution: None,
             chunk_size: 1_000_000, // 1M events per chunk
-            polarity_encoding: None,
         }
     }
 }
@@ -335,7 +327,6 @@ pub struct Evt2Metadata {
 /// EVT2 reader implementation
 pub struct Evt2Reader {
     config: Evt2Config,
-    polarity_handler: Option<PolarityHandler>,
 }
 
 impl Evt2Reader {
@@ -343,21 +334,12 @@ impl Evt2Reader {
     pub fn new() -> Self {
         Self {
             config: Evt2Config::default(),
-            polarity_handler: None,
         }
     }
 
     /// Create new EVT2 reader with custom configuration
     pub fn with_config(config: Evt2Config) -> Self {
-        let polarity_handler = config
-            .polarity_encoding
-            .as_ref()
-            .map(|_encoding| PolarityHandler::new());
-
-        Self {
-            config,
-            polarity_handler,
-        }
+        Self { config }
     }
 
     /// Read EVT2 file and return events with metadata
@@ -374,12 +356,6 @@ impl Evt2Reader {
 
         // Read binary data
         let events = self.read_binary_data(&mut file, header_size, &metadata)?;
-
-        // Apply polarity encoding if configured
-        if let Some(ref _handler) = self.polarity_handler {
-            // For now, we'll skip polarity conversion as the implementation needs adjustment
-            // The events already use the standard -1/1 encoding
-        }
 
         let final_metadata = Evt2Metadata {
             file_size,
@@ -640,50 +616,6 @@ impl Evt2Reader {
         }
     }
 
-    /// Read EVT2 file directly into a Polars DataFrame (optimized path)
-    /// This eliminates the intermediate Event struct and builds the DataFrame directly
-    pub fn read_file_to_dataframe<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Result<(DataFrame, Evt2Metadata), Box<dyn std::error::Error + Send + Sync>> {
-        let path = path.as_ref();
-        let mut file = File::open(path)?;
-        let file_size = file.metadata()?.len();
-
-        // Parse header
-        let (metadata, header_size) = self.parse_header(&mut file).map_err(Box::new)?;
-
-        // Calculate optimal chunk size
-        let chunk_size = calculate_optimal_chunk_size(file_size, 1_000_000_000); // 1GB default available memory
-
-        // Estimate total events for builder capacity
-        let estimated_events = ((file_size - header_size) / 4) as usize; // 4 bytes per event
-
-        // Use streaming if the dataset is large
-        if estimated_events > 5_000_000 {
-            let df = self.read_binary_data_streaming(&mut file, header_size, chunk_size)?;
-            let final_metadata = Evt2Metadata {
-                file_size,
-                header_size,
-                data_size: file_size - header_size,
-                estimated_event_count: Some(df.height() as u64),
-                ..metadata
-            };
-            Ok((df, final_metadata))
-        } else {
-            let df =
-                self.read_binary_data_to_dataframe(&mut file, header_size, estimated_events)?;
-            let final_metadata = Evt2Metadata {
-                file_size,
-                header_size,
-                data_size: file_size - header_size,
-                estimated_event_count: Some(df.height() as u64),
-                ..metadata
-            };
-            Ok((df, final_metadata))
-        }
-    }
-
     /// Read binary data directly into DataFrame (small files)
     fn read_binary_data_to_dataframe(
         &self,
@@ -796,148 +728,6 @@ impl Evt2Reader {
         }
 
         Ok(builder.build()?)
-    }
-
-    /// Read binary data using streaming for large files
-    fn read_binary_data_streaming(
-        &self,
-        file: &mut File,
-        header_size: u64,
-        chunk_size: usize,
-    ) -> Result<DataFrame, Box<dyn std::error::Error + Send + Sync>> {
-        // Seek to binary data start
-        file.seek(SeekFrom::Start(header_size))?;
-
-        let mut streamer = EventDataFrameStreamer::new(EventFormat::EVT2, chunk_size);
-        let mut buffer = vec![0u8; self.config.chunk_size * 4];
-        let mut dataframes: Vec<DataFrame> = Vec::new();
-
-        // State for timestamp reconstruction (same as original)
-        let mut current_time_base: u64 = 0;
-        let mut first_time_base_set = false;
-        let mut time_high_loop_count = 0u64;
-
-        const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
-        const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6);
-
-        loop {
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // End of file
-            }
-
-            let events_in_chunk = bytes_read / 4;
-
-            // Process events in chunks
-            for i in 0..events_in_chunk {
-                let raw_bytes = &buffer[i * 4..(i + 1) * 4];
-
-                let raw_data =
-                    u32::from_le_bytes([raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3]]);
-                let raw_event = RawEvt2Event { data: raw_data };
-
-                if let Ok(event_type) = raw_event.event_type() {
-                    match event_type {
-                        Evt2EventType::TimeHigh => {
-                            if let Ok(time_event) = raw_event.as_time_high_event() {
-                                let new_time_base = (time_event.timestamp as u64) << 6;
-
-                                if !first_time_base_set {
-                                    current_time_base = new_time_base;
-                                    first_time_base_set = true;
-                                } else {
-                                    // Check for significant backwards jump that indicates counter wraparound
-                                    // Use a much larger threshold to avoid false positives
-                                    let large_backwards_jump = new_time_base < current_time_base
-                                        && (current_time_base - new_time_base)
-                                            > (MAX_TIMESTAMP_BASE >> 1); // Half of max range
-
-                                    if large_backwards_jump {
-                                        time_high_loop_count += 1;
-                                    }
-
-                                    current_time_base =
-                                        new_time_base + time_high_loop_count * TIME_LOOP;
-                                }
-                            }
-                        }
-                        Evt2EventType::CdOff | Evt2EventType::CdOn => {
-                            // Skip CD events that precede the first EVT_TIME_HIGH: with
-                            // no time base set their timestamp is meaningless. OpenEB's
-                            // reference decoder gates emission on the first TIME_HIGH the
-                            // same way (see lib/openeb metavision_evt2_raw_file_decoder).
-                            if !first_time_base_set {
-                                continue;
-                            }
-                            if let Ok(cd_event) = raw_event.as_cd_event() {
-                                let x = cd_event.x;
-                                let y = cd_event.y;
-                                let polarity = event_type == Evt2EventType::CdOn;
-                                let timestamp = current_time_base + cd_event.timestamp as u64;
-
-                                // Validate coordinates if enabled
-                                if self.config.validate_coordinates {
-                                    if let Some((max_x, max_y)) = self.config.sensor_resolution {
-                                        if (x >= max_x || y >= max_y)
-                                            && self.config.skip_invalid_events
-                                        {
-                                            continue;
-                                        }
-                                    }
-                                }
-
-                                // Add to streamer, collect DataFrame if chunk is full
-                                if let Some(df) =
-                                    streamer.add_event(x, y, timestamp as i64, polarity)?
-                                {
-                                    dataframes.push(df);
-                                }
-
-                                // Check max events limit
-                                if let Some(max_events) = self.config.max_events {
-                                    if streamer.total_events() >= max_events {
-                                        let final_df = streamer.flush()?;
-                                        if final_df.height() > 0 {
-                                            dataframes.push(final_df);
-                                        }
-                                        return Self::concatenate_dataframes(dataframes);
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Flush any remaining events
-        let final_df = streamer.flush()?;
-        if final_df.height() > 0 {
-            dataframes.push(final_df);
-        }
-
-        Self::concatenate_dataframes(dataframes)
-    }
-
-    /// Concatenate multiple DataFrames efficiently
-    fn concatenate_dataframes(
-        dataframes: Vec<DataFrame>,
-    ) -> Result<DataFrame, Box<dyn std::error::Error + Send + Sync>> {
-        if dataframes.is_empty() {
-            return Ok(crate::ev_formats::dataframe_builder::create_empty_events_dataframe()?);
-        }
-
-        if dataframes.len() == 1 {
-            return Ok(dataframes.into_iter().next().unwrap());
-        }
-
-        // Convert DataFrames to LazyFrames for concat, then collect back to DataFrame
-        let lazy_frames: Vec<LazyFrame> = dataframes.into_iter().map(|df| df.lazy()).collect();
-        let df = concat(&lazy_frames, UnionArgs::default())?.collect()?;
-        Ok(df)
     }
 }
 

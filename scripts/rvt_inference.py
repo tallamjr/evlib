@@ -210,14 +210,14 @@ class RVTInference:
 
         # Use evlib to load events
         try:
-            # Try loading with evlib
-            t, x, y, polarity = evlib.formats.load_events(str(file_path))
+            # evlib.formats.load_events returns a Polars LazyFrame with columns
+            # x, y, t (Duration[us]) and polarity.
+            df = evlib.formats.load_events(str(file_path)).collect()
 
-            # Convert to expected format
-            xs = x.astype(np.int64)
-            ys = y.astype(np.int64)
-            ts = t.astype(np.float64)
-            ps = polarity.astype(np.int64)
+            xs = df["x"].to_numpy().astype(np.int64)
+            ys = df["y"].to_numpy().astype(np.int64)
+            ts = df["t"].dt.total_microseconds().to_numpy().astype(np.float64) / 1e6
+            ps = df["polarity"].to_numpy().astype(np.int64)
 
             print(f"✓ Loaded {len(xs)} events")
             print(f"  - Time range: {ts.min():.6f} - {ts.max():.6f} seconds")

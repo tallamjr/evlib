@@ -104,7 +104,6 @@ mod evt2_bitlayout_tests {
             max_events: None,
             sensor_resolution: Some((1280, 720)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
         let reader = Evt2Reader::with_config(config);
         let (df, _) = reader.read_file(&path).unwrap();
@@ -140,7 +139,6 @@ mod evt2_bitlayout_tests {
             max_events: None,
             sensor_resolution: Some((1280, 720)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
         let reader = Evt2Reader::with_config(config);
         let (df, _) = reader.read_file(&path).unwrap();
@@ -175,7 +173,6 @@ mod evt2_bitlayout_tests {
             max_events: None,
             sensor_resolution: Some((1280, 720)),
             chunk_size: 1000,
-            polarity_encoding: None,
         };
         let reader = Evt2Reader::with_config(config);
         let (df, _) = reader.read_file(&path).unwrap();
