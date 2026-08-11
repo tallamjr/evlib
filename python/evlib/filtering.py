@@ -42,23 +42,6 @@ def _apply_engine_hint(lazy_frame: pl.LazyFrame, engine: EngineType) -> pl.LazyF
     return lazy_frame
 
 
-def _should_use_streaming(events: pl.LazyFrame) -> bool:
-    """
-    Determine if streaming should be used based on data size.
-
-    This is a heuristic based on the number of events. For very large datasets,
-    streaming becomes more memory-efficient.
-    """
-    try:
-        # Quick estimate of data size - if we can't get it cheaply, assume streaming
-        row_count = events.select(pl.len()).collect().item()
-        # Use streaming for datasets larger than 5M events (similar to Rust backend)
-        return row_count > 5_000_000
-    except Exception:
-        # If we can't determine size, err on the side of streaming
-        return True
-
-
 def filter_by_time(
     events: EventsInput,
     t_start: Optional[float] = None,
@@ -220,6 +203,15 @@ def filter_hot_pixels(
     more events than typical pixels. This implementation uses percentile-based
     thresholding on per-pixel event counts.
 
+    The percentile threshold is computed as a Polars aggregation expression
+    (`.quantile()`) used directly inside the same `.filter()` call, so Polars
+    broadcasts it against the row-wise `event_count` column instead of it
+    being collected to a Python scalar first. The whole pipeline (group-by,
+    quantile, filter, anti-join) therefore stays a single lazy query plan
+    with no intermediate `.collect()`, which is required for `engine="gpu"`
+    collectability and avoids evaluating upstream filters twice
+    (roadmap C3 / P5).
+
     Args:
         events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
         threshold_percentile: Percentile threshold for hot pixel detection (default: 99.9)
@@ -247,16 +239,11 @@ def filter_hot_pixels(
     # Calculate per-pixel event counts
     pixel_counts = events_lf.group_by(["x", "y"]).agg(pl.len().alias("event_count"))
 
-    # Calculate threshold based on percentile
-    threshold_expr = pixel_counts.select(
-        pl.col("event_count").quantile(threshold_percentile / 100.0).alias("threshold")
-    )
-
-    # Get threshold value
-    threshold_val = threshold_expr.collect().item(0, "threshold")
-
-    # Filter out pixels above threshold
-    hot_pixels = pixel_counts.filter(pl.col("event_count") > threshold_val).select(
+    # Lazy percentile threshold: `.quantile()` is an aggregation expression
+    # that Polars broadcasts against `event_count` row-wise inside `.filter()`,
+    # so no `.collect()` is needed to materialise the scalar threshold value.
+    threshold_expr = pl.col("event_count").quantile(threshold_percentile / 100.0)
+    hot_pixels = pixel_counts.filter(pl.col("event_count") > threshold_expr).select(
         ["x", "y"]
     )
 
@@ -280,7 +267,8 @@ def filter_noise(
 
     Args:
         events: LazyFrame or DataFrame with columns 't', 'x', 'y', 'polarity'
-        method: Noise filtering method ("refractory" or "correlation", default: "refractory")
+        method: Noise filtering method; only "refractory" is implemented
+            (default: "refractory")
         refractory_period_us: Refractory period in microseconds (default: 1000)
         engine: Polars engine to use
 
@@ -306,66 +294,46 @@ def filter_noise(
     if refractory_period_us is None:
         refractory_period_us = 1000.0
 
-    if method == "refractory":
-        # Sort events by time for temporal operations
-        sorted_events = events_lf.sort("t")
-
-        # Add previous timestamp for same pixel
-        filtered_lf = (
-            sorted_events.with_columns(
-                [
-                    # Convert duration to microseconds for arithmetic
-                    pl.col("t").dt.total_microseconds().alias("t_us")
-                ]
-            )
-            .with_columns(
-                [
-                    # Get previous timestamp for same pixel coordinate
-                    pl.col("t_us").shift(1).over(["x", "y"]).alias("prev_t_us")
-                ]
-            )
-            .with_columns(
-                [
-                    # Calculate time difference
-                    (pl.col("t_us") - pl.col("prev_t_us")).alias("time_diff_us")
-                ]
-            )
-            .filter(
-                # Keep events if:
-                # 1. First event at pixel (prev_t_us is null), or
-                # 2. Time difference is greater than refractory period
-                pl.col("prev_t_us").is_null()
-                | (pl.col("time_diff_us") > refractory_period_us)
-            )
-            .drop(["t_us", "prev_t_us", "time_diff_us"])
-        )
-
-    elif method == "correlation":
-        # Simple temporal correlation filtering
-        # For now, implement as refractory with shorter period
-        correlation_period = refractory_period_us * 0.5
-
-        sorted_events = events_lf.sort("t")
-
-        filtered_lf = (
-            sorted_events.with_columns(
-                [pl.col("t").dt.total_microseconds().alias("t_us")]
-            )
-            .with_columns([pl.col("t_us").shift(1).over(["x", "y"]).alias("prev_t_us")])
-            .with_columns(
-                [(pl.col("t_us") - pl.col("prev_t_us")).alias("time_diff_us")]
-            )
-            .filter(
-                pl.col("prev_t_us").is_null()
-                | (pl.col("time_diff_us") > correlation_period)
-            )
-            .drop(["t_us", "prev_t_us", "time_diff_us"])
-        )
-
-    else:
+    if method != "refractory":
+        # "correlation" was previously accepted here but implemented refractory
+        # filtering with a halved period, not correlation (P6); removed
+        # rather than mislabelled. No other method is implemented.
         raise ValueError(
-            f"Unknown noise filtering method: {method}. Use 'refractory' or 'correlation'"
+            f"Unknown noise filtering method: {method!r}. Only 'refractory' is implemented."
         )
+
+    # Sort events by time for temporal operations
+    sorted_events = events_lf.sort("t")
+
+    # Add previous timestamp for same pixel
+    filtered_lf = (
+        sorted_events.with_columns(
+            [
+                # Convert duration to microseconds for arithmetic
+                pl.col("t").dt.total_microseconds().alias("t_us")
+            ]
+        )
+        .with_columns(
+            [
+                # Get previous timestamp for same pixel coordinate
+                pl.col("t_us").shift(1).over(["x", "y"]).alias("prev_t_us")
+            ]
+        )
+        .with_columns(
+            [
+                # Calculate time difference
+                (pl.col("t_us") - pl.col("prev_t_us")).alias("time_diff_us")
+            ]
+        )
+        .filter(
+            # Keep events if:
+            # 1. First event at pixel (prev_t_us is null), or
+            # 2. Time difference is greater than refractory period
+            pl.col("prev_t_us").is_null()
+            | (pl.col("time_diff_us") > refractory_period_us)
+        )
+        .drop(["t_us", "prev_t_us", "time_diff_us"])
+    )
 
     return _apply_engine_hint(filtered_lf, engine)
 

@@ -13,6 +13,7 @@ All filtering functions return a Polars LazyFrame; .collect() is called before a
 """
 
 from pathlib import Path
+from unittest import mock
 
 import polars as pl
 import pytest
@@ -314,6 +315,89 @@ def test_filter_noise_returns_lazy(balls_df):
     """filter_noise must return a LazyFrame."""
     lazy = flt.filter_noise(balls_df, method="refractory", refractory_period_us=1000.0)
     assert isinstance(lazy, pl.LazyFrame)
+
+
+# ---------------------------------------------------------------------------
+# filter_noise: removed "correlation" option (P6)
+# ---------------------------------------------------------------------------
+
+
+def test_filter_noise_rejects_removed_correlation_method(balls_df):
+    """P6: method="correlation" was refractory filtering with a halved
+    period mislabelled as correlation, not real correlation. It has been
+    removed entirely rather than fixed (implementing real inter-event
+    correlation is a separate, unscoped feature). Any method other than
+    "refractory" must raise, not silently degrade."""
+    with pytest.raises(ValueError, match="refractory"):
+        flt.filter_noise(balls_df, method="correlation", refractory_period_us=500.0)
+
+
+def test_filter_noise_rejects_unknown_method(balls_df):
+    with pytest.raises(ValueError, match="Unknown noise filtering method"):
+        flt.filter_noise(balls_df, method="bogus")
+
+
+# ---------------------------------------------------------------------------
+# filter_hot_pixels: laziness (P5 / roadmap C3)
+# ---------------------------------------------------------------------------
+
+
+def test_filter_hot_pixels_stays_lazy(balls_df):
+    """P5/roadmap C3 regression: filter_hot_pixels must build its whole
+    pipeline, including the percentile threshold, without calling
+    LazyFrame.collect() internally. The old implementation eagerly collected
+    the threshold mid-build, breaking GPU-collectability and evaluating
+    every upstream filter twice."""
+    lazy_input = balls_df.lazy()
+
+    def _forbidden_collect(self, *args, **kwargs):
+        raise AssertionError(
+            "filter_hot_pixels must not call LazyFrame.collect() internally"
+        )
+
+    with mock.patch.object(pl.LazyFrame, "collect", _forbidden_collect):
+        result = flt.filter_hot_pixels(lazy_input, threshold_percentile=99.9)
+        assert isinstance(result, pl.LazyFrame)
+
+    # The returned plan is still valid and collectable once control returns
+    # to the caller (collect() is unpatched again here).
+    collected = result.collect()
+    assert len(collected) <= len(balls_df)
+
+
+def test_filter_hot_pixels_lazy_matches_eager_reference(balls_df):
+    """The lazy `.quantile()`-in-`.filter()` rewrite must select exactly the
+    same threshold and rows as the old eager `.collect().item()` computation
+    (proves the laziness fix is output-identical, not just faster)."""
+    events_lf = balls_df.lazy()
+    threshold_percentile = 99.9
+
+    pixel_counts = events_lf.group_by(["x", "y"]).agg(pl.len().alias("event_count"))
+    reference_threshold = (
+        pixel_counts.select(
+            pl.col("event_count")
+            .quantile(threshold_percentile / 100.0)
+            .alias("threshold")
+        )
+        .collect()
+        .item(0, "threshold")
+    )
+    reference_hot_pixels = pixel_counts.filter(
+        pl.col("event_count") > reference_threshold
+    ).select(["x", "y"])
+    reference = (
+        events_lf.join(reference_hot_pixels, on=["x", "y"], how="anti")
+        .collect()
+        .sort(["x", "y", "t"])
+    )
+
+    result = (
+        flt.filter_hot_pixels(balls_df, threshold_percentile=threshold_percentile)
+        .collect()
+        .sort(["x", "y", "t"])
+    )
+
+    assert result.equals(reference)
 
 
 # ---------------------------------------------------------------------------
