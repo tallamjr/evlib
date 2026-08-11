@@ -107,3 +107,55 @@ def test_representations_and_rvt_are_unconditional_imports():
     assert not isinstance(evlib.representations, evlib._LazyImportErrorModule)
     assert not isinstance(evlib.rvt, evlib._LazyImportErrorModule)
     assert callable(evlib.rvt.process_sequence)
+
+
+def test_models_getattr_raises_clear_error_without_torch(monkeypatch):
+    """P8 regression: evlib.models.RVT must raise a clear install hint, not
+    AttributeError, when torch is unavailable."""
+    import evlib.models as models_pkg
+
+    monkeypatch.setitem(sys.modules, "torch", None)
+    # importlib.reload() re-executes the module into its existing __dict__
+    # without clearing it first, so a previously-imported RVT/E2VID class
+    # would still satisfy attribute lookup and __getattr__ would never run,
+    # unless those stale attributes are also removed here before reload.
+    monkeypatch.delattr(models_pkg, "RVT", raising=False)
+    monkeypatch.delattr(models_pkg, "E2VID", raising=False)
+    try:
+        reloaded = importlib.reload(models_pkg)
+        with pytest.raises(ImportError, match=r"evlib\[torch\]"):
+            reloaded.RVT
+        with pytest.raises(ImportError, match=r"evlib\[torch\]"):
+            reloaded.E2VID
+    finally:
+        monkeypatch.undo()
+        importlib.reload(models_pkg)
+
+
+def test_simulation_getattr_raises_clear_error_without_opencv(monkeypatch):
+    """P8 regression: evlib.simulation.VideoToEvents must raise a clear
+    install hint, not AttributeError, when opencv is unavailable."""
+    import evlib.simulation as simulation_pkg
+
+    monkeypatch.setitem(sys.modules, "cv2", None)
+    # Same stale-attribute hazard as above: remove the previously-imported
+    # real name before reload so __getattr__ is actually exercised.
+    monkeypatch.delattr(simulation_pkg, "VideoToEvents", raising=False)
+    try:
+        reloaded = importlib.reload(simulation_pkg)
+        with pytest.raises(ImportError, match=r"evlib\[torch,plot\]"):
+            reloaded.VideoToEvents
+    finally:
+        monkeypatch.undo()
+        importlib.reload(simulation_pkg)
+
+
+def test_models_and_simulation_unaffected_when_extras_present():
+    """Sanity check: with torch/cv2 genuinely installed (this environment),
+    every gated name resolves normally, __getattr__ is never invoked."""
+    import evlib.models as models_pkg
+    import evlib.simulation as simulation_pkg
+
+    assert models_pkg.RVT is not None
+    assert models_pkg.E2VID is not None
+    assert simulation_pkg.VideoToEvents is not None
