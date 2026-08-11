@@ -93,7 +93,7 @@ binary file ──► Rust decode (ev_formats) ──► Polars LazyFrame ──
 ```
 
 1. `evlib.load_events(path, ...)` calls the Rust loader, which detects the format, decodes the container, and builds a Polars frame.
-2. The Rust side returns a `LazyFrame` with columns `[x, y, t, polarity]`: `t` is a Duration in microseconds; `polarity` keeps the source format's native encoding, typically `0`/`1` for text and `-1`/`+1` for EVT2/EVT3/AEDAT, with no conversion applied (see [Polarity Encoding Mismatch](../user-guide/formats.md#polarity-encoding-mismatch)).
+2. The Rust side returns a `LazyFrame` with columns `[x, y, t, polarity]`: `t` is a Duration in microseconds; `polarity` keeps the source format's native encoding, typically `0`/`1` for text and AEDAT 2.0/3.0, and `-1`/`+1` for EVT2/EVT3/AEDAT 4.0, with no conversion applied (see [Polarity Encoding Mismatch](../user-guide/formats.md#polarity-encoding-mismatch)).
 3. `load_events` applies any time, spatial, or polarity filters as Polars expressions, so loading and filtering fuse into one lazy query, then optionally sorts by `t` (default `sort=True`).
 4. Downstream work (`evlib.filtering`, `evlib.representations`, `evlib.rvt`, `evlib.models`) is all Polars, collected with a selectable engine.
 

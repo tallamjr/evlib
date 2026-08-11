@@ -2,7 +2,7 @@
 
 This guide covers all supported event data formats in evlib, including format specifications, compatibility notes, and usage examples.
 
-`evlib.load_events` returns a Polars `LazyFrame` for every format. Call `.collect()` to materialise a `DataFrame`. The timestamp column is named `t` and is a Polars Duration in microseconds, so filter it with `evlib.filtering.filter_by_time` or `pl.col("t").dt.total_microseconds()`, never with raw integer comparisons. `x`/`y` are `Int16` and `polarity` is `Int8` (`-1`/`+1`).
+`evlib.load_events` returns a Polars `LazyFrame` for every format. Call `.collect()` to materialise a `DataFrame`. The timestamp column is named `t` and is a Polars Duration in microseconds, so filter it with `evlib.filtering.filter_by_time` or `pl.col("t").dt.total_microseconds()`, never with raw integer comparisons. `x`/`y` are `Int16` and `polarity` is `Int8`; the encoding (`0`/`1` or `-1`/`+1`) depends on the source format, see [Polarity Encoding Mismatch](#polarity-encoding-mismatch).
 
 ## Supported Formats Overview
 
@@ -30,7 +30,7 @@ timestamp x y polarity
 0.000300 319 239 1
 ```
 
-**On-disk layout** (one event per line): `timestamp x y polarity`, with `timestamp` in seconds. After loading, the in-memory columns are `t` (Duration in microseconds), `x`/`y` (Int16) and `polarity` (Int8, `-1`/`+1`).
+**On-disk layout** (one event per line): `timestamp x y polarity`, with `timestamp` in seconds. After loading, the in-memory columns are `t` (Duration in microseconds), `x`/`y` (Int16) and `polarity` (Int8, `0`/`1`, matching the file contents; `load_events` does not convert it).
 
 **Loading:**
 ```python
@@ -276,8 +276,11 @@ df = events.collect()
 
 **Actual behaviour:** `load_events` does **not** perform automatic polarity conversion. The polarity value in the loaded DataFrame reflects the on-disk encoding for each format:
 
+- **Text files** (e.g. `slider_depth/events.txt`): polarity is `0`/`1`, matching the file contents.
 - **EVT2 (`.raw`)**: polarity is `-1`/`+1` (the Rust reader converts the binary `0`/`1` bit).
-- **Text files (e.g. `slider_depth/events.txt`)**: polarity is `0`/`1`, matching the file contents.
+- **EVT3 (`.raw`, `.evt3`)**: polarity is `-1`/`+1` (converted on load, same as EVT2).
+- **AEDAT 2.0/3.0 (`.aedat`)**: polarity is `0`/`1`, matching the file contents (not converted).
+- **AEDAT 4.0 (`.aedat4`)**: polarity is `-1`/`+1` (converted on load).
 - **HDF5 files**: polarity depends on how the file was written.
 
 ```python
