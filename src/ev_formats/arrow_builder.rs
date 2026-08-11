@@ -116,9 +116,10 @@ impl ArrowEventBuilder {
         self.x_builder.append_value(event.x as i16);
         self.y_builder.append_value(event.y as i16);
 
-        // Convert timestamp to microseconds
-        let timestamp_us = self.convert_timestamp(event.t);
-        self.timestamp_builder.append_value(timestamp_us);
+        // This path is unreachable (dataframe_to_event_iterator fails on every
+        // call, R2) and scheduled for deletion in S2; event.t is stored as-is
+        // rather than routed through a magnitude-guessing conversion.
+        self.timestamp_builder.append_value(event.t as i64);
 
         // Convert polarity based on format-specific encoding
         let polarity_value = self.convert_polarity(event.polarity);
@@ -259,30 +260,6 @@ impl ArrowEventBuilder {
                     0i8
                 }
             }
-        }
-    }
-
-    /// Convert timestamp to microseconds for Duration type
-    ///
-    /// This matches the existing Polars implementation exactly:
-    /// - If timestamp >= 1,000,000: Assume already in microseconds
-    /// - Otherwise: Convert seconds to microseconds
-    ///
-    /// # Arguments
-    /// * `timestamp` - Floating-point timestamp from Event
-    ///
-    /// # Returns
-    /// Int64 timestamp in microseconds
-    fn convert_timestamp(&self, timestamp: f64) -> i64 {
-        if timestamp >= 1_000_000_000.0 {
-            // Likely nanoseconds, convert to microseconds
-            (timestamp / 1_000.0) as i64
-        } else if timestamp >= 1_000.0 {
-            // Likely already in microseconds
-            timestamp as i64
-        } else {
-            // Likely in seconds, convert to microseconds
-            (timestamp * 1_000_000.0) as i64
         }
     }
 
@@ -605,26 +582,28 @@ mod tests {
     }
 
     #[test]
-    fn test_timestamp_conversion() {
+    fn test_timestamp_stored_verbatim_as_microseconds() {
+        // This path is unreachable (R2) and takes event.t as an integer
+        // microsecond count with no magnitude guessing (2026-08-08 review, R4).
         let events = vec![
             Event {
-                t: 1.0,
+                t: 1_000_000.0,
                 x: 100,
                 y: 200,
                 polarity: 1i8,
-            }, // 1 second
+            },
             Event {
-                t: 0.001,
+                t: 1_000.0,
                 x: 101,
                 y: 201,
                 polarity: -1i8,
-            }, // 1 millisecond
+            },
             Event {
-                t: 1_000_000.0,
+                t: 2_000_000.0,
                 x: 102,
                 y: 202,
                 polarity: 1i8,
-            }, // 1 second in microseconds
+            },
         ];
 
         let batch = ArrowEventBuilder::from_events_zero_copy(&events, EventFormat::HDF5)
@@ -636,14 +615,35 @@ mod tests {
             .downcast_ref::<DurationMicrosecondArray>()
             .unwrap();
 
-        assert_eq!(timestamp_array.value(0), 1_000_000i64); // 1 second -> 1M microseconds
-        assert_eq!(timestamp_array.value(1), 1_000i64); // 1 ms -> 1K microseconds
-        assert_eq!(timestamp_array.value(2), 1_000_000i64); // Already in microseconds
+        assert_eq!(timestamp_array.value(0), 1_000_000i64);
+        assert_eq!(timestamp_array.value(1), 1_000i64);
+        assert_eq!(timestamp_array.value(2), 2_000_000i64);
     }
 
     #[test]
     fn test_arrow_to_events_conversion() {
-        let events = create_test_events();
+        // Microsecond-scale timestamps: this path takes event.t as an integer
+        // microsecond count with no magnitude guessing (2026-08-08 review, R4).
+        let events = vec![
+            Event {
+                t: 1_000.0,
+                x: 100,
+                y: 200,
+                polarity: 1i8,
+            },
+            Event {
+                t: 2_000.0,
+                x: 101,
+                y: 201,
+                polarity: -1i8,
+            },
+            Event {
+                t: 3_000.0,
+                x: 102,
+                y: 202,
+                polarity: 1i8,
+            },
+        ];
         let batch = ArrowEventBuilder::from_events_zero_copy(&events, EventFormat::HDF5)
             .expect("Failed to create Arrow batch");
 
@@ -652,7 +652,7 @@ mod tests {
 
         assert_eq!(converted_events.len(), 3);
 
-        // Note: timestamps are converted to seconds, so we check with tolerance
+        // arrow_to_events divides back by 1e6 to seconds: 1000 us -> 0.001 s.
         assert!((converted_events[0].t - 0.001).abs() < 1e-9);
         assert_eq!(converted_events[0].x, 100);
         assert_eq!(converted_events[0].y, 200);

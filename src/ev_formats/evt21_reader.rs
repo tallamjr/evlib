@@ -192,7 +192,7 @@ impl RawEvt21Event {
 pub struct VectorizedEvent {
     pub x_base: u16,        // Base X coordinate (12 bits)
     pub y: u16,             // Y coordinate (12 bits)
-    pub timestamp: u16,     // Timestamp lower bits (10 bits)
+    pub timestamp: u16,     // Timestamp lower bits (6 bits)
     pub polarity: bool,     // Event polarity (true for EVT_POS, false for EVT_NEG)
     pub validity_mask: u32, // 32-bit mask indicating valid pixels
 }
@@ -206,7 +206,7 @@ pub struct TimeHighEvent {
 pub struct ExtTriggerEvent {
     pub value: bool,    // Trigger edge polarity
     pub id: u8,         // Trigger channel ID (5 bits)
-    pub timestamp: u16, // 10-bit timestamp (LSB of full timestamp)
+    pub timestamp: u16, // 6-bit timestamp (LSB of full timestamp)
 }
 /// Vendor-specific event structure
 #[derive(Debug, Clone, Copy)]
@@ -572,10 +572,11 @@ impl Evt21Reader {
             let mut current_time_base: u64 = 0;
             let mut first_time_base_set = false;
             let mut time_high_loop_count = 0u64;
-            // Constants for 64-bit timestamp handling
-            const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 50) - 1) << 10;
-            const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 10);
-            const LOOP_THRESHOLD: u64 = 10 << 10;
+            // Constants for timestamp handling: 28-bit TIME_HIGH carries
+            // timestamp bits 33..6; the event word carries the 6 LSBs.
+            const MAX_TIMESTAMP_BASE: u64 = ((1u64 << 28) - 1) << 6;
+            const TIME_LOOP: u64 = MAX_TIMESTAMP_BASE + (1 << 6); // 2^34 us
+            const LOOP_THRESHOLD: u64 = 10 << 6;
             let mut bytes_read_total = 0;
             loop {
                 let bytes_read = file.read(&mut buffer)?;
@@ -606,7 +607,7 @@ impl Evt21Reader {
                             match event_type {
                                 Evt21EventType::TimeHigh => {
                                     if let Ok(time_event) = raw_event.as_time_high_event() {
-                                        let new_time_base = time_event.timestamp << 10;
+                                        let new_time_base = time_event.timestamp << 6;
                                         let new_time_base_with_loops =
                                             new_time_base + time_high_loop_count * TIME_LOOP;
                                         // Handle time loop detection
@@ -641,7 +642,6 @@ impl Evt21Reader {
                                                     let y = vectorized_event.y;
                                                     let full_timestamp = current_time_base
                                                         + vectorized_event.timestamp as u64;
-                                                    let timestamp = full_timestamp as f64;
                                                     let polarity = vectorized_event.polarity;
                                                     // Validate coordinates if configured
                                                     if self.config.validate_coordinates {
@@ -658,7 +658,12 @@ impl Evt21Reader {
                                                         }
                                                     }
                                                     // Add event directly to DataFrame builder
-                                                    builder.add_event(x, y, timestamp, polarity);
+                                                    builder.add_event_microseconds(
+                                                        x,
+                                                        y,
+                                                        full_timestamp as i64,
+                                                        polarity,
+                                                    );
                                                     // Check max events limit
                                                     if let Some(max_events) = self.config.max_events
                                                     {

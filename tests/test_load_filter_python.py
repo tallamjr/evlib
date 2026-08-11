@@ -38,3 +38,23 @@ def test_time_window_filter_selects_subset():
     sub = evlib.load_events(str(EVT2), t_start=lo_s, t_end=hi_s).collect()
     assert 0 < sub.height < full.height
     assert sub["t"].dt.total_microseconds().max() <= int(hi_s * 1e6)
+
+
+TEXT = ROOT / "tests/data/test.txt"
+
+
+def test_rust_binding_rejects_filter_kwargs():
+    """The Rust binding's filter kwargs were broken three ways (review R3):
+    both bounds required, seconds compared against microseconds, and HDF5/AEDAT
+    ignored them entirely. They are stripped; filtering lives in evlib.load_events."""
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        evlib.formats.load_events(str(TEXT), t_start=25.0)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        evlib.formats.load_events(str(TEXT), min_x=0)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        evlib.formats.load_events(str(TEXT), polarity=1)
+
+
+def test_rust_binding_keeps_text_kwargs():
+    lf = evlib.formats.load_events(str(TEXT), header_lines=1)
+    assert lf.collect().height > 0

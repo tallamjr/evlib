@@ -11,22 +11,25 @@ mod arrow_tests {
         EventFormat,
     };
 
+    // This path is unreachable (R2) and takes event.t as an integer
+    // microsecond count with no magnitude guessing (2026-08-08 review, R4), so
+    // these fixtures are already microsecond-scale.
     fn create_test_events() -> Vec<Event> {
         vec![
             Event {
-                t: 0.001,
+                t: 1_000.0,
                 x: 100,
                 y: 200,
                 polarity: 1i8,
             },
             Event {
-                t: 0.002,
+                t: 2_000.0,
                 x: 101,
                 y: 201,
                 polarity: -1i8,
             },
             Event {
-                t: 0.003,
+                t: 3_000.0,
                 x: 102,
                 y: 202,
                 polarity: 1i8,
@@ -36,7 +39,7 @@ mod arrow_tests {
                 x: 103,
                 y: 203,
                 polarity: -1i8,
-            }, // Already in microseconds
+            },
         ]
     }
 
@@ -120,10 +123,10 @@ mod arrow_tests {
             .downcast_ref::<arrow_array::DurationMicrosecondArray>()
             .unwrap();
 
-        assert_eq!(timestamp_array.value(0), 1_000i64); // 1 ms -> 1K microseconds
-        assert_eq!(timestamp_array.value(1), 2_000i64); // 2 ms -> 2K microseconds
-        assert_eq!(timestamp_array.value(2), 3_000i64); // 3 ms -> 3K microseconds
-        assert_eq!(timestamp_array.value(3), 1_000_000i64); // Already in microseconds
+        assert_eq!(timestamp_array.value(0), 1_000i64); // stored verbatim
+        assert_eq!(timestamp_array.value(1), 2_000i64); // stored verbatim
+        assert_eq!(timestamp_array.value(2), 3_000i64); // stored verbatim
+        assert_eq!(timestamp_array.value(3), 1_000_000i64); // stored verbatim
     }
 
     #[test]

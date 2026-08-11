@@ -83,13 +83,24 @@ pub use hdf5_reader::load_events_from_hdf5;
 // DataFrame construction utilities for direct event processing
 pub mod dataframe_builder;
 pub use dataframe_builder::{
-    calculate_optimal_chunk_size, convert_timestamp, create_empty_events_dataframe,
-    EventDataFrameBuilder, EventDataFrameStreamer,
+    calculate_optimal_chunk_size, create_empty_events_dataframe, EventDataFrameBuilder,
+    EventDataFrameStreamer,
 };
 
 // Python bindings for DataFrame-based operations (defined inline below)
 
 // Polars support integrated directly into file readers
+
+/// Unit of `Event.t` as declared by the reader that produced the events.
+/// There is deliberately no "guess from magnitude" option (2026-08-08 review, R4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimestampUnit {
+    /// `Event.t` is seconds; converted with `(t * 1e6) as i64` (truncation kept
+    /// so existing text loads are bit identical).
+    Seconds,
+    /// `Event.t` is an integer microsecond count stored losslessly in f64.
+    Microseconds,
+}
 
 /// Configuration for loading events with filtering options
 #[derive(Debug, Clone, Default)]
@@ -371,7 +382,7 @@ pub fn load_events_from_text(path: &str, config: &LoadConfig) -> IoResult<DataFr
         events.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    python::build_polars_dataframe(&events, EventFormat::Text)
+    python::build_polars_dataframe(&events, EventFormat::Text, TimestampUnit::Seconds)
         .map_err(|e| std::io::Error::other(format!("DataFrame conversion failed: {}", e)))
 }
 
@@ -762,24 +773,15 @@ pub mod python {
     // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
     // in build_polars_dataframe() for better performance
 
-    /// Convert timestamp to microseconds for Polars Duration type
-    fn convert_timestamp(timestamp: f64) -> i64 {
-        if timestamp >= 1_000_000_000.0 {
-            // Likely nanoseconds, convert to microseconds
-            (timestamp / 1_000.0) as i64
-        } else if timestamp >= 1_000.0 {
-            // Likely already in microseconds
-            timestamp as i64
-        } else {
-            // Likely in seconds, convert to microseconds
-            (timestamp * 1_000_000.0) as i64
-        }
-    }
-
-    /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency
+    /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency.
+    ///
+    /// `unit` declares what `Event.t` holds for every event in `events`; there is no
+    /// magnitude-based guessing (2026-08-08 review, R4). Callers pass the unit their
+    /// reader actually produced.
     pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
+        unit: TimestampUnit,
     ) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
         use polars::prelude::*;
 
@@ -815,7 +817,10 @@ pub mod python {
         for event in events {
             x_builder.append_value(event.x as i16);
             y_builder.append_value(event.y as i16);
-            timestamp_builder.append_value(convert_timestamp(event.t));
+            timestamp_builder.append_value(match unit {
+                TimestampUnit::Seconds => (event.t * 1_000_000.0) as i64,
+                TimestampUnit::Microseconds => event.t as i64,
+            });
             // Store raw bool polarity (0/1) - will convert vectorized later
             polarity_builder.append_value(event.polarity);
         }
@@ -997,54 +1002,22 @@ pub mod python {
         Ok((data_dict.into_pyobject(py)?.into(), schema_dict.into()))
     }
 
-    /// Load events from a file with filtering support (using Polars backend)
+    /// Load events from a file and return the full decoded frame.
     ///
-    /// Automatically detects the format based on file extension
-    ///
-    /// Args:
-    ///     path: Path to the event file
-    ///     t_start: Start time filter (inclusive)
-    ///     t_end: End time filter (inclusive)
-    ///     min_x, max_x, min_y, max_y: Spatial bounds filters
-    ///     polarity: Polarity filter (1 for positive, -1 for negative, None for both)
-    ///     sort: Sort events by timestamp after loading
-    ///     x_col, y_col, t_col, p_col: Custom column indices for text files
-    ///     header_lines: Number of header lines to skip in text files
-    ///
-    /// Returns:
-    ///     Python dictionary with event data for Polars LazyFrame creation
-    ///
+    /// Row filters are deliberately not exposed here: they were broken three
+    /// independent ways (one-sided bounds ignored, seconds compared against
+    /// microsecond values, HDF5/AEDAT paths ignoring them entirely; 2026-08-08
+    /// review, R3). Use evlib.load_events, which applies filters as Polars
+    /// expressions on the returned LazyFrame.
     #[pyfunction]
     #[pyo3(
-        signature = (
-            path,
-            t_start=None,
-            t_end=None,
-            min_x=None,
-            max_x=None,
-            min_y=None,
-            max_y=None,
-            polarity=None,
-            sort=false,
-            x_col=None,
-            y_col=None,
-            t_col=None,
-            p_col=None,
-            header_lines=0
-        ),
+        signature = (path, sort=false, x_col=None, y_col=None, t_col=None, p_col=None, header_lines=0),
         name = "load_events"
     )]
     #[allow(clippy::too_many_arguments)]
     pub fn load_events_py(
         py: Python<'_>,
         path: &str,
-        t_start: Option<f64>,
-        t_end: Option<f64>,
-        min_x: Option<u16>,
-        max_x: Option<u16>,
-        min_y: Option<u16>,
-        max_y: Option<u16>,
-        polarity: Option<i8>,
         sort: bool,
         x_col: Option<usize>,
         y_col: Option<usize>,
@@ -1052,13 +1025,7 @@ pub mod python {
         p_col: Option<usize>,
         header_lines: usize,
     ) -> PyResult<PyObject> {
-        // Convert i8 polarity filter to bool
-        let polarity_bool = polarity.map(|p| p > 0);
-
         let config = LoadConfig::new()
-            .with_time_window(t_start, t_end)
-            .with_spatial_bounds(min_x, max_x, min_y, max_y)
-            .with_polarity(polarity_bool)
             .with_sorting(sort)
             .with_custom_columns(t_col, x_col, y_col, p_col)
             .with_header_lines(header_lines);

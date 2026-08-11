@@ -17,20 +17,6 @@ macro_rules! info {
     ($($args:tt)*) => {};
 }
 
-/// Convert timestamp to microseconds for Polars Duration type
-pub fn convert_timestamp(timestamp: f64) -> i64 {
-    if timestamp >= 1_000_000_000.0 {
-        // Likely nanoseconds, convert to microseconds
-        (timestamp / 1_000.0) as i64
-    } else if timestamp >= 1_000.0 {
-        // Likely already in microseconds
-        timestamp as i64
-    } else {
-        // Likely in seconds, convert to microseconds
-        (timestamp * 1_000_000.0) as i64
-    }
-}
-
 /// Direct DataFrame builder for event data
 /// This eliminates the intermediate Event struct and builds DataFrames directly from raw event data
 pub struct EventDataFrameBuilder {
@@ -61,24 +47,11 @@ impl EventDataFrameBuilder {
         }
     }
 
-    /// Add a single event directly to the DataFrame builder
-    pub fn add_event(&mut self, x: u16, y: u16, timestamp: f64, polarity: bool) {
-        self.x_builder.append_value(x as i16);
-        self.y_builder.append_value(y as i16);
-        self.timestamp_builder
-            .append_value(convert_timestamp(timestamp));
-        // Store raw bool polarity (0/1) - will convert vectorized later
-        self.polarity_builder
-            .append_value(if polarity { 1i8 } else { 0i8 });
-        self.event_count += 1;
-    }
-
-    /// Add a single event with an already-converted microsecond timestamp.
+    /// Add a single event with an integer microsecond timestamp.
     ///
-    /// This bypasses the magnitude-based `convert_timestamp` heuristic and stores
-    /// the supplied microsecond value verbatim. It exists for readers (such as AER)
-    /// that compute exact integer-microsecond timestamps themselves and must not be
-    /// re-interpreted as seconds/nanoseconds by the heuristic.
+    /// This is the sole per-event entry point: there is no magnitude-based
+    /// guessing (2026-08-08 review, R4). Callers must already hold an integer
+    /// microsecond value.
     pub fn add_event_microseconds(&mut self, x: u16, y: u16, timestamp_us: i64, polarity: bool) {
         self.x_builder.append_value(x as i16);
         self.y_builder.append_value(y as i16);
@@ -86,13 +59,6 @@ impl EventDataFrameBuilder {
         self.polarity_builder
             .append_value(if polarity { 1i8 } else { 0i8 });
         self.event_count += 1;
-    }
-
-    /// Add multiple events in batch
-    pub fn add_events_batch(&mut self, events: &[(u16, u16, f64, bool)]) {
-        for &(x, y, timestamp, polarity) in events {
-            self.add_event(x, y, timestamp, polarity);
-        }
     }
 
     /// Get the current number of events in the builder
@@ -228,10 +194,11 @@ impl EventDataFrameStreamer {
         &mut self,
         x: u16,
         y: u16,
-        timestamp: f64,
+        timestamp_us: i64,
         polarity: bool,
     ) -> PolarsResult<Option<DataFrame>> {
-        self.builder.add_event(x, y, timestamp, polarity);
+        self.builder
+            .add_event_microseconds(x, y, timestamp_us, polarity);
         self.total_events += 1;
 
         if self.builder.len() >= self.chunk_size {
@@ -298,9 +265,9 @@ mod tests {
         let mut builder = EventDataFrameBuilder::new(EventFormat::Text, 10);
 
         // Add some test events
-        builder.add_event(100, 200, 1.5, true);
-        builder.add_event(150, 250, 2.0, false);
-        builder.add_event(200, 300, 2.5, true);
+        builder.add_event_microseconds(100, 200, 1_500_000, true);
+        builder.add_event_microseconds(150, 250, 2_000_000, false);
+        builder.add_event_microseconds(200, 300, 2_500_000, true);
 
         assert_eq!(builder.len(), 3);
 
@@ -340,17 +307,5 @@ mod tests {
         // Test large file
         let chunk = calculate_optimal_chunk_size(1_000_000_000, 1_000_000_000); // 1GB file, 1GB memory
         assert!((100_000..=5_000_000).contains(&chunk));
-    }
-
-    #[test]
-    fn test_timestamp_conversion() {
-        // Test seconds to microseconds
-        assert_eq!(convert_timestamp(1.5), 1_500_000);
-
-        // Test microseconds (no conversion)
-        assert_eq!(convert_timestamp(1_500_000.0), 1_500_000);
-
-        // Test nanoseconds to microseconds
-        assert_eq!(convert_timestamp(1_500_000_000.0), 1_500_000);
     }
 }

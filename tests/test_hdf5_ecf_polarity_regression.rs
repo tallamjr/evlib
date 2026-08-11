@@ -92,7 +92,7 @@ fn test_read_prophesee_hdf5_native_preserves_both_polarities() {
     let file_path = tmp_dir.path().join("synthetic_ecf.h5");
     let path_str = file_path.to_str().unwrap();
 
-    write_synthetic_ecf_hdf5(path_str, NUM_EVENTS, ECF_FILTER_ID, &payload);
+    write_synthetic_ecf_hdf5(path_str, NUM_EVENTS, NUM_EVENTS, ECF_FILTER_ID, &[&payload]);
 
     let events = read_prophesee_hdf5_native(path_str)
         .expect("read_prophesee_hdf5_native should decode the synthetic ECF chunk");
@@ -116,14 +116,195 @@ fn test_read_prophesee_hdf5_native_preserves_both_polarities() {
     );
 }
 
+/// R4 regression: ECF timestamps are integer microseconds and must round trip
+/// exactly. The old path divided to seconds and re-multiplied through the
+/// magnitude heuristic; float truncation turned 249 us into 248 us, and any
+/// value at or above 1e9 us (a 16.7 minute recording) was divided by 1000.
+#[test]
+fn test_native_ecf_timestamps_round_trip_exactly() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let ts: [i64; 4] = [249, 251, 489, 1_500_000_000];
+    let source_events: Vec<PropheseeEvent> = ts
+        .iter()
+        .enumerate()
+        .map(|(i, &t)| PropheseeEvent {
+            x: 10 + i as u16,
+            y: 20,
+            p: 1,
+            t,
+        })
+        .collect();
+    let payload = PropheseeECFEncoder::new().encode(&source_events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("exact_ts.h5");
+    write_synthetic_ecf_hdf5(
+        path.to_str().unwrap(),
+        ts.len(),
+        ts.len(),
+        ECF_FILTER_ID,
+        &[&payload],
+    );
+    let events = read_prophesee_hdf5_native(path.to_str().unwrap()).unwrap();
+    let got: Vec<i64> = events.iter().map(|e| e.t as i64).collect();
+    assert_eq!(got, ts.to_vec(), "microsecond round trip must be exact");
+}
+
+/// R8: a corrupt chunk must fail the whole load, not shrink it.
+#[test]
+fn test_native_ecf_errors_on_corrupt_chunk() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let make_events = |offset: i64| -> Vec<PropheseeEvent> {
+        (0..1000)
+            .map(|i| PropheseeEvent {
+                x: (i % 1280) as u16,
+                y: (i % 720) as u16,
+                p: if i % 3 == 0 { -1 } else { 1 },
+                t: 1_000_000 + offset + i as i64,
+            })
+            .collect()
+    };
+    let encoder = PropheseeECFEncoder::new();
+    let good = encoder.encode(&make_events(0)).unwrap();
+    let corrupt_full = encoder.encode(&make_events(10_000)).unwrap();
+    // Keep a plausible header so extraction succeeds, then starve the decoder.
+    let corrupt = &corrupt_full[..16];
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("corrupt_chunk.h5");
+    write_synthetic_ecf_hdf5(
+        path.to_str().unwrap(),
+        2000,
+        1000,
+        ECF_FILTER_ID,
+        &[&good, corrupt],
+    );
+    let err = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect_err("a corrupt second chunk must be a hard error, not a truncated load");
+    assert!(
+        err.to_string().contains("chunk 1"),
+        "error should name the failing chunk, got: {err}"
+    );
+}
+
+/// R8: a chunk that decodes cleanly but yields fewer events than the dataset
+/// declares is silent truncation and must error.
+#[test]
+fn test_native_ecf_errors_on_event_count_shortfall() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let events: Vec<PropheseeEvent> = (0..1500)
+        .map(|i| PropheseeEvent {
+            x: (i % 1280) as u16,
+            y: (i % 720) as u16,
+            p: 1,
+            t: 1_000_000 + i as i64,
+        })
+        .collect();
+    let payload = PropheseeECFEncoder::new().encode(&events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("shortfall.h5");
+    // Dataset claims 2000 events; the single chunk only encodes 1500.
+    write_synthetic_ecf_hdf5(
+        path.to_str().unwrap(),
+        2000,
+        2000,
+        ECF_FILTER_ID,
+        &[&payload],
+    );
+    let err = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect_err("count shortfall must be a hard error");
+    assert!(
+        err.to_string().contains("1500") && err.to_string().contains("2000"),
+        "error should report decoded vs expected counts, got: {err}"
+    );
+}
+
+fn set_geometry_attr(path: &str, geometry: &str) {
+    use hdf5_metno::types::VarLenAscii;
+    let file = hdf5_metno::File::open_rw(path).unwrap();
+    file.new_attr::<VarLenAscii>()
+        .create("geometry")
+        .unwrap()
+        .write_scalar(&VarLenAscii::from_ascii(geometry).unwrap())
+        .unwrap();
+}
+
+/// R9: without a geometry attribute nothing is filtered; events beyond the
+/// old hardcoded 1280x720 guard load intact (larger sensors are valid).
+#[test]
+fn test_native_ecf_keeps_large_sensor_coordinates_without_geometry() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let events = vec![
+        PropheseeEvent {
+            x: 1500,
+            y: 800,
+            p: 1,
+            t: 1_000_000,
+        },
+        PropheseeEvent {
+            x: 2000,
+            y: 1000,
+            p: -1,
+            t: 1_000_001,
+        },
+    ];
+    let payload = PropheseeECFEncoder::new().encode(&events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("large_sensor.h5");
+    write_synthetic_ecf_hdf5(path.to_str().unwrap(), 2, 2, ECF_FILTER_ID, &[&payload]);
+    let got = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect("large sensor coordinates are valid when no geometry is declared");
+    assert_eq!(got.len(), 2);
+    assert_eq!((got[0].x, got[0].y), (1500, 800));
+}
+
+/// R9: with a declared geometry, an out of bounds decoded coordinate means the
+/// payload was misparsed; that is corruption and must be a hard error.
+#[test]
+fn test_native_ecf_errors_on_out_of_geometry_coordinate() {
+    const ECF_FILTER_ID: c_uint = 36559;
+    let events = vec![
+        PropheseeEvent {
+            x: 100,
+            y: 100,
+            p: 1,
+            t: 1_000_000,
+        },
+        PropheseeEvent {
+            x: 1290,
+            y: 100,
+            p: 1,
+            t: 1_000_001,
+        }, // >= 1280
+    ];
+    let payload = PropheseeECFEncoder::new().encode(&events).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("oob.h5");
+    write_synthetic_ecf_hdf5(path.to_str().unwrap(), 2, 2, ECF_FILTER_ID, &[&payload]);
+    set_geometry_attr(path.to_str().unwrap(), "1280x720");
+    let err = read_prophesee_hdf5_native(path.to_str().unwrap())
+        .expect_err("out of geometry coordinate must be a hard error");
+    assert!(
+        err.to_string().contains("1280x720"),
+        "error should cite the declared geometry, got: {err}"
+    );
+}
+
 /// Write a minimal Prophesee-style HDF5 file: group "CD", chunked 1-D compound dataset
 /// "events" (x: u16, y: u16, p: i16, t: i64, matching `PropheseeEvent`'s repr(C) layout),
-/// a single chunk covering the whole dataset, with the ECF filter (id 36559) registered as
-/// optional so HDF5 does not require an actual filter plugin to be installed. The
-/// pre-encoded ECF payload is written directly into that chunk with H5Dwrite_chunk, bypassing
-/// the (unimplemented) filter pipeline entirely, mirroring how `read_compressed_chunk` reads
-/// raw chunk bytes with H5Dread_chunk in `src/ev_formats/hdf5_reader.rs`.
-fn write_synthetic_ecf_hdf5(path: &str, num_events: usize, filter_id: c_uint, payload: &[u8]) {
+/// chunked in `chunk_len`-event chunks, with the ECF filter (id 36559) registered as
+/// optional so HDF5 does not require an actual filter plugin to be installed. Each
+/// pre-encoded `payloads[i]` is written directly into chunk `i` with H5Dwrite_chunk,
+/// bypassing the (unimplemented) filter pipeline entirely, mirroring how
+/// `read_compressed_chunk` reads raw chunk bytes with H5Dread_chunk in
+/// `src/ev_formats/hdf5_reader.rs`. `payloads.len()` chunks are written; if
+/// `num_events > chunk_len * payloads.len()`, the dataset still declares its full
+/// length (used by the R8 event-count-shortfall test).
+fn write_synthetic_ecf_hdf5(
+    path: &str,
+    num_events: usize,
+    chunk_len: usize,
+    filter_id: c_uint,
+    payloads: &[&[u8]],
+) {
     unsafe {
         let path_c = CString::new(path).unwrap();
         let file_id = h5f::H5Fcreate(
@@ -193,10 +374,11 @@ fn write_synthetic_ecf_hdf5(path: &str, num_events: usize, filter_id: c_uint, pa
         let space_id = h5s::H5Screate_simple(1, dims.as_ptr(), std::ptr::null());
         assert!(space_id >= 0, "H5Screate_simple failed");
 
+        let chunk_dims: [u64; 1] = [chunk_len as u64];
         let dcpl_id = h5p::H5Pcreate(*hdf5_metno::globals::H5P_DATASET_CREATE);
         assert!(dcpl_id >= 0, "H5Pcreate failed");
         assert!(
-            h5p::H5Pset_chunk(dcpl_id, 1, dims.as_ptr()) >= 0,
+            h5p::H5Pset_chunk(dcpl_id, 1, chunk_dims.as_ptr()) >= 0,
             "H5Pset_chunk failed"
         );
         // Register the ECF filter id as optional: HDF5 records it in the dataset's filter
@@ -226,18 +408,21 @@ fn write_synthetic_ecf_hdf5(path: &str, num_events: usize, filter_id: c_uint, pa
         );
         assert!(dset_id >= 0, "H5Dcreate2 failed");
 
-        // Write the pre-encoded ECF payload directly into chunk 0, bypassing the filter
-        // pipeline (there is no real ECF encoder filter plugin registered on this system).
-        let offset: [u64; 1] = [0];
-        let write_status = h5d::H5Dwrite_chunk(
-            dset_id,
-            h5p::H5P_DEFAULT,
-            0, // filter_mask: 0 means "filters were applied" (we pre-applied ECF ourselves)
-            offset.as_ptr(),
-            payload.len(),
-            payload.as_ptr() as *const c_void,
-        );
-        assert!(write_status >= 0, "H5Dwrite_chunk failed");
+        // Write each pre-encoded ECF payload directly into its chunk, bypassing the
+        // filter pipeline (there is no real ECF encoder filter plugin registered on
+        // this system).
+        for (i, payload) in payloads.iter().enumerate() {
+            let offset: [u64; 1] = [(i * chunk_len) as u64];
+            let write_status = h5d::H5Dwrite_chunk(
+                dset_id,
+                h5p::H5P_DEFAULT,
+                0, // filter_mask: 0 means "filters were applied" (we pre-applied ECF ourselves)
+                offset.as_ptr(),
+                payload.len(),
+                payload.as_ptr() as *const c_void,
+            );
+            assert!(write_status >= 0, "H5Dwrite_chunk failed for chunk {i}");
+        }
 
         h5d::H5Dclose(dset_id);
         h5p::H5Pclose(dcpl_id);

@@ -441,7 +441,7 @@ impl AedatReader {
                     }
                     prev_timestamp = current_timestamp;
                 }
-                builder.add_event(x, y, timestamp as f64, polarity);
+                builder.add_event_microseconds(x, y, timestamp as i64, polarity);
                 event_index += 1;
             }
             builder.build().map_err(|e| AedatError::InvalidBinaryData {
@@ -548,7 +548,7 @@ impl AedatReader {
                         });
                     }
                 }
-                // Parse big-endian 32-bit timestamp and address
+                // Parse big-endian 32-bit timestamp and address (AEDAT 2.0)
                 let timestamp = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
                 let address = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
                 // Extract coordinates and polarity from address
@@ -600,7 +600,7 @@ impl AedatReader {
                     }
                     prev_timestamp = current_timestamp;
                 }
-                builder.add_event(x as u16, y as u16, timestamp as f64, polarity);
+                builder.add_event_microseconds(x as u16, y as u16, timestamp as i64, polarity);
                 event_index += 1;
             }
             builder.build().map_err(|e| AedatError::InvalidBinaryData {
@@ -772,7 +772,7 @@ impl AedatReader {
                     }
                     prev_timestamp = current_timestamp;
                 }
-                builder.add_event(x as u16, y as u16, timestamp as f64, polarity);
+                builder.add_event_microseconds(x as u16, y as u16, timestamp as i64, polarity);
                 event_index += 1;
             }
             builder.build().map_err(|e| AedatError::InvalidBinaryData {

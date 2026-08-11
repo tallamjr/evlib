@@ -761,9 +761,8 @@ impl Evt2Reader {
                                 let y = cd_event.y;
                                 let polarity = event_type == Evt2EventType::CdOn;
 
-                                // Calculate full timestamp
-                                let timestamp =
-                                    (current_time_base + cd_event.timestamp as u64) as f64;
+                                // Calculate full timestamp (integer microseconds)
+                                let timestamp = current_time_base + cd_event.timestamp as u64;
 
                                 // Validate coordinates if enabled
                                 if self.config.validate_coordinates {
@@ -777,7 +776,7 @@ impl Evt2Reader {
                                 }
 
                                 // Add event directly to DataFrame builder
-                                builder.add_event(x, y, timestamp, polarity);
+                                builder.add_event_microseconds(x, y, timestamp as i64, polarity);
 
                                 // Check max events limit
                                 if let Some(max_events) = self.config.max_events {
@@ -874,8 +873,7 @@ impl Evt2Reader {
                                 let x = cd_event.x;
                                 let y = cd_event.y;
                                 let polarity = event_type == Evt2EventType::CdOn;
-                                let timestamp =
-                                    (current_time_base + cd_event.timestamp as u64) as f64;
+                                let timestamp = current_time_base + cd_event.timestamp as u64;
 
                                 // Validate coordinates if enabled
                                 if self.config.validate_coordinates {
@@ -889,7 +887,9 @@ impl Evt2Reader {
                                 }
 
                                 // Add to streamer, collect DataFrame if chunk is full
-                                if let Some(df) = streamer.add_event(x, y, timestamp, polarity)? {
+                                if let Some(df) =
+                                    streamer.add_event(x, y, timestamp as i64, polarity)?
+                                {
                                     dataframes.push(df);
                                 }
 
