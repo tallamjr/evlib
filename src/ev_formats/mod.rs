@@ -6,7 +6,6 @@
 use hdf5_metno::File as H5File;
 use polars::prelude::*;
 use pyo3::prelude::*;
-// memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
 
@@ -503,122 +502,27 @@ pub mod python {
     use polars::prelude::IntoLazy;
     use std::io::Write;
 
-    // NOTE: convert_polarity function removed - functionality moved to vectorized Polars operations
-    // in build_polars_dataframe() for better performance
-
-    /// Build Polars DataFrame directly from events using Series builders for optimal memory efficiency.
+    /// Build a Polars DataFrame from decoded events.
     ///
-    /// `unit` declares what `Event.t` holds for every event in `events`; there is no
-    /// magnitude-based guessing (2026-08-08 review, R4). Callers pass the unit their
-    /// reader actually produced.
+    /// `unit` declares what `Event.t` holds for every event in `events`; there
+    /// is no magnitude-based guessing (2026-08-08 review, R4). Construction is
+    /// delegated to `EventDataFrameBuilder`, the single implementation of the
+    /// schema and polarity-conversion tail (S2 builder unification; the old
+    /// duplicated copies were the R6-class divergence source).
     pub fn build_polars_dataframe(
         events: &[Event],
         format: EventFormat,
         unit: TimestampUnit,
     ) -> Result<polars::prelude::DataFrame, polars::prelude::PolarsError> {
-        use polars::prelude::*;
-
-        let len = events.len();
-
-        if len == 0 {
-            // Create empty DataFrame with proper schema
-            let empty_x = Series::new("x".into(), Vec::<i16>::new());
-            let empty_y = Series::new("y".into(), Vec::<i16>::new());
-            let empty_timestamp = Series::new("t".into(), Vec::<i64>::new())
-                .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-            let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
-
-            return DataFrame::new(vec![
-                empty_x.into(),
-                empty_y.into(),
-                empty_timestamp.into(),
-                empty_polarity.into(),
-            ]);
-        }
-
-        // Use optimal data types for memory efficiency
-        // x, y: Int16 (sufficient for coordinates, saves 50% memory vs Int32)
-        // timestamp: Int64 (required for microsecond precision)
-        // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
-        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
-        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
-        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("t".into(), len);
-        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
-
-        // Single iteration with direct population - zero intermediate copies
-        // Store polarity as raw bool first, convert vectorized later
+        let mut builder = EventDataFrameBuilder::new(format, events.len());
         for event in events {
-            x_builder.append_value(event.x as i16);
-            y_builder.append_value(event.y as i16);
-            timestamp_builder.append_value(match unit {
+            let timestamp_us = match unit {
                 TimestampUnit::Seconds => (event.t * 1_000_000.0) as i64,
                 TimestampUnit::Microseconds => event.t as i64,
-            });
-            // Store raw bool polarity (0/1) - will convert vectorized later
-            polarity_builder.append_value(event.polarity);
+            };
+            builder.push_raw(event.x, event.y, timestamp_us, event.polarity);
         }
-
-        // Build Series from builders
-        let x_series = x_builder.finish().into_series();
-        let y_series = y_builder.finish().into_series();
-        let polarity_series_raw = polarity_builder.finish().into_series();
-
-        // Convert timestamp to Duration type
-        let timestamp_series = timestamp_builder
-            .finish()
-            .into_series()
-            .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-
-        // Create initial DataFrame with raw polarity
-        let df = DataFrame::new(vec![
-            x_series.into(),
-            y_series.into(),
-            timestamp_series.into(),
-            polarity_series_raw.into(),
-        ])?;
-
-        // VECTORIZED polarity conversion (much faster than per-event)
-        let df = match format {
-            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family: Convert 0/1 to -1/1 using vectorized operations
-                df.lazy()
-                    .with_column(
-                        when(col("polarity").eq(lit(0)))
-                            .then(lit(-1i8))
-                            .otherwise(lit(1i8))
-                            .alias("polarity")
-                            .cast(DataType::Int8),
-                    )
-                    .collect()?
-            }
-            #[cfg(not(windows))]
-            EventFormat::HDF5 => {
-                // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
-                df.lazy()
-                    .with_column(
-                        when(col("polarity").eq(lit(0)))
-                            .then(lit(-1i8))
-                            .otherwise(lit(1i8))
-                            .alias("polarity")
-                            .cast(DataType::Int8),
-                    )
-                    .collect()?
-            }
-            #[cfg(windows)]
-            EventFormat::HDF5 => {
-                return Err(PolarsError::ComputeError(
-                    "HDF5 support is disabled on Windows due to build complexity.".into(),
-                ));
-            }
-            _ => {
-                // Text and other formats: Keep 0/1 encoding as-is, but ensure Int8 type
-                df.lazy()
-                    .with_column(col("polarity").cast(DataType::Int8))
-                    .collect()?
-            }
-        };
-
-        Ok(df)
+        builder.build()
     }
 
     /// Convert Polars DataFrame to Python dictionary for LazyFrame creation

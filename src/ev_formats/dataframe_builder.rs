@@ -12,11 +12,6 @@ macro_rules! debug {
     ($($args:tt)*) => {};
 }
 
-#[cfg(not(unix))]
-macro_rules! info {
-    ($($args:tt)*) => {};
-}
-
 /// Direct DataFrame builder for event data
 /// This eliminates the intermediate Event struct and builds DataFrames directly from raw event data
 pub struct EventDataFrameBuilder {
@@ -47,18 +42,24 @@ impl EventDataFrameBuilder {
         }
     }
 
-    /// Add a single event with an integer microsecond timestamp.
-    ///
-    /// This is the sole per-event entry point: there is no magnitude-based
-    /// guessing (2026-08-08 review, R4). Callers must already hold an integer
-    /// microsecond value.
-    pub fn add_event_microseconds(&mut self, x: u16, y: u16, timestamp_us: i64, polarity: bool) {
+    /// Append one event with the polarity byte stored verbatim (no bool
+    /// mapping). Used by `python::build_polars_dataframe`, whose Event structs
+    /// carry reader-native i8 polarities; `build()` applies the format's
+    /// vectorised conversion exactly as before the S2 unification.
+    pub fn push_raw(&mut self, x: u16, y: u16, timestamp_us: i64, polarity: i8) {
         self.x_builder.append_value(x as i16);
         self.y_builder.append_value(y as i16);
         self.timestamp_builder.append_value(timestamp_us);
-        self.polarity_builder
-            .append_value(if polarity { 1i8 } else { 0i8 });
+        self.polarity_builder.append_value(polarity);
         self.event_count += 1;
+    }
+
+    /// Add a single event with an integer microsecond timestamp.
+    ///
+    /// This is the sole per-event entry point for the binary readers: there is
+    /// no magnitude-based guessing (2026-08-08 review, R4).
+    pub fn add_event_microseconds(&mut self, x: u16, y: u16, timestamp_us: i64, polarity: bool) {
+        self.push_raw(x, y, timestamp_us, if polarity { 1i8 } else { 0i8 });
     }
 
     /// Get the current number of events in the builder

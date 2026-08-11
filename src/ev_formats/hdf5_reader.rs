@@ -15,13 +15,7 @@ use hdf5_metno_sys::{h5d, h5p, h5s};
 use polars::prelude::DataFrame;
 use std::io;
 
-#[cfg(unix)]
 use tracing::info;
-
-#[cfg(not(unix))]
-macro_rules! info {
-    ($($args:tt)*) => {};
-}
 
 /// Sensor geometry from the file level "geometry" attribute ("WIDTHxHEIGHT"),
 /// written by Prophesee's HDF5 tooling. None when absent or unparseable, in
@@ -156,8 +150,8 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Vec<Event>> {
     }
 
     // A decoded count short of the dataset's declared length is silent
-    // truncation (coordinate filtering above never drops in-range events
-    // from real captures) and must error rather than warn.
+    // truncation (the geometry check above rejects out-of-range coordinates
+    // with a hard error rather than dropping them) and must error, not warn.
     if all_events.len() != total_events {
         return Err(hdf5_metno::Error::Internal(format!(
             "ECF decode incomplete: decoded {} of {} events",
