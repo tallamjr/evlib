@@ -202,8 +202,10 @@ src/ev_representations/ → evlib.representations_rs   # dense scatter-add backe
 Python-only modules (pure Polars / PyTorch):
 python/evlib/filtering.py       → evlib.filtering
 python/evlib/representations.py → evlib.representations
+python/evlib/rvt/               → evlib.rvt             # RVT-identical preprocessing pipeline
 python/evlib/visualization.py   → evlib.visualization
 python/evlib/models/            → evlib.models
+python/evlib/simulation/        → evlib.simulation      # ESIM video-to-events (requires PyTorch)
 ```
 
 ## Adding New Features

@@ -22,9 +22,18 @@ evlib follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ## Changelog
 
-### 0.12.x (current)
+### 0.13.x (current)
 
-The crate version is `0.12.0` (`Cargo.toml`). This series adds native GPU and Apple Silicon compute backends for the RVT stacked-histogram path and tightens the bit-identity guarantees against reference implementations.
+The crate version is `0.13.1` (`Cargo.toml`). Since 0.12.0, this series added statically-linked HDF5 wheels, a round of correctness fixes to the HDF5/EVT2/format-loading path, and two rounds of dead-code and API-surface cleanup:
+
+- **HDF5 static-linked wheels**: `--features hdf5-static` compiles HDF5 (and blosc) from source instead of discovering a system install, so distributed wheels carry no `libhdf5` runtime dependency.
+- **Correctness fixes**: derive ECF coordinate bounds from file geometry instead of guessing, make partial ECF loads a hard error instead of a silent truncation, reconstruct EVT2.1 timestamps with the correct six-bit shift, delete the magnitude-guessing timestamp heuristic, and strip broken filter keyword arguments from the `load_events` binding.
+- **Dead-code removal**: deleted the unused Arrow path and the `arrow` Cargo feature, the no-op polarity handler, a duplicate ECF codec, the unused EVNT/TCP reader, and the dead streaming/iterator machinery (`should_use_streaming`, `calculate_optimal_chunk_size`).
+- **Python surface cleanup**: deleted the dead streaming heuristic and the fake `filter_noise(method="correlation")` option, made `filter_hot_pixels` fully lazy, made the Polars GPU engine opt-in (no more automatic `nvidia-smi` probing at import time), and replaced `None`-on-missing-extra with a clear install-hint error for `evlib.models`/`evlib.simulation`.
+
+The prior 0.12.0 series is summarised below for reference: it added native GPU and Apple Silicon compute backends for the RVT stacked-histogram path and tightened the bit-identity guarantees against reference implementations.
+
+### 0.12.x
 
 **RVT preprocessing backends**
 
@@ -44,7 +53,7 @@ The crate gained two optional Cargo features in addition to the existing set:
 - `cuda` (pulls in `libloading` for runtime loading of the CUDA kernel).
 - `metal` (pulls in `metal` and `objc`; macOS target only).
 
-The full feature set is now `polars`, `python`, `arrow`, `hdf5`, `extension-module`, `zero-copy`, `cuda`, and `metal`. Default features remain `["polars", "python", "arrow"]`.
+At the time of the 0.12.0 release, the full feature set was `polars`, `python`, `arrow`, `hdf5`, `extension-module`, `zero-copy`, `cuda`, and `metal`, with default features `["polars", "python", "arrow"]`. The `arrow` and `zero-copy` features were later deleted (0.13.x, dead-code removal); the current feature set is `default` (`polars`, `python`), `python`, `extension-module`, `cuda`, `metal`, `polars`, `hdf5`, and `hdf5-static` (`Cargo.toml`).
 
 **Validated benchmark (RVT pipeline)**
 

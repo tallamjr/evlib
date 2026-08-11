@@ -231,17 +231,18 @@ ts = df['t'].dt.total_seconds().to_numpy()
 
 ### Memory Management
 
-For very large files, use chunked loading:
+`evlib.load_events` always loads a file directly; there is no automatic chunking. Filter as early
+as possible in the lazy query to reduce peak memory:
 
 ```python
 # Process large files efficiently with time windows
 import evlib
 events = evlib.load_events("data/slider_depth/events.txt", t_start=0.0, t_end=10.0)
-df = events.collect()  # Uses optimal Polars engine
+df = events.collect()  # Bare .collect() uses Polars' default in-memory engine
 
-# For very large files, use streaming
+# To use Polars' streaming engine instead, pass engine= explicitly:
 events = evlib.load_events("data/slider_depth/events.txt")
-df = events.collect()  # Streaming engine for large data
+df = events.collect(engine="streaming")
 ```
 
 ### Format Selection

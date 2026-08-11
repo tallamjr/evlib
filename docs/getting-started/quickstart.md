@@ -39,9 +39,9 @@ df = filtered_events.collect()
 spatial_events = evf.filter_by_roi(events, x_min=100, x_max=500, y_min=100, y_max=300)
 df = spatial_events.collect()
 
-# Polarity filtering
+# Polarity filtering (slider_depth is text format, encoded 0/1: using 0 for negative here)
 pos_events = evf.filter_by_polarity(events, polarity=1)   # Positive events only
-neg_events = evf.filter_by_polarity(events, polarity=-1)  # Negative events only
+neg_events = evf.filter_by_polarity(events, polarity=0)   # Negative events only
 
 # Or write the same filters as Polars expressions directly:
 expr_filtered = events.filter(
