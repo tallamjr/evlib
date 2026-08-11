@@ -92,8 +92,8 @@ binary file ──► Rust decode (ev_formats) ──► Polars LazyFrame ──
   HDF5, text     polarity handling                                 models, plots
 ```
 
-1. `evlib.load_events(path, ...)` calls the Rust loader, which detects the format, decodes the container, normalises polarity, and builds a Polars frame.
-2. The Rust side returns a `LazyFrame` with columns `[x, y, t, polarity]`: `t` is a Duration in microseconds and `polarity` is already `-1`/`+1`.
+1. `evlib.load_events(path, ...)` calls the Rust loader, which detects the format, decodes the container, and builds a Polars frame.
+2. The Rust side returns a `LazyFrame` with columns `[x, y, t, polarity]`: `t` is a Duration in microseconds; `polarity` keeps the source format's native encoding, typically `0`/`1` for text and `-1`/`+1` for EVT2/EVT3/AEDAT, with no conversion applied (see [Polarity Encoding Mismatch](../user-guide/formats.md#polarity-encoding-mismatch)).
 3. `load_events` applies any time, spatial, or polarity filters as Polars expressions, so loading and filtering fuse into one lazy query, then optionally sorts by `t` (default `sort=True`).
 4. Downstream work (`evlib.filtering`, `evlib.representations`, `evlib.rvt`, `evlib.models`) is all Polars, collected with a selectable engine.
 
@@ -110,7 +110,7 @@ The native kernels are exposed as `evlib.representations_rs.stacked_histogram_de
 
 ### ev_formats: binary decode and frame construction
 
-`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame, which normalises polarity to -1/1 directly.
+`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame; polarity keeps each format's native on-disk encoding, it is not normalised to a single convention.
 
 HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). When the feature is off, or on Windows, use `h5py` from Python for HDF5 I/O.
 

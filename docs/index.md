@@ -35,7 +35,7 @@ designed for scalable data processing with real-world event camera datasets.
 - **GPU-Accelerated RVT Preprocessing**: `evlib.rvt.process_sequence` offers four backends (`polars`, `rust`, `cuda`, `metal`) with native CUDA and Metal scatter-add kernels, matching RVT (PyTorch) exactly
 - **Neural Network Models**: E2VID and RVT model loading and inference (Python/PyTorch, via `evlib.models`)
 - **Real-time Data Processing**: Handle large datasets (550MB+ files) efficiently
-- **Polarity Encoding**: Automatic conversion between 0/1 and -1/1 polarities
+- **Polarity Encoding**: `load_events` preserves each format's native polarity encoding (no automatic conversion); see the [formats guide](user-guide/formats.md#polarity-encoding-mismatch) for the per-format table
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
 evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), the RVT preprocessing output matches RVT torch exactly bar a single roughly 1e-10 boundary quirk: evlib CUDA runs at 283.6s (parity-plus versus RVT torch-GPU at 286.3s), evlib Rust-CPU at 406.2s is 1.32x faster than RVT torch-CPU (534.2s), and evlib CUDA is 1.88x faster than RVT torch-CPU. Standalone representations beat tonic NumPy on 20M events: voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. See `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`.

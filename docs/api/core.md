@@ -27,9 +27,9 @@ A Polars `LazyFrame` with four columns:
 | `x`        | integer              | Pixel x coordinate                               |
 | `y`        | integer              | Pixel y coordinate                               |
 | `t`        | Duration(microseconds) | Timestamp; use `pl.col("t").dt.total_microseconds()` to get an integer |
-| `polarity` | integer              | Already normalised to `-1` / `+1`                |
+| `polarity` | integer              | Encoding depends on the source format; see below |
 
-`t` is a Polars Duration in microseconds, **not** float seconds. To work in seconds, divide the microsecond count: `pl.col("t").dt.total_microseconds() / 1_000_000`. `polarity` is the normalised `-1`/`+1` encoding regardless of how the source file encoded it (0/1 inputs are converted on load).
+`t` is a Polars Duration in microseconds, **not** float seconds. To work in seconds, divide the microsecond count: `pl.col("t").dt.total_microseconds() / 1_000_000`. `load_events` does **not** convert polarity encoding: the value reflects the on-disk format. Text files typically load as `0`/`1`; EVT2, EVT3, and AEDAT typically load as `-1`/`+1`. See [Polarity Encoding Mismatch](../user-guide/formats.md#polarity-encoding-mismatch) in the formats guide for the per-format table.
 
 Because the result is a `LazyFrame`, nothing is computed until you `collect()`. Collect with a selectable engine: `"streaming"` for large CPU datasets, or `"gpu"` where cudf-polars and CUDA are available.
 
