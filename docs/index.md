@@ -62,7 +62,7 @@ evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. 
   * [Performance Benchmarks](#performance-benchmarks)
   * [Benchmarking and Monitoring](#benchmarking-and-monitoring)
   * [Performance Examples](#performance-examples)
-    * [Optimal Loading for Different File Sizes](#optimal-loading-for-different-file-sizes)
+    * [Loading Files of Any Size](#loading-files-of-any-size)
     * [Memory Monitoring](#memory-monitoring)
   * [Troubleshooting Large Files](#troubleshooting-large-files)
     * [Memory Constraints](#memory-constraints)
