@@ -1,5 +1,4 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use evlib::ev_formats::streaming::PolarsEventStreamer;
 use evlib::ev_formats::Event;
 use evlib::ev_formats::{format_detector, load_events_with_config, LoadConfig};
 use evlib::ev_formats::{EventFormat, FormatDetector};
@@ -213,94 +212,6 @@ fn benchmark_polarity_encoding(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark format-specific streaming performance
-fn benchmark_format_streaming(c: &mut Criterion) {
-    let mut group = c.benchmark_group("format_streaming");
-
-    let event_count = 2_000_000;
-    let events = generate_test_events(event_count);
-
-    // Test different formats
-    let formats = vec![
-        ("HDF5", EventFormat::HDF5),
-        ("EVT2", EventFormat::EVT2),
-        ("EVT21", EventFormat::EVT21),
-        ("Text", EventFormat::Text),
-    ];
-
-    for (format_name, format) in formats {
-        group.throughput(Throughput::Elements(event_count as u64));
-
-        group.bench_with_input(
-            BenchmarkId::new("format_streaming", format_name),
-            &(&events, format),
-            |b, (events, format)| {
-                b.iter(|| {
-                    let chunk_size =
-                        PolarsEventStreamer::calculate_optimal_chunk_size(events.len(), 256);
-                    let streamer = PolarsEventStreamer::new(chunk_size, *format);
-
-                    #[cfg(feature = "polars")]
-                    {
-                        let result = streamer.stream_to_polars(events.iter().cloned());
-                        match result {
-                            Ok(df) => hint_black_box(df.height()),
-                            Err(_) => hint_black_box(0),
-                        }
-                    }
-
-                    #[cfg(not(feature = "polars"))]
-                    {
-                        hint_black_box(events.len());
-                    }
-                })
-            },
-        );
-    }
-
-    group.finish();
-}
-
-/// Benchmark format-specific polarity conversion
-fn benchmark_format_polarity_conversion(c: &mut Criterion) {
-    let mut group = c.benchmark_group("format_polarity_conversion");
-
-    let event_count = 1_000_000;
-    let events = generate_test_events(event_count);
-
-    // Test different formats
-    let formats = vec![
-        ("HDF5", EventFormat::HDF5),
-        ("EVT2", EventFormat::EVT2),
-        ("EVT21", EventFormat::EVT21),
-        ("Text", EventFormat::Text),
-    ];
-
-    for (format_name, format) in formats {
-        group.throughput(Throughput::Elements(event_count as u64));
-
-        group.bench_with_input(
-            BenchmarkId::new("polarity_conversion", format_name),
-            &(&events, format),
-            |b, (events, format)| {
-                b.iter(|| {
-                    let streamer = PolarsEventStreamer::new(100_000, *format);
-                    let mut converted_count = 0;
-
-                    for event in events.iter() {
-                        let _converted = streamer.convert_polarity(event.polarity > 0);
-                        converted_count += 1;
-                    }
-
-                    hint_black_box(converted_count);
-                })
-            },
-        );
-    }
-
-    group.finish();
-}
-
 /// Benchmark format description retrieval
 fn benchmark_format_description(c: &mut Criterion) {
     let mut group = c.benchmark_group("format_description");
@@ -376,8 +287,6 @@ criterion_group!(
     benchmark_format_detection,
     benchmark_format_loading_performance,
     benchmark_polarity_encoding,
-    benchmark_format_streaming,
-    benchmark_format_polarity_conversion,
     benchmark_format_description,
     benchmark_format_metadata
 );

@@ -171,91 +171,6 @@ pub fn create_empty_events_dataframe() -> PolarsResult<DataFrame> {
     ])
 }
 
-/// Streaming builder for very large datasets
-/// Processes events in chunks and yields DataFrames incrementally
-pub struct EventDataFrameStreamer {
-    builder: EventDataFrameBuilder,
-    chunk_size: usize,
-    total_events: usize,
-}
-
-impl EventDataFrameStreamer {
-    /// Create a new streaming builder
-    pub fn new(format: EventFormat, chunk_size: usize) -> Self {
-        Self {
-            builder: EventDataFrameBuilder::new(format, chunk_size),
-            chunk_size,
-            total_events: 0,
-        }
-    }
-
-    /// Add an event to the stream, returning a DataFrame if chunk is full
-    pub fn add_event(
-        &mut self,
-        x: u16,
-        y: u16,
-        timestamp_us: i64,
-        polarity: bool,
-    ) -> PolarsResult<Option<DataFrame>> {
-        self.builder
-            .add_event_microseconds(x, y, timestamp_us, polarity);
-        self.total_events += 1;
-
-        if self.builder.len() >= self.chunk_size {
-            let df = self.flush()?;
-            Ok(Some(df))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Flush remaining events to a DataFrame
-    pub fn flush(&mut self) -> PolarsResult<DataFrame> {
-        if self.builder.is_empty() {
-            return create_empty_events_dataframe();
-        }
-
-        let format = self.builder.format;
-        let old_builder = std::mem::replace(
-            &mut self.builder,
-            EventDataFrameBuilder::new(format, self.chunk_size),
-        );
-        old_builder.build()
-    }
-
-    /// Get total events processed
-    pub fn total_events(&self) -> usize {
-        self.total_events
-    }
-}
-
-/// Calculate optimal chunk size based on available memory and file size
-pub fn calculate_optimal_chunk_size(file_size: u64, available_memory_bytes: usize) -> usize {
-    // Use 25% of available memory for chunk processing
-    let target_memory_usage = available_memory_bytes / 4;
-
-    // Estimate bytes per event in DataFrame (approximately 16 bytes per event)
-    let estimated_event_size = 16;
-
-    let memory_based_chunk = target_memory_usage / estimated_event_size;
-
-    // Also consider file size - for small files, don't over-chunk
-    let file_based_chunk = if file_size < 10_000_000 {
-        // < 10MB
-        100_000 // Small chunks for small files
-    } else if file_size < 100_000_000 {
-        // < 100MB
-        500_000 // Medium chunks for medium files
-    } else {
-        2_000_000 // Large chunks for large files
-    };
-
-    // Use the smaller of the two, but ensure reasonable bounds
-    memory_based_chunk
-        .min(file_based_chunk)
-        .clamp(100_000, 5_000_000)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,16 +211,5 @@ mod tests {
         let t = df.column("t").unwrap().duration().unwrap();
         assert_eq!(t.get(0).unwrap(), 1);
         assert_eq!(t.get(1).unwrap(), 1_001_000);
-    }
-
-    #[test]
-    fn test_chunk_size_calculation() {
-        // Test small file
-        let chunk = calculate_optimal_chunk_size(1_000_000, 1_000_000_000); // 1MB file, 1GB memory
-        assert!((100_000..=5_000_000).contains(&chunk));
-
-        // Test large file
-        let chunk = calculate_optimal_chunk_size(1_000_000_000, 1_000_000_000); // 1GB file, 1GB memory
-        assert!((100_000..=5_000_000).contains(&chunk));
     }
 }

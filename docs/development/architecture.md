@@ -59,8 +59,7 @@ evlib/
 │   │   ├── aer_reader.rs           # AER
 │   │   ├── hdf5_reader.rs          # HDF5 (opt-in, feature = "hdf5")
 │   │   ├── prophesee_ecf_codec.rs  # Prophesee ECF variant
-│   │   ├── dataframe_builder.rs    # Decoded primitives → Polars frame
-│   │   └── streaming.rs            # Chunked reads for large files
+│   │   └── dataframe_builder.rs    # Decoded primitives → Polars frame
 │   ├── ev_representations/         # Dense scatter-add kernels (CPU / CUDA / Metal)
 │   │   ├── mod.rs                  # PyO3 registration (representations_rs)
 │   │   ├── stacked_histogram_dense.rs   # RVT stacked-histogram scatter-add (CPU)
@@ -111,7 +110,7 @@ The native kernels are exposed as `evlib.representations_rs.stacked_histogram_de
 
 ### ev_formats: binary decode and frame construction
 
-`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame, which normalises polarity to -1/1 directly. `streaming.rs` provides chunked reads for files too large to load whole.
+`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame, which normalises polarity to -1/1 directly.
 
 HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). When the feature is off, or on Windows, use `h5py` from Python for HDF5 I/O.
 

@@ -40,11 +40,21 @@ pub use evt21_reader::{Evt21Config, Evt21Error, Evt21Metadata, Evt21Reader};
 pub mod evt3_reader;
 pub use evt3_reader::{Evt3Config, Evt3Error, Evt3Metadata, Evt3Reader};
 
-// Streaming module for large file processing
-pub mod streaming;
-pub use streaming::{
-    estimate_memory_usage, should_use_streaming, Event, PolarsEventStreamer, StreamingConfig,
-};
+/// Simple Event structure for streaming operations
+/// This is a minimal event representation used primarily for streaming and benchmark operations
+#[derive(Debug, Clone, Copy)]
+pub struct Event {
+    /// Timestamp value; its unit is not fixed here. Each site that builds a
+    /// DataFrame from `Event`s declares the unit explicitly via `TimestampUnit`
+    /// (2026-08-08 review, R4).
+    pub t: f64,
+    /// X coordinate (column)
+    pub x: u16,
+    /// Y coordinate (row)
+    pub y: u16,
+    /// Polarity (+1 or -1, stored as i8)
+    pub polarity: i8,
+}
 
 // Prophesee ECF codec implementation
 pub mod prophesee_ecf_codec;
@@ -60,10 +70,7 @@ pub use hdf5_reader::load_events_from_hdf5;
 
 // DataFrame construction utilities for direct event processing
 pub mod dataframe_builder;
-pub use dataframe_builder::{
-    calculate_optimal_chunk_size, create_empty_events_dataframe, EventDataFrameBuilder,
-    EventDataFrameStreamer,
-};
+pub use dataframe_builder::{create_empty_events_dataframe, EventDataFrameBuilder};
 
 // Python bindings for DataFrame-based operations (defined inline below)
 
@@ -485,146 +492,6 @@ pub fn load_events_with_config(
         EventFormat::Unknown => {
             // Fall back to text format for unknown files
             Ok(load_events_from_text(path, config)?)
-        }
-    }
-}
-
-/// Struct for iterating through a text file of events line by line
-/// without loading everything into memory at once
-pub struct EventFileIterator {
-    reader: BufReader<File>,
-}
-
-impl EventFileIterator {
-    /// Create a new iterator from a text file path
-    pub fn new(path: &str) -> IoResult<Self> {
-        let file = File::open(path)?;
-        Ok(EventFileIterator {
-            reader: BufReader::new(file),
-        })
-    }
-}
-
-impl Iterator for EventFileIterator {
-    type Item = IoResult<Event>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut line = String::new();
-
-        // Read the next line
-        match self.reader.read_line(&mut line) {
-            Ok(0) => None, // EOF
-            Ok(_) => {
-                // Skip empty lines and comments
-                if line.trim().is_empty() || line.starts_with('#') {
-                    return self.next();
-                }
-
-                // Parse the line
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() < 4 {
-                    return self.next(); // Not enough fields
-                }
-
-                // Parse values
-                let t = match parts[0].parse::<f64>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let x = match parts[1].parse::<u16>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let y = match parts[2].parse::<u16>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                let p = match parts[3].parse::<i8>() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
-                    }
-                };
-
-                // Create and return event
-                Some(Ok(Event {
-                    t,
-                    x,
-                    y,
-                    polarity: if p > 0 { 1 } else { -1 },
-                }))
-            }
-            Err(e) => Some(Err(e)),
-        }
-    }
-}
-
-// Window-based event iterator that returns chunks of events based on time windows
-pub struct TimeWindowIter<'a> {
-    events: &'a Vec<Event>,
-    window_duration: f64,
-    current_idx: usize,
-    start_time: f64,
-    end_time: f64,
-}
-
-impl<'a> TimeWindowIter<'a> {
-    /// Create a new iterator that returns time-windowed chunks of events
-    ///
-    /// # Arguments
-    /// * `events` - Event array to iterate over
-    /// * `window_duration` - Duration of each time window in seconds
-    pub fn new(events: &'a Vec<Event>, window_duration: f64) -> Self {
-        let start_time = if !events.is_empty() { events[0].t } else { 0.0 };
-
-        let end_time = start_time + window_duration;
-
-        TimeWindowIter {
-            events,
-            window_duration,
-            current_idx: 0,
-            start_time,
-            end_time,
-        }
-    }
-}
-
-impl Iterator for TimeWindowIter<'_> {
-    type Item = Vec<Event>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current_idx >= self.events.len() {
-            return None;
-        }
-
-        let mut window = Vec::new();
-        let mut idx = self.current_idx;
-
-        // Collect events within current time window
-        while idx < self.events.len() && self.events[idx].t < self.end_time {
-            window.push(self.events[idx]);
-            idx += 1;
-        }
-
-        // Update state for next iteration
-        self.current_idx = idx;
-        self.start_time = self.end_time;
-        self.end_time += self.window_duration;
-
-        // Only return Some if we found events in this window
-        if window.is_empty() {
-            self.next()
-        } else {
-            Some(window)
         }
     }
 }

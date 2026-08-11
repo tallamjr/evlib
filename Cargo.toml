@@ -38,11 +38,6 @@ path = "benchmarks/rust/memory_efficiency.rs"
 harness = false
 
 [[bench]]
-name = "streaming_performance"
-path = "benchmarks/rust/streaming_performance.rs"
-harness = false
-
-[[bench]]
 name = "format_comparison"
 path = "benchmarks/rust/format_comparison.rs"
 harness = false

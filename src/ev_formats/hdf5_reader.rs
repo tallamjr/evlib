@@ -9,8 +9,7 @@ our Rust ECF codec to decode Prophesee files without external dependencies.
 */
 
 use crate::ev_formats::prophesee_ecf_codec::PropheseeECFDecoder;
-use crate::ev_formats::streaming::Event;
-use crate::ev_formats::{python, EventFormat, TimestampUnit};
+use crate::ev_formats::{python, Event, EventFormat, TimestampUnit};
 use hdf5_metno::{Dataset, File as H5File, Result as H5Result};
 use hdf5_metno_sys::{h5d, h5p, h5s};
 use polars::prelude::DataFrame;
