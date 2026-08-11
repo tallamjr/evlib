@@ -20,6 +20,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from .yolox_blocks import BaseConv, DWConv
 
 # Try to import torchvision NMS functions
@@ -644,7 +648,7 @@ class YOLOXHead(nn.Module):
     ) -> Tuple[torch.Tensor, ...]:
         """Assign ground truth to predictions using SimOTA."""
         if mode == "cpu":
-            print("Using CPU for assignment")
+            logger.debug("Using CPU for assignment")
             gt_bboxes_per_image = gt_bboxes_per_image.cpu().float()
             bboxes_preds_per_image = bboxes_preds_per_image.cpu().float()
             gt_classes = gt_classes.cpu().float()
@@ -874,8 +878,9 @@ def postprocess(
                 )
         else:
             # Fallback: simple confidence-based filtering (no proper NMS)
-            print(
-                "Warning: torchvision not available, using simple confidence filtering instead of NMS"
+            logger.warning(
+                "torchvision not available, using simple confidence filtering "
+                "instead of NMS"
             )
             scores = detections[:, 4] * detections[:, 5]
             sorted_indices = torch.argsort(scores, descending=True)

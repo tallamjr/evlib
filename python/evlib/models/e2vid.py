@@ -11,6 +11,10 @@ import torch.nn.functional as F
 from typing import Union, Tuple, Optional
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from .base import BaseModel
 from .config import ModelConfig
 
@@ -422,10 +426,16 @@ class E2VID(BaseModel):
 
         # sorted() above makes the choice deterministic when several files exist
         weight_file = weight_files[0]
-        print(f"Loading pretrained weights from {weight_file.name}")
+        logger.info("Loading pretrained weights from %s", weight_file.name)
 
         try:
-            checkpoint = torch.load(weight_file, map_location=self._device)
+            # Disable weights_only for compatibility with legacy E2VID
+            # checkpoints that carry non-tensor metadata (mirrors
+            # RVT._load_pretrained_weights, which needs the same for PyTorch
+            # Lightning checkpoints).
+            checkpoint = torch.load(
+                weight_file, map_location=self._device, weights_only=False
+            )
 
             if "state_dict" in checkpoint:
                 state_dict = checkpoint["state_dict"]
@@ -453,15 +463,19 @@ class E2VID(BaseModel):
             if head_weight_key:
                 pretrained_base_channels = state_dict[head_weight_key].shape[0]
                 if pretrained_base_channels != self.config.base_channels:
-                    print(
-                        f"Adjusting base_channels: {self.config.base_channels} → {pretrained_base_channels}"
+                    logger.info(
+                        "Adjusting base_channels: %d -> %d",
+                        self.config.base_channels,
+                        pretrained_base_channels,
                     )
                     self.config.base_channels = pretrained_base_channels
                     architecture_changed = True
 
             if encoder_count > 0 and encoder_count != self.num_encoders:
-                print(
-                    f"Adjusting num_encoders: {self.num_encoders} → {encoder_count} (pretrained model is 'lite' variant)"
+                logger.info(
+                    "Adjusting num_encoders: %d -> %d (pretrained model is 'lite' variant)",
+                    self.num_encoders,
+                    encoder_count,
                 )
                 self.num_encoders = encoder_count
                 architecture_changed = True
@@ -469,8 +483,9 @@ class E2VID(BaseModel):
             # Check for normalization layers
             has_norm = any("norm_layer" in key for key in state_dict.keys())
             if has_norm and self.norm is None:
-                print(
-                    "Detected normalization layers, enabling batch normalization (pretrained model uses BN)"
+                logger.info(
+                    "Detected normalization layers, enabling batch normalization "
+                    "(pretrained model uses BN)"
                 )
                 self.norm = "BN"
                 architecture_changed = True
@@ -480,8 +495,9 @@ class E2VID(BaseModel):
                 "transposed_conv2d" in key for key in state_dict.keys()
             )
             if has_transposed_conv:
-                print(
-                    "Detected TransposedConv layers, adjusting architecture for pretrained compatibility"
+                logger.info(
+                    "Detected TransposedConv layers, adjusting architecture for "
+                    "pretrained compatibility"
                 )
                 # Rebuild with TransposedConvLayer for exact weight compatibility
                 architecture_changed = True
@@ -547,12 +563,16 @@ class E2VID(BaseModel):
             total_model_keys = len(self._model.state_dict())
 
             if loaded_keys > total_model_keys * 0.5:  # At least 50% compatibility
-                print(
-                    f"✓ Pretrained weights loaded successfully ({loaded_keys}/{total_model_keys} parameters)"
+                logger.info(
+                    "Pretrained weights loaded successfully (%d/%d parameters)",
+                    loaded_keys,
+                    total_model_keys,
                 )
             else:
-                print(
-                    f"⚠ Partial weight loading ({loaded_keys}/{total_model_keys} parameters)"
+                logger.warning(
+                    "Partial weight loading (%d/%d parameters)",
+                    loaded_keys,
+                    total_model_keys,
                 )
 
         except Exception as e:
