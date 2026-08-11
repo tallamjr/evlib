@@ -1,14 +1,10 @@
 name: "Setup Dependencies"
-description: "Install system dependencies (HDF5, pkg-config, GStreamer) and UV"
+description: "Install system dependencies (HDF5, pkg-config) and UV"
 inputs:
   python-version:
     description: "Python version to install"
     required: false
     default: "3.12"
-  enable-gstreamer:
-    description: "Install GStreamer for webcam functionality"
-    required: false
-    default: "false"
   os:
     description: "Operating system"
     required: true
@@ -22,12 +18,6 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libhdf5-dev pkg-config cmake libglib2.0-dev
-        if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
-          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-                                  libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base \
-                                  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-                                  gstreamer1.0-plugins-ugly
-        fi
 
     - name: Install system dependencies (macOS)
       if: startsWith(inputs.os, 'macos')
@@ -35,9 +25,6 @@ runs:
       run: |
         brew update
         brew install cmake hdf5 pkgconf glib
-        if [[ "${{ inputs.enable-gstreamer }}" == "true" ]]; then
-          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
-        fi
 
         # Set HDF5 environment variables
         H5P=$(brew --prefix hdf5)
