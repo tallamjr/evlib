@@ -71,9 +71,16 @@ def test_streaming_utils_no_longer_exists():
     assert "streaming_utils" not in evlib.__all__
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="visualization.py also imports h5py, which pyproject.toml excludes "
+    "on win32 (HDF5 is unsupported there); evlib.visualization is genuinely "
+    "unavailable on Windows regardless of the plot extra, so this platform "
+    "cannot exercise the 'real module' path.",
+)
 def test_visualization_available_is_the_real_module():
-    """In this environment cv2 is installed, so evlib.visualization must be
-    the genuine module, not the lazy-error proxy (no false positives)."""
+    """In this environment cv2 and h5py are installed, so evlib.visualization
+    must be the genuine module, not the lazy-error proxy (no false positives)."""
     assert not isinstance(evlib.visualization, evlib._LazyImportErrorModule)
     assert hasattr(evlib.visualization, "EventFrameRenderer")
 
