@@ -78,11 +78,6 @@ fastrand       = "2.0"
 polars         = { version = "0.49.1", default-features = true, features = ["temporal", "dtype-u16", "dtype-i8", "lazy"], optional = true }
 pyo3-polars    = { version = "0.22.0", optional = true }
 
-# Apache Arrow for zero-copy data transfer (optional)
-arrow          = { version = "55.0", default-features = false, optional = true }
-arrow-array    = { version = "55.0", optional = true }
-pyo3-arrow     = { version = "0.10.1", optional = true }
-
 # I/O & utilities
 memmap2        = "0.5"
 lazy_static    = "1.4"
@@ -122,7 +117,7 @@ criterion      = { version = "0.5", features = ["html_reports"] }
 # Default features - automatically platform-aware:
 # - Unix (Linux/macOS): Includes all features (HDF5 and tracing available)
 # - Windows: Excludes HDF5 and tracing (not in dependencies on Windows)
-default        = ["polars", "python", "arrow"]
+default        = ["polars", "python"]
 
 # Individual feature flags
 python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
@@ -137,8 +132,6 @@ cuda           = ["dep:libloading"]
 # Metal scatter-add backend (Apple Silicon): MSL kernel compiled at runtime via metal-rs.
 metal          = ["dep:metal", "dep:objc"]
 polars         = ["dep:polars"]
-arrow          = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
-zero-copy      = ["arrow"]  # Alias for clarity
 # HDF5 support (Unix-only). Opt-in because the hdf5-metno-sys build script
 # requires a compatible system HDF5 install. On Windows the underlying deps
 # aren't available, so this feature compiles to no-op stubs there.

@@ -31,7 +31,7 @@ DataFrame work (filtering, windowing, grouping, representation maths) is exactly
            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  PyO3 boundary (evlib._evlib)               │
-│         load_events · detect_format · arrow bridge          │
+│         load_events · detect_format                         │
 │         representations_rs (dense scatter-add)              │
 └─────────────────────────────────────────────────────────────┘
            │
@@ -62,7 +62,6 @@ evlib/
 │   │   ├── prophesee_ecf_codec.rs  # Prophesee ECF variant
 │   │   ├── evnt_tcp_reader.rs      # Streaming TCP reader (tokio)
 │   │   ├── dataframe_builder.rs    # Decoded primitives → Polars frame
-│   │   ├── arrow_builder.rs        # Apache Arrow zero-copy bridge
 │   │   ├── polarity_handler.rs     # 0/1 ↔ -1/1 polarity encoding
 │   │   └── streaming.rs            # Chunked reads for large files
 │   ├── ev_representations/         # Dense scatter-add kernels (CPU / CUDA / Metal)
@@ -115,7 +114,7 @@ The native kernels are exposed as `evlib.representations_rs.stacked_histogram_de
 
 ### ev_formats: binary decode and frame construction
 
-`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame, or through `arrow_builder.rs` for a zero-copy Apache Arrow bridge. `polarity_handler.rs` normalises 0/1 and -1/1 encodings, and `streaming.rs` provides chunked reads for files too large to load whole.
+`ev_formats` is the only place that touches raw bytes. It provides automatic format detection (`detect_format`) and per-format readers for EVT2, EVT2.1, EVT3, AEDAT, AEDAT 4.0, AER, HDF5 (with the ECF codec), and text. Decoded primitives flow through `dataframe_builder.rs` to a Polars frame. `polarity_handler.rs` normalises 0/1 and -1/1 encodings, and `streaming.rs` provides chunked reads for files too large to load whole.
 
 HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). When the feature is off, or on Windows, use `h5py` from Python for HDF5 I/O.
 
@@ -137,8 +136,8 @@ All processing is Python Polars:
 
 `src/lib.rs` defines the `_evlib` PyO3 module, built by maturin as `evlib._evlib`. It registers:
 
-- top-level `load_events`, `detect_format`, and the Arrow bridge functions;
-- a `formats` submodule (load/save, detection, ECF test, Arrow conversion);
+- top-level `load_events` and `detect_format`;
+- a `formats` submodule (load/save, detection, ECF test);
 - a `core` submodule with a handful of migrated helper functions (`merge_events`, `add_random_events`, `remove_events`, `events_to_block`);
 - `representations_rs` (the dense scatter-add);
 - `tracing_config` for logging control.
@@ -170,12 +169,10 @@ Python 3.11, 3.12, and 3.13 are supported (`requires-python = ">=3.11"`).
 ```toml
 # Cargo.toml
 [features]
-default          = ["polars", "python", "arrow"]
+default          = ["polars", "python"]
 python           = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 extension-module = ["pyo3/extension-module"]
 polars           = ["dep:polars"]
-arrow            = ["dep:arrow", "dep:arrow-array", "dep:pyo3-arrow"]
-zero-copy        = ["arrow"]                       # alias for clarity
 hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only, dynamic link
 hdf5-static      = ["hdf5", "hdf5-metno/static", "hdf5-metno/zlib"]  # Unix only, builds HDF5 from source
 cuda             = ["dep:libloading"]              # runtime-loaded CUDA scatter-add kernel
@@ -184,9 +181,8 @@ metal            = ["dep:metal", "dep:objc"]       # Metal scatter-add kernel, m
 
 Key points:
 
-- `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,arrow,extension-module`.
+- `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,extension-module`.
 - `hdf5` and `hdf5-static` are opt-in and Unix only. `hdf5` links dynamically against a system HDF5 install; `hdf5-static` builds HDF5 from source instead, so no system HDF5 is needed. Release wheels for macOS and Linux are built with `hdf5-static`, so `pip install evlib` already includes statically linked HDF5 (and ECF) support on those platforms since 0.13.1. On Windows neither feature's underlying HDF5 dependencies are available, so they compile to no-op stubs there and Python `h5py` is used instead.
-- `zero-copy` is an alias for `arrow`.
 - `cuda` enables the custom CUDA scatter-add backend. It pulls in `libloading` so the `nvcc`-built `librvt_scatter.so` can be loaded at runtime; there is no link-time CUDA dependency. Set `EVLIB_CUDA_LIB` to point at the built library.
 - `metal` enables the Metal/MSL scatter-add backend on Apple Silicon. It pulls in `metal` and `objc` and is restricted to the macOS target. Build with `CC=clang`.
 
@@ -195,7 +191,7 @@ GPU acceleration comes from two complementary places: cudf-polars at the Python 
 ### Common commands
 
 ```bash
-maturin develop                        # default minimal build (polars + python + arrow), no HDF5
+maturin develop                        # default minimal build (polars + python), no HDF5
 maturin develop --features hdf5-static # HDF5 built from source, no system HDF5 needed (Linux/macOS)
 maturin develop --features hdf5        # HDF5 dynamically linked against a system install (Linux/macOS)
 maturin develop --release              # release build for performance work

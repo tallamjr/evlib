@@ -256,7 +256,7 @@ maturin develop --features hdf5           # HDF5 dynamically linked against a sy
 > feature is available; HDF5 is always read through `h5py` there.
 
 Distributable wheels are built with the opt-in `extension-module` feature, e.g.
-`maturin build --release --features python,polars,arrow,extension-module,hdf5-static`
+`maturin build --release --features python,polars,extension-module,hdf5-static`
 on macOS/Linux (Windows wheels omit `hdf5-static`, since HDF5 support is not
 available on Windows). The `extension-module` feature is deliberately off by
 default so `cargo test` and `maturin develop` build and run without linking

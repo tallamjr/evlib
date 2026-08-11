@@ -631,7 +631,7 @@ mypy python/evlib/
 - **Maturin**: For building Python extensions
 
 ```bash
-# Default minimal build (polars + python + arrow)
+# Default minimal build (polars + python)
 maturin develop
 
 # Enable HDF5 support (Unix only)
