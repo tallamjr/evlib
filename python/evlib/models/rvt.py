@@ -13,6 +13,10 @@ import torch.nn as nn
 from typing import Union, Tuple, Optional, Dict, List, Any
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from .base import BaseModel
 from .config import ModelConfig
 from .rvt_backbone import RVTBackbone, RVTConfig, RVTStateManager
@@ -222,7 +226,7 @@ class RVT(BaseModel, nn.Module):
                 f"looked in: {weights_dir}"
             )
 
-        print(f"Loading pretrained weights from {checkpoint_file.name}")
+        logger.info("Loading pretrained weights from %s", checkpoint_file.name)
 
         try:
             # Load PyTorch Lightning checkpoint (disable weights_only for compatibility)
@@ -248,7 +252,9 @@ class RVT(BaseModel, nn.Module):
                     model_state_dict[new_key] = value
                     converted_keys += 1
 
-            print(f"✓ Converted {converted_keys}/{len(state_dict)} checkpoint keys")
+            logger.info(
+                "Converted %d/%d checkpoint keys", converted_keys, len(state_dict)
+            )
 
             # Try to load the converted state dict
             missing_keys, unexpected_keys = self.load_state_dict(
@@ -258,22 +264,20 @@ class RVT(BaseModel, nn.Module):
             loaded_params = len(model_state_dict) - len(missing_keys)
             total_params = len(self.state_dict())
 
-            print(
-                f"✓ Loaded {loaded_params}/{total_params} parameters from pretrained checkpoint"
+            logger.info(
+                "Loaded %d/%d parameters from pretrained checkpoint",
+                loaded_params,
+                total_params,
             )
 
             if missing_keys:
-                print(f"Missing keys: {len(missing_keys)}")
-                # Show first few missing keys to understand patterns
-                print("First 10 missing keys:")
+                logger.warning("Missing keys: %d", len(missing_keys))
                 for key in sorted(missing_keys)[:10]:
-                    print(f"  - {key}")
+                    logger.debug("  missing: %s", key)
             if unexpected_keys:
-                print(f"Unexpected keys: {len(unexpected_keys)}")
-                # Show all unexpected keys to understand the mismatch
-                print("All unexpected keys:")
+                logger.warning("Unexpected keys: %d", len(unexpected_keys))
                 for key in sorted(unexpected_keys):
-                    print(f"  - {key}")
+                    logger.debug("  unexpected: %s", key)
 
         except Exception as e:
             # Do not swallow the failure and continue with random weights: the
@@ -479,10 +483,10 @@ class RVT(BaseModel, nn.Module):
             (channels, height, width), dtype=torch.float32, device=self._device
         )
 
-        # Filter valid events (within image bounds)
-        valid_mask = (
-            (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height) & (ps >= 0) & (ps <= 1)
-        )
+        # Filter valid events (within image bounds).
+        # `ps` was already remapped to {0, 1} above (`ps = (ps > 0).long()`), so the
+        # polarity-bounds clause here was always true; deleted, spatial bounds only.
+        valid_mask = (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height)
 
         if valid_mask.any():
             xs_valid = xs[valid_mask]
@@ -722,8 +726,10 @@ class RVT(BaseModel, nn.Module):
                     x1, y1, x2, y2, obj_score, class_score, class_id = det_numpy
                     score = obj_score * class_score  # Combined confidence
                 else:
-                    print(
-                        f"Warning: Unexpected detection format with {len(det_numpy)} values: {det_numpy}"
+                    logger.warning(
+                        "Unexpected detection format with %d values: %s",
+                        len(det_numpy),
+                        det_numpy,
                     )
                     continue
 

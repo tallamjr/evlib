@@ -51,8 +51,11 @@ events = evlib.formats.load_events("path/to/your/data.h5")
 
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Import the compiled Rust extension module as a private submodule (evlib._evlib).
 # Maturin builds it under the package as `evlib._evlib`, so the Python package
@@ -83,126 +86,141 @@ save_events_to_text = formats.save_events_to_text
 detect_format = formats.detect_format
 get_format_description = formats.get_format_description
 
-# Configure Polars GPU acceleration if available
-try:
+
+class _LazyImportErrorModule:
+    """Placeholder for an optional submodule whose import failed.
+
+    Accessing any attribute raises a clear, actionable ``ImportError`` instead
+    of the module silently being ``None``: with ``None``, every use site turns
+    into an unexplained ``AttributeError`` ("'NoneType' object has no
+    attribute ...") with no hint that the fix is installing an extra (P8).
+    The submodule is only actually needed if a caller touches one of its
+    attributes, so ``import evlib`` must still succeed regardless of which
+    extras are installed.
+    """
+
+    def __init__(self, name: str, extra: str, original_error: BaseException) -> None:
+        self._name = name
+        self._extra = extra
+        self._original_error = original_error
+
+    def __getattr__(self, attr: str):
+        raise ImportError(
+            f"evlib.{self._name} is unavailable ({self._original_error}). "
+            f"Install it with: pip install evlib[{self._extra}]"
+        ) from self._original_error
+
+    def __repr__(self) -> str:
+        return f"<evlib.{self._name} unavailable, install evlib[{self._extra}]>"
+
+
+# Polars GPU engine configuration is opt-in only (see `configure_gpu_engine`
+# below). `import evlib` must not shell out to `nvidia-smi` or mutate
+# process-wide Polars state as a side effect: probing an external process and
+# silently reconfiguring a third-party library's global config purely because
+# a package was imported is surprising, can break unrelated Polars usage in
+# the same process, and previously enabled the GPU engine for any box with
+# `nvidia-smi` on PATH even without a working cudf-polars backend (P7).
+_engine_type = "streaming"
+_gpu_available = False
+
+
+def configure_gpu_engine() -> str:
+    """
+    Explicitly probe for a working Polars GPU (cudf-polars) engine and, if
+    found, prefer it for `collect_with_optimal_engine`.
+
+    This is opt-in: `import evlib` never calls it automatically. Call it
+    yourself (e.g. once at the top of a script) if you want evlib to try the
+    GPU engine. It runs an `nvidia-smi` subprocess probe and then validates
+    the engine actually works with a live GPU collect (not just that the
+    binary is on PATH), then sets Polars' process-wide engine affinity.
+
+    Returns:
+        str: "gpu" if a working GPU engine was found and enabled, otherwise
+        "streaming" (Polars' affinity is set to "streaming" either way).
+    """
+    global _engine_type, _gpu_available
+    import subprocess
+
     import polars as pl
 
-    def _configure_polars_engine():
-        """Configure Polars engine with GPU support and graceful fallback to streaming."""
-        # Check if GPU is explicitly requested
-        gpu_engine_requested = (
-            os.environ.get("POLARS_ENGINE_AFFINITY", "").lower() == "gpu"
-        )
-
-        if gpu_engine_requested:
-            try:
-                # Try to set GPU engine if requested via environment variable
-                pl.Config.set_engine_affinity("gpu")
-                return "gpu"
-            except Exception:
-                pass
-
-        # Auto-detect and try GPU engine if available (only if not explicitly requested)
-        if not gpu_engine_requested:
-            # Only enable GPU mode for NVIDIA CUDA GPUs
-            import subprocess
-
-            try:
-                # Check if nvidia-smi is available (indicates NVIDIA GPU)
-                subprocess.run(["nvidia-smi"], capture_output=True, check=True)
-
-                # Test if GPU operations work with Polars
-                test_df = pl.DataFrame({"test": [1, 2, 3]})
-                pl.Config.set_engine_affinity("gpu")
-                _ = test_df.select(pl.col("test") * 2)
-                return "gpu"
-            except (subprocess.CalledProcessError, FileNotFoundError, Exception):
-                # NVIDIA GPU not available, set streaming engine
-                pass
-
-        # NVIDIA GPU not available, set streaming engine for optimal performance
+    try:
+        subprocess.run(["nvidia-smi"], capture_output=True, check=True)
+        test_df = pl.DataFrame({"test": [1, 2, 3]})
+        pl.Config.set_engine_affinity("gpu")
+        _ = test_df.select(pl.col("test") * 2)
+        _engine_type = "gpu"
+        _gpu_available = True
+    except Exception as e:
+        logger.debug("GPU engine probe failed, falling back to streaming: %s", e)
         pl.Config.set_engine_affinity("streaming")
-        return "streaming"
+        _engine_type = "streaming"
+        _gpu_available = False
 
-    # Configure the engine and store result
-    _engine_type = _configure_polars_engine()
-    _gpu_available = _engine_type == "gpu"
+    return _engine_type
 
-except ImportError:
-    _gpu_available = False
-    _engine_type = "streaming"
 
-# Import Python representations module (migration from Rust PyO3 to pure Python)
-try:
-    from . import representations
-except ImportError:
-    representations = None
+# Import Python representations module (migration from Rust PyO3 to pure
+# Python). It imports only numpy/polars (both hard dependencies), so this
+# import cannot fail for lack of an optional extra and is not wrapped in a
+# try/except (a genuine failure here should fail `import evlib` loudly rather
+# than silently degrade to `representations = None`).
+from . import representations
 
-# Import Python filtering module (migration from Rust PyO3 to pure Python)
-try:
-    from . import filtering as python_filtering
-except ImportError:
-    python_filtering = None
+# Import Python filtering module (migration from Rust PyO3 to pure Python).
+# Same reasoning as representations: pure polars, a hard dependency.
+from . import filtering as python_filtering
 
-# Import optional Python-only submodules with graceful fallback
+# Deep-learning models (torch) and visualization (opencv) are genuinely
+# optional: their submodules import torch / cv2 unconditionally. When the
+# extra is missing, store a proxy that raises a clear "install evlib[X]"
+# ImportError the first time a caller actually touches the submodule (P8),
+# instead of becoming None and turning every use site into an unexplained
+# AttributeError. `models` and `simulation` additionally never actually raise
+# here (their own __init__.py catches ImportError internally and degrades
+# gracefully with reduced functionality, see Task 2), but the try/except is
+# kept for these two as defence in depth against an unrelated import bug.
 try:
     from . import models
-except ImportError:
-    models = None
+except ImportError as _models_import_error:
+    models = _LazyImportErrorModule("models", "torch", _models_import_error)
 
 try:
     from . import visualization
-except ImportError:
-    visualization = None
+except ImportError as _visualization_import_error:
+    visualization = _LazyImportErrorModule(
+        "visualization", "plot", _visualization_import_error
+    )
 
 try:
     from . import simulation
-except ImportError:
-    simulation = None
+except ImportError as _simulation_import_error:
+    simulation = _LazyImportErrorModule("simulation", "torch", _simulation_import_error)
 
-# RVT preprocessing pipeline. This is the RVT-compatible histogram path; the
-# legacy representations.create_stacked_histogram computes a different quantity.
-try:
-    from . import rvt
-except ImportError:
-    rvt = None
+# RVT preprocessing pipeline (numpy/polars only, same reasoning as
+# representations/filtering above; distinct from the torch-based
+# evlib.models.RVT detection model). This is the RVT-compatible histogram
+# path; the legacy representations.create_stacked_histogram computes a
+# different quantity.
+from . import rvt
 
+# Make representation functions directly accessible for backwards compatibility.
+globals()["create_stacked_histogram"] = representations.create_stacked_histogram
+globals()["create_mixed_density_stack"] = representations.create_mixed_density_stack
+globals()["create_voxel_grid"] = representations.create_voxel_grid
+globals()["densify_voxel_grid"] = representations.densify_voxel_grid
+globals()["create_event_frame"] = representations.create_event_frame
+globals()["densify_event_frame"] = representations.densify_event_frame
+globals()["create_time_surface"] = representations.create_time_surface
+globals()["densify_time_surface"] = representations.densify_time_surface
+globals()["preprocess_for_detection"] = representations.preprocess_for_detection
+globals()["benchmark_vs_rvt"] = representations.benchmark_vs_rvt
 
-# Make representation functions directly accessible for backwards compatibility
-if representations:
-    # Debug: Check if we're entering this block
-    import os
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print(f"DEBUG: representations is available: {representations}")
-        print(
-            f"DEBUG: representations has preprocess_for_detection: {hasattr(representations, 'preprocess_for_detection')}"
-        )
-
-    # Explicitly assign to module namespace
-    globals()["create_stacked_histogram"] = representations.create_stacked_histogram
-    globals()["create_mixed_density_stack"] = representations.create_mixed_density_stack
-    globals()["create_voxel_grid"] = representations.create_voxel_grid
-    globals()["densify_voxel_grid"] = representations.densify_voxel_grid
-    globals()["create_event_frame"] = representations.create_event_frame
-    globals()["densify_event_frame"] = representations.densify_event_frame
-    globals()["create_time_surface"] = representations.create_time_surface
-    globals()["densify_time_surface"] = representations.densify_time_surface
-    globals()["preprocess_for_detection"] = representations.preprocess_for_detection
-    globals()["benchmark_vs_rvt"] = representations.benchmark_vs_rvt
-
-    # Register Python representations module in sys.modules
-    sys.modules[__name__ + ".representations"] = representations
-
-    if os.environ.get("DEBUG_EVLIB"):
-        print(
-            f"DEBUG: globals() now has preprocess_for_detection: {'preprocess_for_detection' in globals()}"
-        )
-
-# Register the RVT preprocessing package in sys.modules so it is reachable both
-# as `evlib.rvt` and via `import evlib.rvt`.
-if rvt is not None:
-    sys.modules[__name__ + ".rvt"] = rvt
+# Register the Python representations and RVT preprocessing packages in
+# sys.modules so they are reachable both as `evlib.X` and via `import evlib.X`.
+sys.modules[__name__ + ".representations"] = representations
+sys.modules[__name__ + ".rvt"] = rvt
 
 # Filtering is the pure-Python Polars implementation (the single implementation).
 if python_filtering is None:
@@ -210,48 +228,21 @@ if python_filtering is None:
 filtering = python_filtering
 sys.modules[__name__ + ".filtering"] = python_filtering
 
-if os.environ.get("DEBUG_EVLIB"):
-    print("DEBUG: Using Python filtering module")
-
-
-try:
-    from . import streaming_utils
-except ImportError:
-    streaming_utils = None
-
 # Import version
 try:
     __version__ = getattr(formats, "__version__", None)
     if not __version__:
         raise ImportError("Version not found in compiled module")
 except ImportError:
-    # Fallback to reading from Cargo.toml
+    # Fallback to reading directly from Cargo.toml (editable/source installs
+    # where the compiled extension has not embedded a version string).
+    # Python >=3.11 (this project's floor; see pyproject.toml
+    # `requires-python`) always ships `tomllib` in the standard library, so
+    # no tomli/regex parsing fallback is needed.
     import pathlib
+    import tomllib
 
     try:
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib
-            except ImportError:
-                # Manual parsing fallback
-                import re
-
-                _cargo_toml_path = (
-                    pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
-                )
-                with open(_cargo_toml_path, "r") as f:
-                    content = f.read()
-                version_match = re.search(
-                    r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE
-                )
-                if version_match:
-                    __version__ = version_match.group(1)
-                else:
-                    __version__ = "unknown"
-                raise ImportError  # Skip the tomllib parsing below
-
         _cargo_toml_path = pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
         with open(_cargo_toml_path, "rb") as f:
             _cargo_data = tomllib.load(f)
@@ -265,7 +256,8 @@ def get_recommended_engine():
     Get the recommended Polars engine for evlib operations.
 
     Returns:
-        str: 'gpu' if GPU is available, otherwise 'streaming' for large datasets
+        str: 'gpu' if `configure_gpu_engine()` found and enabled a working
+        GPU engine, otherwise 'streaming'.
     """
     return _engine_type if _engine_type == "gpu" else "streaming"
 
@@ -475,10 +467,6 @@ def load_events(
     Example:
         # Basic loading
         events = evlib.load_events("data.h5")
-
-        # For validation, use the validation module explicitly:
-        # from evlib.validation import quick_validate_events
-        # is_valid = quick_validate_events(events)
     """
     import polars as pl
 
@@ -524,36 +512,23 @@ __all__ = [
     "get_format_description",
     "get_recommended_engine",
     "collect_with_optimal_engine",
+    "configure_gpu_engine",
     "setup_hdf5_plugins",
     "diagnose_hdf5",
+    "models",
+    "representations",
+    "create_stacked_histogram",
+    "create_mixed_density_stack",
+    "create_voxel_grid",
+    "densify_voxel_grid",
+    "create_event_frame",
+    "densify_event_frame",
+    "create_time_surface",
+    "densify_time_surface",
+    "preprocess_for_detection",
+    "benchmark_vs_rvt",
+    "filtering",
+    "visualization",
+    "simulation",
+    "rvt",
 ]
-
-# Add optional modules to exports if available
-if models:
-    __all__.append("models")
-if representations:
-    __all__.extend(
-        [
-            "representations",
-            "create_stacked_histogram",
-            "create_mixed_density_stack",
-            "create_voxel_grid",
-            "densify_voxel_grid",
-            "create_event_frame",
-            "densify_event_frame",
-            "create_time_surface",
-            "densify_time_surface",
-            "preprocess_for_detection",
-            "benchmark_vs_rvt",
-        ]
-    )
-if filtering:
-    __all__.append("filtering")
-if visualization:
-    __all__.append("visualization")
-
-
-if streaming_utils:
-    __all__.append("streaming_utils")
-if simulation:
-    __all__.append("simulation")
