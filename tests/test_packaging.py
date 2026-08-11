@@ -23,3 +23,11 @@ def test_rvt_is_reachable():
 
     rvt = importlib.import_module("evlib.rvt")
     assert callable(rvt.process_sequence)
+
+
+def test_configure_gpu_engine_is_exported():
+    assert hasattr(evlib, "configure_gpu_engine")
+
+
+def test_streaming_utils_is_gone():
+    assert not hasattr(evlib, "streaming_utils")
