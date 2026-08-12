@@ -1,7 +1,7 @@
 # evlib vs RVT preprocessing benchmark
 
 Full Gen4 validation sequence, raw h5 to stacked-histogram representation h5.
-All outputs verified bit-identical to the committed reference (1198 windows,
+All outputs verified against the committed reference (1198 windows,
 shape (1198, 20, 360, 640) uint8).
 
 | pipeline | min (s) | median (s) | max (s) | peak RSS (GB) |

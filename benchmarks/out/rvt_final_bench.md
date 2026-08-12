@@ -1,7 +1,7 @@
 # evlib vs RVT preprocessing benchmark (full dataset)
 
 Full gen4_1mpx validation split: 18 sequences, raw h5 -> stacked-histogram h5.
-Every per-sequence output verified bit-identical to the committed RVT reference.
+Every per-sequence output verified against the committed RVT reference.
 Wall-clock and peak RSS measured per sequence in isolated subprocesses (single pass).
 
 | pipeline | total time (s) | mean/seq (s) | peak RSS (GB) | total windows | diff vs ref (elems) |
