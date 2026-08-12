@@ -46,6 +46,24 @@ evlib keeps a thin Rust core and does all DataFrame work in Polars from Python:
 polarity filters as Polars expressions, so loading and filtering fuse into one
 GPU-collectable query.
 
+EVT2 decode is byte-identical to the OpenEB reference decoder, checked by a
+committed-digest conformance gate in `tests/test_openeb_conformance.py`.
+
+### What else is in the box
+
+Beyond loading, filtering, and representations, evlib ships full training and
+evaluation support for event-based detection models:
+
+- **`evlib.models`**: E2VID and RVT (Recurrent Vision Transformer), with
+  pretrained weight loading and GPU inference.
+- **`evlib.data`**: PyTorch datasets and a DataModule for RVT-style training
+  (`SequenceRandomDataset`, `SequenceStreamDataset`, `SequenceAugmentor`,
+  label preprocessing, collate functions).
+- **`evlib.eval`**: Prophesee-compatible detection mAP scoring.
+- **`evlib.simulation`**: ESIM video-to-events simulation (requires PyTorch).
+- **`evlib-rvt-preprocess`**: a console script (installed with the package)
+  that runs the RVT preprocessing pipeline end to end from the command line.
+
 <!-- mtoc-start -->
 
 - [Quick Start](#quick-start)
