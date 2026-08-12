@@ -109,6 +109,10 @@ jobs:
       #     source .venv/bin/activate
       #     uv run pytest --markdown-docs README.md docs/ -v --tb=short
 
+      - name: Check generated documentation outputs
+        run: python scripts/generate_doc_outputs.py --check
+        shell: bash
+
       - name: Generate coverage report
         if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
         run: pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow"
