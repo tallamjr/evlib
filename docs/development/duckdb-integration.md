@@ -1,10 +1,10 @@
 # DuckDB Integration with evlib
 
-This document demonstrates how to use evlib's zero-copy Arrow integration with DuckDB for high-performance event data analysis.
+This document demonstrates how to use Polars' built-in Arrow interop (`.to_arrow()`) to query evlib event data from DuckDB, for high-performance event data analysis.
 
 ## Overview
 
-evlib provides seamless integration with the Apache Arrow ecosystem through zero-copy data transfer. This enables efficient interoperability with analytics engines like DuckDB, allowing you to perform complex SQL queries on event camera data without expensive data copies.
+evlib returns events as a Polars LazyFrame. Polars has its own zero-copy Arrow interop (`DataFrame.to_arrow()`), which lets you hand event data to Arrow-aware analytics engines like DuckDB without an extra data copy. This is a Polars feature, not an evlib-specific Arrow integration: evlib itself has no Rust-side Arrow feature or bindings, it only produces the Polars DataFrame that `.to_arrow()` is called on.
 
 ## Basic Usage
 
@@ -16,7 +16,7 @@ import polars as pl
 
 # Load events as a Polars LazyFrame
 events_df = evlib.load_events("data/slider_depth/events.txt")
-# Convert to Arrow for DuckDB integration (Arrow ships in the default build)
+# Convert to Arrow for DuckDB integration (Polars' built-in .to_arrow())
 events = events_df.collect().to_arrow()
 ```
 
@@ -137,9 +137,9 @@ for x_bin, y_bin, density in density_map:
 
 ### Performance Comparison
 
-The zero-copy Arrow integration provides significant performance benefits:
+Polars' zero-copy `.to_arrow()` conversion provides significant performance benefits:
 
-- **Memory efficiency**: No data copying between evlib and DuckDB
+- **Memory efficiency**: No data copying between the Polars DataFrame and DuckDB
 - **Query performance**: DuckDB's columnar engine optimized for Arrow data
 - **Ecosystem compatibility**: Works seamlessly with Polars, Pandas, and other Arrow-compatible tools
 
@@ -161,7 +161,7 @@ result = df.groupby("polarity").size()
 
 ## Supported File Formats
 
-evlib's Arrow integration supports all major event camera formats:
+`evlib.load_events` (and hence this DuckDB workflow) supports all major event camera formats:
 
 - **HDF5**: Prophesee, iniVation datasets
 - **EVT2/EVT3**: Prophesee RAW format
@@ -171,7 +171,7 @@ evlib's Arrow integration supports all major event camera formats:
 
 ## Performance Notes
 
-- Arrow integration is enabled with the `arrow` feature flag
+- `.to_arrow()` is a plain Polars method; it ships with the `polars` dependency evlib already requires and needs no evlib build feature
 - Zero-copy transfer requires compatible data layouts
 - For maximum performance, use file formats that align with Arrow's columnar structure
 - Large datasets benefit most from the zero-copy approach

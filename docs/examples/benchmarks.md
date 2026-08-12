@@ -13,7 +13,7 @@ The RVT stacked-histogram is built by dedicated native scatter-add kernels. `evl
 
 The kernels are exposed directly as `evlib.representations_rs.stacked_histogram_dense`, `stacked_histogram_dense_cuda` and `stacked_histogram_dense_metal`.
 
-Polars is the query, filter and transform layer (CPU, cudf GPU engine, and CUDA managed memory for workloads larger than VRAM). The native scatter-add kernels are the compute layer. Polars on the GPU is not a free speed-up for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins, and the CUDA-versus-RVT-GPU result is parity-plus because the shared HDF5 read dominates the largest sequences.
+Polars is the query, filter and transform layer (CPU, and the cudf GPU engine, which by default allocates through cudf-polars' own memory resource rather than CUDA managed memory). The native scatter-add kernels are the compute layer. Polars on the GPU is not a free speed-up for a single transfer-bound operation; the custom scatter-add kernels are where the GPU wins, and the CUDA-versus-RVT-GPU result is parity-plus because the shared HDF5 read dominates the largest sequences.
 
 ## RVT preprocessing pipeline
 
@@ -51,7 +51,7 @@ For the general representation surface (voxel grid, event frame, time surface), 
 
 Plot: `benchmarks/out/tonic_bench_time.png`.
 
-evlib's cudf GPU plus UVM path runs all three fully on the GPU. At this stream size the operations are transfer-bound, so CPU Polars is the fastest evlib path; the GPU path still beats tonic on event_frame and time_surface.
+evlib's cudf GPU engine runs all three fully on the GPU, using its default allocator (no UVM needed at this scale; see [Performance: GPU memory footprint](../getting-started/performance.md#gpu-memory-footprint) for the measured VRAM numbers). At this stream size the operations are transfer-bound, so CPU Polars is the fastest evlib path; the GPU path still beats tonic on event_frame and time_surface.
 
 ### Running the tonic benchmark
 
@@ -61,7 +61,7 @@ python -m benchmarks.bench_tonic \
     --n-events 30000000
 ```
 
-This runs each (operation, backend) in a fresh subprocess across tonic, evlib CPU Polars, and evlib GPU (cudf with UVM). evlib's outputs are already validated against tonic, so this harness measures speed and memory, not correctness.
+This runs each (operation, backend) in a fresh subprocess across tonic, evlib CPU Polars, and evlib GPU (cudf, default allocator). evlib's outputs are already validated against tonic, so this harness measures speed and memory, not correctness.
 
 ## Reproducing the representation timings yourself
 

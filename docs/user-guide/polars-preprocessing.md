@@ -1,6 +1,6 @@
 # Polars-Based Event Preprocessing
 
-This guide covers evlib's Polars-based event representations. The functions build event camera representations as Polars expressions, so they run on the CPU Polars engine, on the cudf GPU engine, and on CUDA managed memory (UVM) for workloads larger than VRAM.
+This guide covers evlib's Polars-based event representations. The functions build event camera representations as Polars expressions, so they run on the CPU Polars engine and on the cudf GPU engine (`engine="gpu"`). The GPU engine uses cudf-polars' own default memory resource, not CUDA managed memory (UVM); see [Performance: GPU memory footprint](../getting-started/performance.md#gpu-memory-footprint) for the measured numbers and when UVM is worth adding.
 
 ## Overview
 
@@ -8,13 +8,13 @@ The `evlib.representations` module provides Polars-based implementations of comm
 
 ### Architecture
 
-Polars is the query, filter and transform layer. It runs on the CPU, on the cudf GPU engine (via `engine="gpu"`), and on CUDA managed memory so a workload larger than VRAM can still execute on the GPU. For the RVT pipeline the stacked-histogram is built by dedicated native scatter-add kernels (Rust, CUDA, Metal), which are the compute layer.
+Polars is the query, filter and transform layer. It runs on the CPU, and on the cudf GPU engine (via `engine="gpu"`), which by default allocates through cudf-polars' own pooled memory resource rather than CUDA managed memory (UVM). For the RVT pipeline the stacked-histogram is built by dedicated native scatter-add kernels (Rust, CUDA, Metal), which are the compute layer.
 
-Polars on the GPU is not a free speed-up for a single transfer-bound operation. The GPU win comes from the custom scatter-add kernels, or from compute-heavy and larger-than-VRAM workloads. On a single transfer-bound representation call the CPU Polars engine is typically the fastest evlib path.
+Polars on the GPU is not a free speed-up for a single transfer-bound operation. The GPU win comes from the custom scatter-add kernels, or from compute-heavy workloads. On a single transfer-bound representation call the CPU Polars engine is typically the fastest evlib path.
 
 ### Performance
 
-For a benchmark of these representations against tonic (NumPy) on a 20M-event stream, see [Benchmarks](../examples/benchmarks.md). evlib's CPU Polars engine beats tonic on voxel grid (1.35x), event frame (2.9x) and time surface (2.1x). The cudf GPU plus UVM path runs all three fully on the GPU and still beats tonic on event frame and time surface, though at that stream size the CPU path is fastest because the operations are transfer-bound.
+For a benchmark of these representations against tonic (NumPy) on a 20M-event stream, see [Benchmarks](../examples/benchmarks.md). evlib's CPU Polars engine beats tonic on voxel grid (1.35x), event frame (2.9x) and time surface (2.1x). The cudf GPU engine runs all three fully on the GPU, using its default allocator (no UVM needed), and still beats tonic on event frame and time surface, though at that stream size the CPU path is fastest because the operations are transfer-bound.
 
 ### Loaded event schema
 
@@ -99,7 +99,7 @@ The native kernels are also exposed directly as `evlib.representations_rs.stacke
 
 ## Selecting the engine
 
-Pass `engine="auto"` (the default) for CPU Polars, or `engine="gpu"` for cudf with CUDA managed memory. `engine="gpu"` requires `cudf-polars` and a CUDA-capable GPU; it will error if neither is available.
+Pass `engine="auto"` (the default) for CPU Polars, or `engine="gpu"` for the cudf GPU engine, which uses cudf-polars' default memory resource. `engine="gpu"` requires `cudf-polars` and a CUDA-capable GPU; it will error if neither is available.
 
 ```python
 import evlib
@@ -142,7 +142,7 @@ print(f"Positive events: {len(positive.collect()):,}")
 
 - Lazy loading, so events are read on demand for large files.
 - Optimised types: Int16 coordinates, Int8 polarity, Duration timestamps.
-- For workloads larger than VRAM, the cudf GPU engine uses CUDA managed memory to oversubscribe VRAM.
+- The cudf GPU engine's default allocator is enough for every evlib dataset tested to date (measured peak was about 3GB on a 62.96M-event file on a 24GB GPU); see [Performance: GPU memory footprint](../getting-started/performance.md#gpu-memory-footprint) for the numbers, and for the CUDA managed memory (UVM) recipe to use if a workload, or a co-tenant on the GPU, ever exceeds available VRAM.
 
 ## Batch processing
 
@@ -163,9 +163,9 @@ def batch_preprocess(input_pattern, output_dir):
 
 ## Troubleshooting
 
-Memory usage on very large files: keep the pipeline lazy and apply filters before collecting. For larger-than-VRAM GPU runs, the cudf engine uses CUDA managed memory.
+Memory usage on very large files: keep the pipeline lazy and apply filters before collecting. On GPU, the default cudf allocator has held up to about 3GB peak on the largest real file tested (62.96M events); if you ever exceed available VRAM, see [Performance: GPU memory footprint](../getting-started/performance.md#gpu-memory-footprint) for the CUDA managed memory (UVM) recipe.
 
-Performance: use the default CPU engine for single transfer-bound representation calls, and `engine="gpu"` for compute-heavy or larger-than-VRAM workloads. Apply filters early so less data reaches the aggregation.
+Performance: use the default CPU engine for single transfer-bound representation calls, and `engine="gpu"` for compute-heavy workloads or the largest files. Apply filters early so less data reaches the aggregation.
 
 ## Getting help
 

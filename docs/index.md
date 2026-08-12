@@ -35,7 +35,7 @@ designed for scalable data processing with real-world event camera datasets.
 - **GPU-Accelerated RVT Preprocessing**: `evlib.rvt.process_sequence` offers four backends (`polars`, `rust`, `cuda`, `metal`) with native CUDA and Metal scatter-add kernels, matching RVT (PyTorch) exactly
 - **Neural Network Models**: E2VID and RVT model loading and inference (Python/PyTorch, via `evlib.models`)
 - **Real-time Data Processing**: Handle large datasets (550MB+ files) efficiently
-- **Polarity Encoding**: Automatic conversion between 0/1 and -1/1 polarities
+- **Polarity Encoding**: `load_events` preserves each format's native polarity encoding (no automatic conversion); see the [formats guide](user-guide/formats.md#polarity-encoding-mismatch) for the per-format table
 - **Rust Performance**: Memory-safe, high-performance backend with Python bindings
 
 evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. On the gen4_1mpx validation set (18 sequences, RTX 4090), the RVT preprocessing output matches RVT torch exactly bar a single roughly 1e-10 boundary quirk: evlib CUDA runs at 283.6s (parity-plus versus RVT torch-GPU at 286.3s), evlib Rust-CPU at 406.2s is 1.32x faster than RVT torch-CPU (534.2s), and evlib CUDA is 1.88x faster than RVT torch-CPU. Standalone representations beat tonic NumPy on 20M events: voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. See `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`.
@@ -62,7 +62,7 @@ evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. 
   * [Performance Benchmarks](#performance-benchmarks)
   * [Benchmarking and Monitoring](#benchmarking-and-monitoring)
   * [Performance Examples](#performance-examples)
-    * [Optimal Loading for Different File Sizes](#optimal-loading-for-different-file-sizes)
+    * [Loading Files of Any Size](#loading-files-of-any-size)
     * [Memory Monitoring](#memory-monitoring)
   * [Troubleshooting Large Files](#troubleshooting-large-files)
     * [Memory Constraints](#memory-constraints)
@@ -178,10 +178,8 @@ print("Implement equivalent RVT PyTorch pipeline for direct comparison")
 ### Basic Installation
 ```bash
 pip install evlib
-
-# For Polars DataFrame support (recommended)
-pip install evlib[polars]
 ```
+Polars is a hard dependency of evlib, so no extra install step is needed for DataFrame support.
 
 ### Development Installation
 ```bash
@@ -194,7 +192,7 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install in development mode with all features
-pip install -e ".[dev,polars]"
+pip install -e ".[dev]"
 
 # Build the Rust extensions
 maturin develop
@@ -220,11 +218,11 @@ For optimal performance, ensure you have the recommended system configuration:
 
 **Installation for Performance:**
 ```bash
-# Install with Polars support (recommended)
-pip install "evlib[polars]"
+# Install evlib (Polars support is a hard dependency, included automatically)
+pip install evlib
 
 # For development with all performance features
-pip install "evlib[dev,polars]"
+pip install -e ".[dev]"
 
 # Verify installation with benchmark
 python -c "import evlib; print('evlib installed successfully')"
@@ -235,9 +233,6 @@ python benchmark_memory.py  # Test memory efficiency
 ```bash
 # For advanced memory monitoring
 pip install psutil
-
-# For parallel processing (already included in dev)
-pip install multiprocessing-logging
 ```
 
 ## Polars DataFrame Integration
@@ -246,7 +241,7 @@ evlib provides comprehensive Polars DataFrame support for high-performance event
 
 ### Key Benefits
 - **Performance**: lazy queries collect on the CPU streaming engine or on the GPU via cudf-polars (`collect(engine="gpu")`)
-- **Memory Efficiency**: ~23 bytes/event (5x better than typical 110 bytes/event)
+- **Memory Efficiency**: 13 bytes/event exact (`x:Int16 + y:Int16 + t:Duration(i64) + polarity:Int8`), about 8.5x better than a typical 110 bytes/event event struct
 - **Expressive Queries**: SQL-like operations for complex data analysis
 - **Lazy Evaluation**: Query optimization for better performance
 - **Ecosystem Integration**: Seamless integration with data science tools
@@ -358,7 +353,7 @@ evlib is bit-validated against RVT (PyTorch), tonic, OpenEB, and dv_processing. 
 
 Standalone representations versus tonic NumPy (20M events): voxel_grid 1.35x, event_frame 2.9x, time_surface 2.1x. Plots: `benchmarks/out/rvt_final_time.png` and `benchmarks/out/tonic_bench_time.png`. The Polars GPU engine is not a free win for single operations, and the CUDA-versus-RVT-GPU margin is parity-plus; the biggest margins are the CPU backends and the standalone representations.
 
-- **Memory Efficiency**: ~23 bytes/event
+- **Memory Efficiency**: 13 bytes/event exact, confirmed empirically (818.5MB / 62,961,273 events on the largest real file tested)
 
 ### Benchmarking and Monitoring
 
@@ -386,27 +381,24 @@ print(f'Memory per event: {df.estimated_size() / len(df):.1f} bytes')
 
 ### Performance Examples
 
-#### Optimal Loading for Different File Sizes
+#### Loading Files of Any Size
+`evlib.load_events` loads the whole file the same way regardless of size; there is no automatic
+streaming or chunking. For large files, filter or downsample as early as possible in the lazy
+query so Polars only materialises the rows you keep:
 ```python
 import evlib
 import evlib.filtering as evf
 import polars as pl
 
-# Small files (<5M events) - Direct loading
-events_small = evlib.load_events("data/slider_depth/events.txt")
-df_small = events_small.collect()
+events = evlib.load_events("data/slider_depth/events.txt")
 
-# Large files (>5M events) - Automatic streaming
-events_large = evlib.load_events("data/slider_depth/events.txt")
-# Same API, automatically uses streaming for memory efficiency
-
-# Memory-efficient filtering on large datasets using filtering module
-events_large_df = events_large.collect()  # Convert LazyFrame to DataFrame first
-filtered = evf.filter_by_time(events_large_df, t_start=1.0, t_end=2.0)
+# Filter on the LazyFrame before collecting, to keep peak memory down.
+filtered = evf.filter_by_time(events, t_start=1.0, t_end=2.0)
 positive_events = evf.filter_by_polarity(filtered, polarity=1)
+df = positive_events.collect()
 
 # Or using direct Polars operations
-manual_filtered = events_large.filter(
+manual_filtered = events.filter(
     (pl.col("t").dt.total_microseconds() / 1_000_000 > 1.0) &
     (pl.col("polarity") == 1)
 ).collect()
@@ -435,17 +427,17 @@ print(f"Polars DataFrame size: {df.estimated_size() / 1024 / 1024:.1f} MB")
 
 ### Troubleshooting Large Files
 
+Large files load directly; there is no automatic chunking or streaming heuristic. If memory is a
+concern, filter or downsample the LazyFrame before calling `.collect()`.
+
 #### Memory Constraints
-- **Automatic Streaming**: Files >5M events use streaming by default
-- **LazyFrame Operations**: Memory-efficient processing without full materialization
+- **LazyFrame Operations**: Memory-efficient processing without full materialization; filter before `.collect()` to avoid materialising rows you do not need
 - **Memory Monitoring**: Use `benchmark_memory.py` to track usage
 - **System Requirements**: Recommend 8GB+ RAM for files >100M events
 
 #### Performance Tuning
-- **Optimal Chunk Size**: System automatically calculates based on available memory
 - **LazyFrame Operations**: Use `.lazy()` for complex filtering chains
 - **Memory-Efficient Formats**: RAW binary formats provide best performance, followed by HDF5
-- **Progress Reporting**: Large files show progress during loading
 
 #### Common Issues and Solutions
 
@@ -454,15 +446,14 @@ print(f"Polars DataFrame size: {df.estimated_size() / 1024 / 1024:.1f} MB")
 import evlib
 import evlib.filtering as evf
 
-# Solution: Use filtering before collecting (streaming activates automatically)
+# Solution: filter or downsample on the LazyFrame before collecting.
 events = evlib.load_events("data/slider_depth/events.txt")
-# Streaming activates automatically for files >5M events
 
-# Apply filtering before collecting to reduce memory usage
-events_df = events.collect()  # Convert LazyFrame to DataFrame first
-filtered_df = evf.filter_by_time(events_df, t_start=0.1, t_end=0.5)
+# Filter on the LazyFrame first, then collect only the rows you need.
+filtered = evf.filter_by_time(events, t_start=0.1, t_end=0.5)
+filtered_df = filtered.collect()
 
-# Or save to disk using DataFrame
+# Or save to disk directly from the DataFrame
 filtered_df.write_parquet("filtered_events.parquet")
 ```
 
@@ -509,6 +500,9 @@ evlib provides several Python modules for different aspects of event processing:
 - **`evlib.representations`**: Event representations (voxel grids, event frames, time surfaces, stacked histograms)
 - **`evlib.rvt`**: RVT-compatible preprocessing with four backends (`polars`, `rust`, `cuda`, `metal`)
 - **`evlib.models`**: E2VID and RVT model loading and inference (Python/PyTorch)
+- **`evlib.visualization`**: Event visualization tools
+- **`evlib.simulation`**: Event camera simulation (ESIM algorithm for video-to-events, requires PyTorch)
+- **`evlib.core`**: Core data structures and utilities
 
 ### Module Overview
 ```python
@@ -654,4 +648,4 @@ maturin build --release
 
 ## License
 
-MIT License - see [LICENSE.md](LICENSE.md) for details.
+MIT License - see [LICENSE.md](../LICENSE.md) for details.

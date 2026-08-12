@@ -362,17 +362,25 @@ def polars_native_sampling_methods(events, reduction_factor=0.5, seed=42):
 
     # Method 4: Stratified sampling by polarity
     print("\n4. Stratified sampling by polarity:")
+    # Read polarity values from the data instead of assuming -1/1: encoding
+    # varies by format (e.g. slider_depth text data uses 0/1, not -1/1).
+    polarity_values = df["polarity"].unique().sort()
+    print(f"   Polarity values in data: {polarity_values.to_list()}")
+
     # Sample each polarity group separately to maintain polarity balance
-    pos_events = df.filter(pl.col("polarity") == 1)
-    neg_events = df.filter(pl.col("polarity") == -1)
+    sampled_groups = []
+    for i, polarity in enumerate(polarity_values):
+        polarity_events = df.filter(pl.col("polarity") == polarity)
+        polarity_sampled = polarity_events.sample(
+            fraction=reduction_factor, seed=seed + i
+        )
+        sampled_groups.append(polarity_sampled)
+        print(
+            f"   Polarity {polarity}: {len(polarity_events):,} → {len(polarity_sampled):,}"
+        )
 
-    pos_sampled = pos_events.sample(fraction=reduction_factor, seed=seed)
-    neg_sampled = neg_events.sample(fraction=reduction_factor, seed=seed + 1)
-
-    stratified_sampled = pl.concat([pos_sampled, neg_sampled]).sort("t")
+    stratified_sampled = pl.concat(sampled_groups).sort("t")
     results["stratified"] = stratified_sampled.lazy()
-    print(f"   Positive events: {len(pos_events):,} → {len(pos_sampled):,}")
-    print(f"   Negative events: {len(neg_events):,} → {len(neg_sampled):,}")
     print(
         f"   Total result: {len(stratified_sampled):,} events ({100 * len(stratified_sampled) / original_count:.1f}%)"
     )

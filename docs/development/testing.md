@@ -182,7 +182,7 @@ Comprehensive testing against real data files revealed important compatibility i
 ### Python Unit Tests
 
 ```python
-# tests/unit/test_formats.py
+# tests/test_formats.py
 import pytest
 import numpy as np
 import polars as pl
@@ -250,14 +250,15 @@ class TestEventLoading:
         assert np.all(pos_ps == 1), "Non-positive events found"
 
         events = evlib.load_events("data/slider_depth/events.txt")
-        neg_events = events.filter(pl.col('polarity') == -1)
+        # slider_depth is text format, encoded 0/1: 0 is negative here, not -1.
+        neg_events = events.filter(pl.col('polarity') == 0)
         neg_df = neg_events.collect()
         neg_xs, neg_ys, neg_ps = neg_df['x'].to_numpy(), neg_df['y'].to_numpy(), neg_df['polarity'].to_numpy()
         # Convert Duration timestamps to seconds (float64)
         neg_ts = neg_df['t'].dt.total_seconds().to_numpy()
 
         assert len(neg_xs) > 0, "No negative events loaded"
-        assert np.all(neg_ps == -1), "Non-negative events found"
+        assert np.all(neg_ps == 0), "Non-negative events found"
 
     def test_load_events_file_not_found(self):
         """Test error handling for missing files"""
@@ -348,7 +349,7 @@ canonical reference.
 ### End-to-End Pipeline Tests
 
 ```python
-# tests/integration/test_pipeline.py
+# tests/test_pipeline.py
 import pytest
 import numpy as np
 import evlib
@@ -438,7 +439,7 @@ class TestEventProcessingPipeline:
 ### Model Integration Tests
 
 ```python
-# tests/integration/test_models.py
+# tests/test_models.py
 import pytest
 import numpy as np
 import evlib
@@ -504,7 +505,7 @@ class TestEventRepresentations:
 ### Benchmark Framework
 
 ```python
-# tests/benchmarks/test_benchmarks.py
+# tests/test_benchmarks.py
 import time
 import numpy as np
 import evlib
@@ -635,7 +636,7 @@ class TestPerformanceBenchmarks:
 ### Continuous Benchmarking
 
 ```python
-# tests/benchmarks/benchmark_utils.py
+# tests/benchmark_utils.py
 import json
 import time
 from pathlib import Path
@@ -691,7 +692,7 @@ class BenchmarkRecorder:
 ### Jupyter Notebook Validation
 
 ```python
-# tests/notebooks/test_notebooks.py
+# tests/test_notebooks.py
 import pytest
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
@@ -746,7 +747,7 @@ def test_notebook_content():
 pytest
 
 # Run specific test file
-pytest tests/unit/test_formats.py
+pytest tests/test_formats.py
 
 # Run with coverage
 pytest --cov=evlib --cov-report=html
@@ -758,7 +759,7 @@ pytest --benchmark-only
 pytest -n auto
 
 # Test specific functionality
-pytest tests/unit/test_representations.py::TestVoxelGrid::test_voxel_grid_creation
+pytest tests/test_representations.py::TestVoxelGrid::test_voxel_grid_creation
 ```
 
 ### Rust Tests

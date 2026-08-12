@@ -1,6 +1,6 @@
 # Polars Preprocessing Examples
 
-This document provides examples for using evlib's Polars-based event representations. The functions build event camera representations as Polars expressions, so they run on the CPU Polars engine, on the cudf GPU engine, and on CUDA managed memory (UVM) for workloads larger than VRAM.
+This document provides examples for using evlib's Polars-based event representations. The functions build event camera representations as Polars expressions, so they run on the CPU Polars engine and on the cudf GPU engine (`engine="gpu"`). The GPU engine uses cudf-polars' own default memory resource, not CUDA managed memory (UVM); see [Performance: GPU memory footprint](../getting-started/performance.md#gpu-memory-footprint) for the measured numbers and when UVM is worth adding.
 
 ## Overview
 
@@ -11,9 +11,9 @@ The `evlib.representations` module provides Polars-based implementations of comm
 1. Native groupby and aggregation rather than tensor indexing.
 2. Lazy evaluation that defers work until the result is collected.
 3. Optimised data types (Int16 coordinates, Int8 polarity) for cache locality.
-4. A selectable engine: `engine="auto"` for CPU Polars, `engine="gpu"` for cudf with CUDA managed memory.
+4. A selectable engine: `engine="auto"` for CPU Polars, `engine="gpu"` for the cudf GPU engine (its default allocator, not CUDA managed memory).
 
-For a benchmark of these representations against tonic (NumPy), see [Benchmarks](benchmarks.md). On a single transfer-bound stream the CPU Polars engine is usually the fastest evlib path; the GPU path is for compute-heavy or larger-than-VRAM workloads.
+For a benchmark of these representations against tonic (NumPy), see [Benchmarks](benchmarks.md). On a single transfer-bound stream the CPU Polars engine is usually the fastest evlib path; the GPU path is for compute-heavy workloads or the largest files.
 
 ## Available test datasets
 
@@ -147,4 +147,4 @@ def batch_voxel_grids(input_pattern, output_dir):
 
 1. Benchmark with your own data using the harnesses described in [Benchmarks](benchmarks.md).
 2. Tune `n_time_bins`, `window_duration_ms`, `dt` and `tau` for your use case.
-3. Use `engine="gpu"` for compute-heavy or larger-than-VRAM workloads, and the default CPU engine for single transfer-bound calls.
+3. Use `engine="gpu"` for compute-heavy workloads or the largest files, and the default CPU engine for single transfer-bound calls.
