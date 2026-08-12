@@ -104,6 +104,13 @@ print(f"Duration:   {df['t'].max() - df['t'].min()}")
 ```
 
 <!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Loaded 4,588,809 events
+Resolution: 639 x 479
+Duration:   0:00:06.284008
+```
+<!-- evlib:output:end -->
 
 See the [Quick Start](getting-started/quickstart.md) guide for filtering and
 representation examples that build on this.

@@ -29,6 +29,11 @@ Stacked histograms divide time into windows and bins, creating representations c
 
 `create_stacked_histogram(bins=N, window_duration_ms=D)` produces `N` temporal bins of `D` milliseconds each, so the representation spans `N x D` milliseconds in total (the example below covers `5 x 50 = 250` ms). Each bin keeps positive and negative polarity as separate channels.
 
+<p align="center">
+  <img src="../diagrams/stacked-histogram.svg" alt="A time window is split into N temporal bins, each bin holds a positive and a negative polarity channel, and the result is a (2N, H, W) tensor" width="900">
+  <img src="../diagrams/stacked-histogram-dark.svg" alt="A time window is split into N temporal bins, each bin holds a positive and a negative polarity channel, and the result is a (2N, H, W) tensor (dark variant)" width="900">
+</p>
+
 The figure below shows the transformation: on the left, the raw asynchronous event stream accumulated into a single signed frame (red `+1`, blue `-1`); on the right, the same 250ms window emitted by `create_stacked_histogram` as five 50ms temporal bins. Because the representation is deliberately motion-agnostic, fast objects smear across the frame and advance bin to bin.
 
 ![Raw events transformed into a stacked-histogram representation, 80_balls EVT2 sample](../images/representations_sidebyside.png)
@@ -75,6 +80,15 @@ hist_df = evr.create_stacked_histogram(
 print(f"Generated {len(hist_df)} histogram entries")
 print(f"Columns: {list(hist_df.columns)}")  # Stacked histogram columns
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Using standard window duration: 50.0ms for 1078541 events
+Generated 109569 histogram entries
+Columns: ['time_bin', 'polarity', 'y', 'x', 'count']
+```
+<!-- evlib:output:end -->
 
 ### How Stacked Histograms Work
 
@@ -154,6 +168,14 @@ voxel = evr.densify_voxel_grid(voxel_df, n_time_bins=5, height=480, width=640)
 print(f"Dense voxel shape: {voxel.shape}")  # (5, 1, 480, 640)
 ```
 
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Columns: ['x', 'y', 'time_bin', 'contribution']
+Dense voxel shape: (5, 1, 480, 640)
+```
+<!-- evlib:output:end -->
+
 ### Event Frame (tonic to_frame semantics)
 
 `create_event_frame` slices the whole recording into `n_time_bins` equal-width time bins and counts events per `(polarity, y, x)` per bin, matching tonic's `to_frame_numpy(n_time_bins=...)`.
@@ -173,6 +195,14 @@ frame = evr.densify_event_frame(
 )
 print(f"Dense frame shape: {frame.shape}")  # (10, 2, 480, 640)
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Columns: ['time_bin', 'polarity', 'y', 'x', 'count']
+Dense frame shape: (10, 2, 480, 640)
+```
+<!-- evlib:output:end -->
 
 ### Time Surface (HOTS, Lagorce et al. 2016)
 

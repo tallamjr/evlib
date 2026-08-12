@@ -28,6 +28,13 @@ df = events.collect()
 print(df.schema)
 ```
 
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Schema({'x': Int16, 'y': Int16, 't': Duration(time_unit='us'), 'polarity': Int8})
+```
+<!-- evlib:output:end -->
+
 ## API Reference
 
 ### `create_voxel_grid(events, height, width, n_time_bins=5, engine="auto")`
@@ -42,6 +49,13 @@ events = evlib.load_events("data/slider_depth/events.txt")
 voxel = evr.create_voxel_grid(events, height=480, width=640, n_time_bins=5)
 print(f"Voxel grid entries: {len(voxel)}")
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Voxel grid entries: 196836
+```
+<!-- evlib:output:end -->
 
 ### `create_event_frame(events, height, width, n_time_bins=10, engine="auto")`
 
@@ -128,6 +142,15 @@ print(f"Windowed events: {len(windowed.collect()):,}")
 print(f"ROI events: {len(roi.collect()):,}")
 print(f"Positive events: {len(positive.collect()):,}")
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Windowed events: 119,988
+ROI events: 473,427
+Positive events: 447,783
+```
+<!-- evlib:output:end -->
 
 ## Integration points
 

@@ -25,6 +25,14 @@ ts = df['t'].dt.total_seconds().to_numpy()
 print(f"Loaded {len(xs)} events")
 ```
 
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Loaded 1078541 events
+Loaded 1078541 events
+```
+<!-- evlib:output:end -->
+
 ## Supported File Formats
 
 ### Text Files (.txt, .csv)
@@ -351,6 +359,16 @@ print(f"Duration: {(df['t'].max() - df['t'].min()).total_seconds():.2f} seconds"
 print(f"Resolution: {df['x'].max()+1} x {df['y'].max()+1}")
 print(f"Event rate: {len(df)/(df['t'].max() - df['t'].min()).total_seconds():.0f} events/sec")
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Events: 1,078,541
+Duration: 3.40 seconds
+Resolution: 240 x 180
+Event rate: 317193 events/sec
+```
+<!-- evlib:output:end -->
 
 ### Temporal Segmentation
 

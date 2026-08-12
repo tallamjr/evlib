@@ -20,6 +20,13 @@ ts = df['t'].to_numpy()
 ps = df['polarity'].to_numpy()
 ```
 
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Loaded 1078541 events
+```
+<!-- evlib:output:end -->
+
 ## Event Filtering
 
 The `evlib.filtering` module provides ready-made lazy filters. You can also write filters directly as Polars expressions; remember `t` is a Duration column.
@@ -74,6 +81,15 @@ hist_df = evr.create_stacked_histogram(
 )
 print(f"Stacked histogram entries: {len(hist_df)}")
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Voxel grid entries: 196836
+Event frame entries: 476906
+Stacked histogram entries: 109569
+```
+<!-- evlib:output:end -->
 
 ## Event Visualization
 
@@ -199,6 +215,7 @@ SUCCESS: **Use NumPy for:**
 ```python
 import time
 import numpy as np
+import evlib
 
 # Large dataset example
 events = evlib.load_events("data/slider_depth/events.txt")  # 1M+ events
@@ -214,6 +231,8 @@ print(f"Event columns: {df.columns}")
 ## Error Handling
 
 ```python
+import evlib
+
 try:
     events = evlib.load_events("nonexistent.txt")
 except OSError as e:
@@ -227,6 +246,14 @@ try:
 except OSError as e:
     print(f"Error loading events: {e}")
 ```
+
+<!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+File error: Failed to detect format: File not found: nonexistent.txt
+Successfully loaded 1078541 events
+```
+<!-- evlib:output:end -->
 
 ## Next Steps
 

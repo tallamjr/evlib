@@ -11,6 +11,12 @@ evlib splits work across two layers, and understanding the split explains the nu
 
 Polars on the GPU is not a free speed-up for a single transfer-bound operation; the GPU win comes from the custom scatter-add kernels. For the RVT pipeline at scale the shared HDF5 read dominates the largest sequences, so the CUDA-versus-RVT-GPU result is parity-plus rather than a large multiplier.
 
+## Event rate is bursty, not uniform
+
+Event cameras do not produce a steady stream: the count of events per millisecond swings with scene motion. The chart below counts events per millisecond across the full `slider_depth` recording, and the swings are the reason the query layer above is lazy rather than eagerly materialised: a fixed-size eager buffer either wastes memory during quiet stretches or overflows during a burst, while a lazy Polars query only pays for the rows a downstream `.collect()` actually touches.
+
+![Events per millisecond over the full slider_depth sequence, showing a bursty, non-uniform rate](../images/fig_event_rate.png)
+
 ## RVT preprocessing pipeline
 
 `evlib.rvt.process_sequence(..., backend=...)` reproduces RVT's stacked-histogram preprocessing. The `backend` argument selects one of the four compute backends above (`"polars"`, `"rust"`, `"cuda"`, `"metal"`).
@@ -66,6 +72,8 @@ Metal is therefore a portability path: an exact on-device match on Apple Silicon
 ## GPU memory footprint
 
 `engine="gpu"` maps straight to `pl.LazyFrame.collect(engine=engine)`; the default path allocates through cudf-polars' own memory resource, not CUDA managed memory (UVM). Correctness was checked on an RTX 4090: GPU and CPU `.collect()` give numerically identical results on a small file (slider_depth, about 53k rows) and on the largest real file available, `events_gpu_torch.h5` (62,961,273 events, 818.5MB raw). evlib's on-wire schema is exactly 13 bytes per event (`x`: Int16, `y`: Int16, `t`: Duration(us) as i64, `polarity`: Int8), confirmed empirically: 818.5MB / 62,961,273 events = 13.00 bytes/event exactly.
+
+![Polars 13-bytes/event layout compared against a naive 110-bytes/event struct](../images/fig_memory.png)
 
 Peak GPU memory for a realistic query, `filter_by_polarity` followed by `create_stacked_histogram`, on that 818.5MB/62.96M-event file measured about 3GB peak: roughly 3.7x the raw data size, well inside the RTX 4090's 24GB of VRAM.
 

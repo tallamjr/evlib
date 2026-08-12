@@ -28,6 +28,12 @@ print(f"After filtering: {len(filtered.collect()):,} events")
 ```
 
 <!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Loaded 1,078,541 events
+After filtering: 125,930 events
+```
+<!-- evlib:output:end -->
 
 The `slider_depth` text file encodes polarity as 0/1 (0 for negative, 1 for
 positive), not -1/1. Check `df["polarity"].unique()` on data you have not
@@ -145,9 +151,21 @@ print(f"Removed {before - after:,} events within a 10ms refractory period")
 ```
 
 <!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Removed 218,294 events within a 10ms refractory period
+```
+<!-- evlib:output:end -->
 
 `filter_noise` sorts by `t` internally, so you do not need to pre-sort the
 input (`evlib.load_events` already sorts by default).
+
+The figure below shows both filters applied together: a per-pixel event-count
+heatmap of the raw stream (left, hot pixels visible as bright points) next to
+the same window after `filter_hot_pixels` and `filter_noise(method="refractory")`
+(right).
+
+![Per-pixel event-count heatmap before and after filter_hot_pixels and filter_noise](../images/fig_filtering.png)
 
 ## filter_multiple_rois
 
@@ -196,6 +214,11 @@ print(f"Preprocessed: {len(processed.collect()):,} events")
 ```
 
 <!-- evlib:output -->
+<!-- evlib:output:start -->
+```text
+Preprocessed: 115,113 events
+```
+<!-- evlib:output:end -->
 
 The filtering order matters: time and ROI filters run first because they cut
 down the row count cheaply, before the more expensive hot-pixel and noise
