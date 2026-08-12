@@ -145,7 +145,11 @@ def process_file(path: Path) -> tuple[str, list[str]]:
                 "(no tracked-fixture reference)"
             )
             continue
-        output = _run_block(source, path, block["source_start"] + 1)
+        # Pad with leading blank lines so compiled line numbers match the
+        # block's real position in the file; linecache keys tracebacks off
+        # (filename, lineno) against the real file, not the block text.
+        padded_source = ("\n" * block["source_start"]) + source
+        output = _run_block(padded_source, path, block["source_start"] + 1)
         content = output.split("\n")
         if content and content[-1] == "":
             content.pop()
