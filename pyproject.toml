@@ -118,7 +118,6 @@ norecursedirs = ["examples/figures", ".ipynb_checkpoints"]
 # Configuration for pytest-markdown-docs
 docs_dir = "docs"
 ignore_glob = [
-    "index.md",
     "development/releases.md",
     "development/contributing.md",
     "development/testing.md",
