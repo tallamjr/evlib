@@ -24,7 +24,7 @@ Validation run on the gen4_1mpx set (18 sequences, single pass) on an RTX 4090. 
 | evlib Rust-CPU | 406.2s | 1.32x faster than RVT torch-CPU |
 | RVT torch-CPU (reference) | 534.2s | baseline (CPU) |
 
-![RVT preprocessing wall-clock across backends](../img/rvt_final_time.png)
+![RVT preprocessing wall-clock across backends](../images/rvt_final_time.png)
 
 The CUDA backend reaches parity-plus with RVT's own GPU pipeline because the shared HDF5 read dominates the large sequences; the Rust CPU backend is a clear 1.32x ahead of the RVT CPU reference. The companion peak-memory chart is `benchmarks/out/rvt_final_memory.png`.
 
@@ -38,7 +38,7 @@ For the general representation surface (voxel grid, event frame, time surface) t
 | event_frame | 0.32s | 0.92s | 2.9x |
 | time_surface | 0.26s | 0.55s | 2.1x |
 
-![evlib representations versus tonic](../img/tonic_bench_time.png)
+![evlib representations versus tonic](../images/tonic_bench_time.png)
 
 evlib's cudf GPU engine runs all three of these fully on the GPU, using cudf-polars' default allocator (no UVM needed at this scale). At this stream size the operations are transfer-bound, so CPU Polars is the fastest of the evlib paths; the GPU path still beats tonic on event_frame and time_surface. This is the practical illustration of the caveat above: pick the CPU Polars engine for single transfer-bound representation calls, and reach for the GPU when the workload is compute-heavy or larger than a single transfer.
 

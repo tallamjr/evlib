@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1150 520" font-family="Tahoma, sans-serif">
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#736F6C"/>
+    </marker>
+  </defs>
+  <text x="575" y="26" text-anchor="middle" font-size="18" fill="#3D3D3A">RVT preprocessing pipeline: raw events to HDF5 shards</text>
+  <!-- B1: raw events -->
+  <rect x="20" y="205" width="140" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="90" y="245" text-anchor="middle" font-size="15" fill="#3D3D3A">raw events</text>
+  <!-- B2: downsample -->
+  <rect x="200" y="205" width="140" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="270" y="233" text-anchor="middle" font-size="15" fill="#3D3D3A">downsample</text>
+  <text x="270" y="252" text-anchor="middle" font-size="11" fill="#3D3D3A">downsample_by_2</text>
+  <!-- B3: bin -->
+  <rect x="380" y="205" width="140" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="450" y="233" text-anchor="middle" font-size="15" fill="#3D3D3A">bin</text>
+  <text x="450" y="252" text-anchor="middle" font-size="11" fill="#3D3D3A">delta_t_us &#183; nbins</text>
+  <!-- B4: scatter-add -->
+  <rect x="560" y="205" width="160" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="640" y="245" text-anchor="middle" font-size="15" fill="#3D3D3A">scatter-add</text>
+  <text x="880" y="30" text-anchor="middle" font-size="13" fill="#3D3D3A">scatter-add backends</text>
+  <!-- backend boxes -->
+  <rect x="800" y="50" width="160" height="50" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="880" y="80" text-anchor="middle" font-size="14" fill="#3D3D3A">polars</text>
+  <rect x="800" y="160" width="160" height="50" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="880" y="190" text-anchor="middle" font-size="14" fill="#3D3D3A">rust</text>
+  <rect x="800" y="340" width="160" height="50" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="880" y="370" text-anchor="middle" font-size="14" fill="#3D3D3A">cuda</text>
+  <rect x="800" y="450" width="160" height="50" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="880" y="480" text-anchor="middle" font-size="14" fill="#3D3D3A">metal</text>
+  <!-- D: HDF5 shards -->
+  <rect x="1020" y="205" width="130" height="70" rx="10" fill="#FDEBD0" stroke="#C4943A" stroke-width="2"/>
+  <text x="1085" y="245" text-anchor="middle" font-size="14" fill="#3D3D3A">HDF5 shards</text>
+  <!-- connectors -->
+  <line x1="160" y1="240" x2="196" y2="240" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="340" y1="240" x2="376" y2="240" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="520" y1="240" x2="556" y2="240" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="720" y1="208" x2="796" y2="75" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="720" y1="222" x2="796" y2="185" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="720" y1="258" x2="796" y2="365" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="720" y1="272" x2="796" y2="475" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="960" y1="75" x2="1016" y2="215" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="960" y1="185" x2="1016" y2="225" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="960" y1="365" x2="1016" y2="255" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="960" y1="475" x2="1016" y2="265" stroke="#736F6C" stroke-width="2" marker-end="url(#arrowhead)"/>
+</svg>

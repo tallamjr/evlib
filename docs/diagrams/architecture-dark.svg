@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" font-family="Tahoma, sans-serif">
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B4B4B2"/>
+    </marker>
+  </defs>
+  <text x="600" y="32" text-anchor="middle" font-size="20" fill="#E1E1DE">evlib architecture: file to LazyFrame to compute engine</text>
+  <!-- A: file -->
+  <rect x="20" y="175" width="160" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="100" y="205" text-anchor="middle" font-size="16" fill="#3D3D3A">file</text>
+  <text x="100" y="226" text-anchor="middle" font-size="12" fill="#3D3D3A">.raw / .hdf5 / ...</text>
+  <!-- B: Rust decode core -->
+  <rect x="220" y="175" width="210" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="325" y="205" text-anchor="middle" font-size="16" fill="#3D3D3A">Rust decode core</text>
+  <text x="325" y="226" text-anchor="middle" font-size="12" fill="#3D3D3A">EVT2/3 · ECF · AEDAT</text>
+  <!-- C: Polars LazyFrame -->
+  <rect x="470" y="175" width="210" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="575" y="205" text-anchor="middle" font-size="16" fill="#3D3D3A">Polars LazyFrame</text>
+  <text x="575" y="226" text-anchor="middle" font-size="12" fill="#3D3D3A">(x, y, t, p)</text>
+  <!-- D1: streaming -->
+  <rect x="730" y="60" width="250" height="60" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="855" y="95" text-anchor="middle" font-size="14" fill="#3D3D3A">collect(engine="streaming")</text>
+  <!-- D2: gpu -->
+  <rect x="730" y="300" width="250" height="60" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="855" y="335" text-anchor="middle" font-size="14" fill="#3D3D3A">collect(engine="gpu")</text>
+  <!-- E: filtering / representations -->
+  <rect x="1020" y="175" width="160" height="70" rx="10" fill="#FDEBD0" stroke="#C4943A" stroke-width="2"/>
+  <text x="1100" y="203" text-anchor="middle" font-size="13" fill="#3D3D3A">filtering /</text>
+  <text x="1100" y="221" text-anchor="middle" font-size="13" fill="#3D3D3A">representations</text>
+  <!-- connectors -->
+  <line x1="180" y1="210" x2="216" y2="210" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="430" y1="210" x2="466" y2="210" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="680" y1="200" x2="726" y2="100" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="680" y1="220" x2="726" y2="320" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="980" y1="100" x2="1016" y2="195" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="980" y1="320" x2="1016" y2="225" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+</svg>
