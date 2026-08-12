@@ -26,15 +26,18 @@
 /* Dark-mode SVG swap: embed a light and a `-dark` SVG side by side (as
    docs/rvt/index.md does); show only the one matching the active scheme.
    Material's own `#only-dark`/`#only-light` fragment convention isn't used
-   here since the existing pages pair on filename, not URL fragment. */
-.md-typeset img[src$="-dark.svg"] {
+   here since the existing pages pair on filename, not URL fragment.
+   Scoped to `diagrams/` paths only, so it does not touch unrelated
+   standalone SVGs elsewhere on the site (e.g. README-style badge images
+   with no `-dark` counterpart). */
+.md-typeset img[src*="diagrams/"][src$="-dark.svg"] {
   display: none;
 }
 
-[data-md-color-scheme="slate"] .md-typeset img[src$="-dark.svg"] {
+[data-md-color-scheme="slate"] .md-typeset img[src*="diagrams/"][src$="-dark.svg"] {
   display: block;
 }
 
-[data-md-color-scheme="slate"] .md-typeset img[src$=".svg"]:not([src$="-dark.svg"]) {
+[data-md-color-scheme="slate"] .md-typeset img[src*="diagrams/"][src$=".svg"]:not([src$="-dark.svg"]) {
   display: none;
 }
