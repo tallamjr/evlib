@@ -214,7 +214,7 @@ margins are evlib's CPU backends and the standalone representations.
 > **State of the GPU and Metal work**: the CUDA backend is the production GPU path and edges out RVT's torch-GPU pipeline. The Metal backend matches the CPU kernel exactly on an M2 Pro, but about 3x slower there: the workload is memory-bound and the M2 Pro's CPU cores win. Metal is a portability path (an on-device kernel where torch-CUDA cannot run), not a speed win on M2-class hardware; use `backend="rust"` for the fastest Apple-CPU path.
 
 <p align="center">
-  <img src="./benchmarks/out/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, with matching output">
+  <img src="./benchmarks/out/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU">
 </p>
 
 More plots: the full five-backend chart

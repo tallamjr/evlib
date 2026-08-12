@@ -99,7 +99,7 @@ events = evlib.load_events("data/prophesee/samples/evt2/80_balls.raw")
 
 df = events.collect(engine="streaming")
 print(f"Loaded {len(df):,} events")
-print(f"Resolution: {df['x'].max()} x {df['y'].max()}")
+print(f"Resolution: {df['x'].max()+1} x {df['y'].max()+1}")
 print(f"Duration:   {df['t'].max() - df['t'].min()}")
 ```
 
@@ -107,7 +107,7 @@ print(f"Duration:   {df['t'].max() - df['t'].min()}")
 <!-- evlib:output:start -->
 ```text
 Loaded 4,588,809 events
-Resolution: 639 x 479
+Resolution: 640 x 480
 Duration:   0:00:06.284008
 ```
 <!-- evlib:output:end -->
@@ -124,8 +124,8 @@ evlib's CUDA backend reaches parity-plus with RVT's own torch-GPU pipeline
 while its Rust CPU backend is 1.32x faster than RVT's torch-CPU reference.
 
 <figure markdown>
-  <img src="images/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, with matching output">
-  <figcaption>evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU, with matching output</figcaption>
+  <img src="images/rvt_headline.png" width="720" alt="evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU">
+  <figcaption>evlib vs RVT preprocessing on an RTX 4090: evlib is faster than RVT on both GPU and CPU</figcaption>
 </figure>
 
 See the [Performance Guide](getting-started/performance.md) and
