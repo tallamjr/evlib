@@ -42,6 +42,7 @@ cudf-polars.
 - **RVT-identical preprocessing**: `evlib.rvt.process_sequence` reproduces RVT's stacked-histogram pipeline across four backends (`polars`, `rust`, `cuda`, `metal`), bit-validated against RVT's own torch preprocessing.
 - **Deep learning models**: E2VID and RVT (`evlib.models`), with pretrained weight loading, PyTorch datasets (`evlib.data`), and Prophesee-compatible detection evaluation (`evlib.eval`).
 - **Real-world scale**: tested against files up to 1.6GB with an exact, empirically confirmed 13 bytes/event on-wire layout.
+- **Low-level utilities**: `evlib.core` exposes array-based helper functions (`events_to_block`, `merge_events`, `add_random_events`, `remove_events`) for custom pipelines that need direct array access instead of a `LazyFrame`; see [Architecture](development/architecture.md#pyo3-boundary).
 
 ## Explore the docs
 
