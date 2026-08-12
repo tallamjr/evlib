@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1150 420" font-family="Tahoma, sans-serif">
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B4B4B2"/>
+    </marker>
+  </defs>
+  <text x="575" y="30" text-anchor="middle" font-size="18" fill="#E1E1DE">create_stacked_histogram: time window to (2N, H, W) tensor</text>
+  <!-- A: time window -->
+  <rect x="20" y="175" width="140" height="70" rx="10" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="90" y="203" text-anchor="middle" font-size="15" fill="#3D3D3A">time window</text>
+  <text x="90" y="222" text-anchor="middle" font-size="11" fill="#3D3D3A">window_duration_ms</text>
+  <text x="345" y="140" text-anchor="middle" font-size="13" fill="#E1E1DE">N temporal bins (bins)</text>
+  <!-- bin boxes -->
+  <rect x="210" y="165" width="70" height="90" rx="6" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="245" y="215" text-anchor="middle" font-size="12" fill="#3D3D3A">bin 0</text>
+  <rect x="288" y="165" width="70" height="90" rx="6" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="323" y="215" text-anchor="middle" font-size="12" fill="#3D3D3A">bin 1</text>
+  <rect x="366" y="165" width="70" height="90" rx="6" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="401" y="215" text-anchor="middle" font-size="12" fill="#3D3D3A">bin 2</text>
+  <text x="465" y="220" text-anchor="middle" font-size="22" fill="#E1E1DE">...</text>
+  <rect x="490" y="165" width="90" height="90" rx="6" fill="#D6EAF8" stroke="#5D8DA8" stroke-width="2"/>
+  <text x="535" y="215" text-anchor="middle" font-size="12" fill="#3D3D3A">bin N-1</text>
+  <!-- C: polarity channels -->
+  <rect x="660" y="90" width="220" height="60" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="770" y="115" text-anchor="middle" font-size="13" fill="#3D3D3A">positive polarity</text>
+  <text x="770" y="132" text-anchor="middle" font-size="11" fill="#3D3D3A">N channels</text>
+  <rect x="660" y="270" width="220" height="60" rx="10" fill="#D9EDDE" stroke="#4C976D" stroke-width="2"/>
+  <text x="770" y="295" text-anchor="middle" font-size="13" fill="#3D3D3A">negative polarity</text>
+  <text x="770" y="312" text-anchor="middle" font-size="11" fill="#3D3D3A">N channels</text>
+  <!-- D: resulting tensor, drawn as a stack of three offset squares -->
+  <rect x="960" y="150" width="110" height="100" rx="6" fill="#FDEBD0" stroke="#C4943A" stroke-width="2" opacity="0.55"/>
+  <rect x="945" y="165" width="110" height="100" rx="6" fill="#FDEBD0" stroke="#C4943A" stroke-width="2" opacity="0.78"/>
+  <rect x="930" y="180" width="110" height="100" rx="6" fill="#FDEBD0" stroke="#C4943A" stroke-width="2"/>
+  <text x="985" y="232" text-anchor="middle" font-size="15" fill="#3D3D3A">(2N, H, W)</text>
+  <text x="985" y="300" text-anchor="middle" font-size="12" fill="#E1E1DE">W (width)</text>
+  <text x="895" y="235" text-anchor="middle" font-size="12" fill="#E1E1DE" transform="rotate(-90 895 235)">H (height)</text>
+  <text x="1080" y="145" text-anchor="middle" font-size="12" fill="#E1E1DE">2N channels</text>
+  <!-- connectors -->
+  <line x1="160" y1="210" x2="206" y2="210" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="580" y1="195" x2="656" y2="130" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="580" y1="225" x2="656" y2="290" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="880" y1="125" x2="926" y2="205" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="880" y1="295" x2="926" y2="245" stroke="#B4B4B2" stroke-width="2" marker-end="url(#arrowhead)"/>
+</svg>
