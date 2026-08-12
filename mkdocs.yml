@@ -36,11 +36,13 @@ theme:
 
   features:
     - navigation.sections
-    - navigation.expand
+    - navigation.tabs
+    - navigation.indexes
     - navigation.path
     - navigation.top
     - navigation.instant
     - navigation.tracking
+    - toc.follow
     - search.highlight
     - search.share
     - search.suggest
@@ -48,6 +50,8 @@ theme:
     - content.code.copy
     - content.code.select
     - content.code.annotate
+    - content.action.edit
+    - content.action.view
 
   icon:
     repo: fontawesome/brands/github
@@ -55,6 +59,9 @@ theme:
 
   font:
     code: Roboto Mono
+
+extra_css:
+  - stylesheets/extra.css
 
 extra:
   social:
@@ -107,9 +114,17 @@ nav:
   - User Guide:
       - Loading Data: user-guide/loading-data.md
       - Formats: user-guide/formats.md
+      - Filtering: user-guide/filtering.md
       - Event Representations: user-guide/representations.md
       - Polars Preprocessing: user-guide/polars-preprocessing.md
       - Prophesee ECF Codec: user-guide/prophesee-ecf.md
+  - RVT Pipeline:
+      - Overview: rvt/index.md
+      - Conformance: rvt/conformance.md
+  - Models & Training:
+      - Overview: models/index.md
+      - Datasets: models/datasets.md
+      - Evaluation: models/evaluation.md
   - API Reference:
       - Core: api/core.md
       - Formats: api/formats.md
@@ -131,6 +146,5 @@ nav:
       - Release Notes: development/releases.md
 
 extra_javascript:
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - javascripts/mathjax.js

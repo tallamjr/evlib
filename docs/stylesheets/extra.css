@@ -1,0 +1,40 @@
+/* evlib docs house style: Tahoma-first body font (matches figure/SVG style,
+   CLAUDE.local.md). Overrides Material's `--md-text-font` inline default;
+   this file loads after that inline <style> block, so the later rule wins. */
+:root {
+  --md-text-font: "Tahoma", "Verdana", sans-serif;
+}
+
+/* Figure captions: muted, centred text under an <img> in a <figure> block.
+   No repo convention existed yet (representations.md uses plain image alt
+   text with no caption element), so this establishes the figure/figcaption
+   pattern for pages that want an explicit caption. */
+.md-typeset figure {
+  margin: 1.5em auto;
+  text-align: center;
+}
+
+.md-typeset figure img {
+  margin-bottom: 0.4em;
+}
+
+.md-typeset figcaption {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.75rem;
+}
+
+/* Dark-mode SVG swap: embed a light and a `-dark` SVG side by side (as
+   docs/rvt/index.md does); show only the one matching the active scheme.
+   Material's own `#only-dark`/`#only-light` fragment convention isn't used
+   here since the existing pages pair on filename, not URL fragment. */
+.md-typeset img[src$="-dark.svg"] {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-typeset img[src$="-dark.svg"] {
+  display: block;
+}
+
+[data-md-color-scheme="slate"] .md-typeset img[src$=".svg"]:not([src$="-dark.svg"]) {
+  display: none;
+}
