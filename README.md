@@ -110,7 +110,6 @@ motion.
 
 <p align="center">
   <img src="./docs/diagrams/event-stream.svg" width="700" alt="A log-intensity trace crossing the +/-C contrast threshold, with each crossing emitting an (x, y, t, p) event marker on a shared time axis below">
-  <img src="./docs/diagrams/event-stream-dark.svg" width="700" alt="A log-intensity trace crossing the +/-C contrast threshold, with each crossing emitting an (x, y, t, p) event marker on a shared time axis below (dark variant)">
 </p>
 
 For a deeper introduction, see the
