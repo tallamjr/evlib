@@ -177,6 +177,11 @@ fn _evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ev_representations::python::register_representations_functions(&representations_submodule)?;
     m.add_submodule(&representations_submodule)?;
 
+    // Rust event simulator as "simulation_rs"; the pure-Python evlib.simulation wraps it.
+    let simulation_submodule = PyModule::new(m.py(), "simulation_rs")?;
+    ev_simulation::python::register_simulation_functions(&simulation_submodule)?;
+    m.add_submodule(&simulation_submodule)?;
+
     // Build info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
 

@@ -79,6 +79,11 @@ if hasattr(_rust, "representations_rs"):
     globals()["representations_rs"] = _rust.representations_rs
     sys.modules[__name__ + ".representations_rs"] = _rust.representations_rs
 
+# Expose the Rust event simulator as `evlib.simulation_rs`; evlib.simulation wraps it.
+if hasattr(_rust, "simulation_rs"):
+    globals()["simulation_rs"] = _rust.simulation_rs
+    sys.modules[__name__ + ".simulation_rs"] = _rust.simulation_rs
+
 # Make key functions directly accessible.
 # save_events_to_hdf5 handled below with fallback logic.
 version = _rust.version  # Rust-provided build version function (evlib.version())
