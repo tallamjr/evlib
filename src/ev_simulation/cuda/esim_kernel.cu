@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 
 #define EVSIM_CHECK(call)                                                       \
   do {                                                                          \
@@ -33,6 +34,9 @@
   } while (0)
 
 static const long long NO_EVENT = LLONG_MIN;
+
+// Timing slots: 0 total call (host clock), 1 upload, 2 count, 3 scan, 4 write, 5 download.
+#define EVSIM_N_TIMINGS 6
 
 extern "C" int evsim_destroy(void *handle);
 
@@ -61,7 +65,17 @@ struct EvsimHandle {
   long long *d_out_t;
   signed char *d_out_p;
   long long out_cap;
+  // Optional per-stage timing (evsim_set_timing): CUDA events around each stage.
+  int timing;
+  cudaEvent_t ev[6];
+  double timings[EVSIM_N_TIMINGS];
 };
+
+// Record timing event k on the legacy (default) stream when timing is on.
+static inline cudaError_t mark(EvsimHandle *h, int k) {
+  if (!h->timing) return cudaSuccess;
+  return cudaEventRecord(h->ev[k], 0);
+}
 
 __device__ __forceinline__ long long crossing_time(float l0, long long t0, float l1,
                                                    long long t1, float lc) {
@@ -248,6 +262,7 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
   EvsimHandle *h = (EvsimHandle *)handle;
   long long n = h->n;
   int init = h->initialised ? 0 : 1;
+  auto host_start = std::chrono::steady_clock::now();
 
   long long frames_len = (long long)n_frames * n;
   int rc = grow(&h->d_frames, &h->frames_cap, frames_len);
@@ -258,10 +273,12 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
     h->tns_cap = (int)cap;
     if (rc != 0) return rc;
   }
+  EVSIM_CHECK(mark(h, 0));
   EVSIM_CHECK(cudaMemcpy(h->d_frames, frames, (size_t)frames_len * sizeof(float),
                          cudaMemcpyHostToDevice));
   EVSIM_CHECK(cudaMemcpy(h->d_tns, t_ns, (size_t)n_frames * sizeof(long long),
                          cudaMemcpyHostToDevice));
+  EVSIM_CHECK(mark(h, 1));
 
   const int threads = 256;
   const int blocks = (int)((n + threads - 1) / threads);
@@ -270,6 +287,7 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
                                h->prev_t, h->width, h->d_counts);
   EVSIM_CHECK(cudaGetLastError());
   EVSIM_CHECK(cudaDeviceSynchronize());
+  EVSIM_CHECK(mark(h, 2));
 
   // thrust may throw (for example on temp-storage allocation); an exception must not
   // cross the extern "C" boundary, so map it to a negative CUDA error code.
@@ -292,6 +310,7 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
                          cudaMemcpyDeviceToHost));
   long long total = last_offset + last_count;
   *n_events = total;
+  EVSIM_CHECK(mark(h, 3));
   if (total > capacity) return 1;
 
   if (total > 0) {
@@ -318,6 +337,7 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
   EVSIM_CHECK(cudaDeviceSynchronize());
   h->prev_t = t_ns[n_frames - 1];
   h->initialised = 1;
+  EVSIM_CHECK(mark(h, 4));
 
   if (total > 0) {
     EVSIM_CHECK(cudaMemcpy(out_x, h->d_out_x, (size_t)total * sizeof(unsigned short),
@@ -329,7 +349,39 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
     EVSIM_CHECK(cudaMemcpy(out_p, h->d_out_p, (size_t)total * sizeof(signed char),
                            cudaMemcpyDeviceToHost));
   }
+  EVSIM_CHECK(mark(h, 5));
+  if (h->timing) {
+    EVSIM_CHECK(cudaEventSynchronize(h->ev[5]));
+    for (int k = 1; k < EVSIM_N_TIMINGS; ++k) {
+      float ms = 0.f;
+      EVSIM_CHECK(cudaEventElapsedTime(&ms, h->ev[k - 1], h->ev[k]));
+      h->timings[k] = ms;
+    }
+    h->timings[0] = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - host_start)
+                        .count();
+  }
   return 0;
+}
+
+// Turn per-stage timing on or off for this handle (off by default).
+int evsim_set_timing(void *handle, int on) {
+  if (handle == nullptr) return -(int)cudaErrorInvalidValue;
+  EvsimHandle *h = (EvsimHandle *)handle;
+  if (on && !h->timing) {
+    for (int k = 0; k < 6; ++k) EVSIM_CHECK(cudaEventCreate(&h->ev[k]));
+  }
+  h->timing = on ? 1 : 0;
+  return 0;
+}
+
+// Copy up to n stage times in milliseconds from the last timed run into out_ms.
+// Returns the number of slots available (EVSIM_N_TIMINGS).
+int evsim_last_timings(void *handle, double *out_ms, int n) {
+  if (handle == nullptr || (out_ms == nullptr && n > 0)) return -(int)cudaErrorInvalidValue;
+  EvsimHandle *h = (EvsimHandle *)handle;
+  for (int k = 0; k < n && k < EVSIM_N_TIMINGS; ++k) out_ms[k] = h->timings[k];
+  return EVSIM_N_TIMINGS;
 }
 
 int evsim_destroy(void *handle) {
@@ -357,6 +409,12 @@ int evsim_destroy(void *handle) {
   EVSIM_FREE(h->d_out_t);
   EVSIM_FREE(h->d_out_p);
 #undef EVSIM_FREE
+  if (h->timing) {
+    for (int k = 0; k < 6; ++k) {
+      cudaError_t e_ = cudaEventDestroy(h->ev[k]);
+      if (e_ != cudaSuccess && first == cudaSuccess) first = e_;
+    }
+  }
   free(h);
   return first == cudaSuccess ? 0 : -(int)first;
 }
