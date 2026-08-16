@@ -24,9 +24,18 @@ fn to_py_err(e: SimError) -> PyErr {
     }
 }
 
+/// Reinterpret a `Vec<u16>` as `Vec<i16>` without a copy (same size and alignment).
+fn reinterpret_i16(v: Vec<u16>) -> Vec<i16> {
+    let mut v = std::mem::ManuallyDrop::new(v);
+    let (ptr, len, cap) = (v.as_mut_ptr(), v.len(), v.capacity());
+    // SAFETY: u16 and i16 have identical size and alignment, so the allocation
+    // layout is the same; the source Vec is not dropped.
+    unsafe { Vec::from_raw_parts(ptr as *mut i16, len, cap) }
+}
+
 fn batch_to_py<'py>(py: Python<'py>, b: EventBatch) -> PyResult<Bound<'py, PyTuple>> {
-    let x: Vec<i16> = b.x.into_iter().map(|v| v as i16).collect();
-    let y: Vec<i16> = b.y.into_iter().map(|v| v as i16).collect();
+    let x = reinterpret_i16(b.x);
+    let y = reinterpret_i16(b.y);
     PyTuple::new(
         py,
         [
@@ -102,10 +111,10 @@ pub fn simulate_frames_py<'py>(
             log_eps,
             seed,
         );
-        let data = u8_frames.as_slice()?.to_vec();
+        let data = u8_frames.as_slice()?;
         let out = py
             .allow_threads(move || {
-                EventSimulator::new(cfg).and_then(|mut s| s.run_u8(&data, &t, sort))
+                EventSimulator::new(cfg).and_then(|mut s| s.run_u8(data, &t, sort))
             })
             .map_err(to_py_err)?;
         return batch_to_py(py, out);
@@ -122,10 +131,10 @@ pub fn simulate_frames_py<'py>(
             log_eps,
             seed,
         );
-        let data = f32_frames.as_slice()?.to_vec();
+        let data = f32_frames.as_slice()?;
         let out = py
             .allow_threads(move || {
-                EventSimulator::new(cfg).and_then(|mut s| s.run_log(&data, &t, sort))
+                EventSimulator::new(cfg).and_then(|mut s| s.run_log(data, &t, sort))
             })
             .map_err(to_py_err)?;
         return batch_to_py(py, out);
@@ -204,25 +213,24 @@ impl PyEventSimulator {
         frame: &Bound<'py, PyAny>,
         t_ns: i64,
     ) -> PyResult<Bound<'py, PyTuple>> {
-        // Copy to an owned, Send buffer before allow_threads: the PyReadonlyArray
-        // borrow is GIL-bound and cannot cross the closure, same as simulate_frames_py.
+        // The readonly borrow pins the array; its slice is Send and crosses allow_threads.
         if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, u8>>() {
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
                 .allow_threads(move || {
                     let mut out = EventBatch::default();
-                    inner.step_u8(&data, t_ns, &mut out).map(|_| out)
+                    inner.step_u8(data, t_ns, &mut out).map(|_| out)
                 })
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, f32>>() {
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
                 .allow_threads(move || {
                     let mut out = EventBatch::default();
-                    inner.step_log(&data, t_ns, &mut out).map(|_| out)
+                    inner.step_log(data, t_ns, &mut out).map(|_| out)
                 })
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
@@ -249,18 +257,18 @@ impl PyEventSimulator {
         let (h, w) = (self.inner.config().height, self.inner.config().width);
         if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, u8>>() {
             check_run_shape(f.shape(), t.len(), h, w)?;
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.run_u8(&data, &t, sort))
+                .allow_threads(move || inner.run_u8(data, &t, sort))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, f32>>() {
             check_run_shape(f.shape(), t.len(), h, w)?;
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.run_log(&data, &t, sort))
+                .allow_threads(move || inner.run_log(data, &t, sort))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else {
@@ -315,10 +323,10 @@ pub fn simulate_frames_cuda_py<'py>(
             log_eps,
             seed,
         );
-        let data = u8_frames.as_slice()?.to_vec();
+        let data = u8_frames.as_slice()?;
         let out = py
             .allow_threads(move || {
-                EventSimulatorCuda::new(cfg).and_then(|mut s| s.run_u8(&data, &t, sort))
+                EventSimulatorCuda::new(cfg).and_then(|mut s| s.run_u8(data, &t, sort))
             })
             .map_err(to_py_err)?;
         return batch_to_py(py, out);
@@ -335,10 +343,10 @@ pub fn simulate_frames_cuda_py<'py>(
             log_eps,
             seed,
         );
-        let data = f32_frames.as_slice()?.to_vec();
+        let data = f32_frames.as_slice()?;
         let out = py
             .allow_threads(move || {
-                EventSimulatorCuda::new(cfg).and_then(|mut s| s.run_log(&data, &t, sort))
+                EventSimulatorCuda::new(cfg).and_then(|mut s| s.run_log(data, &t, sort))
             })
             .map_err(to_py_err)?;
         return batch_to_py(py, out);
@@ -420,17 +428,17 @@ impl PyEventSimulatorCuda {
         t_ns: i64,
     ) -> PyResult<Bound<'py, PyTuple>> {
         if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, u8>>() {
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.step_u8(&data, t_ns))
+                .allow_threads(move || inner.step_u8(data, t_ns))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, f32>>() {
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.step_log(&data, t_ns))
+                .allow_threads(move || inner.step_log(data, t_ns))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else {
@@ -456,18 +464,18 @@ impl PyEventSimulatorCuda {
         let (h, w) = (self.inner.config().height, self.inner.config().width);
         if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, u8>>() {
             check_run_shape(f.shape(), t.len(), h, w)?;
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.run_u8(&data, &t, sort))
+                .allow_threads(move || inner.run_u8(data, &t, sort))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, f32>>() {
             check_run_shape(f.shape(), t.len(), h, w)?;
-            let data = f.as_slice()?.to_vec();
+            let data = f.as_slice()?;
             let inner = &mut self.inner;
             let out = py
-                .allow_threads(move || inner.run_log(&data, &t, sort))
+                .allow_threads(move || inner.run_log(data, &t, sort))
                 .map_err(to_py_err)?;
             batch_to_py(py, out)
         } else {

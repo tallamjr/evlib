@@ -6,9 +6,15 @@
 //! Threshold maps and the u8 log LUT are computed on the host, so this backend
 //! shares them bit-for-bit with `EventSimulator`; the LUT is uploaded once and
 //! applied on the device, so u8 frames cross the bus as one byte per pixel.
-//! A failing `evsim_destroy` in `Drop` is reported with `eprintln!` and not
-//! surfaced as an error.
+//!
+//! Each call copies the frames into the library's pinned staging buffer
+//! (parallel memcpy), runs `evsim_run2`, and copies the results out of the
+//! library's pinned result buffers into fresh `Vec`s (parallel memcpy). Device
+//! and pinned buffers live in the handle and grow geometrically, so there is
+//! no capacity guess and no retry. A failing `evsim_destroy` in `Drop` is
+//! reported with `eprintln!` and not surfaced as an error.
 
+use rayon::prelude::*;
 use std::os::raw::{c_char, c_int, c_longlong, c_ushort, c_void};
 use std::sync::OnceLock;
 
@@ -24,41 +30,34 @@ type CreateFn = unsafe extern "C" fn(
     *mut *mut c_void,
 ) -> c_int;
 type ResetFn = unsafe extern "C" fn(*mut c_void) -> c_int;
-type RunFn = unsafe extern "C" fn(
-    *mut c_void,
-    *const f32,        // frames (host, T*H*W)
-    *const c_longlong, // t_ns (host, T)
-    c_int,             // n_frames
-    *mut c_ushort,     // out_x
-    *mut c_ushort,     // out_y
-    *mut c_longlong,   // out_t
-    *mut c_char,       // out_p
-    c_longlong,        // capacity
-    *mut c_longlong,   // n_events
-) -> c_int;
-type RunU8Fn = unsafe extern "C" fn(
-    *mut c_void,
-    *const u8,         // frames (host, T*H*W)
-    *const c_longlong, // t_ns (host, T)
-    c_int,             // n_frames
-    *mut c_ushort,     // out_x
-    *mut c_ushort,     // out_y
-    *mut c_longlong,   // out_t
-    *mut c_char,       // out_p
-    c_longlong,        // capacity
-    *mut c_longlong,   // n_events
-) -> c_int;
 type SetLutFn = unsafe extern "C" fn(*mut c_void, *const f32) -> c_int;
+type StageFn = unsafe extern "C" fn(*mut c_void, c_longlong, *mut *mut c_void) -> c_int;
+type Run2Fn = unsafe extern "C" fn(
+    *mut c_void,
+    c_int,                  // kind: 0 f32 log, 1 u8
+    *const c_void,          // frames (host; ignored with STAGED)
+    *const c_longlong,      // t_ns (host, T)
+    c_int,                  // n_frames
+    c_int,                  // flags
+    *mut *const c_ushort,   // out_x (pinned, owned by the handle)
+    *mut *const c_ushort,   // out_y
+    *mut *const c_longlong, // out_t
+    *mut *const c_char,     // out_p
+    *mut c_longlong,        // n_events
+) -> c_int;
 type DestroyFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+
+/// `evsim_run2` flag: frames are already in the staging buffer.
+const FLAG_STAGED: c_int = 2;
 
 /// Resolved entry points of the shared library; `_lib` keeps it mapped.
 struct Api {
     _lib: libloading::Library,
     create: CreateFn,
     reset: ResetFn,
-    run: RunFn,
-    run_u8: RunU8Fn,
     set_lut: SetLutFn,
+    stage: StageFn,
+    run2: Run2Fn,
     destroy: DestroyFn,
 }
 
@@ -74,18 +73,18 @@ fn load_api() -> Result<Api, String> {
     let path = lib_path();
     let lib = unsafe { libloading::Library::new(&path) }
         .map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
-    let (create, reset, run, run_u8, set_lut, destroy) = unsafe {
+    let (create, reset, set_lut, stage, run2, destroy) = unsafe {
         (
             *lib.get::<CreateFn>(b"evsim_create")
                 .map_err(|e| format!("missing symbol evsim_create: {e}"))?,
             *lib.get::<ResetFn>(b"evsim_reset")
                 .map_err(|e| format!("missing symbol evsim_reset: {e}"))?,
-            *lib.get::<RunFn>(b"evsim_run")
-                .map_err(|e| format!("missing symbol evsim_run: {e}"))?,
-            *lib.get::<RunU8Fn>(b"evsim_run_u8")
-                .map_err(|e| format!("missing symbol evsim_run_u8: {e}"))?,
             *lib.get::<SetLutFn>(b"evsim_set_lut")
                 .map_err(|e| format!("missing symbol evsim_set_lut: {e}"))?,
+            *lib.get::<StageFn>(b"evsim_stage")
+                .map_err(|e| format!("missing symbol evsim_stage: {e}"))?,
+            *lib.get::<Run2Fn>(b"evsim_run2")
+                .map_err(|e| format!("missing symbol evsim_run2: {e}"))?,
             *lib.get::<DestroyFn>(b"evsim_destroy")
                 .map_err(|e| format!("missing symbol evsim_destroy: {e}"))?,
         )
@@ -94,9 +93,9 @@ fn load_api() -> Result<Api, String> {
         _lib: lib,
         create,
         reset,
-        run,
-        run_u8,
         set_lut,
+        stage,
+        run2,
         destroy,
     })
 }
@@ -121,8 +120,53 @@ pub fn cuda_available() -> bool {
     })
 }
 
-/// Smallest event capacity tried for a batch; the hint doubles the last count.
-const MIN_CAPACITY: usize = 1 << 16;
+/// Bytes per rayon task in the pinned-memory copies; below one chunk the copy is serial.
+const COPY_CHUNK: usize = 4 << 20;
+
+/// Parallel `memcpy` of `bytes` from `src` to `dst`.
+///
+/// # Safety
+/// `src` and `dst` are valid for `bytes` bytes and do not overlap.
+unsafe fn copy_bytes_parallel(src: *const u8, dst: *mut u8, bytes: usize) {
+    if bytes <= COPY_CHUNK {
+        std::ptr::copy_nonoverlapping(src, dst, bytes);
+        return;
+    }
+    let (src_addr, dst_addr) = (src as usize, dst as usize);
+    let n_chunks = bytes.div_ceil(COPY_CHUNK);
+    (0..n_chunks).into_par_iter().for_each(|c| {
+        let start = c * COPY_CHUNK;
+        let len = COPY_CHUNK.min(bytes - start);
+        // SAFETY: chunks are disjoint sub-ranges of the caller's valid ranges.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                (src_addr + start) as *const u8,
+                (dst_addr + start) as *mut u8,
+                len,
+            )
+        };
+    });
+}
+
+/// Copy `n` elements out of a pinned result buffer into a fresh `Vec`.
+///
+/// # Safety
+/// `src` is valid for `n` elements of `T`.
+unsafe fn vec_from_pinned<T: Copy>(src: *const T, n: usize) -> Vec<T> {
+    let mut v: Vec<T> = Vec::with_capacity(n);
+    if n > 0 {
+        // SAFETY: the Vec has capacity n; the source holds n elements.
+        unsafe {
+            copy_bytes_parallel(
+                src as *const u8,
+                v.as_mut_ptr() as *mut u8,
+                n * std::mem::size_of::<T>(),
+            );
+            v.set_len(n);
+        }
+    }
+    v
+}
 
 /// Input stack for one call: float32 log intensity or uint8 intensity.
 #[derive(Clone, Copy)]
@@ -138,6 +182,13 @@ impl Frames<'_> {
             Frames::U8(f) => f.len(),
         }
     }
+    /// (kind for evsim_run2, byte length, byte pointer).
+    fn raw(&self) -> (c_int, usize, *const u8) {
+        match self {
+            Frames::Log(f) => (0, std::mem::size_of_val(*f), f.as_ptr() as *const u8),
+            Frames::U8(f) => (1, f.len(), f.as_ptr()),
+        }
+    }
 }
 
 pub struct EventSimulatorCuda {
@@ -149,7 +200,6 @@ pub struct EventSimulatorCuda {
     lut: [f32; 256],
     prev_t: i64,
     initialised: bool,
-    capacity_hint: usize,
 }
 
 // The raw handle is only touched through `&mut self` and `Drop`; `&self`
@@ -210,7 +260,6 @@ impl EventSimulatorCuda {
             lut,
             prev_t: 0,
             initialised: false,
-            capacity_hint: MIN_CAPACITY,
         })
     }
     pub fn config(&self) -> &SimulatorConfig {
@@ -261,128 +310,78 @@ impl EventSimulatorCuda {
         Ok(())
     }
 
-    /// One `evsim_run` call at `capacity`; `Ok(None)` means the batch needs a
-    /// larger buffer and `required` events; the device state is unchanged.
-    fn run_once(
-        &mut self,
-        frames: Frames<'_>,
-        t_ns: &[i64],
-        capacity: usize,
-    ) -> Result<Result<EventBatch, usize>, SimError> {
-        let mut x: Vec<u16> = Vec::with_capacity(capacity);
-        let mut y: Vec<u16> = Vec::with_capacity(capacity);
-        let mut t: Vec<i64> = Vec::with_capacity(capacity);
-        let mut p: Vec<i8> = Vec::with_capacity(capacity);
-        let mut n_events: c_longlong = 0;
-        // SAFETY: frames has n * T elements (check_batch), t_ns has T, and the
-        // four output buffers hold `capacity` elements each.
-        let rc = unsafe {
-            match frames {
-                Frames::Log(f) => (self.api.run)(
-                    self.handle,
-                    f.as_ptr(),
-                    t_ns.as_ptr(),
-                    t_ns.len() as c_int,
-                    x.as_mut_ptr(),
-                    y.as_mut_ptr(),
-                    t.as_mut_ptr(),
-                    p.as_mut_ptr() as *mut c_char,
-                    capacity as c_longlong,
-                    &mut n_events,
-                ),
-                Frames::U8(f) => (self.api.run_u8)(
-                    self.handle,
-                    f.as_ptr(),
-                    t_ns.as_ptr(),
-                    t_ns.len() as c_int,
-                    x.as_mut_ptr(),
-                    y.as_mut_ptr(),
-                    t.as_mut_ptr(),
-                    p.as_mut_ptr() as *mut c_char,
-                    capacity as c_longlong,
-                    &mut n_events,
-                ),
-            }
-        };
-        if rc < 0 {
-            return Err(SimError::Backend(format!(
-                "evsim_run returned CUDA error code {rc}"
-            )));
-        }
-        if rc == 1 {
-            return Ok(Err(n_events as usize));
-        }
-        let n = n_events as usize;
-        if n > capacity {
-            return Err(SimError::Backend(format!(
-                "evsim_run reported {n} events above capacity {capacity} with rc 0"
-            )));
-        }
-        // SAFETY: on rc 0 the C side wrote exactly n <= capacity elements into
-        // each buffer (pass 2 fills offset + k for every counted event), so the
-        // first n elements are initialised.
-        unsafe {
-            x.set_len(n);
-            y.set_len(n);
-            t.set_len(n);
-            p.set_len(n);
-        }
-        Ok(Ok(EventBatch { x, y, t_ns: t, p }))
-    }
-
-    /// Run a batch with an explicit starting capacity, retrying once with the
-    /// required size if the device reports overflow.
-    fn run_with_capacity(
+    /// Stage the frames into pinned memory, run the device pipeline, copy the
+    /// results out. `sort` orders the batch by time on the host.
+    fn run_frames(
         &mut self,
         frames: Frames<'_>,
         t_ns: &[i64],
         sort: bool,
-        capacity: usize,
     ) -> Result<EventBatch, SimError> {
         self.check_batch(frames.len(), t_ns)?;
         if let Frames::Log(f) = frames {
             check_finite(f)?;
         }
-        let mut out = match self.run_once(frames, t_ns, capacity)? {
-            Ok(b) => b,
-            Err(required) => match self.run_once(frames, t_ns, required)? {
-                Ok(b) => b,
-                Err(again) => {
-                    return Err(SimError::Backend(format!(
-                        "evsim_run still reports overflow ({again} > {required}) after retry"
-                    )))
-                }
-            },
+        let (kind, bytes, src) = frames.raw();
+        let mut pinned: *mut c_void = std::ptr::null_mut();
+        // SAFETY: the handle is live; `pinned` receives a buffer of at least `bytes` bytes.
+        let rc = unsafe { (self.api.stage)(self.handle, bytes as c_longlong, &mut pinned) };
+        if rc != 0 || pinned.is_null() {
+            return Err(SimError::Backend(format!(
+                "evsim_stage returned CUDA error code {rc}"
+            )));
+        }
+        // SAFETY: `src` holds `bytes` bytes (check_batch); the staging buffer holds at
+        // least `bytes` (evsim_stage) and is distinct from the caller's memory.
+        unsafe { copy_bytes_parallel(src, pinned as *mut u8, bytes) };
+        let mut px: *const c_ushort = std::ptr::null();
+        let mut py: *const c_ushort = std::ptr::null();
+        let mut pt: *const c_longlong = std::ptr::null();
+        let mut pp: *const c_char = std::ptr::null();
+        let mut n_events: c_longlong = 0;
+        // SAFETY: t_ns has T elements; the frames were staged above; the out
+        // pointers receive handle-owned pinned buffers valid until the next call.
+        let rc = unsafe {
+            (self.api.run2)(
+                self.handle,
+                kind,
+                std::ptr::null(),
+                t_ns.as_ptr(),
+                t_ns.len() as c_int,
+                FLAG_STAGED,
+                &mut px,
+                &mut py,
+                &mut pt,
+                &mut pp,
+                &mut n_events,
+            )
+        };
+        if rc != 0 {
+            return Err(SimError::Backend(format!(
+                "evsim_run2 returned CUDA error code {rc}"
+            )));
+        }
+        let n = n_events as usize;
+        if n > 0 && (px.is_null() || py.is_null() || pt.is_null() || pp.is_null()) {
+            return Err(SimError::Backend(
+                "evsim_run2 returned null result pointers".into(),
+            ));
+        }
+        // SAFETY: on rc 0 each result buffer holds exactly n elements.
+        let mut out = unsafe {
+            EventBatch {
+                x: vec_from_pinned(px, n),
+                y: vec_from_pinned(py, n),
+                t_ns: vec_from_pinned(pt, n),
+                p: vec_from_pinned(pp as *const i8, n),
+            }
         };
         self.prev_t = *t_ns.last().expect("non-empty batch");
         self.initialised = true;
-        self.capacity_hint = MIN_CAPACITY.max(2 * out.len());
         if sort {
             out.sort_by_time();
         }
         Ok(out)
-    }
-
-    /// float32 log frames with an explicit starting capacity (tests the retry path).
-    pub fn run_log_with_capacity(
-        &mut self,
-        frames: &[f32],
-        t_ns: &[i64],
-        sort: bool,
-        capacity: usize,
-    ) -> Result<EventBatch, SimError> {
-        self.run_with_capacity(Frames::Log(frames), t_ns, sort, capacity)
-    }
-
-    /// uint8 frames with an explicit starting capacity (tests the retry path).
-    pub fn run_u8_with_capacity(
-        &mut self,
-        frames: &[u8],
-        t_ns: &[i64],
-        sort: bool,
-        capacity: usize,
-    ) -> Result<EventBatch, SimError> {
-        self.run_with_capacity(Frames::U8(frames), t_ns, sort, capacity)
     }
 
     pub fn run_log(
@@ -391,8 +390,7 @@ impl EventSimulatorCuda {
         t_ns: &[i64],
         sort: bool,
     ) -> Result<EventBatch, SimError> {
-        let capacity = self.capacity_hint;
-        self.run_with_capacity(Frames::Log(frames), t_ns, sort, capacity)
+        self.run_frames(Frames::Log(frames), t_ns, sort)
     }
 
     /// uint8 frames are uploaded as bytes; the log LUT is applied on the device.
@@ -402,8 +400,7 @@ impl EventSimulatorCuda {
         t_ns: &[i64],
         sort: bool,
     ) -> Result<EventBatch, SimError> {
-        let capacity = self.capacity_hint;
-        self.run_with_capacity(Frames::U8(frames), t_ns, sort, capacity)
+        self.run_frames(Frames::U8(frames), t_ns, sort)
     }
 
     /// One frame; the first frame initialises the state and yields no events.
@@ -496,8 +493,10 @@ mod tests {
         assert!(got.t_ns.windows(2).all(|w| w[0] <= w[1]));
     }
 
+    /// Buffers grow across calls (a 2-frame batch first, then a large one) and
+    /// state persists on the device between batches.
     #[test]
-    fn capacity_retry_and_state_persistence_match_cpu() {
+    fn buffer_growth_and_state_persistence_match_cpu() {
         if !lib_present() {
             return;
         }
@@ -506,14 +505,20 @@ mod tests {
         let n = c.pixels();
         let mut cpu = EventSimulator::new(c).unwrap();
         let mut gpu = EventSimulatorCuda::new(c).unwrap();
-        // Split the sequence into two batches so the second starts from device state.
-        let (fa, fb) = frames.split_at(20 * n);
-        let (ta, tb) = t.split_at(20);
+        // Three batches: tiny, large (forces growth of every buffer), medium.
+        let (f0, rest) = frames.split_at(2 * n);
+        let (t0, trest) = t.split_at(2);
+        let (fa, fb) = rest.split_at(18 * n);
+        let (ta, tb) = trest.split_at(18);
+        let want_0 = cpu.run_log(f0, t0, true).unwrap();
+        let got_0 = gpu.run_log(f0, t0, true).unwrap();
+        assert_eq!(key(&got_0), key(&want_0));
         let want_a = cpu.run_log(fa, ta, true).unwrap();
-        let got_a = gpu.run_log_with_capacity(fa, ta, true, 16).unwrap();
+        let got_a = gpu.run_log(fa, ta, true).unwrap();
+        assert!(want_a.len() > 10 * want_0.len().max(1));
         assert_eq!(key(&got_a), key(&want_a));
         let want_b = cpu.run_log(fb, tb, true).unwrap();
-        let got_b = gpu.run_log_with_capacity(fb, tb, true, 16).unwrap();
+        let got_b = gpu.run_log(fb, tb, true).unwrap();
         assert!(!want_b.is_empty());
         assert_eq!(key(&got_b), key(&want_b));
         // Non-monotonic join is rejected without touching the state.
@@ -566,9 +571,9 @@ mod tests {
         assert!(!got.is_empty());
     }
 
-    /// u8 frames through the device LUT, forced retry, sorted, against the CPU.
+    /// u8 frames through the device LUT, sorted, in two batches, against the CPU.
     #[test]
-    fn u8_capacity_retry_matches_cpu_sorted() {
+    fn u8_batches_match_cpu_sorted() {
         if !lib_present() {
             return;
         }
@@ -590,7 +595,7 @@ mod tests {
         let (fa, fb) = raw.split_at(15 * n);
         let (ta, tb) = t.split_at(15);
         let want_a = cpu.run_u8(fa, ta, true).unwrap();
-        let got_a = gpu.run_u8_with_capacity(fa, ta, true, 8).unwrap();
+        let got_a = gpu.run_u8(fa, ta, true).unwrap();
         assert!(want_a.len() > 10_000, "cpu produced {}", want_a.len());
         assert_eq!(got_a.len(), want_a.len());
         assert_eq!(key(&got_a), key(&want_a));
