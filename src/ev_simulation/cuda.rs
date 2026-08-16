@@ -7,6 +7,7 @@
 //! shares them bit-for-bit with `EventSimulator`. A failing `evsim_destroy` in
 //! `Drop` is reported with `eprintln!` and not surfaced as an error.
 
+use rayon::prelude::*;
 use std::os::raw::{c_char, c_int, c_longlong, c_ushort, c_void};
 use std::sync::OnceLock;
 
@@ -316,7 +317,8 @@ impl EventSimulatorCuda {
         t_ns: &[i64],
         sort: bool,
     ) -> Result<EventBatch, SimError> {
-        let log: Vec<f32> = frames.iter().map(|&v| self.lut[v as usize]).collect();
+        let lut = self.lut;
+        let log: Vec<f32> = frames.par_iter().map(|&v| lut[v as usize]).collect();
         self.run_log(&log, t_ns, sort)
     }
 

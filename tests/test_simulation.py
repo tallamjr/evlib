@@ -199,3 +199,17 @@ def test_video_streaming_matches_batch(slider_frames, tmp_path):
     # Equal-t ties have no defined order, so compare in a canonical (t, y, x, p) order.
     order = ["t", "y", "x", "polarity"]
     assert pl.concat(chunks).sort(order).equals(batch.sort(order))
+
+
+def test_simulate_in_batches_matches_whole_stack(slider_frames):
+    frames, t_ns = slider_frames
+    cfg = ESIMConfig()
+    sim = ESIMSimulator(cfg, width=240, height=180)
+    parts = [
+        sim.simulate(frames[a:b], t_ns[a:b], sort=False)
+        for a, b in ((0, 8), (8, 9), (9, 20))
+    ]
+    keys = ["t", "y", "x", "polarity"]
+    joined = pl.concat(parts).sort(keys)
+    whole = simulate_frames(frames[:20], t_ns[:20], cfg).sort(keys)
+    assert joined.equals(whole)

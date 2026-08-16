@@ -84,3 +84,16 @@ def test_auto_device_picks_cuda(slider_frames):
     auto = _sorted(simulate_frames(frames[:5], t_ns[:5], ESIMConfig(device="auto")))
     cuda = _sorted(simulate_frames(frames[:5], t_ns[:5], ESIMConfig(device="cuda")))
     assert auto.equals(cuda)
+
+
+def test_cuda_run_in_batches_matches_cpu_whole_stack(slider_frames):
+    frames, t_ns = slider_frames
+    height, width = frames.shape[1:]
+    cuda = ESIMSimulator(ESIMConfig(device="cuda"), width=width, height=height)
+    parts = [
+        cuda.simulate(frames[a:b], t_ns[a:b], sort=False)
+        for a, b in ((0, 8), (8, 9), (9, 20))
+    ]
+    joined = _sorted(pl.concat(parts))
+    whole = _sorted(simulate_frames(frames[:20], t_ns[:20], ESIMConfig(device="cpu")))
+    assert joined.equals(whole)

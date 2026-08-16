@@ -116,6 +116,18 @@ class ESIMSimulator:
             )
         return self._inner.step(kernel_frame, int(t_ns))
 
+    def simulate(
+        self, frames: np.ndarray, timestamps_ns: np.ndarray, sort: bool = True
+    ) -> pl.DataFrame:
+        """A (T, H, W) uint8 or float32-log stack; state carries over between calls.
+
+        Feeding a stack in slices gives the same events as one `simulate_frames` call.
+        """
+        frames = np.ascontiguousarray(frames)
+        t = np.ascontiguousarray(np.asarray(timestamps_ns, dtype=np.int64))
+        x, y, t_ns, p = self._inner.run(frames, t, sort=sort)
+        return _to_dataframe(x, y, t_ns, p)
+
     def process_frame(
         self, frame: np.ndarray, timestamp: float
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

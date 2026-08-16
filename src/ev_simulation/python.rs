@@ -37,6 +37,18 @@ fn batch_to_py<'py>(py: Python<'py>, b: EventBatch) -> PyResult<Bound<'py, PyTup
     )
 }
 
+/// Shape check for a stateful `run`: (T, H, W) must match the simulator size.
+fn check_run_shape(shape: &[usize], t_len: usize, height: u32, width: u32) -> PyResult<()> {
+    if shape[0] != t_len || shape[1] != height as usize || shape[2] != width as usize {
+        return Err(PyValueError::new_err(format!(
+            "frames shape {:?} does not match (len(timestamps_ns), height, width) = {:?}",
+            shape,
+            (t_len, height, width)
+        )));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_config(
     width: u32,
@@ -218,6 +230,41 @@ impl PyEventSimulator {
             ))
         }
     }
+
+    /// A (T, H, W) uint8 or float32 stack at `timestamps_ns`; state carries over to
+    /// the next call, so batches give the same events as one whole-stack run.
+    #[pyo3(signature = (frames, timestamps_ns, *, sort=false))]
+    fn run<'py>(
+        &mut self,
+        py: Python<'py>,
+        frames: &Bound<'py, PyAny>,
+        timestamps_ns: PyReadonlyArray1<'py, i64>,
+        sort: bool,
+    ) -> PyResult<Bound<'py, PyTuple>> {
+        let t = timestamps_ns.as_slice()?.to_vec();
+        let (h, w) = (self.inner.config().height, self.inner.config().width);
+        if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, u8>>() {
+            check_run_shape(f.shape(), t.len(), h, w)?;
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || inner.run_u8(&data, &t, sort))
+                .map_err(to_py_err)?;
+            batch_to_py(py, out)
+        } else if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, f32>>() {
+            check_run_shape(f.shape(), t.len(), h, w)?;
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || inner.run_log(&data, &t, sort))
+                .map_err(to_py_err)?;
+            batch_to_py(py, out)
+        } else {
+            Err(PyTypeError::new_err(
+                "frames must be a C-contiguous (T, H, W) uint8 or float32 array",
+            ))
+        }
+    }
 }
 
 /// True when the crate was built with the `cuda` feature and `libevsim.so` loads on a device.
@@ -384,6 +431,41 @@ impl PyEventSimulatorCuda {
         } else {
             Err(PyTypeError::new_err(
                 "frame must be a C-contiguous (H, W) uint8 or float32 array",
+            ))
+        }
+    }
+
+    /// A (T, H, W) uint8 or float32 stack at `timestamps_ns`; state carries over to
+    /// the next call, so batches give the same events as one whole-stack run.
+    #[pyo3(signature = (frames, timestamps_ns, *, sort=false))]
+    fn run<'py>(
+        &mut self,
+        py: Python<'py>,
+        frames: &Bound<'py, PyAny>,
+        timestamps_ns: PyReadonlyArray1<'py, i64>,
+        sort: bool,
+    ) -> PyResult<Bound<'py, PyTuple>> {
+        let t = timestamps_ns.as_slice()?.to_vec();
+        let (h, w) = (self.inner.config().height, self.inner.config().width);
+        if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, u8>>() {
+            check_run_shape(f.shape(), t.len(), h, w)?;
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || inner.run_u8(&data, &t, sort))
+                .map_err(to_py_err)?;
+            batch_to_py(py, out)
+        } else if let Ok(f) = frames.extract::<PyReadonlyArray3<'py, f32>>() {
+            check_run_shape(f.shape(), t.len(), h, w)?;
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || inner.run_log(&data, &t, sort))
+                .map_err(to_py_err)?;
+            batch_to_py(py, out)
+        } else {
+            Err(PyTypeError::new_err(
+                "frames must be a C-contiguous (T, H, W) uint8 or float32 array",
             ))
         }
     }

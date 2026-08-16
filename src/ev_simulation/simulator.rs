@@ -5,6 +5,9 @@ use rayon::prelude::*;
 use super::config::{threshold_maps, SimError, SimulatorConfig};
 use super::pixel::{step_pixel, PixelParams, PixelState, NO_EVENT};
 
+/// (timestamp, original index) pair used by the time sort.
+type Keyed = (i64, u32);
+
 /// Struct-of-arrays event batch. Timestamps are nanoseconds; polarity is -1 or 1.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct EventBatch {
@@ -41,6 +44,38 @@ impl EventBatch {
         self.t_ns.extend_from_slice(&other.t_ns);
         self.p.extend_from_slice(&other.p);
     }
+    /// Parallel concatenation of batches into one struct of arrays.
+    pub fn concat(parts: &[EventBatch]) -> EventBatch {
+        let n: usize = parts.iter().map(EventBatch::len).sum();
+        let mut out = EventBatch {
+            x: (0..n).into_par_iter().map(|_| 0u16).collect(),
+            y: (0..n).into_par_iter().map(|_| 0u16).collect(),
+            t_ns: (0..n).into_par_iter().map(|_| 0i64).collect(),
+            p: (0..n).into_par_iter().map(|_| 0i8).collect(),
+        };
+        fn fill<T: Copy + Send + Sync>(
+            dst: &mut [T],
+            parts: &[EventBatch],
+            col: fn(&EventBatch) -> &[T],
+        ) {
+            let mut slots: Vec<&mut [T]> = Vec::with_capacity(parts.len());
+            let mut rest = dst;
+            for part in parts {
+                let (head, tail) = rest.split_at_mut(part.len());
+                slots.push(head);
+                rest = tail;
+            }
+            slots
+                .into_par_iter()
+                .zip(parts.par_iter())
+                .for_each(|(slot, part)| slot.copy_from_slice(col(part)));
+        }
+        fill(&mut out.x, parts, |b| &b.x);
+        fill(&mut out.y, parts, |b| &b.y);
+        fill(&mut out.t_ns, parts, |b| &b.t_ns);
+        fill(&mut out.p, parts, |b| &b.p);
+        out
+    }
     #[inline]
     fn push(&mut self, x: u16, y: u16, t: i64, p: i8) {
         self.x.push(x);
@@ -49,15 +84,81 @@ impl EventBatch {
         self.p.push(p);
     }
     /// Sort all four columns by timestamp (unstable; equal timestamps keep no particular order).
-    /// Parallel sort and gather: the CUDA backend returns events grouped by pixel,
-    /// which is far from time order, so a serial sort dominated its runtime.
+    ///
+    /// Parallel bucket sort on (t, index) pairs: a per-chunk counting sort into
+    /// time buckets, then each bucket is sorted on its own. Comparison sorts
+    /// with an indirect key were 3 to 10x slower on the pixel-grouped CUDA output.
     pub fn sort_by_time(&mut self) {
-        let mut idx: Vec<u32> = (0..self.len() as u32).collect();
-        idx.par_sort_unstable_by_key(|&i| self.t_ns[i as usize]);
-        self.x = idx.par_iter().map(|&i| self.x[i as usize]).collect();
-        self.y = idx.par_iter().map(|&i| self.y[i as usize]).collect();
-        self.p = idx.par_iter().map(|&i| self.p[i as usize]).collect();
-        self.t_ns = idx.par_iter().map(|&i| self.t_ns[i as usize]).collect();
+        let n = self.len();
+        if n < 2 {
+            return;
+        }
+        let t_min = *self.t_ns.par_iter().min().expect("non-empty");
+        let t_max = *self.t_ns.par_iter().max().expect("non-empty");
+        // About 2048 events per bucket keeps each local sort in cache.
+        let n_buckets = (n / 2048).clamp(1, 1 << 16);
+        let scale = n_buckets as f64 / ((t_max - t_min) as f64 + 1.0);
+        let bucket_of = |t: i64| (((t - t_min) as f64 * scale) as usize).min(n_buckets - 1);
+        let chunk_len = n.div_ceil(4 * rayon::current_num_threads()).max(1);
+        // Per chunk: (t, index) pairs grouped by bucket, plus the bucket start offsets.
+        let chunks: Vec<(Vec<Keyed>, Vec<u32>)> = self
+            .t_ns
+            .par_chunks(chunk_len)
+            .enumerate()
+            .map(|(ci, ts)| {
+                let mut counts = vec![0u32; n_buckets + 1];
+                for &t in ts {
+                    counts[bucket_of(t) + 1] += 1;
+                }
+                for b in 0..n_buckets {
+                    counts[b + 1] += counts[b];
+                }
+                let mut cursor = counts.clone();
+                let mut local: Vec<Keyed> = vec![(0, 0); ts.len()];
+                let base = (ci * chunk_len) as u32;
+                for (j, &t) in ts.iter().enumerate() {
+                    let b = bucket_of(t);
+                    local[cursor[b] as usize] = (t, base + j as u32);
+                    cursor[b] += 1;
+                }
+                (local, counts)
+            })
+            .collect();
+        let buckets: Vec<Vec<Keyed>> = (0..n_buckets)
+            .into_par_iter()
+            .map(|b| {
+                let size: usize = chunks
+                    .iter()
+                    .map(|(_, off)| (off[b + 1] - off[b]) as usize)
+                    .sum();
+                let mut merged = Vec::with_capacity(size);
+                for (local, off) in &chunks {
+                    merged.extend_from_slice(&local[off[b] as usize..off[b + 1] as usize]);
+                }
+                merged.sort_unstable();
+                merged
+            })
+            .collect();
+        drop(chunks);
+        // Parallel concatenation into disjoint slices; rayon's flatten().collect()
+        // took most of the sort time here.
+        let mut keyed: Vec<Keyed> = (0..n).into_par_iter().map(|_| (0i64, 0u32)).collect();
+        let mut slots: Vec<&mut [Keyed]> = Vec::with_capacity(n_buckets);
+        let mut rest = keyed.as_mut_slice();
+        for bucket in &buckets {
+            let (head, tail) = rest.split_at_mut(bucket.len());
+            slots.push(head);
+            rest = tail;
+        }
+        slots
+            .into_par_iter()
+            .zip(buckets.par_iter())
+            .for_each(|(dst, src)| dst.copy_from_slice(src));
+        drop(buckets);
+        self.x = keyed.par_iter().map(|&(_, i)| self.x[i as usize]).collect();
+        self.y = keyed.par_iter().map(|&(_, i)| self.y[i as usize]).collect();
+        self.p = keyed.par_iter().map(|&(_, i)| self.p[i as usize]).collect();
+        self.t_ns = keyed.into_par_iter().map(|(t, _)| t).collect();
     }
 }
 
@@ -135,68 +236,106 @@ impl EventSimulator {
         Ok(())
     }
 
-    fn initialise(&mut self, log_frame: &[f32], t_ns: i64) {
-        self.state = log_frame
-            .iter()
-            .map(|&l| PixelState {
-                l_ref: l,
-                t_last: NO_EVENT,
-            })
-            .collect();
-        self.prev = log_frame.to_vec();
-        self.prev_t = t_ns;
-        self.initialised = true;
-    }
-
-    /// Advance from the stored previous frame to `log_frame`, appending events per row.
-    fn advance(&mut self, log_frame: &[f32], t_ns: i64, out: &mut EventBatch) -> usize {
+    /// Advance over frames `k_start..T` of one batch, rows-parallel across the
+    /// whole batch. `at(k, i)` is the log intensity of pixel `i` in frame `k`.
+    /// Each row chunk walks every frame with its own event buffer, so the
+    /// parallel region spans the batch instead of one frame.
+    fn walk_batch<F>(&mut self, t_ns: &[i64], k_start: usize, at: F) -> EventBatch
+    where
+        F: Fn(usize, usize) -> f32 + Sync,
+    {
         let w = self.cfg.width as usize;
+        let h = self.cfg.height as usize;
         let refractory_ns = self.cfg.refractory_ns;
-        let t0 = self.prev_t;
+        let t_first = self.prev_t;
         let (c_pos, c_neg) = (&self.c_pos, &self.c_neg);
-        let prev = &self.prev;
-        let rows: Vec<EventBatch> = self
+        // About four chunks per thread keeps the load balanced when event
+        // density varies across the image.
+        let rows_per_chunk = h.div_ceil(4 * rayon::current_num_threads()).max(1);
+        let chunk = rows_per_chunk * w;
+        let parts: Vec<EventBatch> = self
             .state
-            .par_chunks_mut(w)
+            .par_chunks_mut(chunk)
+            .zip(self.prev.par_chunks_mut(chunk))
             .enumerate()
-            .map(|(row, states)| {
+            .map(|(ci, (states, prev))| {
                 let mut local = EventBatch::default();
-                let base = row * w;
-                for (col, st) in states.iter_mut().enumerate() {
-                    let i = base + col;
-                    let params = PixelParams {
-                        c_pos: c_pos[i],
-                        c_neg: c_neg[i],
-                        refractory_ns,
-                    };
-                    step_pixel(
-                        st,
-                        &params,
-                        prev[i],
-                        t0,
-                        log_frame[i],
-                        t_ns,
-                        &mut |te, pol| {
-                            local.push(col as u16, row as u16, te, pol);
-                        },
-                    );
+                let row0 = ci * rows_per_chunk;
+                let mut t0 = t_first;
+                for (k, &t1) in t_ns.iter().enumerate().skip(k_start) {
+                    for (r, (row_states, row_prev)) in
+                        states.chunks_mut(w).zip(prev.chunks_mut(w)).enumerate()
+                    {
+                        let row = row0 + r;
+                        let base = row * w;
+                        for (col, (st, l0)) in
+                            row_states.iter_mut().zip(row_prev.iter_mut()).enumerate()
+                        {
+                            let i = base + col;
+                            let params = PixelParams {
+                                c_pos: c_pos[i],
+                                c_neg: c_neg[i],
+                                refractory_ns,
+                            };
+                            let l1 = at(k, i);
+                            step_pixel(st, &params, *l0, t0, l1, t1, &mut |te, pol| {
+                                local.push(col as u16, row as u16, te, pol);
+                            });
+                            *l0 = l1;
+                        }
+                    }
+                    t0 = t1;
                 }
                 local
             })
             .collect();
-        let count: usize = rows.iter().map(EventBatch::len).sum();
-        out.x.reserve(count);
-        out.y.reserve(count);
-        out.t_ns.reserve(count);
-        out.p.reserve(count);
-        for r in &rows {
-            out.extend(r);
-        }
-        self.prev.copy_from_slice(log_frame);
-        self.prev_t = t_ns;
-        count
+        self.prev_t = *t_ns.last().expect("non-empty batch");
+        EventBatch::concat(&parts)
     }
 
+    /// Shared body of `run_log` and `run_u8`: validate, initialise from frame 0
+    /// if needed, walk the batch, sort on request.
+    fn run_batch<F>(&mut self, t_ns: &[i64], sort: bool, at: F) -> Result<EventBatch, SimError>
+    where
+        F: Fn(usize, usize) -> f32 + Sync,
+    {
+        if t_ns.is_empty() {
+            return Err(SimError::EmptyBatch);
+        }
+        self.check_run_monotonic(t_ns)?;
+        let n = self.cfg.pixels();
+        let mut k_start = 0;
+        if !self.initialised {
+            self.state = (0..n)
+                .map(|i| PixelState {
+                    l_ref: at(0, i),
+                    t_last: NO_EVENT,
+                })
+                .collect();
+            self.prev = (0..n).map(|i| at(0, i)).collect();
+            self.prev_t = t_ns[0];
+            self.initialised = true;
+            k_start = 1;
+        }
+        let mut out = self.walk_batch(t_ns, k_start, at);
+        if sort {
+            out.sort_by_time();
+        }
+        Ok(out)
+    }
+
+    fn check_batch_len(&self, frames_len: usize, t_len: usize) -> Result<(), SimError> {
+        let n = self.cfg.pixels();
+        if frames_len != n * t_len {
+            return Err(SimError::ShapeMismatch {
+                expected: n * t_len,
+                got: frames_len,
+            });
+        }
+        Ok(())
+    }
+
+    /// One frame; appends its events to `out` and returns their count.
     pub fn step_log(
         &mut self,
         log_frame: &[f32],
@@ -204,14 +343,9 @@ impl EventSimulator {
         out: &mut EventBatch,
     ) -> Result<usize, SimError> {
         self.check_frame(log_frame.len())?;
-        if !self.initialised {
-            self.initialise(log_frame, t_ns);
-            return Ok(0);
-        }
-        if t_ns <= self.prev_t {
-            return Err(SimError::NonMonotonicTime { index: 0 });
-        }
-        Ok(self.advance(log_frame, t_ns, out))
+        let batch = self.run_batch(&[t_ns], false, |_, i| log_frame[i])?;
+        out.extend(&batch);
+        Ok(batch.len())
     }
 
     pub fn step_u8(
@@ -221,8 +355,10 @@ impl EventSimulator {
         out: &mut EventBatch,
     ) -> Result<usize, SimError> {
         self.check_frame(frame.len())?;
-        let log: Vec<f32> = frame.iter().map(|&v| self.lut[v as usize]).collect();
-        self.step_log(&log, t_ns, out)
+        let lut = self.lut;
+        let batch = self.run_batch(&[t_ns], false, |_, i| lut[frame[i] as usize])?;
+        out.extend(&batch);
+        Ok(batch.len())
     }
 
     pub fn run_log(
@@ -234,22 +370,9 @@ impl EventSimulator {
         if t_ns.is_empty() {
             return Err(SimError::EmptyBatch);
         }
+        self.check_batch_len(frames.len(), t_ns.len())?;
         let n = self.cfg.pixels();
-        if frames.len() != n * t_ns.len() {
-            return Err(SimError::ShapeMismatch {
-                expected: n * t_ns.len(),
-                got: frames.len(),
-            });
-        }
-        self.check_run_monotonic(t_ns)?;
-        let mut out = EventBatch::default();
-        for (k, &t) in t_ns.iter().enumerate() {
-            self.step_log(&frames[k * n..(k + 1) * n], t, &mut out)?;
-        }
-        if sort {
-            out.sort_by_time();
-        }
-        Ok(out)
+        self.run_batch(t_ns, sort, |k, i| frames[k * n + i])
     }
 
     pub fn run_u8(
@@ -261,26 +384,10 @@ impl EventSimulator {
         if t_ns.is_empty() {
             return Err(SimError::EmptyBatch);
         }
+        self.check_batch_len(frames.len(), t_ns.len())?;
         let n = self.cfg.pixels();
-        if frames.len() != n * t_ns.len() {
-            return Err(SimError::ShapeMismatch {
-                expected: n * t_ns.len(),
-                got: frames.len(),
-            });
-        }
-        self.check_run_monotonic(t_ns)?;
-        let mut out = EventBatch::default();
-        let mut log = vec![0f32; n];
-        for (k, &t) in t_ns.iter().enumerate() {
-            for (dst, &src) in log.iter_mut().zip(&frames[k * n..(k + 1) * n]) {
-                *dst = self.lut[src as usize];
-            }
-            self.step_log(&log, t, &mut out)?;
-        }
-        if sort {
-            out.sort_by_time();
-        }
-        Ok(out)
+        let lut = self.lut;
+        self.run_batch(t_ns, sort, |k, i| lut[frames[k * n + i] as usize])
     }
 }
 
@@ -458,6 +565,40 @@ mod tests {
         let out_f = sim_f.run_log(&logf, &t, true).unwrap();
         assert_eq!(out_u8, out_f);
         assert!(!out_u8.is_empty());
+    }
+
+    #[test]
+    fn sort_by_time_orders_scrambled_events_and_keeps_rows_together() {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(11);
+        // 300k events over a wide time span with many ties, in pixel-grouped order.
+        let n = 300_000usize;
+        let mut b = EventBatch::with_capacity(n);
+        for i in 0..n {
+            b.push(
+                (i % 640) as u16,
+                (i / 640 % 480) as u16,
+                rng.gen_range(-5_000_000_000i64..5_000_000_000) / 1000 * 1000,
+                if rng.gen_bool(0.5) { 1 } else { -1 },
+            );
+        }
+        let before = b.clone();
+        b.sort_by_time();
+        assert_eq!(b.len(), n);
+        assert!(b.t_ns.windows(2).all(|w| w[0] <= w[1]));
+        let key = |q: &EventBatch| {
+            let mut v: Vec<(i64, u16, u16, i8)> = (0..q.len())
+                .map(|i| (q.t_ns[i], q.x[i], q.y[i], q.p[i]))
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(key(&b), key(&before));
+        let mut tiny = EventBatch::default();
+        tiny.push(1, 2, 5, 1);
+        tiny.push(3, 4, 5, -1);
+        tiny.sort_by_time();
+        assert_eq!(tiny.t_ns, vec![5, 5]);
     }
 
     #[test]
