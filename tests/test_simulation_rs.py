@@ -202,3 +202,15 @@ def test_to_dataframe_converts_in_place_and_copies_read_only():
     df = _to_dataframe(x, x, ro, p)
     assert df["t"].dt.total_microseconds().to_list() == [0, 1, 2, 3]
     assert ro.tolist() == [0, 1500, 2999, 3000]
+
+
+def test_log_lut_matches_kernel_definition():
+    sim = evlib.simulation_rs.EventSimulator(width=4, height=4, log_eps=1e-3)
+    lut = sim.log_lut()
+    assert lut.dtype == np.float32 and lut.shape == (256,)
+    want = np.log(
+        np.arange(256, dtype=np.float32) / np.float32(255.0) + np.float32(1e-3)
+    )
+    # Rust f32::ln and numpy log differ by an ulp on a few entries across platforms.
+    np.testing.assert_allclose(lut, want, rtol=1e-6, atol=0)
+    assert np.all(np.diff(lut) > 0)

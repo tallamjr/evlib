@@ -112,8 +112,9 @@ struct EvsimHandle {
   signed char *h_p;
   long long res_cap;
   long long last_total;
-  // Optional per-stage timing (evsim_set_timing).
+  // Optional per-stage timing (evsim_set_timing); events are created once.
   int timing;
+  int ev_created;
   cudaEvent_t ev[EVSIM_N_EVENTS];
   double timings[EVSIM_N_TIMINGS];
 };
@@ -316,9 +317,12 @@ static int grow_scratch(void **ptr, size_t *cap, size_t needed) {
   return 0;
 }
 
+// Grow every device event buffer to `total`. On any failure the capacity is set
+// to 0 so the next call regrows all of them (some may already be larger).
 static int grow_events(EvsimHandle *h, long long total) {
   if (total <= h->ev_cap) return 0;
   const long long cap = h->ev_cap;
+  h->ev_cap = 0;
   long long c = cap;
   int rc = grow_device(&h->d_t, &c, total);
   if (rc != 0) return rc;
@@ -344,9 +348,11 @@ static int grow_events(EvsimHandle *h, long long total) {
   return 0;
 }
 
+// Grow every pinned result buffer to `total`; same failure rule as grow_events.
 static int grow_results(EvsimHandle *h, long long total) {
   if (total <= h->res_cap) return 0;
   const long long cap = h->res_cap;
+  h->res_cap = 0;
   long long c = cap;
   int rc = grow_pinned(&h->h_x, &c, total);
   if (rc != 0) return rc;
@@ -723,8 +729,9 @@ int evsim_run2(void *handle, int kind, const void *frames, const long long *t_ns
 int evsim_set_timing(void *handle, int on) {
   if (handle == nullptr) return -(int)cudaErrorInvalidValue;
   EvsimHandle *h = (EvsimHandle *)handle;
-  if (on && !h->timing) {
+  if (on && !h->ev_created) {
     for (int k = 0; k < EVSIM_N_EVENTS; ++k) EVSIM_CHECK(cudaEventCreate(&h->ev[k]));
+    h->ev_created = 1;
   }
   h->timing = on ? 1 : 0;
   return 0;
@@ -789,7 +796,7 @@ int evsim_destroy(void *handle) {
   EVSIM_FREE_HOST(h->h_p);
 #undef EVSIM_FREE
 #undef EVSIM_FREE_HOST
-  if (h->timing) {
+  if (h->ev_created) {
     for (int k = 0; k < EVSIM_N_EVENTS; ++k) {
       cudaError_t e_ = cudaEventDestroy(h->ev[k]);
       if (e_ != cudaSuccess && first == cudaSuccess) first = e_;

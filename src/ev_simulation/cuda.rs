@@ -284,6 +284,7 @@ unsafe impl Sync for EventSimulatorCuda {}
 impl Drop for EventSimulatorCuda {
     fn drop(&mut self) {
         if !self.handle.is_null() {
+            // SAFETY: the handle came from evsim_create and is destroyed once.
             let rc = unsafe { (self.api.destroy)(self.handle) };
             if rc != 0 {
                 eprintln!("evsim_destroy returned CUDA error code {rc}");
@@ -303,6 +304,8 @@ impl EventSimulatorCuda {
             *v = ((i as f32) / 255.0 + cfg.log_eps).ln();
         }
         let mut handle: *mut c_void = std::ptr::null_mut();
+        // SAFETY: c_pos and c_neg hold width * height floats (threshold_maps);
+        // `handle` receives the new device handle.
         let rc = unsafe {
             (api.create)(
                 cfg.width as c_int,
@@ -318,8 +321,10 @@ impl EventSimulatorCuda {
                 "evsim_create returned CUDA error code {rc}"
             )));
         }
+        // SAFETY: the handle is live and `lut` holds 256 floats.
         let rc = unsafe { (api.set_lut)(handle, lut.as_ptr()) };
         if rc != 0 {
+            // SAFETY: the handle is live and not stored anywhere else.
             let rc_destroy = unsafe { (api.destroy)(handle) };
             return Err(SimError::Backend(format!(
                 "evsim_set_lut returned CUDA error code {rc} (destroy {rc_destroy})"
@@ -349,6 +354,7 @@ impl EventSimulatorCuda {
         &self.lut
     }
     pub fn reset(&mut self) -> Result<(), SimError> {
+        // SAFETY: the handle is live for the lifetime of self.
         let rc = unsafe { (self.api.reset)(self.handle) };
         if rc != 0 {
             return Err(SimError::Backend(format!(

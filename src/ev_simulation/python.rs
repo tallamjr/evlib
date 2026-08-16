@@ -1,8 +1,8 @@
 //! PyO3 bindings for the event simulator (`evlib._evlib.simulation_rs`).
 
 use numpy::{
-    IntoPyArray, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
-    PyReadwriteArray1, PyUntypedArrayMethods,
+    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArray3, PyReadwriteArray1, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -188,6 +188,11 @@ impl PyEventSimulator {
 
     fn reset(&mut self) {
         self.inner.reset();
+    }
+
+    /// The 256-entry float32 log LUT applied to uint8 frames.
+    fn log_lut<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f32>> {
+        self.inner.log_lut().to_vec().into_pyarray(py)
     }
 
     /// (c_pos, c_neg) per-pixel maps as (H, W) float32 arrays.
@@ -419,6 +424,11 @@ impl PyEventSimulatorCuda {
 
     fn reset(&mut self) -> PyResult<()> {
         self.inner.reset().map_err(to_py_err)
+    }
+
+    /// The 256-entry float32 log LUT applied to uint8 frames.
+    fn log_lut<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f32>> {
+        self.inner.log_lut().to_vec().into_pyarray(py)
     }
 
     /// (c_pos, c_neg) per-pixel maps as (H, W) float32 arrays.
