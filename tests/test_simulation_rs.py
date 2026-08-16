@@ -147,3 +147,31 @@ def test_stateful_run_in_batches_matches_whole_stack():
         sim.run(frames[:2], t[:2], sort=False)
     with pytest.raises(ValueError):
         sim.run(frames[:2, :, :3], t[:2] + 10**9, sort=False)
+
+
+@pytest.mark.parametrize("bad", [np.nan, -np.inf, np.inf])
+def test_non_finite_log_input_is_value_error(bad):
+    # NaN would silently kill the pixel and -inf would never return, so both are rejected.
+    frames = np.array([0.0, bad, 5.0], dtype=np.float32).reshape(3, 1, 1)
+    t = np.array([0, 1_000, 2_000], dtype=np.int64)
+    with pytest.raises(ValueError, match="non-finite log intensity at flat index 1"):
+        evlib.simulation_rs.simulate_frames(
+            frames,
+            t,
+            c_pos=0.2,
+            c_neg=0.2,
+            threshold_sigma=0.0,
+            refractory_ns=0,
+            log_eps=1e-3,
+            seed=0,
+            sort=True,
+        )
+    sim = evlib.simulation_rs.EventSimulator(width=1, height=1)
+    sim.step(np.zeros((1, 1), dtype=np.float32), 0)
+    with pytest.raises(ValueError, match="non-finite log intensity"):
+        sim.step(np.full((1, 1), bad, dtype=np.float32), 1_000)
+    with pytest.raises(ValueError, match="non-finite log intensity"):
+        sim.run(frames[1:], t[1:], sort=False)
+    # The failed calls moved no state: the same timestamp is still accepted.
+    x, y, t_ns, p = sim.step(np.full((1, 1), 1.0, dtype=np.float32), 1_000)
+    assert len(t_ns) == 5

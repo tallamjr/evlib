@@ -8,6 +8,17 @@ use super::pixel::{step_pixel, PixelParams, PixelState, NO_EVENT};
 /// (timestamp, original index) pair used by the time sort.
 type Keyed = (i64, u32);
 
+/// Reject NaN and infinities in a float32 log stack before any state change.
+///
+/// Parallel scan; the reported index is one offending flat index, which is
+/// the first one within a chunk but not always the first in the slice.
+pub(crate) fn check_finite(frames: &[f32]) -> Result<(), SimError> {
+    match frames.par_iter().position_any(|v| !v.is_finite()) {
+        Some(index) => Err(SimError::InvalidInput { index }),
+        None => Ok(()),
+    }
+}
+
 /// Struct-of-arrays event batch. Timestamps are nanoseconds; polarity is -1 or 1.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct EventBatch {
@@ -343,6 +354,7 @@ impl EventSimulator {
         out: &mut EventBatch,
     ) -> Result<usize, SimError> {
         self.check_frame(log_frame.len())?;
+        check_finite(log_frame)?;
         let batch = self.run_batch(&[t_ns], false, |_, i| log_frame[i])?;
         out.extend(&batch);
         Ok(batch.len())
@@ -371,6 +383,7 @@ impl EventSimulator {
             return Err(SimError::EmptyBatch);
         }
         self.check_batch_len(frames.len(), t_ns.len())?;
+        check_finite(frames)?;
         let n = self.cfg.pixels();
         self.run_batch(t_ns, sort, |k, i| frames[k * n + i])
     }
@@ -504,6 +517,48 @@ mod tests {
             sim.run_log(&[0.0; 8], &[20, 20], true),
             Err(SimError::NonMonotonicTime { index: 1 })
         ));
+    }
+
+    /// A NaN or -inf frame is rejected before any state change.
+    #[test]
+    fn non_finite_log_input_is_rejected_and_state_is_untouched() {
+        let mut sim = EventSimulator::new(cfg(1, 1)).unwrap();
+        // Fresh simulator: the error must leave it uninitialised.
+        let mut stack = vec![0.0f32, f32::NAN, 5.0];
+        assert!(matches!(
+            sim.run_log(&stack, &[0, 1_000, 2_000], true),
+            Err(SimError::InvalidInput { index: 1 })
+        ));
+        assert!(!sim.is_initialised());
+        assert!(sim.prev.is_empty());
+        stack[1] = f32::NEG_INFINITY;
+        assert!(matches!(
+            sim.run_log(&stack, &[0, 1_000, 2_000], true),
+            Err(SimError::InvalidInput { index: 1 })
+        ));
+        assert!(!sim.is_initialised());
+        // Initialised simulator: prev and prev_t stay as before the failed call.
+        let mut out = EventBatch::default();
+        sim.step_log(&[0.5], 10, &mut out).unwrap();
+        let prev_before = sim.prev.clone();
+        assert!(matches!(
+            sim.step_log(&[f32::NAN], 20, &mut out),
+            Err(SimError::InvalidInput { index: 0 })
+        ));
+        assert!(matches!(
+            sim.step_log(&[f32::NEG_INFINITY], 20, &mut out),
+            Err(SimError::InvalidInput { index: 0 })
+        ));
+        assert!(matches!(
+            sim.run_log(&[f32::INFINITY, 1.0], &[20, 30], false),
+            Err(SimError::InvalidInput { index: 0 })
+        ));
+        assert!(sim.is_initialised());
+        assert_eq!(sim.prev, prev_before);
+        assert_eq!(sim.prev_t, 10);
+        assert!(out.is_empty());
+        // Timestamp 20 is still accepted, so the failed calls moved no state.
+        assert_eq!(sim.step_log(&[1.5], 20, &mut out).unwrap(), 6);
     }
 
     #[test]

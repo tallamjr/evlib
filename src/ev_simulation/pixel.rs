@@ -36,6 +36,10 @@ fn crossing_time(l0: f32, t0: i64, l1: f32, t1: i64, lc: f32) -> i64 {
 
 /// Advance one pixel across one frame interval, calling `emit(t_ns, polarity)`
 /// for each event that survives the refractory period. Returns the emitted count.
+///
+/// `l0` and `l1` must be finite: NaN disables every comparison and a
+/// negative infinity makes the crossing loop never terminate. Callers check
+/// this before the walk (`SimError::InvalidInput`).
 #[inline]
 pub fn step_pixel(
     state: &mut PixelState,

@@ -12,7 +12,7 @@ use std::os::raw::{c_char, c_int, c_longlong, c_ushort, c_void};
 use std::sync::OnceLock;
 
 use super::config::{threshold_maps, SimError, SimulatorConfig};
-use super::simulator::EventBatch;
+use super::simulator::{check_finite, EventBatch};
 
 type CreateFn = unsafe extern "C" fn(
     c_int,      // width
@@ -279,6 +279,7 @@ impl EventSimulatorCuda {
         capacity: usize,
     ) -> Result<EventBatch, SimError> {
         self.check_batch(frames.len(), t_ns)?;
+        check_finite(frames)?;
         let mut out = match self.run_once(frames, t_ns, capacity)? {
             Ok(b) => b,
             Err(required) => match self.run_once(frames, t_ns, required)? {
@@ -437,6 +438,49 @@ mod tests {
             gpu.run_log(fb, tb, true),
             Err(SimError::NonMonotonicTime { index: 0 })
         ));
+    }
+
+    /// Mirrors the CPU test: NaN or -inf is rejected before the device runs.
+    #[test]
+    fn non_finite_log_input_is_rejected_and_state_is_untouched() {
+        if !lib_present() {
+            return;
+        }
+        let c = SimulatorConfig {
+            width: 1,
+            height: 1,
+            ..cfg()
+        };
+        let mut gpu = EventSimulatorCuda::new(c).unwrap();
+        let mut stack = vec![0.0f32, f32::NAN, 5.0];
+        assert!(matches!(
+            gpu.run_log(&stack, &[0, 1_000, 2_000], true),
+            Err(SimError::InvalidInput { index: 1 })
+        ));
+        assert!(!gpu.is_initialised());
+        stack[1] = f32::NEG_INFINITY;
+        assert!(matches!(
+            gpu.run_log(&stack, &[0, 1_000, 2_000], true),
+            Err(SimError::InvalidInput { index: 1 })
+        ));
+        assert!(!gpu.is_initialised());
+        assert!(gpu.step_log(&[0.5], 10).unwrap().is_empty());
+        assert!(matches!(
+            gpu.step_log(&[f32::NAN], 20),
+            Err(SimError::InvalidInput { index: 0 })
+        ));
+        assert!(matches!(
+            gpu.step_log(&[f32::NEG_INFINITY], 20),
+            Err(SimError::InvalidInput { index: 0 })
+        ));
+        // Timestamp 20 is still accepted, so the failed calls moved no state.
+        let mut cpu = EventSimulator::new(c).unwrap();
+        let mut want = EventBatch::default();
+        cpu.step_log(&[0.5], 10, &mut want).unwrap();
+        cpu.step_log(&[1.5], 20, &mut want).unwrap();
+        let got = gpu.step_log(&[1.5], 20).unwrap();
+        assert_eq!(key(&got), key(&want));
+        assert!(!got.is_empty());
     }
 
     #[test]

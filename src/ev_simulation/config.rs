@@ -40,8 +40,17 @@ impl Default for SimulatorConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimError {
     InvalidConfig(String),
-    ShapeMismatch { expected: usize, got: usize },
-    NonMonotonicTime { index: usize },
+    ShapeMismatch {
+        expected: usize,
+        got: usize,
+    },
+    NonMonotonicTime {
+        index: usize,
+    },
+    /// A float32 log frame holds NaN or an infinity at this flat (T*H*W) index.
+    InvalidInput {
+        index: usize,
+    },
     EmptyBatch,
     NotInitialised,
     Backend(String),
@@ -62,6 +71,9 @@ impl fmt::Display for SimError {
                     f,
                     "timestamps must be strictly increasing; violation at index {index}"
                 )
+            }
+            SimError::InvalidInput { index } => {
+                write!(f, "non-finite log intensity at flat index {index}")
             }
             SimError::EmptyBatch => write!(f, "no frames supplied"),
             SimError::NotInitialised => write!(f, "simulator has not seen a first frame"),

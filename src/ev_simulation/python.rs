@@ -18,6 +18,7 @@ fn to_py_err(e: SimError) -> PyErr {
         SimError::InvalidConfig(_)
         | SimError::ShapeMismatch { .. }
         | SimError::NonMonotonicTime { .. }
+        | SimError::InvalidInput { .. }
         | SimError::EmptyBatch => PyValueError::new_err(e.to_string()),
         SimError::NotInitialised | SimError::Backend(_) => PyRuntimeError::new_err(e.to_string()),
     }
@@ -196,6 +197,7 @@ impl PyEventSimulator {
     }
 
     /// One (H, W) uint8 or float32 frame at `t_ns`; returns (x, y, t_ns, p) arrays.
+    /// Events are grouped by row chunk; the order is not stable across thread counts.
     fn step<'py>(
         &mut self,
         py: Python<'py>,
@@ -233,6 +235,8 @@ impl PyEventSimulator {
 
     /// A (T, H, W) uint8 or float32 stack at `timestamps_ns`; state carries over to
     /// the next call, so batches give the same events as one whole-stack run.
+    /// With `sort=False` events are grouped by row chunk and the order is not
+    /// stable across thread counts.
     #[pyo3(signature = (frames, timestamps_ns, *, sort=false))]
     fn run<'py>(
         &mut self,
@@ -408,6 +412,7 @@ impl PyEventSimulatorCuda {
     }
 
     /// One (H, W) uint8 or float32 frame at `t_ns`; returns (x, y, t_ns, p) arrays.
+    /// Events are grouped by row chunk; the order is not stable across thread counts.
     fn step<'py>(
         &mut self,
         py: Python<'py>,
@@ -437,6 +442,8 @@ impl PyEventSimulatorCuda {
 
     /// A (T, H, W) uint8 or float32 stack at `timestamps_ns`; state carries over to
     /// the next call, so batches give the same events as one whole-stack run.
+    /// With `sort=False` events are grouped by row chunk and the order is not
+    /// stable across thread counts.
     #[pyo3(signature = (frames, timestamps_ns, *, sort=false))]
     fn run<'py>(
         &mut self,

@@ -153,12 +153,8 @@ def test_device_dispatch_follows_cuda_available():
     assert ESIMSimulator(ESIMConfig(device="cpu"), width=4, height=4).device == "cpu"
 
 
-@pytest.mark.skipif(
-    pytest.importorskip("cv2", reason="opencv not installed") is None, reason="opencv"
-)
 def test_video_to_events_on_slider_clip(slider_frames, tmp_path):
-    import cv2
-
+    cv2 = pytest.importorskip("cv2")
     from evlib.simulation import VideoToEvents
 
     frames, _ = slider_frames
@@ -176,12 +172,8 @@ def test_video_to_events_on_slider_clip(slider_frames, tmp_path):
     assert df.schema["t"] == pl.Duration("us")
 
 
-@pytest.mark.skipif(
-    pytest.importorskip("cv2", reason="opencv not installed") is None, reason="opencv"
-)
 def test_video_streaming_matches_batch(slider_frames, tmp_path):
-    import cv2
-
+    cv2 = pytest.importorskip("cv2")
     from evlib.simulation import VideoToEvents
 
     frames, _ = slider_frames
