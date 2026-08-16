@@ -55,6 +55,7 @@ dev = [
     "mkdocs-jupyter >= 0.24.0",
     "mkdocs-material[imaging] >= 9.5.0",
     "mypy >= 1.0.0",
+    "pillow >= 10.0",
     "pygments >= 2.18.0",
     "nbmake",
     "pytest >= 7.0.0",
