@@ -4,7 +4,8 @@
 //! Rust crate has no link-time CUDA dependency. The library path comes from
 //! `EVLIB_CUDA_SIM_LIB` (full path) or `libevsim.so` on the loader search path.
 //! Threshold maps and the u8 log LUT are computed on the host, so this backend
-//! shares them bit-for-bit with `EventSimulator`.
+//! shares them bit-for-bit with `EventSimulator`. A failing `evsim_destroy` in
+//! `Drop` is reported with `eprintln!` and not surfaced as an error.
 
 use std::os::raw::{c_char, c_int, c_longlong, c_ushort, c_void};
 use std::sync::OnceLock;
@@ -35,8 +36,9 @@ type RunFn = unsafe extern "C" fn(
 ) -> c_int;
 type DestroyFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 
-/// Resolved entry points of the shared library.
+/// Resolved entry points of the shared library; `_lib` keeps it mapped.
 struct Api {
+    _lib: libloading::Library,
     create: CreateFn,
     reset: ResetFn,
     run: RunFn,
@@ -48,39 +50,38 @@ fn lib_path() -> String {
 }
 
 // Loaded once per process: dlopen plus CUDA context creation is expensive.
-static LIB: OnceLock<libloading::Library> = OnceLock::new();
-static API: OnceLock<Api> = OnceLock::new();
+// The load result (library and resolved symbols, or the error) is cached.
+static API: OnceLock<Result<Api, String>> = OnceLock::new();
+
+fn load_api() -> Result<Api, String> {
+    let path = lib_path();
+    let lib = unsafe { libloading::Library::new(&path) }
+        .map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
+    let (create, reset, run, destroy) = unsafe {
+        (
+            *lib.get::<CreateFn>(b"evsim_create")
+                .map_err(|e| format!("missing symbol evsim_create: {e}"))?,
+            *lib.get::<ResetFn>(b"evsim_reset")
+                .map_err(|e| format!("missing symbol evsim_reset: {e}"))?,
+            *lib.get::<RunFn>(b"evsim_run")
+                .map_err(|e| format!("missing symbol evsim_run: {e}"))?,
+            *lib.get::<DestroyFn>(b"evsim_destroy")
+                .map_err(|e| format!("missing symbol evsim_destroy: {e}"))?,
+        )
+    };
+    Ok(Api {
+        _lib: lib,
+        create,
+        reset,
+        run,
+        destroy,
+    })
+}
 
 fn api() -> Result<&'static Api, SimError> {
-    if let Some(a) = API.get() {
-        return Ok(a);
-    }
-    let path = lib_path();
-    if LIB.get().is_none() {
-        let loaded = unsafe { libloading::Library::new(&path) }
-            .map_err(|e| SimError::Backend(format!("failed to load CUDA library {path}: {e}")))?;
-        // Another thread may win the race; either way LIB ends up set.
-        let _ = LIB.set(loaded);
-    }
-    let lib = LIB.get().expect("CUDA library set");
-    let resolved = unsafe {
-        Api {
-            create: *lib
-                .get::<CreateFn>(b"evsim_create")
-                .map_err(|e| SimError::Backend(format!("missing symbol evsim_create: {e}")))?,
-            reset: *lib
-                .get::<ResetFn>(b"evsim_reset")
-                .map_err(|e| SimError::Backend(format!("missing symbol evsim_reset: {e}")))?,
-            run: *lib
-                .get::<RunFn>(b"evsim_run")
-                .map_err(|e| SimError::Backend(format!("missing symbol evsim_run: {e}")))?,
-            destroy: *lib
-                .get::<DestroyFn>(b"evsim_destroy")
-                .map_err(|e| SimError::Backend(format!("missing symbol evsim_destroy: {e}")))?,
-        }
-    };
-    let _ = API.set(resolved);
-    Ok(API.get().expect("CUDA API set"))
+    API.get_or_init(load_api)
+        .as_ref()
+        .map_err(|e| SimError::Backend(e.clone()))
 }
 
 /// True when the library loads and a 1x1 simulator can be created on a device.
@@ -222,10 +223,10 @@ impl EventSimulatorCuda {
         t_ns: &[i64],
         capacity: usize,
     ) -> Result<Result<EventBatch, usize>, SimError> {
-        let mut x = vec![0u16; capacity];
-        let mut y = vec![0u16; capacity];
-        let mut t = vec![0i64; capacity];
-        let mut p = vec![0i8; capacity];
+        let mut x: Vec<u16> = Vec::with_capacity(capacity);
+        let mut y: Vec<u16> = Vec::with_capacity(capacity);
+        let mut t: Vec<i64> = Vec::with_capacity(capacity);
+        let mut p: Vec<i8> = Vec::with_capacity(capacity);
         let mut n_events: c_longlong = 0;
         let rc = unsafe {
             (self.api.run)(
@@ -250,10 +251,20 @@ impl EventSimulatorCuda {
             return Ok(Err(n_events as usize));
         }
         let n = n_events as usize;
-        x.truncate(n);
-        y.truncate(n);
-        t.truncate(n);
-        p.truncate(n);
+        if n > capacity {
+            return Err(SimError::Backend(format!(
+                "evsim_run reported {n} events above capacity {capacity} with rc 0"
+            )));
+        }
+        // SAFETY: on rc 0 the C side wrote exactly n <= capacity elements into
+        // each buffer (pass 2 fills offset + k for every counted event), so the
+        // first n elements are initialised.
+        unsafe {
+            x.set_len(n);
+            y.set_len(n);
+            t.set_len(n);
+            p.set_len(n);
+        }
         Ok(Ok(EventBatch { x, y, t_ns: t, p }))
     }
 

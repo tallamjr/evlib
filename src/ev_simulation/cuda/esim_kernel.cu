@@ -20,6 +20,7 @@
 #include <cuda_runtime.h>
 #include <thrust/device_ptr.h>
 #include <thrust/scan.h>
+#include <thrust/system_error.h>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -270,9 +271,17 @@ int evsim_run(void *handle, const float *frames, const long long *t_ns, int n_fr
   EVSIM_CHECK(cudaGetLastError());
   EVSIM_CHECK(cudaDeviceSynchronize());
 
-  thrust::device_ptr<long long> counts_ptr(h->d_counts);
-  thrust::device_ptr<long long> offsets_ptr(h->d_offsets);
-  thrust::exclusive_scan(counts_ptr, counts_ptr + n, offsets_ptr);
+  // thrust may throw (for example on temp-storage allocation); an exception must not
+  // cross the extern "C" boundary, so map it to a negative CUDA error code.
+  try {
+    thrust::device_ptr<long long> counts_ptr(h->d_counts);
+    thrust::device_ptr<long long> offsets_ptr(h->d_offsets);
+    thrust::exclusive_scan(counts_ptr, counts_ptr + n, offsets_ptr);
+  } catch (const thrust::system_error &e) {
+    return -(int)e.code().value();
+  } catch (...) {
+    return -(int)cudaErrorUnknown;
+  }
   EVSIM_CHECK(cudaGetLastError());
   EVSIM_CHECK(cudaDeviceSynchronize());
 
