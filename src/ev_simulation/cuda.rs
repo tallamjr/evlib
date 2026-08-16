@@ -121,52 +121,125 @@ pub fn cuda_available() -> bool {
     })
 }
 
-/// Bytes per rayon task in the pinned-memory copies; below one chunk the copy is serial.
-const COPY_CHUNK: usize = 4 << 20;
+/// Bytes per rayon task in the pinned-memory copies. Small enough that a
+/// 2 M-event batch (about 30 MB) spreads over every thread.
+const COPY_CHUNK: usize = 256 << 10;
+
+/// One memcpy task: (source address, destination address, bytes).
+type CopyTask = (usize, usize, usize);
+
+fn copy_tasks(src: *const u8, dst: *mut u8, bytes: usize, tasks: &mut Vec<CopyTask>) {
+    let mut start = 0;
+    while start < bytes {
+        let len = COPY_CHUNK.min(bytes - start);
+        tasks.push((src as usize + start, dst as usize + start, len));
+        start += len;
+    }
+}
+
+/// Run memcpy tasks in parallel (serial below one chunk of work).
+///
+/// # Safety
+/// Every task's source and destination range is valid and the ranges do not overlap.
+unsafe fn run_copy_tasks(tasks: &[CopyTask]) {
+    let copy = |&(src, dst, len): &CopyTask| {
+        // SAFETY: the caller guarantees each task's ranges.
+        unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, len) };
+    };
+    if tasks.len() <= 1 {
+        tasks.iter().for_each(copy);
+    } else {
+        tasks.par_iter().for_each(copy);
+    }
+}
 
 /// Parallel `memcpy` of `bytes` from `src` to `dst`.
 ///
 /// # Safety
 /// `src` and `dst` are valid for `bytes` bytes and do not overlap.
 unsafe fn copy_bytes_parallel(src: *const u8, dst: *mut u8, bytes: usize) {
-    if bytes <= COPY_CHUNK {
-        std::ptr::copy_nonoverlapping(src, dst, bytes);
-        return;
-    }
-    let (src_addr, dst_addr) = (src as usize, dst as usize);
-    let n_chunks = bytes.div_ceil(COPY_CHUNK);
-    (0..n_chunks).into_par_iter().for_each(|c| {
-        let start = c * COPY_CHUNK;
-        let len = COPY_CHUNK.min(bytes - start);
-        // SAFETY: chunks are disjoint sub-ranges of the caller's valid ranges.
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                (src_addr + start) as *const u8,
-                (dst_addr + start) as *mut u8,
-                len,
-            )
-        };
-    });
+    let mut tasks = Vec::with_capacity(bytes.div_ceil(COPY_CHUNK));
+    copy_tasks(src, dst, bytes, &mut tasks);
+    // SAFETY: the tasks tile the caller's valid, non-overlapping ranges.
+    unsafe { run_copy_tasks(&tasks) };
 }
 
-/// Copy `n` elements out of a pinned result buffer into a fresh `Vec`.
+/// Ask for transparent huge pages on the 2 MiB-aligned interior of a fresh
+/// allocation (Linux). First-touch page faults dominated the copy out of pinned
+/// memory: 0.238 s to 0.154 s per 68 M-event stack on arg1 with THP.
+#[cfg(target_os = "linux")]
+fn advise_huge_pages(ptr: *mut u8, bytes: usize) {
+    const HUGE: usize = 2 << 20;
+    if bytes < 2 * HUGE {
+        return;
+    }
+    let start = (ptr as usize).next_multiple_of(HUGE);
+    let end = (ptr as usize + bytes) & !(HUGE - 1);
+    if end <= start {
+        return;
+    }
+    // SAFETY: [start, end) lies inside the live allocation; madvise only sets a
+    // paging policy and does not touch the contents.
+    let rc = unsafe { libc::madvise(start as *mut libc::c_void, end - start, libc::MADV_HUGEPAGE) };
+    if rc != 0 {
+        // THP unavailable on this kernel: the copy proceeds on normal pages.
+        tracing::debug!(
+            "madvise(MADV_HUGEPAGE) failed: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn advise_huge_pages(_ptr: *mut u8, _bytes: usize) {}
+
+/// A fresh `Vec` of capacity `n` with huge pages advised, and its copy tasks
+/// from `src` appended to `tasks`. The caller runs the tasks, then `set_len`.
 ///
 /// # Safety
 /// `src` is valid for `n` elements of `T`.
-unsafe fn vec_from_pinned<T: Copy>(src: *const T, n: usize) -> Vec<T> {
+unsafe fn vec_and_tasks<T: Copy>(src: *const T, n: usize, tasks: &mut Vec<CopyTask>) -> Vec<T> {
     let mut v: Vec<T> = Vec::with_capacity(n);
+    let bytes = n * std::mem::size_of::<T>();
     if n > 0 {
-        // SAFETY: the Vec has capacity n; the source holds n elements.
-        unsafe {
-            copy_bytes_parallel(
-                src as *const u8,
-                v.as_mut_ptr() as *mut u8,
-                n * std::mem::size_of::<T>(),
-            );
-            v.set_len(n);
-        }
+        advise_huge_pages(v.as_mut_ptr() as *mut u8, bytes);
+        copy_tasks(src as *const u8, v.as_mut_ptr() as *mut u8, bytes, tasks);
     }
     v
+}
+
+/// Copy the four result columns out of pinned memory into fresh `Vec`s in one
+/// parallel pass.
+///
+/// # Safety
+/// Each pointer is valid for `n` elements.
+unsafe fn batch_from_pinned(
+    px: *const u16,
+    py: *const u16,
+    pt: *const i64,
+    pp: *const i8,
+    n: usize,
+) -> EventBatch {
+    let mut tasks = Vec::with_capacity(4 * (n * 8).div_ceil(COPY_CHUNK) + 4);
+    // SAFETY: the caller guarantees n elements behind each pointer.
+    let (mut x, mut y, mut t, mut p) = unsafe {
+        (
+            vec_and_tasks(px, n, &mut tasks),
+            vec_and_tasks(py, n, &mut tasks),
+            vec_and_tasks(pt, n, &mut tasks),
+            vec_and_tasks(pp, n, &mut tasks),
+        )
+    };
+    // SAFETY: the tasks tile the pinned sources and the Vec capacities; then
+    // every Vec holds n initialised elements.
+    unsafe {
+        run_copy_tasks(&tasks);
+        x.set_len(n);
+        y.set_len(n);
+        t.set_len(n);
+        p.set_len(n);
+    }
+    EventBatch { x, y, t_ns: t, p }
 }
 
 /// Input stack for one call: float32 log intensity or uint8 intensity.
@@ -370,14 +443,7 @@ impl EventSimulatorCuda {
             ));
         }
         // SAFETY: on rc 0 each result buffer holds exactly n elements.
-        let out = unsafe {
-            EventBatch {
-                x: vec_from_pinned(px, n),
-                y: vec_from_pinned(py, n),
-                t_ns: vec_from_pinned(pt, n),
-                p: vec_from_pinned(pp as *const i8, n),
-            }
-        };
+        let out = unsafe { batch_from_pinned(px, py, pt, pp.cast::<i8>(), n) };
         self.prev_t = *t_ns.last().expect("non-empty batch");
         self.initialised = true;
         Ok(out)

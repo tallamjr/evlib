@@ -2,11 +2,12 @@
 
 use numpy::{
     IntoPyArray, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
-    PyUntypedArrayMethods,
+    PyReadwriteArray1, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
+use rayon::prelude::*;
 
 use super::config::{SimError, SimulatorConfig};
 #[cfg(feature = "cuda")]
@@ -279,6 +280,23 @@ impl PyEventSimulator {
     }
 }
 
+/// Floor-divide an int64 nanosecond array by 1000 in place (parallel), the same
+/// result as numpy `t_ns // 1000`. Used by the DataFrame builder on the fresh
+/// timestamp column, where numpy's serial division was the largest cost.
+#[pyfunction]
+#[pyo3(name = "ns_to_us_inplace")]
+pub fn ns_to_us_inplace_py(py: Python<'_>, mut t_ns: PyReadwriteArray1<'_, i64>) -> PyResult<()> {
+    let data = t_ns.as_slice_mut()?;
+    py.allow_threads(move || {
+        data.par_chunks_mut(1 << 16).for_each(|chunk| {
+            for v in chunk {
+                *v = v.div_euclid(1000);
+            }
+        });
+    });
+    Ok(())
+}
+
 /// True when the crate was built with the `cuda` feature and `libevsim.so` loads on a device.
 #[pyfunction]
 #[pyo3(name = "cuda_available")]
@@ -490,6 +508,7 @@ pub fn register_simulation_functions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(simulate_frames_py, m)?)?;
     m.add_class::<PyEventSimulator>()?;
     m.add_function(wrap_pyfunction!(cuda_available_py, m)?)?;
+    m.add_function(wrap_pyfunction!(ns_to_us_inplace_py, m)?)?;
     #[cfg(feature = "cuda")]
     {
         m.add_function(wrap_pyfunction!(simulate_frames_cuda_py, m)?)?;

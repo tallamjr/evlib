@@ -90,6 +90,10 @@ hdf5-metno-sys = { version = "0.10.1", optional = true }
 tracing        = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "json"] }
 
+# madvise(MADV_HUGEPAGE) on large simulator outputs (fewer first-touch page faults).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc           = "0.2"
+
 # Metal GPU scatter-add backend (Apple Silicon), opt-in via the `metal` feature. macOS only.
 [target.'cfg(target_os = "macos")'.dependencies]
 metal          = { version = "0.27", optional = true }

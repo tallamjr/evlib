@@ -697,6 +697,7 @@ dependencies = [
  "hdf5-metno",
  "hdf5-metno-sys",
  "image",
+ "libc",
  "libloading",
  "lz4_flex",
  "metal",

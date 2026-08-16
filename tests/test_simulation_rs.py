@@ -175,3 +175,30 @@ def test_non_finite_log_input_is_value_error(bad):
     # The failed calls moved no state: the same timestamp is still accepted.
     x, y, t_ns, p = sim.step(np.full((1, 1), 1.0, dtype=np.float32), 1_000)
     assert len(t_ns) == 5
+
+
+def test_ns_to_us_inplace_matches_numpy_floor_division():
+    t = np.array([-2001, -1000, -1, 0, 1, 999, 1000, 123_456_789], dtype=np.int64)
+    want = t // 1000
+    evlib.simulation_rs.ns_to_us_inplace(t)
+    np.testing.assert_array_equal(t, want)
+    big = np.cumsum(np.arange(1, 300_001, dtype=np.int64) * 7)
+    want = big // 1000
+    evlib.simulation_rs.ns_to_us_inplace(big)
+    np.testing.assert_array_equal(big, want)
+
+
+def test_to_dataframe_converts_in_place_and_copies_read_only():
+    from evlib.simulation.esim import _to_dataframe
+
+    x = np.zeros(4, np.int16)
+    p = np.ones(4, np.int8)
+    t = np.array([0, 1500, 2999, 3000], dtype=np.int64)
+    df = _to_dataframe(x, x, t, p)
+    assert df["t"].dt.total_microseconds().to_list() == [0, 1, 2, 3]
+    assert t.tolist() == [0, 1, 2, 3]
+    ro = np.array([0, 1500, 2999, 3000], dtype=np.int64)
+    ro.setflags(write=False)
+    df = _to_dataframe(x, x, ro, p)
+    assert df["t"].dt.total_microseconds().to_list() == [0, 1, 2, 3]
+    assert ro.tolist() == [0, 1500, 2999, 3000]

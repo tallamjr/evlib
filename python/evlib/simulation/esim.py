@@ -47,11 +47,23 @@ def resolve_device(device: str) -> str:
 
 
 def _to_dataframe(x, y, t_ns, p) -> pl.DataFrame:
+    """Build the evlib event frame from fresh kernel arrays.
+
+    `t_ns` is converted to microseconds in place when it is a writeable,
+    contiguous int64 array (the kernel output always is); the caller must not
+    reuse it afterwards.
+    """
+    t_ns = np.asarray(t_ns)
+    if t_ns.dtype == np.int64 and t_ns.flags.writeable and t_ns.flags.c_contiguous:
+        evlib.simulation_rs.ns_to_us_inplace(t_ns)
+        t_us = t_ns
+    else:
+        t_us = t_ns.astype(np.int64) // 1000
     return pl.DataFrame(
         {
             "x": pl.Series(x, dtype=pl.Int16),
             "y": pl.Series(y, dtype=pl.Int16),
-            "t": pl.Series(t_ns // 1000, dtype=pl.Int64).cast(pl.Duration("us")),
+            "t": pl.Series(t_us, dtype=pl.Int64).cast(pl.Duration("us")),
             "polarity": pl.Series(p, dtype=pl.Int8),
         }
     )
