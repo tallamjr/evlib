@@ -78,7 +78,7 @@ pyo3-polars    = { version = "0.22.0", optional = true }
 # LZ4 frame decompression for AEDAT 4.0 (DV framework) packet bodies
 lz4_flex       = { version = "0.11", default-features = false, features = ["frame"] }
 
-# Runtime loader for the nvcc-built CUDA scatter kernel (.so), used by the optional `cuda` backend.
+# Runtime loader for the nvcc-built CUDA kernels (.so), used by the optional `cuda` backends.
 libloading     = { version = "0.8", optional = true }
 
 # Platform-specific dependencies
@@ -114,7 +114,9 @@ python         = ["dep:pyo3", "dep:pyo3-ffi", "dep:numpy", "dep:pyo3-polars"]
 # present libpython, which lets `cargo test` and `maturin develop` build and
 # run without any RUSTFLAGS hack.
 extension-module = ["pyo3/extension-module"]
-# CUDA scatter-add backend: loads an nvcc-built librvt_scatter.so at runtime (no link-time CUDA).
+# CUDA backends, loaded at runtime with no link-time CUDA dependency: the nvcc-built
+# librvt_scatter.so (EVLIB_CUDA_LIB) for the stacked histogram and libevsim.so
+# (EVLIB_CUDA_SIM_LIB, built by scripts/build_cuda_kernels.sh) for the event simulator.
 cuda           = ["dep:libloading"]
 # Metal scatter-add backend (Apple Silicon): MSL kernel compiled at runtime via metal-rs.
 metal          = ["dep:metal", "dep:objc"]

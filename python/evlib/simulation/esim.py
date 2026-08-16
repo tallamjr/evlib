@@ -29,9 +29,21 @@ def _to_kernel_frame(frame: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(frame)
 
 
-def _check_device(config: ESIMConfig) -> None:
-    if config.device == "cuda":
-        raise NotImplementedError("CUDA backend arrives in a later task")
+def resolve_device(device: str) -> str:
+    """Map "auto"/"cpu"/"cuda" to the backend that will run: "cpu" or "cuda"."""
+    if device == "cpu":
+        return "cpu"
+    available = evlib.simulation_rs.cuda_available()
+    if device == "cuda":
+        if not available:
+            raise RuntimeError(
+                "CUDA backend unavailable: build evlib with `--features cuda`, compile "
+                "scripts/build_cuda_kernels.sh and set EVLIB_CUDA_SIM_LIB"
+            )
+        return "cuda"
+    if device == "auto":
+        return "cuda" if available else "cpu"
+    raise ValueError(f"device must be 'auto', 'cpu' or 'cuda', got {device!r}")
 
 
 def _to_dataframe(x, y, t_ns, p) -> pl.DataFrame:
@@ -56,12 +68,13 @@ def simulate_frames(
     Returns a DataFrame with x Int16, y Int16, t Duration(us), polarity Int8.
     """
     config = config or ESIMConfig()
-    _check_device(config)
     frames = np.ascontiguousarray(frames)
     t = np.ascontiguousarray(np.asarray(timestamps_ns, dtype=np.int64))
-    x, y, t_ns, p = evlib.simulation_rs.simulate_frames(
-        frames, t, sort=sort, **config.kernel_kwargs()
-    )
+    if resolve_device(config.device) == "cuda":
+        kernel = evlib.simulation_rs.simulate_frames_cuda
+    else:
+        kernel = evlib.simulation_rs.simulate_frames
+    x, y, t_ns, p = kernel(frames, t, sort=sort, **config.kernel_kwargs())
     return _to_dataframe(x, y, t_ns, p)
 
 
@@ -69,11 +82,15 @@ class ESIMSimulator:
     """Stateful frame-by-frame simulator with float-second timestamps."""
 
     def __init__(self, config: ESIMConfig, width: int, height: int):
-        _check_device(config)
         self.config = config
         self.width = int(width)
         self.height = int(height)
-        self._inner = evlib.simulation_rs.EventSimulator(
+        self.device = resolve_device(config.device)
+        if self.device == "cuda":
+            cls = evlib.simulation_rs.EventSimulatorCuda
+        else:
+            cls = evlib.simulation_rs.EventSimulator
+        self._inner = cls(
             width=self.width, height=self.height, **config.kernel_kwargs()
         )
 

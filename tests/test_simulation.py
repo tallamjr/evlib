@@ -134,9 +134,23 @@ def test_process_frame_float32_is_log_intensity(slider_frames):
         sim.step_ns(log_frames[0].astype(np.float64), 0)
 
 
-def test_cuda_device_not_implemented_yet():
-    with pytest.raises(NotImplementedError):
-        ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4)
+def test_device_dispatch_follows_cuda_available():
+    import evlib
+
+    from evlib.simulation.esim import resolve_device
+
+    assert isinstance(evlib.simulation_rs.cuda_available(), bool)
+    assert resolve_device("cpu") == "cpu"
+    if evlib.simulation_rs.cuda_available():
+        assert resolve_device("auto") == "cuda"
+        assert (
+            ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4).device == "cuda"
+        )
+    else:
+        assert resolve_device("auto") == "cpu"
+        with pytest.raises(RuntimeError, match="CUDA backend unavailable"):
+            ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4)
+    assert ESIMSimulator(ESIMConfig(device="cpu"), width=4, height=4).device == "cpu"
 
 
 @pytest.mark.skipif(

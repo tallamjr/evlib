@@ -49,13 +49,15 @@ impl EventBatch {
         self.p.push(p);
     }
     /// Sort all four columns by timestamp (unstable; equal timestamps keep no particular order).
+    /// Parallel sort and gather: the CUDA backend returns events grouped by pixel,
+    /// which is far from time order, so a serial sort dominated its runtime.
     pub fn sort_by_time(&mut self) {
         let mut idx: Vec<u32> = (0..self.len() as u32).collect();
-        idx.sort_unstable_by_key(|&i| self.t_ns[i as usize]);
-        self.x = idx.iter().map(|&i| self.x[i as usize]).collect();
-        self.y = idx.iter().map(|&i| self.y[i as usize]).collect();
-        self.p = idx.iter().map(|&i| self.p[i as usize]).collect();
-        self.t_ns = idx.iter().map(|&i| self.t_ns[i as usize]).collect();
+        idx.par_sort_unstable_by_key(|&i| self.t_ns[i as usize]);
+        self.x = idx.par_iter().map(|&i| self.x[i as usize]).collect();
+        self.y = idx.par_iter().map(|&i| self.y[i as usize]).collect();
+        self.p = idx.par_iter().map(|&i| self.p[i as usize]).collect();
+        self.t_ns = idx.par_iter().map(|&i| self.t_ns[i as usize]).collect();
     }
 }
 
