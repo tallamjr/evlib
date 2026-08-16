@@ -48,7 +48,8 @@ def test_simulate_frames_float32_is_log_input():
         sort=True,
     )
     assert list(p) == [-1, -1, -1]
-    assert list(t_ns) == [29, 57, 86]
+    # Crossings at 28.57, 57.14, 85.71 ns are floored.
+    assert list(t_ns) == [28, 57, 85]
 
 
 def test_errors_are_value_errors():

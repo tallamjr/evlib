@@ -22,7 +22,7 @@ pub struct PixelParams {
 /// Interpolated crossing time of level `lc` on the segment (l0, t0) -> (l1, t1).
 ///
 /// The fraction is computed in f64 and clamped to [0, 1]; the result is
-/// rounded to the nearest nanosecond.
+/// floored to whole nanoseconds, which matches rpg_vid2e esim_torch.
 #[inline]
 fn crossing_time(l0: f32, t0: i64, l1: f32, t1: i64, lc: f32) -> i64 {
     let dl = (l1 as f64) - (l0 as f64);
@@ -31,7 +31,7 @@ fn crossing_time(l0: f32, t0: i64, l1: f32, t1: i64, lc: f32) -> i64 {
     } else {
         (((lc as f64) - (l0 as f64)) / dl).clamp(0.0, 1.0)
     };
-    t0 + ((t1 - t0) as f64 * frac).round() as i64
+    t0 + ((t1 - t0) as f64 * frac).floor() as i64
 }
 
 /// Advance one pixel across one frame interval, calling `emit(t_ns, polarity)`
@@ -171,15 +171,15 @@ mod tests {
     }
 
     #[test]
-    fn crossing_time_is_rounded_to_nearest_ns() {
-        // c = 0.25, l 0 -> 0.75 in 10 ns: crossings at 3.33 -> 3, 6.67 -> 7, 10.
+    fn crossing_time_is_floored_to_whole_ns() {
+        // c = 0.25, l 0 -> 0.75 in 10 ns: crossings at 3.33 -> 3, 6.67 -> 6, 10.
         let mut s = PixelState {
             l_ref: 0.0,
             t_last: NO_EVENT,
         };
         let ev = collect(&mut s, &params(0.25, 0), 0.0, 0, 0.75, 10);
         let times: Vec<i64> = ev.iter().map(|e| e.0).collect();
-        assert_eq!(times, vec![3, 7, 10]);
+        assert_eq!(times, vec![3, 6, 10]);
     }
 
     #[test]
