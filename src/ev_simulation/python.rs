@@ -188,23 +188,33 @@ impl PyEventSimulator {
         frame: &Bound<'py, PyAny>,
         t_ns: i64,
     ) -> PyResult<Bound<'py, PyTuple>> {
-        let mut out = EventBatch::default();
+        // Copy to an owned, Send buffer before allow_threads: the PyReadonlyArray
+        // borrow is GIL-bound and cannot cross the closure, same as simulate_frames_py.
         if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, u8>>() {
-            let data = f.as_slice()?;
-            self.inner
-                .step_u8(data, t_ns, &mut out)
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || {
+                    let mut out = EventBatch::default();
+                    inner.step_u8(&data, t_ns, &mut out).map(|_| out)
+                })
                 .map_err(to_py_err)?;
+            batch_to_py(py, out)
         } else if let Ok(f) = frame.extract::<PyReadonlyArray2<'py, f32>>() {
-            let data = f.as_slice()?;
-            self.inner
-                .step_log(data, t_ns, &mut out)
+            let data = f.as_slice()?.to_vec();
+            let inner = &mut self.inner;
+            let out = py
+                .allow_threads(move || {
+                    let mut out = EventBatch::default();
+                    inner.step_log(&data, t_ns, &mut out).map(|_| out)
+                })
                 .map_err(to_py_err)?;
+            batch_to_py(py, out)
         } else {
-            return Err(PyTypeError::new_err(
+            Err(PyTypeError::new_err(
                 "frame must be a C-contiguous (H, W) uint8 or float32 array",
-            ));
+            ))
         }
-        batch_to_py(py, out)
     }
 }
 

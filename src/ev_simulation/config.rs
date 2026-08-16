@@ -82,6 +82,12 @@ impl SimulatorConfig {
                 "width and height must be positive".into(),
             ));
         }
+        // x/y are cast to i16 for the Python-facing event arrays; keep both in bound.
+        if self.width > i16::MAX as u32 || self.height > i16::MAX as u32 {
+            return Err(SimError::InvalidConfig(
+                "width and height must be at most 32767".into(),
+            ));
+        }
         if !(self.c_pos > 0.0) || !(self.c_neg > 0.0) {
             return Err(SimError::InvalidConfig(
                 "c_pos and c_neg must be positive".into(),
@@ -151,6 +157,16 @@ mod tests {
     #[test]
     fn zero_shape_is_invalid() {
         let c = SimulatorConfig::default();
+        assert!(matches!(c.validate(), Err(SimError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn oversized_shape_is_invalid() {
+        // width must fit in i16 (the Python-facing x array dtype); 40000 > 32767.
+        let c = SimulatorConfig {
+            width: 40000,
+            ..cfg()
+        };
         assert!(matches!(c.validate(), Err(SimError::InvalidConfig(_))));
     }
 

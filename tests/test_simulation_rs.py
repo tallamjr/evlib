@@ -91,6 +91,12 @@ def test_errors_are_value_errors():
         )
 
 
+def test_oversized_width_is_value_error():
+    # width must fit in i16 (the Python-facing x array dtype); 40000 > 32767.
+    with pytest.raises(ValueError):
+        evlib.simulation_rs.EventSimulator(width=40000, height=1)
+
+
 def test_stateful_simulator_matches_batch():
     rng = np.random.default_rng(0)
     frames = rng.integers(0, 256, size=(5, 6, 7), dtype=np.uint8)
