@@ -4,10 +4,11 @@
 //! Rust crate has no link-time CUDA dependency. The library path comes from
 //! `EVLIB_CUDA_SIM_LIB` (full path) or `libevsim.so` on the loader search path.
 //! Threshold maps and the u8 log LUT are computed on the host, so this backend
-//! shares them bit-for-bit with `EventSimulator`. A failing `evsim_destroy` in
-//! `Drop` is reported with `eprintln!` and not surfaced as an error.
+//! shares them bit-for-bit with `EventSimulator`; the LUT is uploaded once and
+//! applied on the device, so u8 frames cross the bus as one byte per pixel.
+//! A failing `evsim_destroy` in `Drop` is reported with `eprintln!` and not
+//! surfaced as an error.
 
-use rayon::prelude::*;
 use std::os::raw::{c_char, c_int, c_longlong, c_ushort, c_void};
 use std::sync::OnceLock;
 
@@ -35,6 +36,19 @@ type RunFn = unsafe extern "C" fn(
     c_longlong,        // capacity
     *mut c_longlong,   // n_events
 ) -> c_int;
+type RunU8Fn = unsafe extern "C" fn(
+    *mut c_void,
+    *const u8,         // frames (host, T*H*W)
+    *const c_longlong, // t_ns (host, T)
+    c_int,             // n_frames
+    *mut c_ushort,     // out_x
+    *mut c_ushort,     // out_y
+    *mut c_longlong,   // out_t
+    *mut c_char,       // out_p
+    c_longlong,        // capacity
+    *mut c_longlong,   // n_events
+) -> c_int;
+type SetLutFn = unsafe extern "C" fn(*mut c_void, *const f32) -> c_int;
 type DestroyFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 
 /// Resolved entry points of the shared library; `_lib` keeps it mapped.
@@ -43,6 +57,8 @@ struct Api {
     create: CreateFn,
     reset: ResetFn,
     run: RunFn,
+    run_u8: RunU8Fn,
+    set_lut: SetLutFn,
     destroy: DestroyFn,
 }
 
@@ -58,7 +74,7 @@ fn load_api() -> Result<Api, String> {
     let path = lib_path();
     let lib = unsafe { libloading::Library::new(&path) }
         .map_err(|e| format!("failed to load CUDA library {path}: {e}"))?;
-    let (create, reset, run, destroy) = unsafe {
+    let (create, reset, run, run_u8, set_lut, destroy) = unsafe {
         (
             *lib.get::<CreateFn>(b"evsim_create")
                 .map_err(|e| format!("missing symbol evsim_create: {e}"))?,
@@ -66,6 +82,10 @@ fn load_api() -> Result<Api, String> {
                 .map_err(|e| format!("missing symbol evsim_reset: {e}"))?,
             *lib.get::<RunFn>(b"evsim_run")
                 .map_err(|e| format!("missing symbol evsim_run: {e}"))?,
+            *lib.get::<RunU8Fn>(b"evsim_run_u8")
+                .map_err(|e| format!("missing symbol evsim_run_u8: {e}"))?,
+            *lib.get::<SetLutFn>(b"evsim_set_lut")
+                .map_err(|e| format!("missing symbol evsim_set_lut: {e}"))?,
             *lib.get::<DestroyFn>(b"evsim_destroy")
                 .map_err(|e| format!("missing symbol evsim_destroy: {e}"))?,
         )
@@ -75,6 +95,8 @@ fn load_api() -> Result<Api, String> {
         create,
         reset,
         run,
+        run_u8,
+        set_lut,
         destroy,
     })
 }
@@ -101,6 +123,22 @@ pub fn cuda_available() -> bool {
 
 /// Smallest event capacity tried for a batch; the hint doubles the last count.
 const MIN_CAPACITY: usize = 1 << 16;
+
+/// Input stack for one call: float32 log intensity or uint8 intensity.
+#[derive(Clone, Copy)]
+enum Frames<'a> {
+    Log(&'a [f32]),
+    U8(&'a [u8]),
+}
+
+impl Frames<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Frames::Log(f) => f.len(),
+            Frames::U8(f) => f.len(),
+        }
+    }
+}
 
 pub struct EventSimulatorCuda {
     cfg: SimulatorConfig,
@@ -154,6 +192,13 @@ impl EventSimulatorCuda {
         if rc != 0 || handle.is_null() {
             return Err(SimError::Backend(format!(
                 "evsim_create returned CUDA error code {rc}"
+            )));
+        }
+        let rc = unsafe { (api.set_lut)(handle, lut.as_ptr()) };
+        if rc != 0 {
+            let rc_destroy = unsafe { (api.destroy)(handle) };
+            return Err(SimError::Backend(format!(
+                "evsim_set_lut returned CUDA error code {rc} (destroy {rc_destroy})"
             )));
         }
         Ok(Self {
@@ -220,7 +265,7 @@ impl EventSimulatorCuda {
     /// larger buffer and `required` events; the device state is unchanged.
     fn run_once(
         &mut self,
-        frames: &[f32],
+        frames: Frames<'_>,
         t_ns: &[i64],
         capacity: usize,
     ) -> Result<Result<EventBatch, usize>, SimError> {
@@ -229,19 +274,35 @@ impl EventSimulatorCuda {
         let mut t: Vec<i64> = Vec::with_capacity(capacity);
         let mut p: Vec<i8> = Vec::with_capacity(capacity);
         let mut n_events: c_longlong = 0;
+        // SAFETY: frames has n * T elements (check_batch), t_ns has T, and the
+        // four output buffers hold `capacity` elements each.
         let rc = unsafe {
-            (self.api.run)(
-                self.handle,
-                frames.as_ptr(),
-                t_ns.as_ptr(),
-                t_ns.len() as c_int,
-                x.as_mut_ptr(),
-                y.as_mut_ptr(),
-                t.as_mut_ptr(),
-                p.as_mut_ptr() as *mut c_char,
-                capacity as c_longlong,
-                &mut n_events,
-            )
+            match frames {
+                Frames::Log(f) => (self.api.run)(
+                    self.handle,
+                    f.as_ptr(),
+                    t_ns.as_ptr(),
+                    t_ns.len() as c_int,
+                    x.as_mut_ptr(),
+                    y.as_mut_ptr(),
+                    t.as_mut_ptr(),
+                    p.as_mut_ptr() as *mut c_char,
+                    capacity as c_longlong,
+                    &mut n_events,
+                ),
+                Frames::U8(f) => (self.api.run_u8)(
+                    self.handle,
+                    f.as_ptr(),
+                    t_ns.as_ptr(),
+                    t_ns.len() as c_int,
+                    x.as_mut_ptr(),
+                    y.as_mut_ptr(),
+                    t.as_mut_ptr(),
+                    p.as_mut_ptr() as *mut c_char,
+                    capacity as c_longlong,
+                    &mut n_events,
+                ),
+            }
         };
         if rc < 0 {
             return Err(SimError::Backend(format!(
@@ -271,15 +332,17 @@ impl EventSimulatorCuda {
 
     /// Run a batch with an explicit starting capacity, retrying once with the
     /// required size if the device reports overflow.
-    pub fn run_log_with_capacity(
+    fn run_with_capacity(
         &mut self,
-        frames: &[f32],
+        frames: Frames<'_>,
         t_ns: &[i64],
         sort: bool,
         capacity: usize,
     ) -> Result<EventBatch, SimError> {
         self.check_batch(frames.len(), t_ns)?;
-        check_finite(frames)?;
+        if let Frames::Log(f) = frames {
+            check_finite(f)?;
+        }
         let mut out = match self.run_once(frames, t_ns, capacity)? {
             Ok(b) => b,
             Err(required) => match self.run_once(frames, t_ns, required)? {
@@ -300,6 +363,28 @@ impl EventSimulatorCuda {
         Ok(out)
     }
 
+    /// float32 log frames with an explicit starting capacity (tests the retry path).
+    pub fn run_log_with_capacity(
+        &mut self,
+        frames: &[f32],
+        t_ns: &[i64],
+        sort: bool,
+        capacity: usize,
+    ) -> Result<EventBatch, SimError> {
+        self.run_with_capacity(Frames::Log(frames), t_ns, sort, capacity)
+    }
+
+    /// uint8 frames with an explicit starting capacity (tests the retry path).
+    pub fn run_u8_with_capacity(
+        &mut self,
+        frames: &[u8],
+        t_ns: &[i64],
+        sort: bool,
+        capacity: usize,
+    ) -> Result<EventBatch, SimError> {
+        self.run_with_capacity(Frames::U8(frames), t_ns, sort, capacity)
+    }
+
     pub fn run_log(
         &mut self,
         frames: &[f32],
@@ -307,20 +392,18 @@ impl EventSimulatorCuda {
         sort: bool,
     ) -> Result<EventBatch, SimError> {
         let capacity = self.capacity_hint;
-        self.run_log_with_capacity(frames, t_ns, sort, capacity)
+        self.run_with_capacity(Frames::Log(frames), t_ns, sort, capacity)
     }
 
-    /// u8 frames go through the host LUT, then `run_log`. Applying the LUT on
-    /// the device would halve the upload; left as a later optimisation.
+    /// uint8 frames are uploaded as bytes; the log LUT is applied on the device.
     pub fn run_u8(
         &mut self,
         frames: &[u8],
         t_ns: &[i64],
         sort: bool,
     ) -> Result<EventBatch, SimError> {
-        let lut = self.lut;
-        let log: Vec<f32> = frames.par_iter().map(|&v| lut[v as usize]).collect();
-        self.run_log(&log, t_ns, sort)
+        let capacity = self.capacity_hint;
+        self.run_with_capacity(Frames::U8(frames), t_ns, sort, capacity)
     }
 
     /// One frame; the first frame initialises the state and yields no events.
@@ -481,6 +564,41 @@ mod tests {
         let got = gpu.step_log(&[1.5], 20).unwrap();
         assert_eq!(key(&got), key(&want));
         assert!(!got.is_empty());
+    }
+
+    /// u8 frames through the device LUT, forced retry, sorted, against the CPU.
+    #[test]
+    fn u8_capacity_retry_matches_cpu_sorted() {
+        if !lib_present() {
+            return;
+        }
+        let c = cfg();
+        let n = c.pixels();
+        let frames = 24;
+        let raw: Vec<u8> = (0..n * frames)
+            .map(|i| {
+                let k = i / n;
+                let px = i % n;
+                (((px * 7 + k * k * 13) % 251) as u8).wrapping_add((k * 5) as u8)
+            })
+            .collect();
+        let t: Vec<i64> = (0..frames as i64)
+            .map(|k| k * 900_000 + k * k * 1_000)
+            .collect();
+        let mut cpu = EventSimulator::new(c).unwrap();
+        let mut gpu = EventSimulatorCuda::new(c).unwrap();
+        let (fa, fb) = raw.split_at(15 * n);
+        let (ta, tb) = t.split_at(15);
+        let want_a = cpu.run_u8(fa, ta, true).unwrap();
+        let got_a = gpu.run_u8_with_capacity(fa, ta, true, 8).unwrap();
+        assert!(want_a.len() > 10_000, "cpu produced {}", want_a.len());
+        assert_eq!(got_a.len(), want_a.len());
+        assert_eq!(key(&got_a), key(&want_a));
+        assert!(got_a.t_ns.windows(2).all(|w| w[0] <= w[1]));
+        let want_b = cpu.run_u8(fb, tb, false).unwrap();
+        let got_b = gpu.run_u8(fb, tb, false).unwrap();
+        assert!(!want_b.is_empty());
+        assert_eq!(key(&got_b), key(&want_b));
     }
 
     #[test]
