@@ -124,13 +124,12 @@ def main() -> int:
     print(f"Converting {video_path} -> {args.output}")
     started = time.time()
     if args.streaming:
-        df = pl.concat(
-            processor.process_frames_streaming(video_path, args.chunk_frames)
-        )
+        chunks = list(processor.process_frames_streaming(video_path, args.chunk_frames))
+        df = pl.concat(chunks) if chunks else None
     else:
         df = processor.process_video(video_path)
     elapsed = time.time() - started
-    if df.height == 0:
+    if df is None or df.height == 0:
         print("No events were generated. Try lower thresholds (--cp, --cn).")
         return 0
 

@@ -35,19 +35,19 @@ class VideoToEvents:
         self._video_fps: Optional[float] = None
         self._total_frames: Optional[int] = None
         self._current_frame: int = 0
+        self._start_frame: int = 0
 
     def process_video(self, video_path: Union[str, Path]) -> pl.DataFrame:
         """Simulate the whole clip; batch when it fits in memory, else chunked."""
         with self._opened(video_path):
             frame_bytes = self._frame_bytes()
-            if self._total_frames * frame_bytes < _BATCH_BYTES_LIMIT:
-                frames, t_ns = self._decode_chunk(self._total_frames + 1)
-                if len(frames) == 0:
-                    return _empty_frame()
-                return simulate_frames(
-                    np.stack(frames), np.asarray(t_ns), self.esim_config
-                )
-            return _concat(list(self._stream_chunks(64)))
+            fits = 0 < self._total_frames * frame_bytes < _BATCH_BYTES_LIMIT
+            if not fits:
+                return _concat(list(self._stream_chunks(64)))
+            frames, t_ns = self._decode_chunk(None)
+            if not frames:
+                return _empty_frame()
+            return simulate_frames(np.stack(frames), np.asarray(t_ns), self.esim_config)
 
     def process_frames_streaming(
         self, video_path: Union[str, Path], chunk_frames: int = 64
@@ -99,14 +99,20 @@ class VideoToEvents:
         self._video_fps = self.video_config.fps or original_fps
         if self._video_fps <= 0:
             raise ValueError("video reports no frame rate; set VideoConfig.fps")
-        self._current_frame = 0
+        self._start_frame = 0
         if self.video_config.start_time is not None:
-            start_frame = int(self.video_config.start_time * original_fps)
-            self._cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            self._current_frame = start_frame
+            self._start_frame = int(self.video_config.start_time * original_fps)
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, self._start_frame)
+        self._current_frame = self._start_frame
         if self.video_config.end_time is not None:
             end_frame = int(self.video_config.end_time * original_fps)
             self._total_frames = min(self._total_frames, end_frame)
+
+    def _kept_frame_count(self) -> int:
+        """Frames the decode loop keeps after start_time, end_time and frame_skip."""
+        step = self.video_config.frame_skip + 1
+        end = max(self._total_frames, self._start_frame)
+        return -(-end // step) - -(-self._start_frame // step)
 
     def _frame_bytes(self) -> int:
         width = self.video_config.width or int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -134,10 +140,13 @@ class VideoToEvents:
             t_ns = int(round(index / self._video_fps * 1e9))
             return self._preprocess_frame(frame), t_ns
 
-    def _decode_chunk(self, chunk_frames: int) -> Tuple[List[np.ndarray], List[int]]:
+    def _decode_chunk(
+        self, chunk_frames: Optional[int]
+    ) -> Tuple[List[np.ndarray], List[int]]:
+        """Decode up to `chunk_frames` kept frames; None means until the clip ends."""
         frames: List[np.ndarray] = []
         t_ns: List[int] = []
-        while len(frames) < chunk_frames:
+        while chunk_frames is None or len(frames) < chunk_frames:
             item = self._next_frame()
             if item is None:
                 break
@@ -156,7 +165,7 @@ class VideoToEvents:
             if simulator is None:
                 height, width = frames[0].shape
                 simulator = ESIMSimulator(self.esim_config, width=width, height=height)
-            parts = [simulator._inner.step(frame, t) for frame, t in zip(frames, t_ns)]
+            parts = [simulator.step_ns(frame, t) for frame, t in zip(frames, t_ns)]
             x = np.concatenate([p[0] for p in parts])
             y = np.concatenate([p[1] for p in parts])
             t = np.concatenate([p[2] for p in parts])
@@ -189,7 +198,12 @@ class _Capture:
         if not cap.isOpened():
             raise ValueError(f"Could not open video file: {self.video_path}")
         self.owner._cap = cap
-        self.owner._setup_video_properties()
+        try:
+            self.owner._setup_video_properties()
+        except Exception:
+            cap.release()
+            self.owner._cap = None
+            raise
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -219,13 +233,13 @@ def estimate_event_count(
     video_config: Optional[VideoConfig] = None,
     sample_frames: int = 100,
 ) -> dict:
-    """Simulate the first `sample_frames` frames and scale the count to the whole clip."""
+    """Simulate the first `sample_frames` kept frames and scale to the kept-frame count."""
     esim_config = esim_config or ESIMConfig()
     video_config = video_config or VideoConfig()
     processor = VideoToEvents(esim_config, video_config)
-    total_frames = processor.get_video_info(video_path)["frame_count"]
     with processor._opened(video_path):
         frames, t_ns = processor._decode_chunk(sample_frames)
+        kept_frames = processor._kept_frame_count()
     if not frames:
         return {
             "estimated_total_events": 0,
@@ -233,15 +247,15 @@ def estimate_event_count(
             "sample_frames": 0,
             "sample_events": 0,
             "events_per_frame": 0.0,
-            "total_frames": total_frames,
+            "total_frames": kept_frames,
         }
     df = simulate_frames(np.stack(frames), np.asarray(t_ns), esim_config)
     events_per_frame = df.height / len(frames)
     return {
-        "estimated_total_events": int(round(events_per_frame * total_frames)),
-        "estimated": len(frames) < total_frames,
+        "estimated_total_events": int(round(events_per_frame * kept_frames)),
+        "estimated": len(frames) < kept_frames,
         "sample_frames": len(frames),
         "sample_events": df.height,
         "events_per_frame": events_per_frame,
-        "total_frames": total_frames,
+        "total_frames": kept_frames,
     }

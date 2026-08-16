@@ -2,7 +2,6 @@
 Acceptance: no torch import, Polars output in the canonical schema, deterministic with a seed.
 """
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -29,13 +28,12 @@ def slider_frames():
 
 
 def test_no_torch_import():
-    import evlib.simulation  # noqa: F401
-    import evlib.simulation.esim  # noqa: F401
-    import evlib.simulation.video_processor  # noqa: F401
+    import evlib.simulation
 
-    assert "torch" not in sys.modules or "evlib.simulation" not in str(
-        sys.modules["torch"]
-    )
+    package_dir = Path(evlib.simulation.__file__).parent
+    for source in package_dir.glob("*.py"):
+        text = source.read_text()
+        assert "import torch" not in text and "from torch" not in text, source
 
 
 def test_config_defaults_and_validation():
@@ -109,6 +107,33 @@ def test_process_frame_rgb_uses_luma_weights():
     assert len(t) == 28 and np.all(p == 1)
 
 
+def test_process_frame_float32_is_log_intensity(slider_frames):
+    frames, t_ns = slider_frames
+    log_frames = np.log(frames[:10].astype(np.float32) / 255 + 1e-3).astype(np.float32)
+    cfg = ESIMConfig()
+    sim = ESIMSimulator(cfg, width=240, height=180)
+    parts = [sim.step_ns(log_frames[k], int(t_ns[k])) for k in range(10)]
+    # Equal-t ties have no defined order, so compare in a canonical (t, y, x, p) order.
+    stream = pl.concat(
+        [
+            pl.DataFrame({"x": p[0], "y": p[1], "t": p[2] // 1000, "polarity": p[3]})
+            for p in parts
+        ]
+    ).sort(["t", "y", "x", "polarity"])
+    batch = (
+        simulate_frames(log_frames, t_ns[:10], cfg)
+        .with_columns(pl.col("t").dt.total_microseconds())
+        .sort(["t", "y", "x", "polarity"])
+    )
+    assert stream.height == batch.height > 0
+    for column in ("t", "x", "y", "polarity"):
+        assert np.array_equal(stream[column].to_numpy(), batch[column].to_numpy()), (
+            column
+        )
+    with pytest.raises(TypeError):
+        sim.step_ns(log_frames[0].astype(np.float64), 0)
+
+
 def test_cuda_device_not_implemented_yet():
     with pytest.raises(NotImplementedError):
         ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4)
@@ -157,6 +182,6 @@ def test_video_streaming_matches_batch(slider_frames, tmp_path):
     batch = proc.process_video(path)
     chunks = list(proc.process_frames_streaming(path, chunk_frames=7))
     assert len(chunks) == 5
-    streamed = pl.concat(chunks).sort("t", maintain_order=True)
-    assert streamed.height == batch.height
-    assert streamed["t"].equals(batch["t"])
+    # Equal-t ties have no defined order, so compare in a canonical (t, y, x, p) order.
+    order = ["t", "y", "x", "polarity"]
+    assert pl.concat(chunks).sort(order).equals(batch.sort(order))

@@ -12,11 +12,20 @@ from .config import ESIMConfig
 _LUMA = np.array([0.299, 0.587, 0.114], dtype=np.float64)
 
 
-def _to_grey_u8(frame: np.ndarray) -> np.ndarray:
-    if frame.ndim == 3:
-        frame = np.rint(frame[..., :3].astype(np.float64) @ _LUMA)
+def _to_kernel_frame(frame: np.ndarray) -> np.ndarray:
+    """uint8 (H, W) or (H, W, 3) RGB -> uint8 grey; float32 (H, W) -> log intensity as-is."""
+    frame = np.asarray(frame)
+    if frame.dtype == np.float32 and frame.ndim == 2:
+        return np.ascontiguousarray(frame)
     if frame.dtype != np.uint8:
-        frame = np.clip(frame, 0, 255).astype(np.uint8)
+        raise TypeError(
+            f"frame must be uint8 (H, W) or (H, W, 3), or float32 (H, W) log intensity, "
+            f"got {frame.dtype} with shape {frame.shape}"
+        )
+    if frame.ndim == 3:
+        frame = np.rint(frame[..., :3].astype(np.float64) @ _LUMA).astype(np.uint8)
+    elif frame.ndim != 2:
+        raise TypeError(f"frame must be 2-D or 3-D, got shape {frame.shape}")
     return np.ascontiguousarray(frame)
 
 
@@ -78,17 +87,23 @@ class ESIMSimulator:
     def thresholds(self) -> Tuple[np.ndarray, np.ndarray]:
         return self._inner.thresholds()
 
+    def step_ns(
+        self, frame: np.ndarray, t_ns: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """One frame at `t_ns`; returns the raw kernel arrays (x i16, y i16, t_ns i64, p i8)."""
+        kernel_frame = _to_kernel_frame(frame)
+        if kernel_frame.shape != (self.height, self.width):
+            raise ValueError(
+                f"frame shape {kernel_frame.shape} does not match (height, width) = "
+                f"{(self.height, self.width)}"
+            )
+        return self._inner.step(kernel_frame, int(t_ns))
+
     def process_frame(
         self, frame: np.ndarray, timestamp: float
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """One (H, W) or (H, W, 3) RGB frame at `timestamp` seconds; returns (x, y, t_s, p)."""
-        grey = _to_grey_u8(frame)
-        if grey.shape != (self.height, self.width):
-            raise ValueError(
-                f"frame shape {grey.shape} does not match (height, width) = "
-                f"{(self.height, self.width)}"
-            )
-        x, y, t_ns, p = self._inner.step(grey, int(round(timestamp * 1e9)))
+        x, y, t_ns, p = self.step_ns(frame, int(round(timestamp * 1e9)))
         return (
             x.astype(np.int64),
             y.astype(np.int64),
