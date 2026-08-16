@@ -91,21 +91,27 @@ python -c "import evlib; print(evlib.simulation_rs.cuda_available())"   # True
 
 `EVLIB_CUDA_SIM_LIB` defaults to `libevsim.so` on the loader path. Requesting `device="cuda"` without the backend raises `RuntimeError`.
 
+How the CUDA path runs a batch: uint8 frames are copied into a pinned staging buffer and uploaded as bytes (the log LUT is applied on the device; float32 log frames are uploaded as they are), one thread per pixel counts events, a scan gives per-pixel offsets, a second pass writes the events, and with `sort=True` the batch is sorted by time on the device (radix sort on the 64-bit timestamp, stable for equal timestamps) before the columns are copied back through pinned memory. Device and pinned buffers are owned by the simulator and grow geometrically, so there is no per-call allocation on the device. Feeding 32 frames per call is enough to reach the numbers below; larger batches gain a little more.
+
 ## Conformance with rpg_vid2e
 
 `tests/test_vid2e_conformance.py` compares the kernel with `esim_torch` from [rpg_vid2e](https://github.com/uzh-rpg/rpg_vid2e) (commit `ecbb11a`) on the 87 slider_depth frames at thresholds 0.2/0.2, against tracked reference digests. Measured on 2026-08-16: total and positive event counts agree within 0.121 % and 0.120 % (bar 0.25 %); per-frame counts within 0.75 % max; 10x10 block counts within 1.64 % max; the first 200 events sorted by `(t, y, x, p)` have identical `x`, `y`, `p` and `t` within 1 ns. The residual comes from exact ties: a uint8 pixel that returns to a grey level seen before makes `L1` equal `l_ref + k*c` exactly, and float32 rounding resolves the tie differently in the two kernels (98.4 % of the divergent pixel cells). esim_torch also computes event times in float32, so timestamps are only compared on the early sample where one float32 ulp is below 1 ns.
 
 ## Benchmark
 
-Measured 2026-08-17 on arg1 (AMD Threadripper 7960X, 24 cores / 48 threads; RTX 4090; `lib/bench_simulation.py`) on the gate 1 Big Buck Bunny frame folders at thresholds 0.2/0.2, uint8 frames, median of 3 after 1 warm-up. "kernel" is the unsorted raw-array call; "wall" is `ESIMSimulator.simulate` (sorted Polars DataFrame). The stack is fed in slices through one persistent simulator.
+Measured 2026-08-17 on arg1 (AMD Threadripper 7960X, 24 cores / 48 threads; RTX 4090; `lib/bench_simulation.py`) on the gate 1 Big Buck Bunny frame folders at thresholds 0.2/0.2, uint8 frames, median of 3 after 1 warm-up, default glibc allocator. "kernel" is the unsorted raw-array call; "wall" is `ESIMSimulator.simulate` (sorted Polars DataFrame); "device" is the CUDA kernel alone (frames resident on the device, events left on the device, per-stage CUDA event times). The stack is fed in slices through one persistent simulator.
 
-| input | events | backend | batch | kernel s | events/s (kernel) | wall s | events/s (wall) | video-hours per GPU-day |
-|---|---|---|---|---|---|---|---|---|
-| 900 frames 320x320 (29.97 s) | 21,212,272 | CPU 48 threads | 256 | 0.097 | 218.9 M | 0.191 | 111.0 M | 3,762 |
-| 900 frames 320x320 (29.97 s) | 21,212,272 | CUDA | 32 | 0.154 | 138.1 M | 0.286 | 74.2 M | 2,517 |
-| 900 frames 640x480 (29.97 s) | 67,819,884 | CPU 48 threads | whole | 0.378 | 179.6 M | 0.651 | 104.2 M | 1,104 |
-| 900 frames 640x480 (29.97 s) | 67,819,884 | CUDA | 32 | 0.694 | 97.7 M | 0.947 | 71.6 M | 760 |
-| 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CPU 48 threads | 256 | 0.387 | 68.7 M | 0.589 | 45.1 M | 682 |
-| 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CPU 48 threads | 256 | 0.906 | 55.7 M | 1.099 | 45.9 M | 232 |
+| input | events | backend | batch | kernel s | events/s (kernel) | wall s | events/s (wall) | events/s (device) | video-hours per GPU-day |
+|---|---|---|---|---|---|---|---|---|---|
+| 900 frames 320x320 (29.97 s) | 21,212,272 | CPU 48 threads | 256 | 0.047 | 451 M | 0.163 | 130 M | | 4,422 |
+| 900 frames 320x320 (29.97 s) | 21,212,272 | CUDA | 32 | 0.052 | 406 M | 0.059 | 362 M | 1,445 M | 12,273 |
+| 900 frames 320x320 (29.97 s) | 21,212,272 | CUDA | whole | 0.036 | 585 M | 0.045 | 471 M | 1,847 M | 15,982 |
+| 900 frames 640x480 (29.97 s) | 67,819,884 | CPU 48 threads | 256 | 0.127 | 534 M | 0.463 | 147 M | | 1,554 |
+| 900 frames 640x480 (29.97 s) | 67,819,884 | CUDA | 32 | 0.127 | 533 M | 0.146 | 465 M | 1,892 M | 4,935 |
+| 900 frames 640x480 (29.97 s) | 67,819,884 | CUDA | whole | 0.112 | 603 M | 0.133 | 509 M | 2,156 M | 5,393 |
+| 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CPU 48 threads | whole | 0.212 | 125 M | 0.338 | 79 M | | 1,189 |
+| 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CUDA | 256 | 0.124 | 213 M | 0.145 | 183 M | 521 M | 2,768 |
+| 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CPU 48 threads | whole | 0.552 | 91 M | 0.805 | 63 M | | 316 |
+| 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CUDA | 256 | 0.277 | 182 M | 0.304 | 166 M | 538 M | 836 |
 
-One CPU thread (`RAYON_NUM_THREADS=1`) does 20.7 M events/s kernel-only on the 320x320 input, 3.2x the single-thread esim_py C++ path (6.5 M events/s on the same frames). For reference, rpg_vid2e's esim_torch CUDA kernel with the frames already on the GPU reaches 668.5 M events/s (320x320) and 643.1 M events/s (640x480) at 32 frames per launch, and its shipped PNG-to-npz script 7.2 M and 11.8 M events/s. Batch 256 or the whole stack is faster than batch 32 on the CPU: each call carries a few ms of fixed cost. On this host the CUDA backend is host-bound (uint8 to float32 upload, copy back, allocation) and is not faster than the CPU path (measured 2026-08-17 on arg1, RTX 4090 / 48-thread host).
+For reference, rpg_vid2e's esim_torch CUDA kernel with the frames already on the GPU reaches 668.5 M events/s (320x320) and 643.1 M events/s (640x480) at 32 frames per launch on the same host, and its shipped PNG-to-npz script 7.2 M and 11.8 M events/s; the comparable evlib number is the "device" column (1.4 to 2.2 G events/s on the raw frames). One CPU thread (`RAYON_NUM_THREADS=1`) does 20.7 M events/s kernel-only on the 320x320 input, 3.2x the single-thread esim_py C++ path (6.5 M events/s on the same frames). On the upsampled inputs the CUDA path is bound by the frame upload (2.4 GB of uint8 frames for 50 M events at 640x480, about 48 bytes of input per event against 4 on the raw frames), so it runs at 120 to 220 M events/s there. Both backends give the same event sets; the CPU path is the fallback and is limited by the host sort and first-touch page faults on the output.
