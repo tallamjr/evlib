@@ -132,6 +132,7 @@ nav:
       - Representations: api/representations.md
       - Processing: api/processing.md
       - Data Loading: api/data.md
+      - Simulation: api/simulation.md
   - Examples:
       - Benchmarks: examples/benchmarks.md
       - Polars Preprocessing: examples/polars-preprocessing.md
