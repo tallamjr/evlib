@@ -5,7 +5,10 @@
 // counts events on a copy of the pixel state; an exclusive scan of the counts
 // gives each pixel its write offset; pass 2 walks again, writes (t, packed
 // pixel and polarity) at offset + k and commits the advanced state (l_ref,
-// t_last, prev). A decode kernel unpacks x, y, p.
+// t_last, prev). With the sort flag the (t, packed) pairs are sorted by t on
+// the device (cub radix sort, 64-bit signed key, 32-bit payload; only the key
+// bits in which the batch's time range differs are sorted, ties keep the
+// pixel-grouped order). A decode kernel then unpacks x, y, p.
 //
 // Two call styles share the pipeline:
 //   evsim_run / evsim_run_u8: legacy, caller-owned host buffers of `capacity`
@@ -27,6 +30,7 @@
 //        -o libevsim.so esim_kernel.cu
 
 #include <cuda_runtime.h>
+#include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_scan.cuh>
 #include <chrono>
 #include <climits>
@@ -43,13 +47,14 @@
 
 static const long long NO_EVENT = LLONG_MIN;
 
-// evsim_run2 flags (bit 1 is reserved for a device sort).
+// evsim_run2 flags.
+#define EVSIM_SORT 1         // sort events by t on the device
 #define EVSIM_STAGED 2       // frames are already in the pinned staging buffer (evsim_stage)
 #define EVSIM_RESIDENT 4     // reuse the frames and t_ns of the previous call (benchmarks)
 #define EVSIM_NO_DOWNLOAD 8  // leave the results on the device (benchmarks)
 
 // Timing slots (ms): 0 whole call (host clock), 1 host copy into the staging
-// buffer, 2 upload, 3 count, 4 scan, 5 write, 6 reserved (sort), 7 decode, 8 download.
+// buffer, 2 upload, 3 count, 4 scan, 5 write, 6 sort, 7 decode, 8 download.
 #define EVSIM_N_TIMINGS 9
 #define EVSIM_N_EVENTS 9
 
@@ -89,13 +94,17 @@ struct EvsimHandle {
   long long *d_offsets;
   void *d_scan_tmp;
   size_t scan_tmp_cap;
-  // Device event buffers: write targets and decoded columns.
+  // Device event buffers: write targets, sort outputs, decoded columns.
   long long *d_t;
   unsigned int *d_pk;
+  long long *d_t2;
+  unsigned int *d_pk2;
   unsigned short *d_x;
   unsigned short *d_y;
   signed char *d_p;
   long long ev_cap;
+  void *d_sort_tmp;
+  size_t sort_tmp_cap;
   // Pinned host result buffers returned by evsim_run2.
   unsigned short *h_x;
   unsigned short *h_y;
@@ -317,6 +326,12 @@ static int grow_events(EvsimHandle *h, long long total) {
   rc = grow_device(&h->d_pk, &c, total);
   if (rc != 0) return rc;
   c = cap;
+  rc = grow_device(&h->d_t2, &c, total);
+  if (rc != 0) return rc;
+  c = cap;
+  rc = grow_device(&h->d_pk2, &c, total);
+  if (rc != 0) return rc;
+  c = cap;
   rc = grow_device(&h->d_x, &c, total);
   if (rc != 0) return rc;
   c = cap;
@@ -396,6 +411,26 @@ static int write_pass(EvsimHandle *h, const long long *t_ns, int n_frames, int i
   EVSIM_CHECK(mark(h, 5));
   h->prev_t = t_ns[n_frames - 1];
   h->initialised = 1;
+  return 0;
+}
+
+// Sort (t, packed) pairs by t into d_t2 / d_pk2. Only the bits in which the batch's
+// time range [t_lo, t_hi] differs are sorted; cub handles the signed key.
+static int sort_pass(EvsimHandle *h, long long total, long long t_lo, long long t_hi) {
+  unsigned long long diff = (unsigned long long)(t_lo ^ t_hi);
+  int end_bit = 1;
+  if (diff != 0) {
+    int lead = 0;
+    while (((diff >> (63 - lead)) & 1ull) == 0) ++lead;
+    end_bit = 64 - lead;
+  }
+  size_t need = 0;
+  EVSIM_CHECK(cub::DeviceRadixSort::SortPairs(nullptr, need, h->d_t, h->d_t2, h->d_pk, h->d_pk2,
+                                              total, 0, end_bit, h->stream));
+  int rc = grow_scratch(&h->d_sort_tmp, &h->sort_tmp_cap, need);
+  if (rc != 0) return rc;
+  EVSIM_CHECK(cub::DeviceRadixSort::SortPairs(h->d_sort_tmp, h->sort_tmp_cap, h->d_t, h->d_t2,
+                                              h->d_pk, h->d_pk2, total, 0, end_bit, h->stream));
   return 0;
 }
 
@@ -609,6 +644,8 @@ int evsim_run2(void *handle, int kind, const void *frames, const long long *t_ns
     return -(int)cudaErrorInvalidValue;
   }
   const int init = h->initialised ? 0 : 1;
+  const long long t_lo = init ? t_ns[0] : h->prev_t;
+  const long long t_hi = t_ns[n_frames - 1];
   auto host_start = std::chrono::steady_clock::now();
   const size_t elem = kind == 0 ? sizeof(float) : 1;
   long long frames_bytes = 0;
@@ -655,6 +692,12 @@ int evsim_run2(void *handle, int kind, const void *frames, const long long *t_ns
 
   const long long *res_t = h->d_t;
   const unsigned int *res_pk = h->d_pk;
+  if ((flags & EVSIM_SORT) && total > 1) {
+    rc = sort_pass(h, total, t_lo, t_hi);
+    if (rc != 0) return rc;
+    res_t = h->d_t2;
+    res_pk = h->d_pk2;
+  }
   EVSIM_CHECK(mark(h, 6));
   rc = decode_pass(h, res_pk, total);
   if (rc != 0) return rc;
@@ -731,9 +774,12 @@ int evsim_destroy(void *handle) {
   EVSIM_FREE(h->d_scan_tmp);
   EVSIM_FREE(h->d_t);
   EVSIM_FREE(h->d_pk);
+  EVSIM_FREE(h->d_t2);
+  EVSIM_FREE(h->d_pk2);
   EVSIM_FREE(h->d_x);
   EVSIM_FREE(h->d_y);
   EVSIM_FREE(h->d_p);
+  EVSIM_FREE(h->d_sort_tmp);
   EVSIM_FREE_HOST(h->h_stage);
   EVSIM_FREE_HOST(h->h_tns);
   EVSIM_FREE_HOST(h->h_total);

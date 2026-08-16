@@ -8,10 +8,10 @@
 //! applied on the device, so u8 frames cross the bus as one byte per pixel.
 //!
 //! Each call copies the frames into the library's pinned staging buffer
-//! (parallel memcpy), runs `evsim_run2`, and copies the results out of the
-//! library's pinned result buffers into fresh `Vec`s (parallel memcpy). Device
-//! and pinned buffers live in the handle and grow geometrically, so there is
-//! no capacity guess and no retry. A failing `evsim_destroy` in `Drop` is
+//! (parallel memcpy), runs `evsim_run2` (which sorts on the device when asked),
+//! and copies the results out of the library's pinned result buffers into
+//! fresh `Vec`s (parallel memcpy). Device and pinned buffers live in the handle
+//! and grow geometrically, so there is no capacity guess and no retry. A failing `evsim_destroy` in `Drop` is
 //! reported with `eprintln!` and not surfaced as an error.
 
 use rayon::prelude::*;
@@ -47,7 +47,8 @@ type Run2Fn = unsafe extern "C" fn(
 ) -> c_int;
 type DestroyFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 
-/// `evsim_run2` flag: frames are already in the staging buffer.
+/// `evsim_run2` flags: sort by time on the device; frames are already staged.
+const FLAG_SORT: c_int = 1;
 const FLAG_STAGED: c_int = 2;
 
 /// Resolved entry points of the shared library; `_lib` keeps it mapped.
@@ -311,7 +312,8 @@ impl EventSimulatorCuda {
     }
 
     /// Stage the frames into pinned memory, run the device pipeline, copy the
-    /// results out. `sort` orders the batch by time on the host.
+    /// results out. `sort` orders the batch by time on the device (stable for
+    /// equal timestamps), so no host sort follows.
     fn run_frames(
         &mut self,
         frames: Frames<'_>,
@@ -348,7 +350,7 @@ impl EventSimulatorCuda {
                 std::ptr::null(),
                 t_ns.as_ptr(),
                 t_ns.len() as c_int,
-                FLAG_STAGED,
+                FLAG_STAGED | if sort { FLAG_SORT } else { 0 },
                 &mut px,
                 &mut py,
                 &mut pt,
@@ -368,7 +370,7 @@ impl EventSimulatorCuda {
             ));
         }
         // SAFETY: on rc 0 each result buffer holds exactly n elements.
-        let mut out = unsafe {
+        let out = unsafe {
             EventBatch {
                 x: vec_from_pinned(px, n),
                 y: vec_from_pinned(py, n),
@@ -378,9 +380,6 @@ impl EventSimulatorCuda {
         };
         self.prev_t = *t_ns.last().expect("non-empty batch");
         self.initialised = true;
-        if sort {
-            out.sort_by_time();
-        }
         Ok(out)
     }
 
@@ -604,6 +603,30 @@ mod tests {
         let got_b = gpu.run_u8(fb, tb, false).unwrap();
         assert!(!want_b.is_empty());
         assert_eq!(key(&got_b), key(&want_b));
+    }
+
+    /// Negative and sign-crossing timestamps sort correctly on the device.
+    #[test]
+    fn negative_timestamps_sort_on_device() {
+        if !lib_present() {
+            return;
+        }
+        let c = SimulatorConfig {
+            width: 64,
+            height: 32,
+            ..cfg()
+        };
+        let (frames, t) = random_sequence(64, 32, 16, 9);
+        let t: Vec<i64> = t.iter().map(|&v| v - 7_000_000).collect();
+        assert!(t[0] < 0 && *t.last().unwrap() > 0);
+        let mut cpu = EventSimulator::new(c).unwrap();
+        let mut gpu = EventSimulatorCuda::new(c).unwrap();
+        let want = cpu.run_log(&frames, &t, true).unwrap();
+        let got = gpu.run_log(&frames, &t, true).unwrap();
+        assert!(!want.is_empty());
+        assert_eq!(key(&got), key(&want));
+        assert!(got.t_ns.windows(2).all(|w| w[0] <= w[1]));
+        assert!(got.t_ns[0] < 0);
     }
 
     #[test]
