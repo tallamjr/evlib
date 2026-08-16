@@ -41,6 +41,7 @@ DataFrame work (filtering, windowing, grouping, representation maths) is exactly
 │                      Rust core (src/)                       │
 │  ev_formats         → binary decode + Polars frame build    │
 │  ev_representations → dense scatter-add for RVT histograms  │
+│  ev_simulation      → ESIM event simulator (CPU + CUDA)     │
 └─────────────────────────────────────────────────────────────┘
 ```
 

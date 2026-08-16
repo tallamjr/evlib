@@ -16,7 +16,7 @@
 def simulate_frames(frames, timestamps_ns, config=None, sort=True) -> pl.DataFrame
 ```
 
-`frames` is a `(T, H, W)` array, `uint8` intensity or `float32` log intensity; `timestamps_ns` is `int64` nanoseconds, strictly increasing. The result has columns `x` Int16, `y` Int16, `t` Duration(us) and `polarity` Int8, sorted by `t` unless `sort=False`. The first frame only initialises the state, so it emits no events.
+`frames` is a `(T, H, W)` array, `uint8` intensity or `float32` log intensity; `timestamps_ns` is `int64` nanoseconds, strictly increasing. The result has columns `x` Int16, `y` Int16, `t` Duration(us) and `polarity` Int8, sorted by `t` unless `sort=False`. With `sort=False` (and for `ESIMSimulator.step_ns`) events are grouped by row chunk and the order is not stable across thread counts. The first frame only initialises the state, so it emits no events.
 
 ```python
 import numpy as np
@@ -108,4 +108,4 @@ Measured 2026-08-17 on arg1 (AMD Threadripper 7960X, 24 cores / 48 threads; RTX 
 | 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CPU 48 threads | 256 | 0.387 | 68.7 M | 0.589 | 45.1 M | 682 |
 | 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CPU 48 threads | 256 | 0.906 | 55.7 M | 1.099 | 45.9 M | 232 |
 
-One CPU thread (`RAYON_NUM_THREADS=1`) does 20.7 M events/s kernel-only on the 320x320 input, 3.2x the single-thread esim_py C++ path (6.5 M events/s on the same frames). For reference, rpg_vid2e's esim_torch CUDA kernel with the frames already on the GPU reaches 668.5 M events/s (320x320) and 643.1 M events/s (640x480) at 32 frames per launch, and its shipped PNG-to-npz script 7.2 M and 11.8 M events/s. Batch 256 or the whole stack is faster than batch 32 on the CPU: each call carries a few ms of fixed cost. On this host the CUDA backend is host-bound (uint8 to float32 upload, copy back, allocation) and is not faster than the CPU path; the full tables, the allocator experiment and the caveats are in `lib/research/2026-08-17-evlib-simulator-benchmark.md`.
+One CPU thread (`RAYON_NUM_THREADS=1`) does 20.7 M events/s kernel-only on the 320x320 input, 3.2x the single-thread esim_py C++ path (6.5 M events/s on the same frames). For reference, rpg_vid2e's esim_torch CUDA kernel with the frames already on the GPU reaches 668.5 M events/s (320x320) and 643.1 M events/s (640x480) at 32 frames per launch, and its shipped PNG-to-npz script 7.2 M and 11.8 M events/s. Batch 256 or the whole stack is faster than batch 32 on the CPU: each call carries a few ms of fixed cost. On this host the CUDA backend is host-bound (uint8 to float32 upload, copy back, allocation) and is not faster than the CPU path (measured 2026-08-17 on arg1, RTX 4090 / 48-thread host).
