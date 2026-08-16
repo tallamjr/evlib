@@ -6,9 +6,11 @@ Run: .venv/bin/pytest tests/test_vid2e_conformance.py -q
 
 Tolerances and why (measured 2026-08-16, esim_torch ecbb11a, 87 frames):
 - total and positive counts within 0.25 % (measured 0.121 % and 0.120 %);
-- per-frame counts within 2 % (measured max 1.35 %, mean 0.17 %);
+- per-frame counts within 1.5 % (measured max 0.75 %, mean 0.16 %);
 - 10x10 block counts within 3 % (measured max 1.64 %, mean 0.13 %);
 - first 200 events sorted by (t, y, x, p): same x, y, p; t within 1 ns.
+per_pixel_counts_sha256 is recorded in the JSON but not asserted: exact-tie
+flips change single pixels, so block_counts is the enforced spatial digest.
 Both kernels are float32 ESIM. Nearly all divergence (98.4 % of the first
 divergent pixel cells) is an exact tie: a uint8 pixel returns to a grey level
 seen before, so L1 equals l_ref + k*c exactly, and float32 rounding resolves
@@ -31,7 +33,7 @@ REF = ROOT / "tests" / "conformance" / "reference" / "vid2e_slider_depth_ct0.2.j
 SLIDER = ROOT / "data" / "slider_depth"
 
 COUNT_TOL = 0.0025
-FRAME_TOL = 0.02
+FRAME_TOL = 0.015
 BLOCK_TOL = 0.03
 
 
@@ -101,9 +103,8 @@ def test_total_and_polarity_counts(reference, evlib_events):
 
 def test_per_frame_counts(reference, evlib_events):
     (_, _, t, _), t_ns = evlib_events
-    # Bin i holds events with t_ns[i] <= t < t_ns[i+1]; the last edge is inclusive.
+    # Bin i holds events with t_ns[i] <= t < t_ns[i+1]; np.histogram closes the last bin.
     counts = np.histogram(t, bins=t_ns)[0]
-    counts[-1] += int((t == t_ns[-1]).sum())
     ref = np.asarray(reference["per_frame_counts"])
     assert counts.shape == ref.shape
     rel = np.abs(counts - ref) / ref

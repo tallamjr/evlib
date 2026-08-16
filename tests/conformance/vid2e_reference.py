@@ -91,8 +91,8 @@ def run_esim(frames, t_ns, c_pos, c_neg, refractory_ns):
 def build_digest(events, frames, t_ns, args):
     x, y, t, p = events.T
     height, width = frames.shape[1:]
+    # np.histogram closes the last bin, so events at t_ns[-1] are counted once.
     per_frame = np.histogram(t, bins=t_ns)[0]
-    per_frame[-1] += int((t == t_ns[-1]).sum())
     per_pixel = np.zeros((height, width), dtype=np.int64)
     np.add.at(per_pixel, (y, x), 1)
     # 10x10 pixel block sums: coarse spatial digest that tolerates per-pixel tie flips.
@@ -112,6 +112,7 @@ def build_digest(events, frames, t_ns, args):
         "total_events": int(len(t)),
         "pos_events": int((p == 1).sum()),
         "per_frame_counts": per_frame.tolist(),
+        # Recorded for provenance only; the test asserts block_counts (tie flips break exact pixels).
         "per_pixel_counts_sha256": hashlib.sha256(per_pixel.tobytes()).hexdigest(),
         "block_px": BLOCK,
         "block_counts": blocks.tolist(),
