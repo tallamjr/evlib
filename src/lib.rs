@@ -1,6 +1,7 @@
 // Core modules (only working functionality)
 pub mod ev_formats;
 pub mod ev_representations;
+pub mod ev_simulation;
 
 // Tracing configuration for structured logging
 pub mod tracing_config;
