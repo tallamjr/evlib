@@ -73,6 +73,19 @@ events = pl.concat(chunks)                      # 6,650,175 events, same as simu
 
 evlib takes frames plus timestamps. Frame interpolation and video decode for VID2E-style upsampling (FILM, SuperSloMo, adaptive bisection) live outside evlib; the [lumin](https://github.com/tallamjr/lumin) front end produces the upsampled frame stacks and hands them to `simulate_frames`.
 
+### Frame stacks from lumin vfi
+
+`evlib.simulation.load_frame_stack(path)` reads a stack directory written by lumin's `StackWriter`: `frames.u8` (T\*H\*W bytes, frame-major, row-major uint8), `timestamps_ns.i64` (T little-endian int64) and `meta.json` (`width`, `height`, `frames`, `source`, `source_fps`, `model`, `provider`, `policy`, `factor`, `generated_by`, `date`). It returns a `FrameStack` dataclass with `frames` (a read-only `(T, H, W)` uint8 `numpy.memmap`), `timestamps_ns` (an int64 array) and `meta` (the parsed `meta.json` dict). It raises `FileNotFoundError` if a file is missing and `ValueError` if the file sizes do not match `meta.json` or the timestamps are not strictly increasing.
+
+```python
+from evlib.simulation import ESIMConfig, load_frame_stack, simulate_frames
+
+stack = load_frame_stack("seq/")             # frames.u8, timestamps_ns.i64, meta.json
+events = simulate_frames(stack.frames, stack.timestamps_ns, ESIMConfig())
+```
+
+`stack.frames` is memory-mapped, so `simulate_frames` and `ESIMSimulator.simulate` can take it directly without loading the whole stack into memory. For a stack too large to hold as one batch, `scripts/esim_convert.py --frames-dir seq/ --output events.parquet --batch-frames 256` feeds it through a persistent `ESIMSimulator` in slices, matching the events of a single whole-stack call while keeping memory bounded.
+
 ## Devices and the CUDA build
 
 `ESIMConfig(device=...)` selects the backend: `"cpu"` (rayon over rows, all cores), `"cuda"`, or `"auto"` (CUDA when available, else CPU). `evlib.simulation_rs.cuda_available()` reports whether the CUDA backend can run. Both backends use float32 state and float64 crossing times and give bit-identical event sets; `tests/test_simulation_cuda.py` checks that on the slider_depth frames.

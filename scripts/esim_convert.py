@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Convert a video file to events with the ESIM kernel (evlib.simulation).
+"""Convert a video file, or a lumin vfi frame stack, to events with the ESIM kernel.
 
 Run: .venv/bin/python scripts/esim_convert.py clip.mp4 -o events.h5
+Or:  .venv/bin/python scripts/esim_convert.py --frames-dir seq/ -o events.parquet
 Output format follows the extension: .h5/.hdf5, .parquet, or text (.txt/.csv).
 """
 
@@ -15,9 +16,11 @@ import polars as pl
 import evlib
 from evlib.simulation import (
     ESIMConfig,
+    ESIMSimulator,
     VideoConfig,
     VideoToEvents,
     estimate_event_count,
+    load_frame_stack,
 )
 
 _FLOAT_OPTIONS = [
@@ -37,6 +40,7 @@ _INT_OPTIONS = [
     ("--frame-skip", 0, "Frames to skip between kept frames"),
     ("--chunk-frames", 64, "Frames per streaming chunk"),
     ("--sample-frames", 100, "Frames sampled for estimation"),
+    ("--batch-frames", 256, "Frames per batch when reading --frames-dir"),
 ]
 _FLAGS = [
     ("--streaming", "Chunked processing"),
@@ -50,7 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert a video file to event data with the ESIM algorithm.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("video_file", help="Path to the input video file")
+    parser.add_argument("video_file", nargs="?", help="Path to the input video file")
+    parser.add_argument(
+        "--frames-dir",
+        type=Path,
+        help="Load a lumin vfi frame stack directory instead of a video file",
+    )
     parser.add_argument("-o", "--output", default="events_esim.h5", help="Output file")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     for flag, default, help_text in _FLOAT_OPTIONS:
@@ -78,12 +87,56 @@ def save_events(df, output: Path) -> None:
         evlib.save_events_to_text(x, y, t, p, str(output))
 
 
+def convert_frame_stack(
+    frames_dir: Path, esim_config: ESIMConfig, batch_frames: int
+) -> pl.DataFrame:
+    """Simulate a lumin vfi frame stack in batches so memory stays bounded.
+
+    Slices of the stack's memmap are fed through one persistent
+    ESIMSimulator, never materialising the whole stack as a plain array.
+    """
+    stack = load_frame_stack(frames_dir)
+    width = int(stack.meta["width"])
+    height = int(stack.meta["height"])
+    sim = ESIMSimulator(esim_config, width=width, height=height)
+    total_frames = stack.frames.shape[0]
+    parts = []
+    for start in range(0, total_frames, batch_frames):
+        end = min(start + batch_frames, total_frames)
+        chunk = sim.simulate(
+            stack.frames[start:end], stack.timestamps_ns[start:end], sort=False
+        )
+        if chunk.height:
+            parts.append(chunk)
+    if not parts:
+        return pl.DataFrame(
+            schema={
+                "x": pl.Int16,
+                "y": pl.Int16,
+                "t": pl.Duration("us"),
+                "polarity": pl.Int8,
+            }
+        )
+    return pl.concat(parts).sort("t")
+
+
+def _report_and_save(df: pl.DataFrame, output: Path, elapsed: float) -> None:
+    """Print the summary the CLI shows after any conversion, then save."""
+    save_events(df, output)
+    t_us = df["t"].dt.total_microseconds()
+    positive = int((df["polarity"] == 1).sum())
+    print(f"Events: {df.height:,} in {elapsed:.2f} s")
+    print(f"Time range: {t_us.min() / 1e6:.6f} - {t_us.max() / 1e6:.6f} s")
+    print(f"Positive: {positive:,}, negative: {df.height - positive:,}")
+    print(f"Saved to {output}")
+
+
 def main() -> int:
     args = build_parser().parse_args()
-    video_path = Path(args.video_file)
-    if not video_path.exists():
-        print(f"Error: video file not found: {video_path}")
+    if bool(args.video_file) == bool(args.frames_dir):
+        print("Error: give exactly one of video_file or --frames-dir")
         return 1
+
     esim_config = ESIMConfig(
         positive_threshold=args.cp,
         negative_threshold=args.cn,
@@ -93,6 +146,25 @@ def main() -> int:
         seed=args.seed,
         device=args.device,
     )
+
+    if args.frames_dir:
+        if not args.frames_dir.exists():
+            print(f"Error: frames directory not found: {args.frames_dir}")
+            return 1
+        print(f"Converting frame stack {args.frames_dir} -> {args.output}")
+        started = time.time()
+        df = convert_frame_stack(args.frames_dir, esim_config, args.batch_frames)
+        elapsed = time.time() - started
+        if df.height == 0:
+            print("No events were generated. Try lower thresholds (--cp, --cn).")
+            return 0
+        _report_and_save(df, Path(args.output), elapsed)
+        return 0
+
+    video_path = Path(args.video_file)
+    if not video_path.exists():
+        print(f"Error: video file not found: {video_path}")
+        return 1
     video_config = VideoConfig(
         width=args.width,
         height=args.height,
@@ -133,14 +205,7 @@ def main() -> int:
         print("No events were generated. Try lower thresholds (--cp, --cn).")
         return 0
 
-    output = Path(args.output)
-    save_events(df, output)
-    t_us = df["t"].dt.total_microseconds()
-    positive = int((df["polarity"] == 1).sum())
-    print(f"Events: {df.height:,} in {elapsed:.2f} s")
-    print(f"Time range: {t_us.min() / 1e6:.6f} - {t_us.max() / 1e6:.6f} s")
-    print(f"Positive: {positive:,}, negative: {df.height - positive:,}")
-    print(f"Saved to {output}")
+    _report_and_save(df, Path(args.output), elapsed)
     return 0
 
 
