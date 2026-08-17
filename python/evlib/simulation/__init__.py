@@ -16,6 +16,7 @@ from .config import (
     get_video_config,
 )
 from .esim import ESIMSimulator, simulate_frames
+from .stack import FrameStack, load_frame_stack
 
 __all__ = [
     "ESIMConfig",
@@ -26,6 +27,8 @@ __all__ = [
     "get_video_config",
     "ESIMSimulator",
     "simulate_frames",
+    "FrameStack",
+    "load_frame_stack",
 ]
 
 # Names gated on OpenCV. Without it, __getattr__ raises a clear install hint
