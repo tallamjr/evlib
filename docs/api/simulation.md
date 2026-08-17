@@ -112,20 +112,14 @@ How the CUDA path runs a batch: uint8 frames are copied into a pinned staging bu
 
 ## Benchmark
 
-Measured 2026-08-17 on arg1 (AMD Threadripper 7960X, 24 cores / 48 threads; RTX 4090; `benchmarks/bench_simulation.py`) on the gate 1 Big Buck Bunny frame folders at thresholds 0.2/0.2, uint8 frames, median of 3 after 1 warm-up, default glibc allocator. "kernel" is the unsorted raw-array call; "wall" is `ESIMSimulator.simulate` (sorted Polars DataFrame); "device" is the CUDA kernel alone (frames resident on the device, events left on the device, per-stage CUDA event times). The stack is fed in slices through one persistent simulator.
+The kernel is fast enough that Python and I/O set the ceiling for most workloads, not the simulation itself. Measured 2026-08-17 on an RTX 4090 host, real video frames, thresholds 0.2/0.2.
 
-| input | events | backend | batch | kernel s | events/s (kernel) | wall s | events/s (wall) | events/s (device) | video-hours per GPU-day |
-|---|---|---|---|---|---|---|---|---|---|
-| 900 frames 320x320 (29.97 s) | 21,212,272 | CPU 48 threads | 256 | 0.047 | 451 M | 0.163 | 130 M | | 4,422 |
-| 900 frames 320x320 (29.97 s) | 21,212,272 | CUDA | 32 | 0.052 | 406 M | 0.059 | 362 M | 1,445 M | 12,273 |
-| 900 frames 320x320 (29.97 s) | 21,212,272 | CUDA | whole | 0.036 | 585 M | 0.045 | 471 M | 1,847 M | 15,982 |
-| 900 frames 640x480 (29.97 s) | 67,819,884 | CPU 48 threads | 256 | 0.127 | 534 M | 0.463 | 147 M | | 1,554 |
-| 900 frames 640x480 (29.97 s) | 67,819,884 | CUDA | 32 | 0.127 | 533 M | 0.146 | 465 M | 1,892 M | 4,935 |
-| 900 frames 640x480 (29.97 s) | 67,819,884 | CUDA | whole | 0.112 | 603 M | 0.133 | 509 M | 2,156 M | 5,393 |
-| 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CPU 48 threads | whole | 0.212 | 125 M | 0.338 | 79 M | | 1,189 |
-| 8,000 upsampled frames 320x320 (16.73 s) | 26,568,646 | CUDA | 256 | 0.124 | 213 M | 0.145 | 183 M | 521 M | 2,768 |
-| 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CPU 48 threads | whole | 0.552 | 91 M | 0.805 | 63 M | | 316 |
-| 8,000 upsampled frames 640x480 (10.61 s) | 50,453,777 | CUDA | 256 | 0.277 | 182 M | 0.304 | 166 M | 538 M | 836 |
+"Events per second" below is what you actually get back from `simulate_frames`: sorted, in a Polars DataFrame.
+
+| resolution | CPU (48 threads) | CUDA | vs rpg_vid2e's shipped script |
+|---|---|---|---|
+| 320x320 | 130 M events/s | 362 M events/s | 18x (CPU), 50x (CUDA) |
+| 640x480 | 147 M events/s | 465 M events/s | 12x (CPU), 39x (CUDA) |
 
 <figure markdown="span">
     ![Event simulator throughput on the RTX 4090 host: evlib CUDA kernel ceiling, evlib CUDA sorted DataFrame, evlib CPU kernel and sorted DataFrame, against esim_torch kernel-only (batch 32 and 1), esim_torch as shipped and esim_py, at 320x320 and 640x480](../images/simulation_throughput.svg){ width="900" }
@@ -133,6 +127,8 @@ Measured 2026-08-17 on arg1 (AMD Threadripper 7960X, 24 cores / 48 threads; RTX 
     <figcaption>Million events per second on the raw30 frames; every bar is a row of <code>benchmarks/out/simulation_bench_results.json</code> or <code>simulation_reference_vid2e.json</code>. Regenerate with <code>python -m benchmarks.plot_simulation</code>.</figcaption>
 </figure>
 
-For reference, rpg_vid2e's esim_torch CUDA kernel with the frames already on the GPU reaches 668.5 M events/s (320x320) and 643.1 M events/s (640x480) at 32 frames per launch on the same host, and its shipped PNG-to-npz script 7.2 M and 11.8 M events/s; the comparable evlib number is the "device" column (1.4 to 2.2 G events/s on the raw frames). One CPU thread (`RAYON_NUM_THREADS=1`) does 20.7 M events/s kernel-only on the 320x320 input, 3.2x the single-thread esim_py C++ path (6.5 M events/s on the same frames). On the upsampled inputs the CUDA path is bound by the frame upload (2.4 GB of uint8 frames for 50 M events at 640x480, about 48 bytes of input per event against 4 on the raw frames), so it runs at 120 to 220 M events/s there. Both backends give the same event sets; the CPU path is the fallback and is limited by the host sort and first-touch page faults on the output.
+- Both backends produce the same events (see Conformance above); pick CUDA when a GPU is available, CPU otherwise.
+- The GPU kernel by itself, frames already on the device, no sorting, is faster still: 1.4 to 1.9 billion events/s, about 2 to 3 times rpg_vid2e's own CUDA kernel measured the same way.
+- On heavily upsampled input (many more frames per second of video) the CUDA path becomes upload-bound and drops to 120 to 220 M events/s. The kernel itself is not the limit there; moving the frames to the GPU is.
 
-The method, the stage breakdown figure, the per-lever CUDA progression and the full result tables (all inputs, both backends, batch 32/256/whole, plus the rpg_vid2e reference rows with source and licence) are in [`benchmarks/README.md`](https://github.com/tallamjr/evlib/blob/master/benchmarks/README.md#event-simulator-benchmark).
+Every batch size, both backends' stage-by-stage timings, and the exact rpg_vid2e reference numbers are in [`benchmarks/README.md`](https://github.com/tallamjr/evlib/blob/master/benchmarks/README.md#event-simulator-benchmark).
