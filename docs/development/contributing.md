@@ -205,7 +205,7 @@ python/evlib/representations.py → evlib.representations
 python/evlib/rvt/               → evlib.rvt             # RVT-identical preprocessing pipeline
 python/evlib/visualization.py   → evlib.visualization
 python/evlib/models/            → evlib.models
-python/evlib/simulation/        → evlib.simulation      # ESIM video-to-events (requires PyTorch)
+python/evlib/simulation/        → evlib.simulation      # ESIM video-to-events (Rust kernel, OpenCV decode)
 ```
 
 ## Adding New Features

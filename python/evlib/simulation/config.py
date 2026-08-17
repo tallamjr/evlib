@@ -1,66 +1,58 @@
-"""Configuration classes for event camera simulation."""
+"""Configuration dataclasses for the ESIM simulator and video decode."""
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, Literal
+from dataclasses import dataclass
+from typing import Any, Dict, Literal, Optional
 
 
 @dataclass
 class ESIMConfig:
-    """Configuration for the ESIM (Event-based Simulator) algorithm.
+    """ESIM kernel parameters. Thresholds are log-intensity contrast; refractory in ms."""
 
-    ESIM simulates event cameras by tracking log intensity changes and generating
-    events when changes exceed specified thresholds.
-
-    Args:
-        positive_threshold: Contrast threshold for positive events (log intensity increase)
-        negative_threshold: Contrast threshold for negative events (log intensity decrease)
-        refractory_period_ms: Minimum time between events at the same pixel (milliseconds)
-        log_floor: Minimum value for log intensity to avoid log(0)
-        device: Computing device ("cuda", "cpu", or "auto" for automatic selection)
-        dtype: Data type for computations ("float32" or "float64")
-        extra_params: Additional algorithm-specific parameters
-    """
-
-    positive_threshold: float = 0.4
-    negative_threshold: float = 0.4
-    refractory_period_ms: float = 0.1
-    log_floor: float = 0.001
-    device: Literal["cuda", "mps", "cpu", "auto"] = "auto"
-    dtype: Literal["float32", "float64"] = "float64"
-    extra_params: Dict[str, Any] = field(default_factory=dict)
+    positive_threshold: float = 0.2
+    negative_threshold: float = 0.2
+    refractory_period_ms: float = 0.0
+    log_eps: float = 1e-3
+    threshold_sigma: float = 0.0
+    seed: int = 0
+    device: Literal["auto", "cpu", "cuda"] = "auto"
 
     def __post_init__(self) -> None:
-        """Validate configuration parameters."""
         if self.positive_threshold <= 0:
             raise ValueError("positive_threshold must be positive")
         if self.negative_threshold <= 0:
             raise ValueError("negative_threshold must be positive")
         if self.refractory_period_ms < 0:
             raise ValueError("refractory_period_ms must be non-negative")
-        if self.log_floor <= 0:
-            raise ValueError("log_floor must be positive")
+        if self.log_eps <= 0:
+            raise ValueError("log_eps must be positive")
+        if self.threshold_sigma < 0:
+            raise ValueError("threshold_sigma must be non-negative")
+        if self.device not in ("auto", "cpu", "cuda"):
+            raise ValueError("device must be 'auto', 'cpu' or 'cuda'")
+
+    @property
+    def refractory_ns(self) -> int:
+        return int(round(self.refractory_period_ms * 1e6))
+
+    def kernel_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for evlib.simulation_rs functions."""
+        return {
+            "c_pos": self.positive_threshold,
+            "c_neg": self.negative_threshold,
+            "threshold_sigma": self.threshold_sigma,
+            "refractory_ns": self.refractory_ns,
+            "log_eps": self.log_eps,
+            "seed": self.seed,
+        }
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "ESIMConfig":
-        """Create ESIMConfig from dictionary."""
-        extra_params = config_dict.pop("extra_params", {})
-        return cls(**config_dict, extra_params=extra_params)
+        return cls(**config_dict)
 
 
 @dataclass
 class VideoConfig:
-    """Configuration for video processing.
-
-    Args:
-        width: Target width for video frames (None to preserve original)
-        height: Target height for video frames (None to preserve original)
-        fps: Frames per second override (None to use video's native FPS)
-        start_time: Start time in seconds (None to start from beginning)
-        end_time: End time in seconds (None to process entire video)
-        frame_skip: Number of frames to skip between processed frames (0 = process all)
-        grayscale: Whether to convert frames to grayscale before processing
-        extra_params: Additional video processing parameters
-    """
+    """Video decode settings. None width/height keeps the source size; times in seconds."""
 
     width: Optional[int] = 640
     height: Optional[int] = 480
@@ -69,10 +61,8 @@ class VideoConfig:
     end_time: Optional[float] = None
     frame_skip: int = 0
     grayscale: bool = True
-    extra_params: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate configuration parameters."""
         if self.width is not None and self.width <= 0:
             raise ValueError("width must be positive")
         if self.height is not None and self.height <= 0:
@@ -91,21 +81,17 @@ class VideoConfig:
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "VideoConfig":
-        """Create VideoConfig from dictionary."""
-        extra_params = config_dict.pop("extra_params", {})
-        return cls(**config_dict, extra_params=extra_params)
+        return cls(**config_dict)
 
 
-# Pre-defined configurations for common use cases
 ESIM_CONFIGS = {
     "default": ESIMConfig(),
-    "high_sensitivity": ESIMConfig(positive_threshold=0.2, negative_threshold=0.2),
-    "low_sensitivity": ESIMConfig(positive_threshold=0.8, negative_threshold=0.8),
-    "fast": ESIMConfig(refractory_period_ms=0.01, dtype="float32"),
-    "accurate": ESIMConfig(dtype="float64", log_floor=0.0001),
+    "high_sensitivity": ESIMConfig(positive_threshold=0.1, negative_threshold=0.1),
+    "low_sensitivity": ESIMConfig(positive_threshold=0.5, negative_threshold=0.5),
     "low_noise": ESIMConfig(
-        positive_threshold=0.6, negative_threshold=0.6, refractory_period_ms=1.0
+        positive_threshold=0.3, negative_threshold=0.3, refractory_period_ms=1.0
     ),
+    "mismatch": ESIMConfig(threshold_sigma=0.1),
 }
 
 VIDEO_CONFIGS = {
@@ -113,23 +99,13 @@ VIDEO_CONFIGS = {
     "hd": VideoConfig(width=1280, height=720),
     "vga": VideoConfig(width=640, height=480),
     "qvga": VideoConfig(width=320, height=240),
-    "fast": VideoConfig(frame_skip=1),  # Process every other frame
+    "fast": VideoConfig(frame_skip=1),
     "high_quality": VideoConfig(frame_skip=0, grayscale=False),
 }
 
 
 def get_esim_config(name: str) -> ESIMConfig:
-    """Get a pre-defined ESIM configuration by name.
-
-    Args:
-        name: Configuration name (e.g., 'default', 'high_sensitivity', 'fast')
-
-    Returns:
-        ESIMConfig instance
-
-    Raises:
-        ValueError: If configuration name is not found
-    """
+    """Return a preset ESIMConfig by name; raise ValueError for unknown names."""
     if name not in ESIM_CONFIGS:
         available = list(ESIM_CONFIGS.keys())
         raise ValueError(f"Unknown ESIM config '{name}'. Available: {available}")
@@ -137,17 +113,7 @@ def get_esim_config(name: str) -> ESIMConfig:
 
 
 def get_video_config(name: str) -> VideoConfig:
-    """Get a pre-defined video configuration by name.
-
-    Args:
-        name: Configuration name (e.g., 'default', 'hd', 'fast')
-
-    Returns:
-        VideoConfig instance
-
-    Raises:
-        ValueError: If configuration name is not found
-    """
+    """Return a preset VideoConfig by name; raise ValueError for unknown names."""
     if name not in VIDEO_CONFIGS:
         available = list(VIDEO_CONFIGS.keys())
         raise ValueError(f"Unknown video config '{name}'. Available: {available}")

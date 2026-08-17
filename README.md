@@ -60,7 +60,7 @@ evaluation support for event-based detection models:
   (`SequenceRandomDataset`, `SequenceStreamDataset`, `SequenceAugmentor`,
   label preprocessing, collate functions).
 - **`evlib.eval`**: Prophesee-compatible detection mAP scoring.
-- **`evlib.simulation`**: ESIM video-to-events simulation (requires PyTorch).
+- **`evlib.simulation`**: ESIM video-to-events simulation on a Rust per-pixel kernel, CPU (rayon) or CUDA, no PyTorch needed (OpenCV only for video decode). 218.9 M events/s unsorted and 111.0 M events/s as a sorted Polars frame on 900 320x320 frames with 48 threads (arg1, 2026-08-17); see [docs/api/simulation.md](docs/api/simulation.md).
 - **`evlib-rvt-preprocess`**: a console script (installed with the package)
   that runs the RVT preprocessing pipeline end to end from the command line.
 

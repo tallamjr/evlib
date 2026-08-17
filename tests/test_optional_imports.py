@@ -150,7 +150,7 @@ def test_simulation_getattr_raises_clear_error_without_opencv(monkeypatch):
     monkeypatch.delattr(simulation_pkg, "VideoToEvents", raising=False)
     try:
         reloaded = importlib.reload(simulation_pkg)
-        with pytest.raises(ImportError, match=r"evlib\[torch,plot\]"):
+        with pytest.raises(ImportError, match=r"evlib\[plot\]"):
             reloaded.VideoToEvents
     finally:
         monkeypatch.undo()

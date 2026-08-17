@@ -1,0 +1,808 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="720pt" height="619.2pt" viewBox="0 0 720 619.2" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.0, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 619.2
+L 720 619.2
+L 720 0
+L 0 0
+L 0 619.2
+z
+" style="fill: none"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 226.42 289.085301
+L 709.2 289.085301
+L 709.2 65.934516
+L 226.42 65.934516
+L 226.42 289.085301
+z
+" style="fill: none"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <path d="M 226.42 289.085301
+L 226.42 65.934516
+" clip-path="url(#pf85a117431)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_2">
+      <defs>
+       <path id="m04453c26d6" d="M 0 0
+L 0 3.5
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m04453c26d6" x="226.42" y="289.085301" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_3">
+      <path d="M 323.797065 289.085301
+L 323.797065 65.934516
+" clip-path="url(#pf85a117431)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#m04453c26d6" x="323.797065" y="289.085301" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_5">
+      <path d="M 421.17413 289.085301
+L 421.17413 65.934516
+" clip-path="url(#pf85a117431)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_6">
+      <g>
+       <use xlink:href="#m04453c26d6" x="421.17413" y="289.085301" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_7">
+      <path d="M 518.551194 289.085301
+L 518.551194 65.934516
+" clip-path="url(#pf85a117431)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8">
+      <g>
+       <use xlink:href="#m04453c26d6" x="518.551194" y="289.085301" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_9">
+      <path d="M 615.928259 289.085301
+L 615.928259 65.934516
+" clip-path="url(#pf85a117431)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10">
+      <g>
+       <use xlink:href="#m04453c26d6" x="615.928259" y="289.085301" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_11">
+      <defs>
+       <path id="m17eb4ecfef" d="M 0 0
+L -3.5 0
+" style="stroke: #52514e; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="81.819177" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="85.068933" transform="rotate(-0 219.42 85.068933)">evlib CUDA kernel ceiling (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_12">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="99.217492" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="102.467248" transform="rotate(-0 219.42 102.467248)">evlib CUDA kernel ceiling (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_13">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="116.615807" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="119.865562" transform="rotate(-0 219.42 119.865562)">evlib CUDA sorted DataFrame (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_14">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="134.014121" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="137.263877" transform="rotate(-0 219.42 137.263877)">evlib CUDA sorted DataFrame (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_15">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="151.412436" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="154.662192" transform="rotate(-0 219.42 154.662192)">evlib CPU kernel, 48 threads (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_16">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="168.810751" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="172.060507" transform="rotate(-0 219.42 172.060507)">evlib CPU kernel, 48 threads (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_7">
+     <g id="line2d_17">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="186.209066" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="189.458821" transform="rotate(-0 219.42 189.458821)">evlib CPU sorted DataFrame, 48 threads (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_8">
+     <g id="line2d_18">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="203.60738" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="206.857136" transform="rotate(-0 219.42 206.857136)">evlib CPU sorted DataFrame, 48 threads (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_9">
+     <g id="line2d_19">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="221.005695" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_9">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="224.255451" transform="rotate(-0 219.42 224.255451)">esim_torch kernel-only (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_10">
+     <g id="line2d_20">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="238.40401" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_10">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="241.653766" transform="rotate(-0 219.42 241.653766)">esim_torch kernel-only (batch 1)</text>
+     </g>
+    </g>
+    <g id="ytick_11">
+     <g id="line2d_21">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="255.802325" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_11">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="259.05208" transform="rotate(-0 219.42 259.05208)">esim_torch as shipped (PNG to npz)</text>
+     </g>
+    </g>
+    <g id="ytick_12">
+     <g id="line2d_22">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="273.200639" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_12">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="276.450395" transform="rotate(-0 219.42 276.450395)">esim_py C++, 1 thread</text>
+     </g>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 226.42 289.085301
+L 226.42 65.934516
+" style="fill: none; stroke: #52514e; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 226.42 289.085301
+L 709.2 289.085301
+" style="fill: none; stroke: #52514e; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 226.42 76.077733
+L 507.911452 76.077733
+L 507.911452 87.560621
+L 226.42 87.560621
+z
+" clip-path="url(#pf85a117431)" style="fill: #86b6ef"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 226.42 93.476048
+L 586.122253 93.476048
+L 586.122253 104.958936
+L 226.42 104.958936
+z
+" clip-path="url(#pf85a117431)" style="fill: #86b6ef"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 226.42 110.874363
+L 296.919807 110.874363
+L 296.919807 122.35725
+L 226.42 122.35725
+z
+" clip-path="url(#pf85a117431)" style="fill: #2a78d6"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 226.42 128.272677
+L 318.220613 128.272677
+L 318.220613 139.755565
+L 226.42 139.755565
+z
+" clip-path="url(#pf85a117431)" style="fill: #2a78d6"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 226.42 145.670992
+L 269.543727 145.670992
+L 269.543727 157.15388
+L 226.42 157.15388
+z
+" clip-path="url(#pf85a117431)" style="fill: #86d9b8"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 226.42 163.069307
+L 295.652442 163.069307
+L 295.652442 174.552195
+L 226.42 174.552195
+z
+" clip-path="url(#pf85a117431)" style="fill: #86d9b8"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 226.42 180.467622
+L 246.345244 180.467622
+L 246.345244 191.950509
+L 226.42 191.950509
+z
+" clip-path="url(#pf85a117431)" style="fill: #1baf7a"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 226.42 197.865936
+L 252.429995 197.865936
+L 252.429995 209.348824
+L 226.42 209.348824
+z
+" clip-path="url(#pf85a117431)" style="fill: #1baf7a"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 226.42 215.264251
+L 356.620678 215.264251
+L 356.620678 226.747139
+L 226.42 226.747139
+z
+" clip-path="url(#pf85a117431)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_14">
+    <path d="M 226.42 232.662566
+L 247.555352 232.662566
+L 247.555352 244.145454
+L 226.42 244.145454
+z
+" clip-path="url(#pf85a117431)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_15">
+    <path d="M 226.42 250.060881
+L 227.819782 250.060881
+L 227.819782 261.543769
+L 226.42 261.543769
+z
+" clip-path="url(#pf85a117431)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_16">
+    <path d="M 226.42 267.459196
+L 227.694137 267.459196
+L 227.694137 278.942083
+L 226.42 278.942083
+z
+" clip-path="url(#pf85a117431)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="510.832764" y="84.051599" transform="rotate(-0 510.832764 84.051599)">1,445 M</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="589.043565" y="101.449914" transform="rotate(-0 589.043565 101.449914)">1,847 M</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="299.841119" y="118.848228" transform="rotate(-0 299.841119 118.848228)">362 M</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="321.141925" y="136.246543" transform="rotate(-0 321.141925 136.246543)">471 M</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="272.465039" y="153.644858" transform="rotate(-0 272.465039 153.644858)">221 M</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="298.573754" y="171.043173" transform="rotate(-0 298.573754 171.043173)">355 M</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="249.266556" y="188.441487" transform="rotate(-0 249.266556 188.441487)">102 M</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="255.351307" y="205.839802" transform="rotate(-0 255.351307 205.839802)">134 M</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="359.54199" y="223.238117" transform="rotate(-0 359.54199 223.238117)">669 M</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="250.476664" y="240.636432" transform="rotate(-0 250.476664 240.636432)">109 M</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="230.741094" y="258.034747" transform="rotate(-0 230.741094 258.034747)">7.2 M</text>
+   </g>
+   <g id="text_24">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="230.615449" y="275.433061" transform="rotate(-0 230.615449 275.433061)">6.5 M</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="226.42" y="59.934516" transform="rotate(-0 226.42 59.934516)">raw30 320x320, 900 frames, 21.2 M events</text>
+   </g>
+  </g>
+  <g id="axes_2">
+   <g id="patch_17">
+    <path d="M 226.42 540.456086
+L 709.2 540.456086
+L 709.2 317.305301
+L 226.42 317.305301
+L 226.42 540.456086
+z
+" style="fill: none"/>
+   </g>
+   <g id="matplotlib.axis_3">
+    <g id="xtick_6">
+     <g id="line2d_23">
+      <path d="M 226.42 540.456086
+L 226.42 317.305301
+" clip-path="url(#p719ff686d6)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_24">
+      <g>
+       <use xlink:href="#m04453c26d6" x="226.42" y="540.456086" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_26">
+      <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #52514e" x="226.42" y="555.10257" transform="rotate(-0 226.42 555.10257)">0</text>
+     </g>
+    </g>
+    <g id="xtick_7">
+     <g id="line2d_25">
+      <path d="M 323.797065 540.456086
+L 323.797065 317.305301
+" clip-path="url(#p719ff686d6)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_26">
+      <g>
+       <use xlink:href="#m04453c26d6" x="323.797065" y="540.456086" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_27">
+      <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #52514e" x="323.797065" y="555.10257" transform="rotate(-0 323.797065 555.10257)">500</text>
+     </g>
+    </g>
+    <g id="xtick_8">
+     <g id="line2d_27">
+      <path d="M 421.17413 540.456086
+L 421.17413 317.305301
+" clip-path="url(#p719ff686d6)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_28">
+      <g>
+       <use xlink:href="#m04453c26d6" x="421.17413" y="540.456086" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_28">
+      <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #52514e" x="421.17413" y="555.10257" transform="rotate(-0 421.17413 555.10257)">1000</text>
+     </g>
+    </g>
+    <g id="xtick_9">
+     <g id="line2d_29">
+      <path d="M 518.551194 540.456086
+L 518.551194 317.305301
+" clip-path="url(#p719ff686d6)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_30">
+      <g>
+       <use xlink:href="#m04453c26d6" x="518.551194" y="540.456086" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_29">
+      <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #52514e" x="518.551194" y="555.10257" transform="rotate(-0 518.551194 555.10257)">1500</text>
+     </g>
+    </g>
+    <g id="xtick_10">
+     <g id="line2d_31">
+      <path d="M 615.928259 540.456086
+L 615.928259 317.305301
+" clip-path="url(#p719ff686d6)" style="fill: none; stroke: #e1e0d9; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_32">
+      <g>
+       <use xlink:href="#m04453c26d6" x="615.928259" y="540.456086" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_30">
+      <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #52514e" x="615.928259" y="555.10257" transform="rotate(-0 615.928259 555.10257)">2000</text>
+     </g>
+    </g>
+    <g id="text_31">
+     <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: middle; fill: #0b0b0b" x="467.81" y="568.814484" transform="rotate(-0 467.81 568.814484)">million events per second (higher is better)</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_4">
+    <g id="ytick_13">
+     <g id="line2d_33">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="333.189962" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_32">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="336.439718" transform="rotate(-0 219.42 336.439718)">evlib CUDA kernel ceiling (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_14">
+     <g id="line2d_34">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="350.588277" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_33">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="353.838033" transform="rotate(-0 219.42 353.838033)">evlib CUDA kernel ceiling (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_15">
+     <g id="line2d_35">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="367.986592" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_34">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="371.236348" transform="rotate(-0 219.42 371.236348)">evlib CUDA sorted DataFrame (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_16">
+     <g id="line2d_36">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="385.384906" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_35">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="388.634662" transform="rotate(-0 219.42 388.634662)">evlib CUDA sorted DataFrame (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_17">
+     <g id="line2d_37">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="402.783221" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_36">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="406.032977" transform="rotate(-0 219.42 406.032977)">evlib CPU kernel, 48 threads (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_18">
+     <g id="line2d_38">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="420.181536" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_37">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="423.431292" transform="rotate(-0 219.42 423.431292)">evlib CPU kernel, 48 threads (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_19">
+     <g id="line2d_39">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="437.579851" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_38">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="440.829607" transform="rotate(-0 219.42 440.829607)">evlib CPU sorted DataFrame, 48 threads (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_20">
+     <g id="line2d_40">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="454.978166" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_39">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="458.227921" transform="rotate(-0 219.42 458.227921)">evlib CPU sorted DataFrame, 48 threads (whole stack)</text>
+     </g>
+    </g>
+    <g id="ytick_21">
+     <g id="line2d_41">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="472.37648" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_40">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="475.626236" transform="rotate(-0 219.42 475.626236)">esim_torch kernel-only (batch 32)</text>
+     </g>
+    </g>
+    <g id="ytick_22">
+     <g id="line2d_42">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="489.774795" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_41">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="493.024551" transform="rotate(-0 219.42 493.024551)">esim_torch kernel-only (batch 1)</text>
+     </g>
+    </g>
+    <g id="ytick_23">
+     <g id="line2d_43">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="507.17311" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_42">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="510.422866" transform="rotate(-0 219.42 510.422866)">esim_torch as shipped (PNG to npz)</text>
+     </g>
+    </g>
+    <g id="ytick_24">
+     <g id="line2d_44">
+      <g>
+       <use xlink:href="#m17eb4ecfef" x="226.42" y="524.571425" style="fill: #52514e; stroke: #52514e; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_43">
+      <text style="font-size: 8.5px; font-family: 'Tahoma'; text-anchor: end; fill: #52514e" x="219.42" y="527.82118" transform="rotate(-0 219.42 527.82118)">esim_py C++, 1 thread</text>
+     </g>
+    </g>
+   </g>
+   <g id="patch_18">
+    <path d="M 226.42 540.456086
+L 226.42 317.305301
+" style="fill: none; stroke: #52514e; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_19">
+    <path d="M 226.42 540.456086
+L 709.2 540.456086
+" style="fill: none; stroke: #52514e; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_20">
+    <path d="M 226.42 327.448518
+L 594.922165 327.448518
+L 594.922165 338.931406
+L 226.42 338.931406
+z
+" clip-path="url(#p719ff686d6)" style="fill: #86b6ef"/>
+   </g>
+   <g id="patch_21">
+    <path d="M 226.42 344.846833
+L 646.228696 344.846833
+L 646.228696 356.329721
+L 226.42 356.329721
+z
+" clip-path="url(#p719ff686d6)" style="fill: #86b6ef"/>
+   </g>
+   <g id="patch_22">
+    <path d="M 226.42 362.245148
+L 317.046923 362.245148
+L 317.046923 373.728036
+L 226.42 373.728036
+z
+" clip-path="url(#p719ff686d6)" style="fill: #2a78d6"/>
+   </g>
+   <g id="patch_23">
+    <path d="M 226.42 379.643463
+L 325.465924 379.643463
+L 325.465924 391.12635
+L 226.42 391.12635
+z
+" clip-path="url(#p719ff686d6)" style="fill: #2a78d6"/>
+   </g>
+   <g id="patch_24">
+    <path d="M 226.42 397.041777
+L 287.057168 397.041777
+L 287.057168 408.524665
+L 226.42 408.524665
+z
+" clip-path="url(#p719ff686d6)" style="fill: #86d9b8"/>
+   </g>
+   <g id="patch_25">
+    <path d="M 226.42 414.440092
+L 304.029648 414.440092
+L 304.029648 425.92298
+L 226.42 425.92298
+z
+" clip-path="url(#p719ff686d6)" style="fill: #86d9b8"/>
+   </g>
+   <g id="patch_26">
+    <path d="M 226.42 431.838407
+L 253.394762 431.838407
+L 253.394762 443.321295
+L 226.42 443.321295
+z
+" clip-path="url(#p719ff686d6)" style="fill: #1baf7a"/>
+   </g>
+   <g id="patch_27">
+    <path d="M 226.42 449.236722
+L 253.385975 449.236722
+L 253.385975 460.719609
+L 226.42 460.719609
+z
+" clip-path="url(#p719ff686d6)" style="fill: #1baf7a"/>
+   </g>
+   <g id="patch_28">
+    <path d="M 226.42 466.635036
+L 351.65851 466.635036
+L 351.65851 478.117924
+L 226.42 478.117924
+z
+" clip-path="url(#p719ff686d6)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_29">
+    <path d="M 226.42 484.033351
+L 282.589618 484.033351
+L 282.589618 495.516239
+L 226.42 495.516239
+z
+" clip-path="url(#p719ff686d6)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_30">
+    <path d="M 226.42 501.431666
+L 228.727506 501.431666
+L 228.727506 512.914554
+L 226.42 512.914554
+z
+" clip-path="url(#p719ff686d6)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="patch_31">
+    <path d="M 226.42 518.829981
+L 227.70942 518.829981
+L 227.70942 530.312868
+L 226.42 530.312868
+z
+" clip-path="url(#p719ff686d6)" style="fill: #bdbdbd"/>
+   </g>
+   <g id="text_44">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="597.843476" y="335.422384" transform="rotate(-0 597.843476 335.422384)">1,892 M</text>
+   </g>
+   <g id="text_45">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="649.150008" y="352.820699" transform="rotate(-0 649.150008 352.820699)">2,156 M</text>
+   </g>
+   <g id="text_46">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="319.968235" y="370.219014" transform="rotate(-0 319.968235 370.219014)">465 M</text>
+   </g>
+   <g id="text_47">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="328.387236" y="387.617328" transform="rotate(-0 328.387236 387.617328)">509 M</text>
+   </g>
+   <g id="text_48">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="289.978479" y="405.015643" transform="rotate(-0 289.978479 405.015643)">311 M</text>
+   </g>
+   <g id="text_49">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="306.95096" y="422.413958" transform="rotate(-0 306.95096 422.413958)">399 M</text>
+   </g>
+   <g id="text_50">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="256.316074" y="439.812273" transform="rotate(-0 256.316074 439.812273)">139 M</text>
+   </g>
+   <g id="text_51">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="256.307287" y="457.210587" transform="rotate(-0 256.307287 457.210587)">138 M</text>
+   </g>
+   <g id="text_52">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="354.579822" y="474.608902" transform="rotate(-0 354.579822 474.608902)">643 M</text>
+   </g>
+   <g id="text_53">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="285.51093" y="492.007217" transform="rotate(-0 285.51093 492.007217)">288 M</text>
+   </g>
+   <g id="text_54">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="231.648818" y="509.405532" transform="rotate(-0 231.648818 509.405532)">11.8 M</text>
+   </g>
+   <g id="text_55">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="230.630732" y="526.803846" transform="rotate(-0 230.630732 526.803846)">6.6 M</text>
+   </g>
+   <g id="text_56">
+    <text style="font-size: 10px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="226.42" y="311.305301" transform="rotate(-0 226.42 311.305301)">raw30 640x480, 900 frames, 67.8 M events</text>
+   </g>
+  </g>
+  <g id="text_57">
+   <text style="font-weight: 700; font-size: 12px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="7.2" y="21.559781" transform="rotate(-0 7.2 21.559781)">Event simulator throughput on an RTX 4090 host: evlib against rpg_vid2e</text>
+  </g>
+  <g id="legend_1">
+   <g id="patch_32">
+    <path d="M 158.655625 598.577969
+L 174.655625 598.577969
+L 174.655625 592.977969
+L 158.655625 592.977969
+z
+" style="fill: #86b6ef; stroke: #86b6ef; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_58">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="181.055625" y="598.577969" transform="rotate(-0 181.055625 598.577969)">CUDA kernel ceiling (device resident)</text>
+   </g>
+   <g id="patch_33">
+    <path d="M 158.655625 610.347656
+L 174.655625 610.347656
+L 174.655625 604.747656
+L 158.655625 604.747656
+z
+" style="fill: #2a78d6; stroke: #2a78d6; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_59">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="181.055625" y="610.347656" transform="rotate(-0 181.055625 610.347656)">CUDA sorted DataFrame</text>
+   </g>
+   <g id="patch_34">
+    <path d="M 327.828125 598.577969
+L 343.828125 598.577969
+L 343.828125 592.977969
+L 327.828125 592.977969
+z
+" style="fill: #86d9b8; stroke: #86d9b8; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_60">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="350.228125" y="598.577969" transform="rotate(-0 350.228125 598.577969)">CPU kernel (unsorted arrays)</text>
+   </g>
+   <g id="patch_35">
+    <path d="M 327.828125 610.3475
+L 343.828125 610.3475
+L 343.828125 604.7475
+L 327.828125 604.7475
+z
+" style="fill: #1baf7a; stroke: #1baf7a; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_61">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="350.228125" y="610.3475" transform="rotate(-0 350.228125 610.3475)">CPU sorted DataFrame</text>
+   </g>
+   <g id="patch_36">
+    <path d="M 468.379375 598.577969
+L 484.379375 598.577969
+L 484.379375 592.977969
+L 468.379375 592.977969
+z
+" style="fill: #bdbdbd; stroke: #bdbdbd; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_62">
+    <text style="font-size: 8px; font-family: 'Tahoma'; text-anchor: start; fill: #0b0b0b" x="490.779375" y="598.577969" transform="rotate(-0 490.779375 598.577969)">rpg_vid2e reference</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pf85a117431">
+   <rect x="226.42" y="65.934516" width="482.78" height="223.150785"/>
+  </clipPath>
+  <clipPath id="p719ff686d6">
+   <rect x="226.42" y="317.305301" width="482.78" height="223.150785"/>
+  </clipPath>
+ </defs>
+</svg>

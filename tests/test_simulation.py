@@ -1,350 +1,207 @@
-"""Tests for the evlib.simulation module."""
+"""evlib.simulation on real slider_depth frames. Run: .venv/bin/pytest tests/test_simulation.py.
+Acceptance: no torch import, Polars output in the canonical schema, deterministic with a seed.
+"""
 
-import os
-import tempfile
+from pathlib import Path
 
 import numpy as np
+import polars as pl
 import pytest
 
-try:
-    import torch
+from evlib.simulation import ESIMConfig, ESIMSimulator, VideoConfig, simulate_frames
 
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-
-try:
-    import cv2
-
-    CV2_AVAILABLE = True
-except ImportError:
-    CV2_AVAILABLE = False
+ROOT = Path(__file__).resolve().parents[1]
+SLIDER = ROOT / "data" / "slider_depth"
 
 
-# Test configuration classes
-def test_esim_config():
-    """Test ESIMConfig class."""
-    from evlib.simulation.config import ESIMConfig
+@pytest.fixture(scope="module")
+def slider_frames():
+    from PIL import Image
 
-    config = ESIMConfig()
-    assert config.positive_threshold == 0.4
-    assert config.negative_threshold == 0.4
-    assert config.refractory_period_ms == 0.1
-    assert config.device == "auto"
+    lines = (SLIDER / "images.txt").read_text().splitlines()
+    frames, t_ns = [], []
+    for line in lines:
+        secs, rel = line.split()
+        frames.append(np.asarray(Image.open(SLIDER / rel).convert("L"), dtype=np.uint8))
+        t_ns.append(round(float(secs) * 1e9))
+    return np.stack(frames), np.asarray(t_ns, dtype=np.int64)
 
-    config = ESIMConfig(positive_threshold=0.3, negative_threshold=0.5, device="cpu")
-    assert config.positive_threshold == 0.3
-    assert config.negative_threshold == 0.5
-    assert config.device == "cpu"
 
-    with pytest.raises(ValueError, match="positive_threshold must be positive"):
-        ESIMConfig(positive_threshold=-0.1)
+def test_no_torch_import():
+    import evlib.simulation
 
-    with pytest.raises(ValueError, match="negative_threshold must be positive"):
-        ESIMConfig(negative_threshold=0.0)
+    package_dir = Path(evlib.simulation.__file__).parent
+    for source in package_dir.glob("*.py"):
+        text = source.read_text()
+        assert "import torch" not in text and "from torch" not in text, source
 
-    config_dict = {
-        "positive_threshold": 0.6,
-        "negative_threshold": 0.7,
-        "device": "cuda",
+
+def test_config_defaults_and_validation():
+    c = ESIMConfig()
+    assert (
+        c.positive_threshold,
+        c.negative_threshold,
+        c.refractory_period_ms,
+        c.log_eps,
+    ) == (
+        0.2,
+        0.2,
+        0.0,
+        1e-3,
+    )
+    assert c.refractory_ns == 0
+    assert ESIMConfig(refractory_period_ms=0.1).refractory_ns == 100_000
+    with pytest.raises(ValueError):
+        ESIMConfig(positive_threshold=0)
+    with pytest.raises(ValueError):
+        ESIMConfig(log_eps=0)
+    with pytest.raises(ValueError):
+        ESIMConfig(threshold_sigma=-1)
+    with pytest.raises(TypeError):
+        ESIMConfig(log_floor=1e-3)
+
+
+def test_simulate_frames_schema_and_order(slider_frames):
+    frames, t_ns = slider_frames
+    df = simulate_frames(frames, t_ns, ESIMConfig())
+    assert df.schema == {
+        "x": pl.Int16,
+        "y": pl.Int16,
+        "t": pl.Duration("us"),
+        "polarity": pl.Int8,
     }
-    config = ESIMConfig.from_dict(config_dict)
-    assert config.positive_threshold == 0.6
-    assert config.device == "cuda"
+    assert df.height > 100_000
+    assert df["t"].is_sorted()
+    assert set(df["polarity"].unique().to_list()) == {-1, 1}
+    assert df["x"].max() < 240 and df["y"].max() < 180
 
 
-def test_video_config():
-    """Test VideoConfig class."""
-    from evlib.simulation.config import VideoConfig
-
-    config = VideoConfig()
-    assert config.width == 640
-    assert config.height == 480
-    assert config.fps is None
-    assert config.grayscale is True
-
-    config = VideoConfig(width=1280, height=720, fps=30.0)
-    assert config.width == 1280
-    assert config.height == 720
-    assert config.fps == 30.0
-
-    with pytest.raises(ValueError, match="width must be positive"):
-        VideoConfig(width=-1)
-
-    with pytest.raises(ValueError, match="start_time must be less than end_time"):
-        VideoConfig(start_time=10.0, end_time=5.0)
+def test_seed_determinism_and_sigma_effect(slider_frames):
+    frames, t_ns = slider_frames
+    a = simulate_frames(frames[:20], t_ns[:20], ESIMConfig(threshold_sigma=0.1, seed=1))
+    b = simulate_frames(frames[:20], t_ns[:20], ESIMConfig(threshold_sigma=0.1, seed=1))
+    c = simulate_frames(frames[:20], t_ns[:20], ESIMConfig(threshold_sigma=0.1, seed=2))
+    assert a.equals(b)
+    assert not a.equals(c)
 
 
-def test_predefined_configs():
-    """Test predefined configuration sets."""
-    from evlib.simulation.config import get_esim_config, get_video_config
-
-    default_config = get_esim_config("default")
-    assert default_config.positive_threshold == 0.4
-
-    sensitive_config = get_esim_config("high_sensitivity")
-    assert sensitive_config.positive_threshold == 0.2
-    assert sensitive_config.negative_threshold == 0.2
-
-    hd_config = get_video_config("hd")
-    assert hd_config.width == 1280
-    assert hd_config.height == 720
-
-    with pytest.raises(ValueError, match="Unknown ESIM config"):
-        get_esim_config("invalid_config")
+def test_process_frame_streaming_matches_batch(slider_frames):
+    frames, t_ns = slider_frames
+    cfg = ESIMConfig()
+    sim = ESIMSimulator(cfg, width=240, height=180)
+    parts = [sim.process_frame(frames[k], t_ns[k] / 1e9) for k in range(10)]
+    assert all(len(a) == 0 for a in parts[0])
+    t_stream = np.sort(np.concatenate([p[2] for p in parts]))
+    batch = simulate_frames(frames[:10], t_ns[:10], cfg)
+    t_batch = batch["t"].dt.total_microseconds().to_numpy() / 1e6
+    assert len(t_stream) == len(t_batch)
+    # Batch t is floor(t_ns / 1000) us; stream t is t_ns / 1e9 s, so they differ by < 1 us.
+    assert np.all(t_stream >= t_batch - 1e-12) and np.all(t_stream - t_batch < 1e-6)
 
 
-def test_dependency_info():
-    """Test dependency information function."""
-    from evlib.simulation import get_dependency_info
-
-    info = get_dependency_info()
-    assert isinstance(info, dict)
-    assert "torch" in info
-    assert "opencv" in info
-    assert "missing_message" in info
-
-    assert isinstance(info["torch"], bool)
-    assert isinstance(info["opencv"], bool)
+def test_process_frame_rgb_uses_luma_weights():
+    sim = ESIMSimulator(ESIMConfig(), width=1, height=1)
+    sim.process_frame(np.zeros((1, 1, 3), dtype=np.uint8), 0.0)
+    x, y, t, p = sim.process_frame(np.array([[[255, 0, 0]]], dtype=np.uint8), 0.01)
+    # 0.299 * 255 = 76 -> ln((76/255 + 1e-3) / 1e-3) = 5.7 -> 28 crossings at c = 0.2.
+    assert len(t) == 28 and np.all(p == 1)
 
 
-@pytest.mark.skipif(
-    not TORCH_AVAILABLE, reason="PyTorch required for ESIM simulator tests"
-)
-class TestESIMSimulator:
-    """Tests for ESIMSimulator class."""
-
-    def test_simulator_creation(self):
-        """Test creating an ESIM simulator."""
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="cpu")
-        simulator = ESIMSimulator(config)
-
-        assert simulator.config == config
-        assert not simulator.is_initialized
-        assert simulator.device.type == "cpu"
-
-    def test_simulator_reset(self):
-        """Test simulator reset functionality."""
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="cpu")
-        simulator = ESIMSimulator(config)
-
-        simulator.reset()
-        assert not simulator.is_initialized
-
-    def test_process_single_frame(self):
-        """Test processing a single frame."""
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(
-            device="cpu", positive_threshold=0.1, negative_threshold=0.1
+def test_process_frame_float32_is_log_intensity(slider_frames):
+    frames, t_ns = slider_frames
+    log_frames = np.log(frames[:10].astype(np.float32) / 255 + 1e-3).astype(np.float32)
+    cfg = ESIMConfig()
+    sim = ESIMSimulator(cfg, width=240, height=180)
+    parts = [sim.step_ns(log_frames[k], int(t_ns[k])) for k in range(10)]
+    # Equal-t ties have no defined order, so compare in a canonical (t, y, x, p) order.
+    stream = pl.concat(
+        [
+            pl.DataFrame({"x": p[0], "y": p[1], "t": p[2] // 1000, "polarity": p[3]})
+            for p in parts
+        ]
+    ).sort(["t", "y", "x", "polarity"])
+    batch = (
+        simulate_frames(log_frames, t_ns[:10], cfg)
+        .with_columns(pl.col("t").dt.total_microseconds())
+        .sort(["t", "y", "x", "polarity"])
+    )
+    assert stream.height == batch.height > 0
+    for column in ("t", "x", "y", "polarity"):
+        assert np.array_equal(stream[column].to_numpy(), batch[column].to_numpy()), (
+            column
         )
-        simulator = ESIMSimulator(config)
-
-        frame1 = np.ones((100, 100), dtype=np.uint8) * 128
-        frame2 = np.ones((100, 100), dtype=np.uint8) * 200
-
-        events1 = simulator.process_frame(frame1, 0.0)
-        assert len(events1[0]) == 0
-        assert simulator.is_initialized
-
-        events2 = simulator.process_frame(frame2, 0.1)
-        x, y, t, p = events2
-
-        assert len(x) > 0
-        assert len(y) == len(x)
-        assert len(t) == len(x)
-        assert len(p) == len(x)
-
-        assert x.dtype == np.int64
-        assert y.dtype == np.int64
-        assert t.dtype == np.float64
-        assert p.dtype == np.int64
-
-        assert np.all(x >= 0) and np.all(x < 100)
-        assert np.all(y >= 0) and np.all(y < 100)
-        assert np.all(t == 0.1)
-        assert np.all(p == 1)
-
-    def test_process_rgb_frame(self):
-        """Test processing RGB frames (should convert to grayscale)."""
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="cpu")
-        simulator = ESIMSimulator(config)
-
-        rgb_frame = np.ones((50, 50, 3), dtype=np.uint8) * 128
-
-        events = simulator.process_frame(rgb_frame, 0.0)
-        assert len(events[0]) == 0
-        assert simulator.is_initialized
-
-    def test_get_state_info(self):
-        """Test getting simulator state information."""
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="cpu")
-        simulator = ESIMSimulator(config)
-
-        state = simulator.get_state_info()
-        assert not state["initialized"]
-
-        frame = np.ones((50, 50), dtype=np.uint8) * 128
-        simulator.process_frame(frame, 0.0)
-
-        state = simulator.get_state_info()
-        assert state["initialized"]
-        assert "device" in state
-        assert "shape" in state
-        assert "buffer_stats" in state
-
-    def test_mps_device_support(self):
-        """Test MPS device support and dtype compatibility."""
-        import torch
-
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="auto")
-        simulator = ESIMSimulator(config)
-
-        expected_devices = {"cpu", "cuda", "mps"}
-        assert simulator.device.type in expected_devices
-
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            config_mps = ESIMConfig(device="mps", dtype="float64")
-            simulator_mps = ESIMSimulator(config_mps)
-
-            assert simulator_mps.device.type == "mps"
-            assert simulator_mps._dtype == torch.float32
-
-    def test_device_dtype_compatibility(self):
-        """Test device and dtype compatibility handling."""
-        import torch
-
-        from evlib.simulation.config import ESIMConfig
-        from evlib.simulation.esim import ESIMSimulator
-
-        config = ESIMConfig(device="cpu", dtype="float64")
-        simulator = ESIMSimulator(config)
-        assert simulator._dtype == torch.float64
-
-        config = ESIMConfig(device="cpu", dtype="float32")
-        simulator = ESIMSimulator(config)
-        assert simulator._dtype == torch.float32
+    with pytest.raises(TypeError):
+        sim.step_ns(log_frames[0].astype(np.float64), 0)
 
 
-@pytest.mark.skipif(
-    not CV2_AVAILABLE, reason="OpenCV required for video processor tests"
-)
-@pytest.mark.skipif(
-    not TORCH_AVAILABLE, reason="PyTorch required for video processor tests"
-)
-class TestVideoProcessor:
-    """Tests for VideoToEvents class."""
+def test_device_dispatch_follows_cuda_available():
+    import evlib
 
-    def test_video_processor_creation(self):
-        """Test creating a video processor."""
-        from evlib.simulation.config import ESIMConfig, VideoConfig
-        from evlib.simulation.video_processor import VideoToEvents
+    from evlib.simulation.esim import resolve_device
 
-        esim_config = ESIMConfig(device="cpu")
-        video_config = VideoConfig()
-
-        processor = VideoToEvents(esim_config, video_config)
-        assert processor.esim_config == esim_config
-        assert processor.video_config == video_config
-
-    def test_nonexistent_video_file(self):
-        """Test handling of non-existent video file."""
-        from evlib.simulation.config import ESIMConfig, VideoConfig
-        from evlib.simulation.video_processor import VideoToEvents
-
-        esim_config = ESIMConfig(device="cpu")
-        video_config = VideoConfig()
-        processor = VideoToEvents(esim_config, video_config)
-
-        with pytest.raises(FileNotFoundError):
-            processor.process_video("nonexistent_video.mp4")
+    assert isinstance(evlib.simulation_rs.cuda_available(), bool)
+    assert resolve_device("cpu") == "cpu"
+    if evlib.simulation_rs.cuda_available():
+        assert resolve_device("auto") == "cuda"
+        assert (
+            ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4).device == "cuda"
+        )
+    else:
+        assert resolve_device("auto") == "cpu"
+        with pytest.raises(RuntimeError, match="CUDA backend unavailable"):
+            ESIMSimulator(ESIMConfig(device="cuda"), width=4, height=4)
+    assert ESIMSimulator(ESIMConfig(device="cpu"), width=4, height=4).device == "cpu"
 
 
-def test_convenience_functions():
-    """Test convenience functions exist and are callable."""
-    try:
-        from evlib.simulation import create_esim_simulator, video_to_events
+def test_video_to_events_on_slider_clip(slider_frames, tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    from evlib.simulation import VideoToEvents
 
-        assert callable(video_to_events)
-        assert callable(create_esim_simulator)
-    except ImportError:
-        pass
-
-
-def test_simple_video_to_events():
-    """Test simple video to events function exists and is callable."""
-    try:
-        from evlib.simulation.video_processor import video_to_events_simple
-
-        assert callable(video_to_events_simple)
-    except ImportError:
-        pass
+    frames, _ = slider_frames
+    path = tmp_path / "slider.avi"
+    writer = cv2.VideoWriter(
+        str(path), cv2.VideoWriter_fourcc(*"MJPG"), 25.0, (240, 180), isColor=False
+    )
+    for f in frames[:30]:
+        writer.write(f)
+    writer.release()
+    df = VideoToEvents(ESIMConfig(), VideoConfig(width=240, height=180)).process_video(
+        path
+    )
+    assert isinstance(df, pl.DataFrame) and df.height > 10_000
+    assert df.schema["t"] == pl.Duration("us")
 
 
-@pytest.mark.slow
-@pytest.mark.skipif(not TORCH_AVAILABLE, reason="Integration tests require PyTorch")
-@pytest.mark.skipif(not CV2_AVAILABLE, reason="Integration tests require OpenCV")
-class TestSimulationIntegration:
-    """Integration tests for the simulation module."""
+def test_video_streaming_matches_batch(slider_frames, tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    from evlib.simulation import VideoToEvents
 
-    def test_full_pipeline_with_synthetic_video(self):
-        """Test full pipeline with a synthetic video."""
-        import cv2
-
-        from evlib.simulation.config import ESIMConfig, VideoConfig
-        from evlib.simulation.video_processor import VideoToEvents
-
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
-            video_path = tmp_file.name
-
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            out = cv2.VideoWriter(video_path, fourcc, 10.0, (64, 64))
-
-            for i in range(10):
-                frame = np.ones((64, 64, 3), dtype=np.uint8) * (100 + i * 10)
-                out.write(frame)
-
-            out.release()
-
-            esim_config = ESIMConfig(
-                device="cpu", positive_threshold=0.1, negative_threshold=0.1
-            )
-            video_config = VideoConfig(width=64, height=64)
-
-            processor = VideoToEvents(esim_config, video_config)
-
-            info = processor.get_video_info(video_path)
-            assert info["width"] == 64
-            assert info["height"] == 64
-
-            x, y, t, p = processor.process_video(video_path)
-
-            assert len(x) > 0
-            assert len(y) == len(x)
-            assert len(t) == len(x)
-            assert len(p) == len(x)
-
-        finally:
-            if os.path.exists(video_path):
-                os.unlink(video_path)
+    frames, _ = slider_frames
+    path = tmp_path / "slider.avi"
+    writer = cv2.VideoWriter(
+        str(path), cv2.VideoWriter_fourcc(*"MJPG"), 25.0, (240, 180), isColor=False
+    )
+    for f in frames[:30]:
+        writer.write(f)
+    writer.release()
+    proc = VideoToEvents(ESIMConfig(), VideoConfig(width=240, height=180))
+    batch = proc.process_video(path)
+    chunks = list(proc.process_frames_streaming(path, chunk_frames=7))
+    assert len(chunks) == 5
+    # Equal-t ties have no defined order, so compare in a canonical (t, y, x, p) order.
+    order = ["t", "y", "x", "polarity"]
+    assert pl.concat(chunks).sort(order).equals(batch.sort(order))
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+def test_simulate_in_batches_matches_whole_stack(slider_frames):
+    frames, t_ns = slider_frames
+    cfg = ESIMConfig()
+    sim = ESIMSimulator(cfg, width=240, height=180)
+    parts = [
+        sim.simulate(frames[a:b], t_ns[a:b], sort=False)
+        for a, b in ((0, 8), (8, 9), (9, 20))
+    ]
+    keys = ["t", "y", "x", "polarity"]
+    joined = pl.concat(parts).sort(keys)
+    whole = simulate_frames(frames[:20], t_ns[:20], cfg).sort(keys)
+    assert joined.equals(whole)

@@ -33,6 +33,7 @@ DataFrame work (filtering, windowing, grouping, representation maths) is exactly
 │                  PyO3 boundary (evlib._evlib)               │
 │         load_events · detect_format                         │
 │         representations_rs (dense scatter-add)              │
+│         simulation_rs (ESIM event simulator)                │
 └─────────────────────────────────────────────────────────────┘
            │
            ▼
@@ -40,6 +41,7 @@ DataFrame work (filtering, windowing, grouping, representation maths) is exactly
 │                      Rust core (src/)                       │
 │  ev_formats         → binary decode + Polars frame build    │
 │  ev_representations → dense scatter-add for RVT histograms  │
+│  ev_simulation      → ESIM event simulator (CPU + CUDA)     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -65,6 +67,12 @@ evlib/
 │   │   ├── stacked_histogram_dense.rs   # RVT stacked-histogram scatter-add (CPU)
 │   │   ├── stacked_histogram_cuda.rs    # CUDA scatter-add (feature = "cuda")
 │   │   └── stacked_histogram_metal.rs   # Metal scatter-add (feature = "metal")
+│   ├── ev_simulation/              # ESIM event simulator kernel (CPU rayon / CUDA)
+│   │   ├── pixel.rs                # Per-pixel threshold-crossing step (shared arithmetic)
+│   │   ├── simulator.rs            # Rows-parallel batch simulator, sort, EventBatch
+│   │   ├── cuda.rs                 # Runtime-loaded libevsim.so backend (feature = "cuda")
+│   │   ├── cuda/esim_kernel.cu     # The CUDA kernel source, built by scripts/build_cuda_kernels.sh
+│   │   └── python.rs               # PyO3 registration (simulation_rs)
 │   ├── tracing_config.rs           # Structured logging (tracing)
 │   ├── bin/                        # Small Rust binaries
 │   └── lib.rs                      # PyO3 module definition
@@ -76,7 +84,7 @@ evlib/
         ├── rvt/                    # RVT-compatible preprocessing pipeline
         ├── models/                 # E2VID and RVT (Python / PyTorch)
         ├── visualization.py        # Plotting helpers (Python-only)
-        └── simulation.py           # ESIM video-to-events simulation
+        └── simulation/             # ESIM video-to-events API over simulation_rs
 ```
 
 There is no `ev_core`, `ev_processing`, `ev_transforms`, or `ev_tracking` module: those were removed. The crate has no Rust machine-learning backend (no `tch`, `ort`/ONNX, or candle bindings); all models live in Python under `python/evlib/models/`.
@@ -117,6 +125,10 @@ HDF5 support is gated behind the `hdf5` Cargo feature (Linux and macOS only). Wh
 ### ev_representations: the dense scatter-add kernels
 
 `ev_representations` exposes the dense scatter-add used by the RVT stacked-histogram path, in three variants: `stacked_histogram_dense` (CPU), `stacked_histogram_dense_cuda` (custom CUDA kernel), and `stacked_histogram_dense_metal` (Metal/MSL kernel for Apple Silicon). They are registered with Python as `evlib.representations_rs` (named with the `_rs` suffix so it does not collide with the pure-Python `evlib.representations` module). The CUDA and Metal variants are gated behind the `cuda` and `metal` Cargo features respectively. All other representations (voxel grids, mixed density stacks, the general stacked histogram) are pure Python Polars in `evlib.representations`.
+
+### ev_simulation: the ESIM event simulator
+
+`ev_simulation` turns a stack of intensity frames with timestamps into events with the ESIM threshold-crossing model. `pixel.rs` holds the per-pixel step; `simulator.rs` runs it rows-parallel with rayon across a whole batch of frames and sorts the result by time; `cuda.rs` drives the same arithmetic on an NVIDIA GPU through `libevsim.so`, built from the tracked `cuda/esim_kernel.cu` by `scripts/build_cuda_kernels.sh` and loaded at runtime via `libloading` (located through the `EVLIB_CUDA_SIM_LIB` environment variable, default `libevsim.so`). The bindings are registered as `evlib.simulation_rs` (`simulate_frames`, `EventSimulator`, `cuda_available`, and with the `cuda` feature `simulate_frames_cuda`, `EventSimulatorCuda`); `evlib.simulation` is the Python API over them and returns Polars frames. See [Simulation](../api/simulation.md).
 
 ### Python processing layer
 
@@ -171,7 +183,7 @@ extension-module = ["pyo3/extension-module"]
 polars           = ["dep:polars"]
 hdf5             = ["dep:hdf5-metno", "dep:hdf5-metno-sys"]  # Unix only, dynamic link
 hdf5-static      = ["hdf5", "hdf5-metno/static", "hdf5-metno/zlib"]  # Unix only, builds HDF5 from source
-cuda             = ["dep:libloading"]              # runtime-loaded CUDA scatter-add kernel
+cuda             = ["dep:libloading"]              # runtime-loaded CUDA scatter-add and event simulator kernels
 metal            = ["dep:metal", "dep:objc"]       # Metal scatter-add kernel, macOS target only
 ```
 
@@ -179,10 +191,10 @@ Key points:
 
 - `extension-module` is deliberately **off** by default. With it off, PyO3's build script links the present libpython, so `cargo test` and `maturin develop` build and run without any `RUSTFLAGS` hack. Turn it on only for distributable wheels, e.g. `maturin build --release --features python,polars,extension-module`.
 - `hdf5` and `hdf5-static` are opt-in and Unix only. `hdf5` links dynamically against a system HDF5 install; `hdf5-static` builds HDF5 from source instead, so no system HDF5 is needed. Release wheels for macOS and Linux are built with `hdf5-static`, so `pip install evlib` already includes statically linked HDF5 (and ECF) support on those platforms since 0.13.1. On Windows neither feature's underlying HDF5 dependencies are available, so they compile to no-op stubs there and Python `h5py` is used instead.
-- `cuda` enables the custom CUDA scatter-add backend. It pulls in `libloading` so the `nvcc`-built `librvt_scatter.so` can be loaded at runtime; there is no link-time CUDA dependency. Set `EVLIB_CUDA_LIB` to point at the built library.
+- `cuda` enables the custom CUDA scatter-add backend and the CUDA event simulator. It pulls in `libloading` so the `nvcc`-built `librvt_scatter.so` and `libevsim.so` can be loaded at runtime; there is no link-time CUDA dependency. Set `EVLIB_CUDA_LIB` to point at the scatter-add library and `EVLIB_CUDA_SIM_LIB` at the simulator library (`scripts/build_cuda_kernels.sh` builds the latter).
 - `metal` enables the Metal/MSL scatter-add backend on Apple Silicon. It pulls in `metal` and `objc` and is restricted to the macOS target. Build with `CC=clang`.
 
-GPU acceleration comes from two complementary places: cudf-polars at the Python query layer (`collect(engine="gpu")`), and the native CUDA and Metal scatter-add kernels in the compute layer behind the `cuda` and `metal` features.
+GPU acceleration comes from two complementary places: cudf-polars at the Python query layer (`collect(engine="gpu")`), and the native CUDA and Metal kernels in the compute layer (scatter-add and the event simulator) behind the `cuda` and `metal` features.
 
 ### Common commands
 

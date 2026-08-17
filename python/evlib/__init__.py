@@ -44,7 +44,7 @@ events = evlib.formats.load_events("path/to/your/data.h5")
 - `evlib.formats`: Data loading and format detection
 - `evlib.filtering`: High-performance event filtering
 - `evlib.representations`: Event-to-representation conversion
-- `evlib.simulation`: Event camera simulation (ESIM algorithm for video-to-events)
+- `evlib.simulation`: Event camera simulation (ESIM kernel in Rust, video-to-events)
 - `evlib.visualization`: Event visualization tools
 - `evlib.models`: Deep learning models (E2VID, RVT)
 - `evlib.core`: Core data structures and utilities
@@ -78,6 +78,11 @@ sys.modules[__name__ + ".formats"] = formats
 if hasattr(_rust, "representations_rs"):
     globals()["representations_rs"] = _rust.representations_rs
     sys.modules[__name__ + ".representations_rs"] = _rust.representations_rs
+
+# Expose the Rust event simulator as `evlib.simulation_rs`; evlib.simulation wraps it.
+if hasattr(_rust, "simulation_rs"):
+    globals()["simulation_rs"] = _rust.simulation_rs
+    sys.modules[__name__ + ".simulation_rs"] = _rust.simulation_rs
 
 # Make key functions directly accessible.
 # save_events_to_hdf5 handled below with fallback logic.
@@ -196,7 +201,7 @@ except ImportError as _visualization_import_error:
 try:
     from . import simulation
 except ImportError as _simulation_import_error:
-    simulation = _LazyImportErrorModule("simulation", "torch", _simulation_import_error)
+    simulation = _LazyImportErrorModule("simulation", "plot", _simulation_import_error)
 
 # RVT preprocessing pipeline (numpy/polars only, same reasoning as
 # representations/filtering above; distinct from the torch-based
