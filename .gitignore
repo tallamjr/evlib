@@ -719,6 +719,10 @@ dkms.conf
 tests/*.png
 examples/*.png
 
+# Demo output (video, event data): generated locally by example scripts,
+# never committed.
+examples/output/
+
 # Temporary Cargo config for Python linking
 .cargo/config.toml
 
