@@ -43,7 +43,7 @@ def load_frame_stack(path: Union[str, Path]) -> FrameStack:
             raise FileNotFoundError(str(file_path))
 
     meta = json.loads(meta_path.read_text())
-    for key in ("width", "height", "frames"):
+    for key in ("width", "height", "frames", "policy", "factor"):
         if key not in meta:
             raise ValueError(f"{meta_path}: missing key {key!r}")
 

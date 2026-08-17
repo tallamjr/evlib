@@ -31,7 +31,11 @@ def slider_frames():
 
 
 def _write_stack(
-    directory: Path, frame_data: np.ndarray, timestamps_ns: np.ndarray, **meta_overrides
+    directory: Path,
+    frame_data: np.ndarray,
+    timestamps_ns: np.ndarray,
+    drop_keys=(),
+    **meta_overrides,
 ):
     """Write a stack directory in the exact layout lumin's StackWriter emits."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -54,6 +58,8 @@ def _write_stack(
         "date": "1700000000",
     }
     meta.update(meta_overrides)
+    for key in drop_keys:
+        meta.pop(key, None)
     (directory / "meta.json").write_text(json.dumps(meta))
 
 
@@ -132,4 +138,20 @@ def test_load_frame_stack_non_monotone_timestamps_raises(tmp_path, slider_frames
     bad_t_ns[5] = bad_t_ns[4]
     _write_stack(directory, frames, bad_t_ns)
     with pytest.raises(ValueError, match="strictly increase"):
+        load_frame_stack(directory)
+
+
+def test_load_frame_stack_missing_factor_raises(tmp_path, slider_frames):
+    frames, t_ns = slider_frames
+    directory = tmp_path / "stack"
+    _write_stack(directory, frames, t_ns, drop_keys=("factor",))
+    with pytest.raises(ValueError, match="factor"):
+        load_frame_stack(directory)
+
+
+def test_load_frame_stack_missing_policy_raises(tmp_path, slider_frames):
+    frames, t_ns = slider_frames
+    directory = tmp_path / "stack"
+    _write_stack(directory, frames, t_ns, drop_keys=("policy",))
+    with pytest.raises(ValueError, match="policy"):
         load_frame_stack(directory)
